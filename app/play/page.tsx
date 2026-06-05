@@ -43,8 +43,8 @@ function PlayInner() {
     const el = stageRef.current;
     if (!el) return;
 
-    let handle: GameHandle | undefined;
     let cancelled = false;
+    let myHandle: GameHandle | undefined;
 
     (async () => {
       const { Assets } = await import("pixi.js");
@@ -74,19 +74,29 @@ function PlayInner() {
       if (cancelled) return;
 
       const { createGame } = await import("@/game/BossPaegiGame");
-      handle = await createGame(el, {
+      if (cancelled) return;
+      const created = await createGame(el, {
         dollTexture,
         bgTexture,
         weapon,
         onHit: ({ strength }) => hit(strength),
       });
-      gameRef.current = handle;
+      // race 안전망: createGame 진행 중 cleanup 됐다면 즉시 destroy
+      if (cancelled) {
+        created.destroy();
+        return;
+      }
+      myHandle = created;
+      gameRef.current = created;
     })();
 
     return () => {
       cancelled = true;
-      handle?.destroy();
-      gameRef.current = null;
+      if (myHandle) {
+        myHandle.destroy();
+        // gameRef 가 다른 run 의 handle 로 덮어쓰여졌다면 그건 그쪽이 알아서. 내 거만 정리.
+        if (gameRef.current === myHandle) gameRef.current = null;
+      }
     };
     // weapon 변경은 별도 effect 에서 setWeapon() 으로 hot-swap (재마운트 X)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,10 +217,17 @@ function BgSwitcher({
   );
 }
 
+function PlayKeyed() {
+  // dollId 가 바뀌면 PlayInner 를 완전 remount — useState/timer/effect 모두 깔끔 리셋.
+  // (URL 만 바뀌는 동일 page navigation 에서 stale state 잔존 막음.)
+  const sp = useSearchParams();
+  return <PlayInner key={sp.get("doll") ?? "_default"} />;
+}
+
 export default function PlayPage() {
   return (
     <Suspense fallback={null}>
-      <PlayInner />
+      <PlayKeyed />
     </Suspense>
   );
 }

@@ -34,6 +34,8 @@ export async function createGame(
     autoDensity: true,
   });
 
+  // 이전 게임의 잔존 canvas 가 있다면 모두 제거 (race 안전망)
+  container.replaceChildren();
   container.appendChild(app.canvas);
   app.canvas.style.touchAction = "manipulation";
   app.canvas.style.display = "block";
