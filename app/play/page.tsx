@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { randomTaunt } from "@/lib/taunts";
 import { BACKGROUNDS, resolveBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon } from "@/lib/weapons";
+import { unlockAudio } from "@/lib/sound";
 import type { GameHandle } from "@/game/BossPaegiGame";
 
 const TAUNT_INITIAL_DELAY_MS = 1500;
@@ -94,6 +95,21 @@ function PlayInner() {
   useEffect(() => {
     gameRef.current?.setWeapon(weapon);
   }, [weapon]);
+
+  // 페이지 진입 후 어디서든 첫 user gesture (탭/클릭/터치) 시 AudioContext unlock.
+  // iOS Safari 의 autoplay block 우회 — 사용자가 weapon picker, bg, 또는 인형 어디든
+  // 먼저 누르더라도 소리가 안 끊김.
+  useEffect(() => {
+    const onFirst = () => {
+      unlockAudio();
+    };
+    window.addEventListener("pointerdown", onFirst, { once: false });
+    window.addEventListener("touchstart", onFirst, { once: false, passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", onFirst);
+      window.removeEventListener("touchstart", onFirst);
+    };
+  }, []);
 
   useEffect(() => {
     if (over) {

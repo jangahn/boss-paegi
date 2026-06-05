@@ -1,6 +1,6 @@
 /**
  * Web Audio API 기반 합성 효과음. mp3 파일 의존성 0.
- * AudioContext 는 user gesture 이후에만 생성 가능 (autoplay 정책) — 첫 탭에서 lazy init.
+ * AudioContext 는 user gesture 이후에만 생성/실행 가능 (autoplay 정책) — 첫 탭에서 lazy init.
  */
 
 type SoundPreset = "thud" | "slap" | "clack" | "rustle";
@@ -21,13 +21,35 @@ function getCtx() {
   return ctx;
 }
 
-/** 첫 user gesture (ex: 첫 탭) 후 호출. iOS Safari 의 autoplay block 해제. */
+/**
+ * 첫 user gesture (예: 페이지 진입 후 첫 탭) 후 호출.
+ * iOS Safari 의 autoplay block 을 풀기 위해 ctx.resume() + silent buffer 한 번 재생.
+ * resume 이 promise 라 첫 호출 시점엔 아직 suspended 일 수 있으므로 unlocked 플래그는
+ * 실제 state 가 running 일 때만 set.
+ */
 export function unlockAudio() {
   if (unlocked) return;
   const c = getCtx();
   if (!c) return;
-  if (c.state === "suspended") c.resume().catch(() => {});
-  unlocked = true;
+  // silent buffer 재생 (iOS unlock 트릭 — user gesture 안에서 실제로 음원 한 번 흘려야 함)
+  try {
+    const buf = c.createBuffer(1, 1, c.sampleRate);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(c.destination);
+    src.start(0);
+  } catch {
+    /* noop */
+  }
+  if (c.state === "suspended") {
+    c.resume()
+      .then(() => {
+        if (c.state === "running") unlocked = true;
+      })
+      .catch(() => {});
+  } else {
+    unlocked = true;
+  }
 }
 
 function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
@@ -45,11 +67,21 @@ function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
 
 export function playHitSound(preset: SoundPreset) {
   const c = getCtx();
-  if (!c || c.state !== "running") return;
+  if (!c) return;
+  // 아직 unlock 안 됐으면 한 번 더 시도 + 이번 호출은 무음
+  if (c.state !== "running") {
+    if (c.state === "suspended") {
+      c.resume()
+        .then(() => {
+          if (c.state === "running") unlocked = true;
+        })
+        .catch(() => {});
+    }
+    return;
+  }
   const t = c.currentTime;
 
   if (preset === "thud") {
-    // 낮은 sine + 빠른 감쇠 — 주먹 펀치
     const osc = c.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(110, t);
@@ -64,7 +96,6 @@ export function playHitSound(preset: SoundPreset) {
   }
 
   if (preset === "slap") {
-    // 중대역 화이트노이즈 + 빠른 envelope — 짝
     const src = c.createBufferSource();
     src.buffer = noiseBuffer(c, 0.12);
     const filter = c.createBiquadFilter();
@@ -80,7 +111,6 @@ export function playHitSound(preset: SoundPreset) {
   }
 
   if (preset === "clack") {
-    // 짧은 고음 square — 키보드 클릭
     const osc = c.createOscillator();
     osc.type = "square";
     osc.frequency.setValueAtTime(900, t);
@@ -95,7 +125,6 @@ export function playHitSound(preset: SoundPreset) {
   }
 
   if (preset === "rustle") {
-    // 고음 노이즈 short burst — 종이
     const src = c.createBufferSource();
     src.buffer = noiseBuffer(c, 0.09, 0.5);
     const filter = c.createBiquadFilter();

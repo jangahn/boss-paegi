@@ -78,8 +78,10 @@ export class PlayScene extends Container {
     }
     this.doll.x = width / 2;
     this.doll.y = height * 0.55;
-    // 화면 width 의 ~75% 목표 (= 기존 50% × 1.5). 좁은 화면(320) 240, 일반 281, 큰화면 420 cap.
-    const targetDoll = Math.min(width * 0.75, 420);
+    // 화면 width 의 ~75% 목표 (=기존 50% × 1.5). 좁은 화면(320) 240, 일반 281, 큰화면 420 cap.
+    // AI sprite 는 placeholder 보다 시각상 살짝 작아 보이는 경향 + 사용자 요청으로 추가 1.3 boost.
+    const baseTarget = Math.min(width * 0.75, 420);
+    const targetDoll = this.doll.isSprite ? baseTarget * 1.3 : baseTarget;
     this.doll.scale.set(targetDoll / this.doll.naturalSize);
     this.fx.x = 0;
     this.fx.y = 0;
