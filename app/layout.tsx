@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SERVICE_NAME } from "@/lib/policy";
+import { SessionBootstrap } from "@/components/SessionBootstrap";
 
 export const metadata: Metadata = {
   title: `${SERVICE_NAME} — 직장인 스트레스 해소 게임`,
@@ -33,7 +34,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SessionBootstrap />
+        {children}
+      </body>
     </html>
   );
 }

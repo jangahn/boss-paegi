@@ -1,35 +1,63 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { SERVICE_NAME } from "@/lib/policy";
+import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
+  const [hasDolls, setHasDolls] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const sb = createClient();
+      const { data: sessionData } = await sb.auth.getSession();
+      if (!sessionData.session) return;
+      const { count } = await sb
+        .from("dolls")
+        .select("*", { head: true, count: "exact" });
+      if (!cancelled) setHasDolls((count ?? 0) > 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="flex flex-col items-center gap-6 max-w-md">
-        <h1 className="text-5xl font-extrabold tracking-tight">
-          {SERVICE_NAME}
-        </h1>
-        <p className="text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed">
+      <div className="flex max-w-md flex-col items-center gap-6">
+        <h1 className="text-5xl font-extrabold tracking-tight">{SERVICE_NAME}</h1>
+        <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
           오늘 부장님한테 받은 스트레스,
           <br />
           여기서 마음껏 풀고 가세요.
         </p>
 
-        <div className="flex flex-col gap-3 w-full mt-4">
+        <div className="mt-4 flex w-full flex-col gap-3">
           <Link
             href="/generate"
-            className="rounded-full bg-foreground text-background py-4 px-6 font-semibold text-base hover:opacity-90 transition"
+            className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
           >
             내 부장님 만들기
           </Link>
           <Link
             href="/play"
-            className="rounded-full border border-foreground/15 py-4 px-6 font-medium text-base hover:bg-foreground/5 transition"
+            className="rounded-full border border-foreground/15 px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
           >
             기본 부장님으로 바로 시작
           </Link>
+          {hasDolls && (
+            <Link
+              href="/gallery"
+              className="rounded-full px-6 py-3 text-sm font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
+            >
+              내가 만든 부장님 갤러리 →
+            </Link>
+          )}
         </div>
 
-        <p className="text-xs text-zinc-500 mt-8 leading-relaxed">
+        <p className="mt-8 text-xs leading-relaxed text-zinc-500">
           본 서비스는 코믹한 스트레스 해소를 위한 캐주얼 게임입니다.
           <br />
           타인 비방·괴롭힘 목적의 사용은 금지됩니다.

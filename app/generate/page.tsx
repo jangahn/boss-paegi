@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { ConsentDialog } from "@/components/ConsentDialog";
+import { ensureAuth } from "@/lib/auth-client";
 
 type Stage = "consent" | "upload" | "generating" | "pick" | "saving";
 
@@ -18,12 +18,7 @@ export default function GeneratePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sb = createClient();
-    sb.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
-        await sb.auth.signInAnonymously();
-      }
-    });
+    ensureAuth().catch(() => {});
   }, []);
 
   useEffect(() => {
