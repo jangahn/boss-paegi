@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
 import { useGameStore } from "@/store/gameStore";
@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 const DEFAULT_WEAPON = "fist";
 
 function PlayInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const dollId = searchParams.get("doll");
   const stageRef = useRef<HTMLDivElement>(null);
@@ -60,7 +61,13 @@ function PlayInner() {
   }, [start, hit, dollId]);
 
   const handleEnd = () => {
+    const currentScore = useGameStore.getState().score;
     end();
+    // 한 번도 안 패고 그냥 나간 경우 → 결과 모달 의미 없으니 홈으로
+    if (currentScore <= 0) {
+      router.push("/");
+      return;
+    }
     setOver(true);
   };
 

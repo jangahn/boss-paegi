@@ -44,7 +44,10 @@ export async function generateBossDoll(
     input: {
       image_url: opts.imageDataUri,
       prompt: CHARACTERIZATION_PROMPT,
-      strength: 0.85, // 높을수록 원본에서 멀어짐 — 정책상 식별성 낮춤
+      // 0.65 — 원본 얼굴 특징(머리스타일/안경/얼굴형) 은 유지하되,
+      // 정책상 photorealistic 식별 가능성 줄이는 균형점.
+      // 너무 낮추면 비방 리스크, 너무 높이면 "내 부장님" 인식 실패.
+      strength: 0.65,
       num_images: opts.numImages ?? 3,
       guidance_scale: 7,
       num_inference_steps: 28,
@@ -59,4 +62,21 @@ export async function generateBossDoll(
     width: img.width,
     height: img.height,
   }));
+}
+
+type BirefnetResponse = {
+  image: { url: string; width: number; height: number; content_type?: string };
+};
+
+/**
+ * 누끼 제거 — 캐릭터만 남기고 배경을 투명 PNG 로.
+ * 게임 씬에서 인형이 깔끔하게 떠 있도록 (배경 사각형 X).
+ */
+export async function removeBackground(imageUrl: string): Promise<string> {
+  const result = await fal.subscribe("fal-ai/birefnet", {
+    input: { image_url: imageUrl },
+    pollInterval: 1000,
+  });
+  const data = result.data as BirefnetResponse;
+  return data.image.url;
 }

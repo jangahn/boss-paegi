@@ -2,6 +2,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { removeBackground } from "@/lib/fal";
 
 const BUCKET = "dolls";
 
@@ -34,13 +35,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_url" }, { status: 400 });
   }
 
-  const src = await fetch(body.imageUrl);
+  // 누끼 제거 (PNG 투명 배경) — 게임 씬에서 캐릭터만 떠 있게.
+  let cleanedUrl: string;
+  try {
+    cleanedUrl = await removeBackground(body.imageUrl);
+  } catch (e) {
+    console.error("[doll] bg removal failed:", e);
+    return NextResponse.json({ error: "bg_removal_failed" }, { status: 502 });
+  }
+
+  // bg-removal 출력도 fal.media 호스트 — 기존 SSRF 가드 효력 그대로
+  const src = await fetch(cleanedUrl);
   if (!src.ok) {
     return NextResponse.json({ error: "fetch_failed" }, { status: 502 });
   }
   const blob = await src.arrayBuffer();
-  const contentType = src.headers.get("content-type") || "image/jpeg";
-  const ext = contentType.split("/")[1]?.split(";")[0] || "jpg";
+  const contentType = src.headers.get("content-type") || "image/png";
+  const ext = contentType.split("/")[1]?.split(";")[0] || "png";
 
   const dollId = crypto.randomUUID();
   const path = `${user.id}/${dollId}.${ext}`;

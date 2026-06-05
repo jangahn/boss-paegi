@@ -16,7 +16,9 @@ export class Doll extends Container {
 
   constructor(opts: DollOptions = {}) {
     super();
-    this.size = opts.size ?? 240;
+    // AI 이미지(누끼 PNG)는 캐릭터가 거의 frame 을 채우므로 더 작게.
+    // placeholder 는 head 중심이고 shirt 가 아래로 살짝 더 뻗어서 240 이 적당.
+    this.size = opts.size ?? (opts.texture ? 200 : 240);
     this.body = opts.texture ? this.buildSprite(opts.texture) : this.buildPlaceholder();
     this.addChild(this.body);
 
