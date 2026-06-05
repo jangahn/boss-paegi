@@ -19,8 +19,10 @@
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 
-const PADDING_RATIO = 0.15;
+const PADDING_RATIO = 0.12;
 const MAX_DIM = 1024;
+const ASPECT_W = 3;
+const ASPECT_H = 4;
 
 async function normalize(buf) {
   const trimmed = await sharp(buf)
@@ -38,18 +40,26 @@ async function normalize(buf) {
     info = { ...info, width: newW, height: newH };
   }
 
-  const longSide = Math.max(info.width, info.height);
-  const pad = Math.round(longSide * PADDING_RATIO);
-  const squareSide = longSide + pad * 2;
-  const left = Math.round((squareSide - info.width) / 2);
-  const top = Math.round((squareSide - info.height) / 2);
+  // 3:4 캔버스 pad (캐릭터 정중앙)
+  const bboxRatio = info.width / info.height;
+  const targetRatio = ASPECT_W / ASPECT_H;
+  let canvasW, canvasH;
+  if (bboxRatio > targetRatio) {
+    canvasW = Math.round(info.width * (1 + 2 * PADDING_RATIO));
+    canvasH = Math.round(canvasW / targetRatio);
+  } else {
+    canvasH = Math.round(info.height * (1 + 2 * PADDING_RATIO));
+    canvasW = Math.round(canvasH * targetRatio);
+  }
+  const left = Math.round((canvasW - info.width) / 2);
+  const top = Math.round((canvasH - info.height) / 2);
 
   return sharp(data)
     .extend({
       top,
       left,
-      right: squareSide - info.width - left,
-      bottom: squareSide - info.height - top,
+      right: canvasW - info.width - left,
+      bottom: canvasH - info.height - top,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     })
     .png({ compressionLevel: 9 })

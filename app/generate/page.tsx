@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
+import { PhotoCropper } from "@/components/PhotoCropper";
 import { ensureAuth } from "@/lib/auth-client";
 
-type Stage = "consent" | "upload" | "generating" | "pick" | "saving";
+type Stage = "consent" | "upload" | "crop" | "generating" | "pick" | "saving";
 
 type GeneratedImage = { url: string; width: number; height: number };
 
@@ -32,14 +33,25 @@ export default function GeneratePage() {
     setFile(f);
     setPreview(URL.createObjectURL(f));
     setError(null);
+    setStage("crop");
   };
 
-  const handleGenerate = async () => {
-    if (!file) return;
+  const handleCropConfirm = (blob: Blob) => {
+    if (preview) URL.revokeObjectURL(preview);
+    const newPreview = URL.createObjectURL(blob);
+    setPreview(newPreview);
+    setFile(new File([blob], "cropped.jpg", { type: "image/jpeg" }));
+    // crop 끝나면 바로 생성 시작
+    void handleGenerate(new File([blob], "cropped.jpg", { type: "image/jpeg" }));
+  };
+
+  const handleGenerate = async (uploadFile?: File) => {
+    const target = uploadFile ?? file;
+    if (!target) return;
     setStage("generating");
     setError(null);
     const form = new FormData();
-    form.append("image", file);
+    form.append("image", target);
     try {
       const res = await fetch("/api/fal", { method: "POST", body: form });
       if (!res.ok) {
@@ -79,11 +91,13 @@ export default function GeneratePage() {
     <main className="flex flex-1 flex-col px-6 py-8">
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
       {stage === "upload" && (
-        <UploadStage
-          preview={preview}
-          onFile={handleFile}
-          onGenerate={handleGenerate}
-          error={error}
+        <UploadStage preview={preview} onFile={handleFile} error={error} />
+      )}
+      {stage === "crop" && preview && (
+        <PhotoCropper
+          imageUrl={preview}
+          onConfirm={handleCropConfirm}
+          onCancel={() => setStage("upload")}
         />
       )}
       {stage === "generating" && <LoadingStage label="AI 가 인형 만드는 중…" sub="보통 10-20초 걸려요" />}
@@ -98,12 +112,10 @@ export default function GeneratePage() {
 function UploadStage({
   preview,
   onFile,
-  onGenerate,
   error,
 }: {
   preview: string | null;
   onFile: (f: File) => void;
-  onGenerate: () => void;
   error: string | null;
 }) {
   return (
@@ -111,13 +123,13 @@ function UploadStage({
       <div className="text-center">
         <h1 className="text-3xl font-bold">사진 업로드</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          얼굴이 잘 보이는 사진이 좋아요.
+          얼굴이 잘 보이는 사진이 좋아요. 다음 화면에서 영역을 직접 맞출 수 있어요.
           <br />
           업로드한 원본은 생성 직후 자동으로 폐기됩니다.
         </p>
       </div>
 
-      <label className="flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-foreground/20 bg-foreground/5 transition hover:bg-foreground/10">
+      <label className="flex aspect-[3/4] w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-foreground/20 bg-foreground/5 transition hover:bg-foreground/10">
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="" className="h-full w-full object-cover" />
@@ -135,14 +147,6 @@ function UploadStage({
       {error && (
         <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">{error}</p>
       )}
-
-      <button
-        disabled={!preview}
-        onClick={onGenerate}
-        className="w-full rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
-      >
-        부장님 인형 만들기
-      </button>
     </div>
   );
 }
