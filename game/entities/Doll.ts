@@ -94,21 +94,25 @@ export class Doll extends Container {
     return wrap;
   }
 
-  /** 피격 시 호출 — 흔들림/스케일 펀치 시작 */
-  triggerHit() {
-    this.shakeTime = 0.35;
+  private shakeIntensity = 1;
+
+  /** 피격 시 호출 — 흔들림/스케일 펀치 시작. intensity 1.0 = 기본, 1.5 = 더 큰 흔들림 */
+  triggerHit(intensity = 1) {
+    this.shakeTime = 0.35 * Math.max(0.5, intensity);
+    this.shakeIntensity = intensity;
   }
 
   /** ticker 에서 매 프레임 호출. delta 는 초 단위. */
   update(deltaSec: number) {
     if (this.shakeTime > 0) {
       this.shakeTime = Math.max(0, this.shakeTime - deltaSec);
-      const t = this.shakeTime / 0.35;
-      const amp = 12 * t;
+      const peak = 0.35 * this.shakeIntensity;
+      const t = peak > 0 ? this.shakeTime / peak : 0;
+      const amp = 12 * t * this.shakeIntensity;
       this.body.x = (Math.random() - 0.5) * amp;
       this.body.y = (Math.random() - 0.5) * amp;
-      this.body.rotation = (Math.random() - 0.5) * 0.15 * t;
-      const punch = 1 + 0.08 * t;
+      this.body.rotation = (Math.random() - 0.5) * 0.15 * t * this.shakeIntensity;
+      const punch = 1 + 0.08 * t * this.shakeIntensity;
       this.body.scale.set(punch);
     } else {
       this.body.x = 0;

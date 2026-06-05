@@ -1,5 +1,6 @@
 import { Application, Texture, Ticker } from "pixi.js";
 import { PlayScene, HitInfo } from "@/game/scenes/PlayScene";
+import { Weapon } from "@/lib/weapons";
 
 export type GameEvents = {
   onHit?: (info: HitInfo) => void;
@@ -8,15 +9,17 @@ export type GameEvents = {
 export type CreateGameOptions = GameEvents & {
   dollTexture?: Texture;
   bgTexture?: Texture;
+  weapon?: Weapon;
 };
 
 export type GameHandle = {
   destroy: () => void;
+  setWeapon: (w: Weapon) => void;
 };
 
 /**
  * PixiJS Application 생성 + PlayScene 마운트.
- * 호출자(React) 는 cleanup 시 destroy() 호출.
+ * 호출자(React) 는 cleanup 시 destroy() 호출, 무기 변경 시 setWeapon().
  */
 export async function createGame(
   container: HTMLElement,
@@ -31,7 +34,6 @@ export async function createGame(
     autoDensity: true,
   });
 
-  // canvas 부착
   container.appendChild(app.canvas);
   app.canvas.style.touchAction = "manipulation";
   app.canvas.style.display = "block";
@@ -39,6 +41,7 @@ export async function createGame(
   const scene = new PlayScene({
     dollTexture: opts.dollTexture,
     bgTexture: opts.bgTexture,
+    weapon: opts.weapon,
     onHit: opts.onHit,
   });
   app.stage.addChild(scene);
@@ -49,7 +52,6 @@ export async function createGame(
   };
   app.ticker.add(onTick);
 
-  // 컨테이너 resize 추적
   const ro = new ResizeObserver(() => {
     scene.layout(app.screen.width, app.screen.height);
   });
@@ -62,5 +64,6 @@ export async function createGame(
       scene.destroy();
       app.destroy(true, { children: true });
     },
+    setWeapon: (w: Weapon) => scene.setWeapon(w),
   };
 }

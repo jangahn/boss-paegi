@@ -6,12 +6,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
 import { SpeechBubble } from "@/components/SpeechBubble";
+import { WeaponPicker } from "@/components/WeaponPicker";
 import { useGameStore } from "@/store/gameStore";
 import { createClient } from "@/lib/supabase/client";
 import { randomTaunt } from "@/lib/taunts";
 import { BACKGROUNDS, resolveBackground } from "@/lib/backgrounds";
+import { WEAPONS, Weapon } from "@/lib/weapons";
+import type { GameHandle } from "@/game/BossPaegiGame";
 
-const DEFAULT_WEAPON = "fist";
 const TAUNT_INITIAL_DELAY_MS = 1500;
 const TAUNT_VISIBLE_MS = 3000;
 const TAUNT_INTERVAL_MS = 5500;
@@ -23,8 +25,10 @@ function PlayInner() {
   const bg = resolveBackground(searchParams.get("bg"));
 
   const stageRef = useRef<HTMLDivElement>(null);
+  const gameRef = useRef<GameHandle | null>(null);
   const [over, setOver] = useState(false);
   const [taunt, setTaunt] = useState<string | null>(null);
+  const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
@@ -34,7 +38,7 @@ function PlayInner() {
     const el = stageRef.current;
     if (!el) return;
 
-    let handle: { destroy: () => void } | undefined;
+    let handle: GameHandle | undefined;
     let cancelled = false;
 
     (async () => {
@@ -68,15 +72,24 @@ function PlayInner() {
       handle = await createGame(el, {
         dollTexture,
         bgTexture,
+        weapon,
         onHit: ({ strength }) => hit(strength),
       });
+      gameRef.current = handle;
     })();
 
     return () => {
       cancelled = true;
       handle?.destroy();
+      gameRef.current = null;
     };
+    // weapon 변경은 별도 effect 에서 setWeapon() 으로 hot-swap (재마운트 X)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, hit, dollId, bg.url]);
+
+  useEffect(() => {
+    gameRef.current?.setWeapon(weapon);
+  }, [weapon]);
 
   useEffect(() => {
     if (over) {
@@ -129,11 +142,12 @@ function PlayInner() {
       >
         그만 패기
       </button>
+      <WeaponPicker active={weapon.key} onChange={setWeapon} />
       <BgSwitcher active={bg.key} dollId={dollId} />
       <GameOverModal
         open={over}
         onRestart={handleRestart}
-        weapon={DEFAULT_WEAPON}
+        weapon={weapon.key}
         dollId={dollId}
       />
     </div>

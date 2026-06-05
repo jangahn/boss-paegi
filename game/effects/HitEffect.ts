@@ -8,7 +8,7 @@ type Particle = {
   ttl: number;
 };
 
-const COLORS = [0xffd166, 0xef476f, 0xff9f1c, 0xfdf6e3];
+const DEFAULT_COLORS = [0xffd166, 0xef476f, 0xff9f1c, 0xfdf6e3];
 
 /**
  * 일회성 파티클 버스트. 탭 위치에서 N개의 작은 원이 튀어나가 중력 받고 페이드.
@@ -17,11 +17,14 @@ const COLORS = [0xffd166, 0xef476f, 0xff9f1c, 0xfdf6e3];
 export class HitEffect extends Container {
   private particles: Particle[] = [];
 
-  burst(x: number, y: number, count = 10) {
+  burst(x: number, y: number, count = 10, baseColor?: number) {
+    const palette = baseColor !== undefined
+      ? [baseColor, baseColor, ...DEFAULT_COLORS]
+      : DEFAULT_COLORS;
     for (let i = 0; i < count; i++) {
       const g = new Graphics();
       const r = 4 + Math.random() * 6;
-      g.circle(0, 0, r).fill(COLORS[i % COLORS.length]);
+      g.circle(0, 0, r).fill(palette[i % palette.length]);
       g.x = x;
       g.y = y;
       this.addChild(g);

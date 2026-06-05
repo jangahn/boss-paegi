@@ -1,30 +1,34 @@
 import { Container, FederatedPointerEvent, Sprite, Texture } from "pixi.js";
 import { Doll } from "@/game/entities/Doll";
 import { HitEffect } from "@/game/effects/HitEffect";
+import { Weapon, WEAPONS } from "@/lib/weapons";
+import { playHitSound, unlockAudio } from "@/lib/sound";
 
 export type HitInfo = {
   x: number;
   y: number;
   strength: number;
+  weapon: Weapon["key"];
 };
 
 type PlaySceneOptions = {
   dollTexture?: Texture;
   bgTexture?: Texture;
+  weapon?: Weapon;
   onHit?: (info: HitInfo) => void;
 };
-
-const HIT_STRENGTH = 10;
 
 export class PlayScene extends Container {
   private bg?: Sprite;
   private doll: Doll;
   private fx: HitEffect;
   private onHit?: (info: HitInfo) => void;
+  private weapon: Weapon;
 
   constructor(opts: PlaySceneOptions = {}) {
     super();
     this.onHit = opts.onHit;
+    this.weapon = opts.weapon ?? WEAPONS[0];
 
     if (opts.bgTexture) {
       this.bg = new Sprite(opts.bgTexture);
@@ -41,11 +45,18 @@ export class PlayScene extends Container {
     this.doll.on("pointerdown", this.handlePointerDown);
   }
 
+  setWeapon(w: Weapon) {
+    this.weapon = w;
+  }
+
   private handlePointerDown = (e: FederatedPointerEvent) => {
+    unlockAudio(); // 첫 user gesture 에서 AudioContext 해제
     const local = this.toLocal(e.global);
-    this.doll.triggerHit();
-    this.fx.burst(local.x, local.y);
-    this.onHit?.({ x: local.x, y: local.y, strength: HIT_STRENGTH });
+    const w = this.weapon;
+    this.doll.triggerHit(w.shake);
+    this.fx.burst(local.x, local.y, w.particleCount, w.color);
+    playHitSound(w.sound);
+    this.onHit?.({ x: local.x, y: local.y, strength: w.strength, weapon: w.key });
   };
 
   /** 매 프레임 외부에서 호출. */
@@ -59,7 +70,6 @@ export class PlayScene extends Container {
     if (this.bg) {
       this.bg.x = width / 2;
       this.bg.y = height / 2;
-      // cover scaling — 캔버스 채우고 비율 안 맞으면 가장자리 crop
       const scale = Math.max(
         width / this.bg.texture.width,
         height / this.bg.texture.height

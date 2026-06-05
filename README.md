@@ -100,10 +100,16 @@ npm run typecheck   # tsc --noEmit
 - [x] M5 공유 / 랭킹 (점수 등록 API + 일·주간 랭킹 + Web Share + 동적 OG 이미지)
 - [x] M6 PWA + 마무리 (manifest + dynamic icon/apple-icon)
 
-다음 (post-MVP):
-- Vercel 배포 + 도메인 연결
-- 무기 선택 (현재 fist 하나만)
-- 배경 전환 (사무실/탕비실 등)
+v0.3 (2026-06-05 라이브, 실기기 1차 QA 반영):
+- 무기 4종 + 효과음 (주먹/싸대기/키보드/종이, Web Audio 합성)
+- 배경 4종 (사무실/탕비실/회의실/회식자리)
+- 부장님 시비 멘트 (5.5s 간격 랜덤)
+- AI 인형: strength 0.65 + birefnet 누끼 + 사이즈 200
+- 점수 0 종료 시 홈으로 (모달 X)
+
+다음 (post v0.3):
+- 도메인 연결 (bosspaegi.com 등)
+- 던지기 / 펜 낙서 무기 (Physics 기반)
 - 소셜 가입 (카카오/구글) 으로 anonymous → permanent 업그레이드
 - 서비스 워커 (오프라인 캐싱) — Lighthouse "installable" full pass
 
