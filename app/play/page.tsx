@@ -4,10 +4,15 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
+import { SpeechBubble } from "@/components/SpeechBubble";
 import { useGameStore } from "@/store/gameStore";
 import { createClient } from "@/lib/supabase/client";
+import { randomTaunt } from "@/lib/taunts";
 
 const DEFAULT_WEAPON = "fist";
+const TAUNT_INITIAL_DELAY_MS = 1500;
+const TAUNT_VISIBLE_MS = 3000;
+const TAUNT_INTERVAL_MS = 5500;
 
 function PlayInner() {
   const router = useRouter();
@@ -15,9 +20,35 @@ function PlayInner() {
   const dollId = searchParams.get("doll");
   const stageRef = useRef<HTMLDivElement>(null);
   const [over, setOver] = useState(false);
+  const [taunt, setTaunt] = useState<string | null>(null);
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
+
+  useEffect(() => {
+    if (over) {
+      setTaunt(null);
+      return;
+    }
+    let lastTaunt = "";
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const show = () => {
+      const t = randomTaunt(lastTaunt);
+      lastTaunt = t;
+      setTaunt(t);
+      hideTimer = setTimeout(() => setTaunt(null), TAUNT_VISIBLE_MS);
+    };
+
+    const initial = setTimeout(show, TAUNT_INITIAL_DELAY_MS);
+    const interval = setInterval(show, TAUNT_INTERVAL_MS);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+      if (hideTimer) clearTimeout(hideTimer);
+      setTaunt(null);
+    };
+  }, [over]);
 
   useEffect(() => {
     start();
@@ -79,6 +110,7 @@ function PlayInner() {
   return (
     <div className="relative flex flex-1 flex-col bg-zinc-900">
       <div ref={stageRef} className="flex-1 select-none" />
+      <SpeechBubble text={taunt} />
       <ScoreBoard />
       <button
         onClick={handleEnd}
