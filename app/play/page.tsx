@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
 import { useGameStore } from "@/store/gameStore";
+import { createClient } from "@/lib/supabase/client";
 
-export default function PlayPage() {
+function PlayInner() {
+  const searchParams = useSearchParams();
+  const dollId = searchParams.get("doll");
   const stageRef = useRef<HTMLDivElement>(null);
   const [over, setOver] = useState(false);
   const start = useGameStore((s) => s.start);
@@ -21,9 +25,28 @@ export default function PlayPage() {
     let cancelled = false;
 
     (async () => {
-      const { createGame } = await import("@/game/BossPaegiGame");
+      let dollTexture;
+      if (dollId) {
+        const sb = createClient();
+        const { data } = await sb
+          .from("dolls")
+          .select("image_url")
+          .eq("id", dollId)
+          .single();
+        if (data?.image_url) {
+          const { Assets } = await import("pixi.js");
+          try {
+            dollTexture = await Assets.load(data.image_url);
+          } catch (e) {
+            console.warn("[play] failed to load doll texture, falling back:", e);
+          }
+        }
+      }
       if (cancelled) return;
+
+      const { createGame } = await import("@/game/BossPaegiGame");
       handle = await createGame(el, {
+        dollTexture,
         onHit: ({ strength }) => hit(strength),
       });
     })();
@@ -32,7 +55,7 @@ export default function PlayPage() {
       cancelled = true;
       handle?.destroy();
     };
-  }, [start, hit]);
+  }, [start, hit, dollId]);
 
   const handleEnd = () => {
     end();
@@ -56,5 +79,13 @@ export default function PlayPage() {
       </button>
       <GameOverModal open={over} onRestart={handleRestart} />
     </div>
+  );
+}
+
+export default function PlayPage() {
+  return (
+    <Suspense fallback={null}>
+      <PlayInner />
+    </Suspense>
   );
 }

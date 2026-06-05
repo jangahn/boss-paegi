@@ -1,0 +1,194 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { ConsentDialog } from "@/components/ConsentDialog";
+
+type Stage = "consent" | "upload" | "generating" | "pick" | "saving";
+
+type GeneratedImage = { url: string; width: number; height: number };
+
+export default function GeneratePage() {
+  const router = useRouter();
+  const [stage, setStage] = useState<Stage>("consent");
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [results, setResults] = useState<GeneratedImage[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getSession().then(async ({ data }) => {
+      if (!data.session) {
+        await sb.auth.signInAnonymously();
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  const handleFile = (f: File) => {
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+    setError(null);
+  };
+
+  const handleGenerate = async () => {
+    if (!file) return;
+    setStage("generating");
+    setError(null);
+    const form = new FormData();
+    form.append("image", file);
+    try {
+      const res = await fetch("/api/fal", { method: "POST", body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "failed" }));
+        if (err.error === "daily_limit") {
+          throw new Error(`오늘 무료 생성 ${err.limit}회를 모두 사용했어요. 내일 다시 시도해주세요.`);
+        }
+        throw new Error(err.error ?? "generation_failed");
+      }
+      const data = (await res.json()) as { images: GeneratedImage[] };
+      setResults(data.images);
+      setStage("pick");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "알 수 없는 오류");
+      setStage("upload");
+    }
+  };
+
+  const handlePick = async (img: GeneratedImage) => {
+    setStage("saving");
+    try {
+      const res = await fetch("/api/doll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: img.url }),
+      });
+      if (!res.ok) throw new Error("저장 실패");
+      const { doll } = (await res.json()) as { doll: { id: string } };
+      router.push(`/play?doll=${doll.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "저장 실패");
+      setStage("pick");
+    }
+  };
+
+  return (
+    <main className="flex flex-1 flex-col px-6 py-8">
+      {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
+      {stage === "upload" && (
+        <UploadStage
+          preview={preview}
+          onFile={handleFile}
+          onGenerate={handleGenerate}
+          error={error}
+        />
+      )}
+      {stage === "generating" && <LoadingStage label="AI 가 인형 만드는 중…" sub="보통 10-20초 걸려요" />}
+      {stage === "pick" && (
+        <PickStage results={results} onPick={handlePick} error={error} />
+      )}
+      {stage === "saving" && <LoadingStage label="저장 중…" />}
+    </main>
+  );
+}
+
+function UploadStage({
+  preview,
+  onFile,
+  onGenerate,
+  error,
+}: {
+  preview: string | null;
+  onFile: (f: File) => void;
+  onGenerate: () => void;
+  error: string | null;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-6">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold">사진 업로드</h1>
+        <p className="mt-2 text-sm text-zinc-500">
+          얼굴이 잘 보이는 사진이 좋아요.
+          <br />
+          업로드한 원본은 생성 직후 자동으로 폐기됩니다.
+        </p>
+      </div>
+
+      <label className="flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-foreground/20 bg-foreground/5 transition hover:bg-foreground/10">
+        {preview ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={preview} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-zinc-500">탭해서 사진 선택</span>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+        />
+      </label>
+
+      {error && (
+        <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">{error}</p>
+      )}
+
+      <button
+        disabled={!preview}
+        onClick={onGenerate}
+        className="w-full rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
+      >
+        부장님 인형 만들기
+      </button>
+    </div>
+  );
+}
+
+function PickStage({
+  results,
+  onPick,
+  error,
+}: {
+  results: GeneratedImage[];
+  onPick: (img: GeneratedImage) => void;
+  error: string | null;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6">
+      <h1 className="text-2xl font-bold">마음에 드는 인형 선택</h1>
+      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">
+        {results.map((img, i) => (
+          <button
+            key={i}
+            onClick={() => onPick(img)}
+            className="overflow-hidden rounded-2xl border border-foreground/10 transition hover:scale-[1.02] hover:border-foreground/40"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={img.url} alt="" className="aspect-square w-full object-cover" />
+          </button>
+        ))}
+      </div>
+      {error && (
+        <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">{error}</p>
+      )}
+    </div>
+  );
+}
+
+function LoadingStage({ label, sub }: { label: string; sub?: string }) {
+  return (
+    <div className="m-auto flex flex-col items-center gap-4 text-center">
+      <div className="h-16 w-16 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+      <p className="text-lg font-medium">{label}</p>
+      {sub && <p className="text-xs text-zinc-500">{sub}</p>}
+    </div>
+  );
+}
