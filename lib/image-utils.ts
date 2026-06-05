@@ -31,32 +31,39 @@ export async function prepareInputImage(input: ArrayBuffer): Promise<Buffer> {
  */
 export async function normalizeDollImage(input: ArrayBuffer | Buffer): Promise<Buffer> {
   const buf: Buffer = Buffer.isBuffer(input) ? input : Buffer.from(input as ArrayBuffer);
+
+  // 1) trim transparent edges → 캐릭터 bbox
   const trimmed = await sharp(buf)
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 10 })
     .toBuffer({ resolveWithObject: true });
-  const { data: trimData, info } = trimmed;
+  let { data, info } = trimmed;
 
+  // 2) bbox 가 너무 크면 다운사이즈 (max output = MAX_DIM 보장).
+  // squareSide = longSide * (1 + 2*PADDING_RATIO) 가 되니, bbox 의 longSide cap = MAX_DIM / (1+2P).
+  const maxBboxLong = Math.round(MAX_DIM / (1 + 2 * PADDING_RATIO));
+  if (Math.max(info.width, info.height) > maxBboxLong) {
+    const scale = maxBboxLong / Math.max(info.width, info.height);
+    const newW = Math.max(1, Math.round(info.width * scale));
+    const newH = Math.max(1, Math.round(info.height * scale));
+    const resized = await sharp(data).resize(newW, newH).png().toBuffer();
+    data = resized;
+    info = { ...info, width: newW, height: newH };
+  }
+
+  // 3) pad to square (캐릭터 정중앙)
   const longSide = Math.max(info.width, info.height);
   const pad = Math.round(longSide * PADDING_RATIO);
   const squareSide = longSide + pad * 2;
-
   const left = Math.round((squareSide - info.width) / 2);
   const top = Math.round((squareSide - info.height) / 2);
-  const right = squareSide - info.width - left;
-  const bottom = squareSide - info.height - top;
 
-  return sharp(trimData)
+  return sharp(data)
     .extend({
       top,
-      bottom,
+      bottom: squareSide - info.height - top,
       left,
-      right,
+      right: squareSide - info.width - left,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
-    })
-    .resize({
-      width: Math.min(squareSide, MAX_DIM),
-      height: Math.min(squareSide, MAX_DIM),
-      fit: "fill",
     })
     .png({ compressionLevel: 9 })
     .toBuffer();

@@ -80,6 +80,9 @@ export class PlayScene extends Container {
     this.doll.y = height * 0.55;
     // 화면 width 의 ~50% 목표 (최대 280px). 좁은 화면(320)에서도 안 비좁게.
     const targetDoll = Math.min(width * 0.5, 280);
+    // sprite frame 의 character 부피가 placeholder 머리에 가깝게 보이도록 동일 target 사용.
+    // (sharp normalize 후 character 가 frame ~77%, 외부 scale 그대로 두면 placeholder 보다
+    // 살짝 작지만 균형 잘 맞음.)
     this.doll.scale.set(targetDoll / this.doll.naturalSize);
     this.fx.x = 0;
     this.fx.y = 0;

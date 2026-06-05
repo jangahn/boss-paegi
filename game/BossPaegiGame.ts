@@ -45,7 +45,13 @@ export async function createGame(
     onHit: opts.onHit,
   });
   app.stage.addChild(scene);
-  scene.layout(app.screen.width, app.screen.height);
+  // app.screen.width 가 DPR 가산값 반환하는 경우가 있어, container CSS 크기 명시 사용.
+  const measure = () => {
+    const rect = container.getBoundingClientRect();
+    return { w: rect.width, h: rect.height };
+  };
+  const initial = measure();
+  scene.layout(initial.w, initial.h);
 
   const onTick = (ticker: Ticker) => {
     scene.update(ticker.deltaMS / 1000);
@@ -53,7 +59,8 @@ export async function createGame(
   app.ticker.add(onTick);
 
   const ro = new ResizeObserver(() => {
-    scene.layout(app.screen.width, app.screen.height);
+    const m = measure();
+    scene.layout(m.w, m.h);
   });
   ro.observe(container);
 

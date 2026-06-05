@@ -12,40 +12,46 @@ type DollOptions = {
 export class Doll extends Container {
   /** 인형의 base 지름 (px) — 외부에서 viewport 기반 scale 계산 시 참조 */
   public readonly naturalSize: number;
+  /** AI sprite 인지 placeholder 인지. PlayScene 이 sizeBoost 결정에 활용. */
+  public readonly isSprite: boolean;
   private body: Container;
   private shakeTime = 0;
-  private size: number;
 
   constructor(opts: DollOptions = {}) {
     super();
-    // AI 이미지(누끼 PNG)는 캐릭터가 거의 frame 을 채우므로 더 작게.
-    // placeholder 는 head 중심이고 shirt 가 아래로 살짝 더 뻗어서 240 이 적당.
-    this.size = opts.size ?? (opts.texture ? 200 : 240);
-    this.naturalSize = this.size;
-    this.body = opts.texture ? this.buildSprite(opts.texture) : this.buildPlaceholder();
+    this.isSprite = !!opts.texture;
+    // placeholder: 머리+셔츠+넥타이 합쳐 240 base. AI sprite: frame 200 base (캐릭터는 그 안 ~77%).
+    this.naturalSize = opts.size ?? (this.isSprite ? 200 : 240);
+    this.body = opts.texture
+      ? this.buildSprite(opts.texture)
+      : this.buildPlaceholder();
     this.addChild(this.body);
 
     this.eventMode = "static";
     this.cursor = "pointer";
     this.hitArea = {
       contains: (x, y) => {
-        const r = this.size / 2;
+        const r = this.naturalSize / 2;
         return x * x + y * y <= r * r;
       },
     };
   }
 
   private buildSprite(texture: Texture): Container {
+    // body 는 wrap container — 안 sprite 를 scale 해서 넣음.
+    // (body 자체가 Sprite 면 update() 의 body.scale.set(1) 이 sprite 의 base scale 을 매 프레임 초기화함.)
+    const wrap = new Container();
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
-    const scale = this.size / Math.max(texture.width, texture.height);
+    const scale = this.naturalSize / Math.max(texture.width, texture.height);
     sprite.scale.set(scale);
-    return sprite;
+    wrap.addChild(sprite);
+    return wrap;
   }
 
   private buildPlaceholder(): Container {
     const wrap = new Container();
-    const r = this.size / 2;
+    const r = this.naturalSize / 2;
 
     // 셔츠/넥타이 (어깨 아래쪽)
     const shirt = new Graphics();

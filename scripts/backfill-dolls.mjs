@@ -26,7 +26,17 @@ async function normalize(buf) {
   const trimmed = await sharp(buf)
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 10 })
     .toBuffer({ resolveWithObject: true });
-  const { data, info } = trimmed;
+  let { data, info } = trimmed;
+
+  const maxBboxLong = Math.round(MAX_DIM / (1 + 2 * PADDING_RATIO));
+  if (Math.max(info.width, info.height) > maxBboxLong) {
+    const scale = maxBboxLong / Math.max(info.width, info.height);
+    const newW = Math.max(1, Math.round(info.width * scale));
+    const newH = Math.max(1, Math.round(info.height * scale));
+    const resized = await sharp(data).resize(newW, newH).png().toBuffer();
+    data = resized;
+    info = { ...info, width: newW, height: newH };
+  }
 
   const longSide = Math.max(info.width, info.height);
   const pad = Math.round(longSide * PADDING_RATIO);
@@ -41,11 +51,6 @@ async function normalize(buf) {
       right: squareSide - info.width - left,
       bottom: squareSide - info.height - top,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
-    })
-    .resize({
-      width: Math.min(squareSide, MAX_DIM),
-      height: Math.min(squareSide, MAX_DIM),
-      fit: "fill",
     })
     .png({ compressionLevel: 9 })
     .toBuffer();
@@ -84,21 +89,10 @@ async function main() {
         continue;
       }
       const raw = Buffer.from(await res.arrayBuffer());
-
-      // bbox 확인 — 이미 정사각형 + content ≥80% 면 이미 정규화 됨, skip
-      const probe = await sharp(raw)
-        .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 10 })
-        .toBuffer({ resolveWithObject: true });
       const meta = await sharp(raw).metadata();
-      const isSquare = meta.width === meta.height;
-      const fillRatio = Math.min(probe.info.width, probe.info.height) /
-        Math.max(meta.width, meta.height);
-      if (isSquare && fillRatio > 0.8 && meta.width <= MAX_DIM) {
-        console.log(`[${tag}] SKIP already normalized (${meta.width}x${meta.height})`);
-        skipped++;
-        continue;
-      }
 
+      // 항상 재처리 — old 의 JPEG (transparent 없음) 도 trim no-op + pad 로 통과,
+      // 이미 정규화된 것도 다시 거치면 idempotent (작은 변화는 무시 가능).
       const normalized = await normalize(raw);
 
       const newPath = `${doll.owner_id}/${doll.id}.png`;
