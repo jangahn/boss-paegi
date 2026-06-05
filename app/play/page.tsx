@@ -23,9 +23,10 @@ function PlayInner() {
   const searchParams = useSearchParams();
   const dollId = searchParams.get("doll");
   const bgParam = searchParams.get("bg");
-  // useState lazy init — 마운트 시 1회 결정. URL 없으면 random 한 번 뽑고 고정.
-  // (resolveBackground 를 매 렌더마다 호출하면 random 이 매번 바뀌어 씬 무한 재생성.)
-  const [bg] = useState(() => resolveBackground(bgParam));
+  // URL 에 bg 있으면 그거 (사용자 선택 반영), 없으면 마운트 시 한 번 random pick 후 고정.
+  // useState lazy init 으로 random 안 매번 바뀌게 + URL 변경 시 그건 prop 으로 반영.
+  const [randomBg] = useState(() => resolveBackground(null));
+  const bg = bgParam ? resolveBackground(bgParam) : randomBg;
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
