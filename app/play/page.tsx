@@ -22,7 +22,10 @@ function PlayInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dollId = searchParams.get("doll");
-  const bg = resolveBackground(searchParams.get("bg"));
+  const bgParam = searchParams.get("bg");
+  // useState lazy init — 마운트 시 1회 결정. URL 없으면 random 한 번 뽑고 고정.
+  // (resolveBackground 를 매 렌더마다 호출하면 random 이 매번 바뀌어 씬 무한 재생성.)
+  const [bg] = useState(() => resolveBackground(bgParam));
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);

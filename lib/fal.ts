@@ -16,7 +16,9 @@ const CHARACTERIZATION_PROMPT = [
   "soft studio lighting, plain neutral cream background",
   "toy-like figure, soft pastel colors",
   "heavily stylized cartoon doll, NOT photorealistic",
-  "centered composition, upper body visible",
+  // 화면 다 가리는 close-up 방지 — small figure with empty space
+  "small full body figure centered in frame with plenty of empty space around it",
+  "wide shot, NOT close-up, NOT face zoom",
 ].join(", ");
 
 export type GeneratedImage = {
