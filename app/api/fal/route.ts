@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateBossDoll } from "@/lib/fal";
+import { prepareInputImage } from "@/lib/image-utils";
 
 const MAX_DAILY_FREE = 3;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -50,9 +51,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 원본은 메모리 안에서만 data URI 로 변환 후 fal 에 전달, 어디에도 영구 저장 X.
-  const buf = await file.arrayBuffer();
-  const dataUri = `data:${file.type};base64,${Buffer.from(buf).toString("base64")}`;
+  // 원본을 1024×1024 정사각형으로 cover-crop → fal 출력도 동일 사이즈 (img2img 는
+  // 입력 비율 따라가는 특성). attention 전략으로 얼굴 자동 가운데 정렬.
+  // 메모리에서만 처리, 영구 저장 X.
+  const rawBuf = await file.arrayBuffer();
+  let prepared: Buffer;
+  try {
+    prepared = await prepareInputImage(rawBuf);
+  } catch (e) {
+    console.error("[fal] input prep failed:", e);
+    return NextResponse.json({ error: "input_prep_failed" }, { status: 400 });
+  }
+  const dataUri = `data:image/jpeg;base64,${prepared.toString("base64")}`;
 
   const { data: genRow, error: insertError } = await admin
     .from("ai_generations")
