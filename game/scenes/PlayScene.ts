@@ -1,4 +1,4 @@
-import { Container, FederatedPointerEvent, Texture } from "pixi.js";
+import { Container, FederatedPointerEvent, Sprite, Texture } from "pixi.js";
 import { Doll } from "@/game/entities/Doll";
 import { HitEffect } from "@/game/effects/HitEffect";
 
@@ -10,12 +10,14 @@ export type HitInfo = {
 
 type PlaySceneOptions = {
   dollTexture?: Texture;
+  bgTexture?: Texture;
   onHit?: (info: HitInfo) => void;
 };
 
 const HIT_STRENGTH = 10;
 
 export class PlayScene extends Container {
+  private bg?: Sprite;
   private doll: Doll;
   private fx: HitEffect;
   private onHit?: (info: HitInfo) => void;
@@ -23,6 +25,12 @@ export class PlayScene extends Container {
   constructor(opts: PlaySceneOptions = {}) {
     super();
     this.onHit = opts.onHit;
+
+    if (opts.bgTexture) {
+      this.bg = new Sprite(opts.bgTexture);
+      this.bg.anchor.set(0.5);
+      this.addChild(this.bg);
+    }
 
     this.doll = new Doll({ texture: opts.dollTexture });
     this.addChild(this.doll);
@@ -48,8 +56,18 @@ export class PlayScene extends Container {
 
   /** 화면 크기 변경 시 호출. */
   layout(width: number, height: number) {
+    if (this.bg) {
+      this.bg.x = width / 2;
+      this.bg.y = height / 2;
+      // cover scaling — 캔버스 채우고 비율 안 맞으면 가장자리 crop
+      const scale = Math.max(
+        width / this.bg.texture.width,
+        height / this.bg.texture.height
+      );
+      this.bg.scale.set(scale);
+    }
     this.doll.x = width / 2;
-    this.doll.y = height * 0.5;
+    this.doll.y = height * 0.55;
     this.fx.x = 0;
     this.fx.y = 0;
   }

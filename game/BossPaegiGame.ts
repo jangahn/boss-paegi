@@ -7,6 +7,7 @@ export type GameEvents = {
 
 export type CreateGameOptions = GameEvents & {
   dollTexture?: Texture;
+  bgTexture?: Texture;
 };
 
 export type GameHandle = {
@@ -37,6 +38,7 @@ export async function createGame(
 
   const scene = new PlayScene({
     dollTexture: opts.dollTexture,
+    bgTexture: opts.bgTexture,
     onHit: opts.onHit,
   });
   app.stage.addChild(scene);

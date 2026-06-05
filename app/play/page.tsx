@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
@@ -8,6 +9,7 @@ import { SpeechBubble } from "@/components/SpeechBubble";
 import { useGameStore } from "@/store/gameStore";
 import { createClient } from "@/lib/supabase/client";
 import { randomTaunt } from "@/lib/taunts";
+import { BACKGROUNDS, resolveBackground } from "@/lib/backgrounds";
 
 const DEFAULT_WEAPON = "fist";
 const TAUNT_INITIAL_DELAY_MS = 1500;
@@ -18,12 +20,63 @@ function PlayInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dollId = searchParams.get("doll");
+  const bg = resolveBackground(searchParams.get("bg"));
+
   const stageRef = useRef<HTMLDivElement>(null);
   const [over, setOver] = useState(false);
   const [taunt, setTaunt] = useState<string | null>(null);
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
+
+  useEffect(() => {
+    start();
+    const el = stageRef.current;
+    if (!el) return;
+
+    let handle: { destroy: () => void } | undefined;
+    let cancelled = false;
+
+    (async () => {
+      const { Assets } = await import("pixi.js");
+
+      const [dollTexture, bgTexture] = await Promise.all([
+        (async () => {
+          if (!dollId) return undefined;
+          const sb = createClient();
+          const { data } = await sb
+            .from("dolls")
+            .select("image_url")
+            .eq("id", dollId)
+            .single();
+          if (!data?.image_url) return undefined;
+          try {
+            return await Assets.load(data.image_url);
+          } catch (e) {
+            console.warn("[play] doll texture load failed:", e);
+            return undefined;
+          }
+        })(),
+        Assets.load(bg.url).catch((e) => {
+          console.warn("[play] bg texture load failed:", e);
+          return undefined;
+        }),
+      ]);
+      if (cancelled) return;
+
+      const { createGame } = await import("@/game/BossPaegiGame");
+      handle = await createGame(el, {
+        dollTexture,
+        bgTexture,
+        onHit: ({ strength }) => hit(strength),
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      handle?.destroy();
+    };
+  }, [start, hit, dollId, bg.url]);
 
   useEffect(() => {
     if (over) {
@@ -50,51 +103,9 @@ function PlayInner() {
     };
   }, [over]);
 
-  useEffect(() => {
-    start();
-    const el = stageRef.current;
-    if (!el) return;
-
-    let handle: { destroy: () => void } | undefined;
-    let cancelled = false;
-
-    (async () => {
-      let dollTexture;
-      if (dollId) {
-        const sb = createClient();
-        const { data } = await sb
-          .from("dolls")
-          .select("image_url")
-          .eq("id", dollId)
-          .single();
-        if (data?.image_url) {
-          const { Assets } = await import("pixi.js");
-          try {
-            dollTexture = await Assets.load(data.image_url);
-          } catch (e) {
-            console.warn("[play] failed to load doll texture, falling back:", e);
-          }
-        }
-      }
-      if (cancelled) return;
-
-      const { createGame } = await import("@/game/BossPaegiGame");
-      handle = await createGame(el, {
-        dollTexture,
-        onHit: ({ strength }) => hit(strength),
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      handle?.destroy();
-    };
-  }, [start, hit, dollId]);
-
   const handleEnd = () => {
     const currentScore = useGameStore.getState().score;
     end();
-    // 한 번도 안 패고 그냥 나간 경우 → 결과 모달 의미 없으니 홈으로
     if (currentScore <= 0) {
       router.push("/");
       return;
@@ -114,16 +125,50 @@ function PlayInner() {
       <ScoreBoard />
       <button
         onClick={handleEnd}
-        className="pointer-events-auto absolute right-4 top-4 z-10 rounded-full bg-black/40 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm"
+        className="pointer-events-auto absolute right-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm"
       >
         그만 패기
       </button>
+      <BgSwitcher active={bg.key} dollId={dollId} />
       <GameOverModal
         open={over}
         onRestart={handleRestart}
         weapon={DEFAULT_WEAPON}
         dollId={dollId}
       />
+    </div>
+  );
+}
+
+function BgSwitcher({
+  active,
+  dollId,
+}: {
+  active: string;
+  dollId: string | null;
+}) {
+  const href = (key: string) => {
+    const sp = new URLSearchParams();
+    if (dollId) sp.set("doll", dollId);
+    sp.set("bg", key);
+    return `/play?${sp.toString()}`;
+  };
+
+  return (
+    <div className="pointer-events-auto absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-full bg-black/50 p-1 backdrop-blur-sm">
+      {BACKGROUNDS.map((b) => (
+        <Link
+          key={b.key}
+          href={href(b.key)}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            b.key === active
+              ? "bg-white text-black"
+              : "text-white/80 hover:text-white"
+          }`}
+        >
+          {b.label}
+        </Link>
+      ))}
     </div>
   );
 }
