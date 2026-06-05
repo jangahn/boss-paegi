@@ -7,6 +7,8 @@ import { GameOverModal } from "@/components/GameOverModal";
 import { useGameStore } from "@/store/gameStore";
 import { createClient } from "@/lib/supabase/client";
 
+const DEFAULT_WEAPON = "fist";
+
 function PlayInner() {
   const searchParams = useSearchParams();
   const dollId = searchParams.get("doll");
@@ -77,7 +79,12 @@ function PlayInner() {
       >
         그만 패기
       </button>
-      <GameOverModal open={over} onRestart={handleRestart} />
+      <GameOverModal
+        open={over}
+        onRestart={handleRestart}
+        weapon={DEFAULT_WEAPON}
+        dollId={dollId}
+      />
     </div>
   );
 }
