@@ -78,6 +78,9 @@ export class PlayScene extends Container {
     }
     this.doll.x = width / 2;
     this.doll.y = height * 0.55;
+    // 화면 width 의 ~50% 목표 (최대 280px). 좁은 화면(320)에서도 안 비좁게.
+    const targetDoll = Math.min(width * 0.5, 280);
+    this.doll.scale.set(targetDoll / this.doll.naturalSize);
     this.fx.x = 0;
     this.fx.y = 0;
   }

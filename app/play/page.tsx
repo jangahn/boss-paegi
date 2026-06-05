@@ -138,7 +138,7 @@ function PlayInner() {
       <ScoreBoard />
       <button
         onClick={handleEnd}
-        className="pointer-events-auto absolute right-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm"
+        className="pointer-events-auto absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:right-4 sm:top-4 sm:px-4 sm:py-2 sm:text-sm"
       >
         그만 패기
       </button>
@@ -169,12 +169,12 @@ function BgSwitcher({
   };
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-full bg-black/50 p-1 backdrop-blur-sm">
+    <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-black/50 p-1 backdrop-blur-sm sm:gap-2">
       {BACKGROUNDS.map((b) => (
         <Link
           key={b.key}
           href={href(b.key)}
-          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+          className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:px-3 sm:py-1.5 sm:text-xs ${
             b.key === active
               ? "bg-white text-black"
               : "text-white/80 hover:text-white"

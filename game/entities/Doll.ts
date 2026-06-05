@@ -10,6 +10,8 @@ type DollOptions = {
  * M3+ 에서 AI 생성 이미지를 texture 로 받아 sprite 로 교체.
  */
 export class Doll extends Container {
+  /** 인형의 base 지름 (px) — 외부에서 viewport 기반 scale 계산 시 참조 */
+  public readonly naturalSize: number;
   private body: Container;
   private shakeTime = 0;
   private size: number;
@@ -19,6 +21,7 @@ export class Doll extends Container {
     // AI 이미지(누끼 PNG)는 캐릭터가 거의 frame 을 채우므로 더 작게.
     // placeholder 는 head 중심이고 shirt 가 아래로 살짝 더 뻗어서 240 이 적당.
     this.size = opts.size ?? (opts.texture ? 200 : 240);
+    this.naturalSize = this.size;
     this.body = opts.texture ? this.buildSprite(opts.texture) : this.buildPlaceholder();
     this.addChild(this.body);
 
