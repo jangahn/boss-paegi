@@ -92,11 +92,18 @@ npm run typecheck   # tsc --noEmit
 ## 진행 상황
 
 - [x] M1 셋업
-- [ ] M2 코어 게임 (PixiJS 탭 메커니즘)
-- [ ] M3 AI 인형 생성 플로우
-- [ ] M4 인증 / 갤러리
-- [ ] M5 공유 / 랭킹
-- [ ] M6 PWA + 마무리
+- [x] M2 코어 게임 (PixiJS 탭 메커니즘, 점수+콤보, 결과 모달)
+- [x] M3 AI 인형 생성 플로우 (업로드 → 동의 → fal.ai → 저장)
+- [x] M4 인증 / 갤러리 (Supabase Anonymous + /gallery)
+- [x] M5 공유 / 랭킹 (점수 등록 API + 일·주간 랭킹 + Web Share + 동적 OG 이미지)
+- [x] M6 PWA + 마무리 (manifest + dynamic icon/apple-icon)
+
+다음 (post-MVP):
+- Vercel 배포 + 도메인 연결
+- 무기 선택 (현재 fist 하나만)
+- 배경 전환 (사무실/탕비실 등)
+- 소셜 가입 (카카오/구글) 으로 anonymous → permanent 업그레이드
+- 서비스 워커 (오프라인 캐싱) — Lighthouse "installable" full pass
 
 ## 비용 (MVP 단계)
 
