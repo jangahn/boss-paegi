@@ -7,6 +7,10 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const allChecked = CONSENT_ITEMS.every((i) => checked[i.id]);
 
+  const toggle = (id: string) => {
+    setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6">
       <div>
@@ -23,25 +27,40 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
       </div>
 
       <div className="space-y-3">
-        {CONSENT_ITEMS.map((item) => (
-          <label
-            key={item.id}
-            className="flex cursor-pointer items-start gap-3 rounded-xl border border-foreground/10 p-3 transition hover:bg-foreground/5"
-          >
-            <input
-              type="checkbox"
-              checked={!!checked[item.id]}
-              onChange={(e) =>
-                setChecked({ ...checked, [item.id]: e.target.checked })
-              }
-              className="mt-0.5 h-5 w-5 accent-foreground"
-            />
-            <span className="text-sm leading-relaxed">{item.label}</span>
-          </label>
-        ))}
+        {CONSENT_ITEMS.map((item) => {
+          const on = !!checked[item.id];
+          return (
+            <button
+              type="button"
+              key={item.id}
+              onClick={() => toggle(item.id)}
+              className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-foreground/10 p-3 text-left transition hover:bg-foreground/5 active:bg-foreground/10"
+            >
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition ${
+                  on
+                    ? "border-foreground bg-foreground"
+                    : "border-foreground/30 bg-transparent"
+                }`}
+              >
+                {on && (
+                  <svg
+                    viewBox="0 0 16 16"
+                    className="h-3 w-3 fill-background"
+                  >
+                    <path d="M13.854 3.146a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L6.5 9.793l6.646-6.647a.5.5 0 0 1 .708 0z" />
+                  </svg>
+                )}
+              </span>
+              <span className="text-sm leading-relaxed">{item.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       <button
+        type="button"
         disabled={!allChecked}
         onClick={onAgree}
         className="rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"

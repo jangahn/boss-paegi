@@ -2,15 +2,16 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateBossDoll } from "@/lib/fal";
 import { prepareInputImage } from "@/lib/image-utils";
+import { selectProvider } from "@/lib/character-gen";
+import { resolveTemplate } from "@/lib/character-gen/templates";
+import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 
-// TODO: 테스트 충분히 진행된 후 사용자 요청 시 일일 무료 한도 다시 적용.
-// const MAX_DAILY_FREE = 3;
 const MAX_BYTES = 10 * 1024 * 1024;
+// TODO: 테스트 충분히 진행된 후 rate limit 다시 적용 (ai_generations status='done' 카운트 활용).
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -36,13 +37,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "not_an_image" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
-  // 테스트 단계 — rate limit 제거. 사용자 재요청 시 위 MAX_DAILY_FREE 활용해 다시 적용.
-  // (ai_generations 테이블에 status='done' 카운트는 여전히 로깅 → 추후 한도 적용용 데이터 누적.)
+  // 옵션 — query 또는 form 에서 template/provider 선택
+  const url = new URL(req.url);
+  const templateKey = url.searchParams.get("template") ?? form.get("template");
+  const providerKey = url.searchParams.get("provider") ?? form.get("provider");
 
-  // 원본을 1024×1024 정사각형으로 cover-crop → fal 출력도 동일 사이즈 (img2img 는
-  // 입력 비율 따라가는 특성). attention 전략으로 얼굴 자동 가운데 정렬.
-  // 메모리에서만 처리, 영구 저장 X.
+  const template = resolveTemplate(
+    typeof templateKey === "string" ? templateKey : null
+  );
+  const provider = selectProvider(
+    typeof providerKey === "string" ? providerKey : null
+  );
+
+  // 입력 정규화 (1024×1024 cover) — 원본은 메모리 안에서만
   const rawBuf = await file.arrayBuffer();
   let prepared: Buffer;
   try {
@@ -51,32 +58,52 @@ export async function POST(req: NextRequest) {
     console.error("[fal] input prep failed:", e);
     return NextResponse.json({ error: "input_prep_failed" }, { status: 400 });
   }
-  const dataUri = `data:image/jpeg;base64,${prepared.toString("base64")}`;
 
-  const { data: genRow, error: insertError } = await admin
+  const admin = createAdminClient();
+  const { data: genRow, error: logError } = await admin
     .from("ai_generations")
     .insert({ owner_id: user.id, status: "queued" })
     .select("id")
     .single();
-  if (insertError || !genRow) {
+  if (logError || !genRow) {
     return NextResponse.json({ error: "log_failed" }, { status: 500 });
   }
 
+  // face 임시 업로드 → signed URL → fal → 결과 → 임시 삭제 (정책: 원본 폐기)
+  let facePath: string | null = null;
   try {
-    const images = await generateBossDoll({ imageDataUri: dataUri, numImages: 3 });
+    const uploaded = await uploadFaceTmp(user.id, prepared);
+    facePath = uploaded.path;
+
+    const result = await provider.generate({
+      faceImageUrl: uploaded.url,
+      templateImageUrl: template.url,
+      numImages: 3,
+      promptHints: template.styleHint,
+    });
+
     await admin
       .from("ai_generations")
-      .update({ status: "done", cost_cents: 8 })
+      .update({
+        status: "done",
+        cost_cents: result.costCents,
+        fal_request_id: `${result.provider}:${genRow.id}`,
+      })
       .eq("id", genRow.id);
 
-    return NextResponse.json({ images, generationId: genRow.id });
+    return NextResponse.json({
+      images: result.images,
+      generationId: genRow.id,
+      provider: result.provider,
+      template: template.key,
+      durationMs: result.durationMs,
+    });
   } catch (e) {
     await admin
       .from("ai_generations")
       .update({ status: "failed" })
       .eq("id", genRow.id);
-    // fal 클라이언트는 body/status 를 갖는 ApiError 를 던질 수 있어서 다 dump
-    console.error("[fal] generation failed full error:", e);
+    console.error("[fal] generation failed:", e);
     if (e && typeof e === "object") {
       const anyErr = e as Record<string, unknown>;
       console.error("[fal] error.body:", JSON.stringify(anyErr.body));
@@ -87,5 +114,11 @@ export async function POST(req: NextRequest) {
       { error: "generation_failed", detail: msg },
       { status: 500 }
     );
+  } finally {
+    if (facePath) {
+      deleteFaceTmp(facePath).catch((e) =>
+        console.warn("[fal] face tmp cleanup failed:", e)
+      );
+    }
   }
 }
