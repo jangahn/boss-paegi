@@ -20,6 +20,7 @@ npm run dev                  # http://localhost:3000
 |---|---|
 | Frontend | Next.js 16 (App Router) + TypeScript + Tailwind CSS v4 |
 | 게임 렌더링 | PixiJS v8 (WebGL) |
+| 물리엔진 | matter.js (던지기·복귀 spring) |
 | 백엔드 / DB | Supabase (Postgres + Auth + Storage + RLS) |
 | 인증 | Supabase Anonymous Auth → 랭킹 등록 시점에 카카오/구글 소셜 유도 |
 | AI 이미지 생성 | fal.ai (서버사이드 프록시) |
@@ -40,10 +41,11 @@ boss-paegi/
 │   ├── layout.tsx
 │   └── page.tsx            #   랜딩
 ├── game/                   # PixiJS 게임 로직 (React 와 분리)
-│   ├── scenes/
-│   ├── entities/
-│   ├── effects/
-│   └── input/
+│   ├── scenes/             #   PlayScene (입력 모드 전환 통합)
+│   ├── entities/           #   Doll / Projectile / DrawingLayer
+│   ├── effects/            #   HitEffect (파티클)
+│   ├── physics/            #   matter.js wrapper (PhysicsWorld)
+│   └── input/              #   ThrowInput, DrawInput
 ├── lib/
 │   ├── supabase/           #   client.ts / server.ts
 │   ├── fal.ts              #   fal.ai 호출 + 프롬프트 빌더
@@ -107,9 +109,19 @@ v0.3 (2026-06-05 라이브, 실기기 1차 QA 반영):
 - AI 인형: strength 0.65 + birefnet 누끼 + 사이즈 200
 - 점수 0 종료 시 홈으로 (모달 X)
 
-다음 (post v0.3):
+v0.4 (2026-06-09, 물리엔진 도입):
+- 무기 6종, 3그룹 — 탭(주먹/싸대기/책) · 던지기(키보드/종이) · 낙서(펜)
+- matter.js 물리: 인형은 spring constraint 로 anchor 에 묶여 밀려났다 자동 복귀, 화면 4벽 튕김
+- **인형 자체 드래그 던지기**: tap/throw 모드에서 인형 잡고 끌면 (≥14px) fling 시작 → 놓는 속도대로 발사 → 0.9초 자유 비행 후 anchor 복귀. 짧은 탭은 기존 mode 액션 유지 (tap=hit)
+- **drag 중 벽 박기 점수**: fling 중 인형이 화면 4벽 margin(60px) 안으로 진입할 때마다 thud + 15점 + shockwave
+- 던지기 무기 (키보드/종이): 화면 드래그→놓기 슬링샷 (당긴 반대 방향 발사, 화살표 미리보기 + power 0~1)
+- 펜 낙서: stage 좌표계 dot row 누적 (graphic + fill, PIXI v8 호환). DrawInput 이 인형 face 화면 반경 안 좌표만 허용. doll body radius 0.55 × naturalSize (충돌 영역 확장)
+- 타격감: projectile↔doll 충돌 시 punch ×1.4, burst ×3, 큰 shockwave + scorePop + 인형에 momentum force 적용. projectile 0.2초 fade 잔존
+- 무기 picker 가로 6개 한 줄, 카테고리 구분선
+- 효과음 2종 추가: whoosh (던지기·인형) · scribble (펜)
+
+다음:
 - 도메인 연결 (bosspaegi.com 등)
-- 던지기 / 펜 낙서 무기 (Physics 기반)
 - 소셜 가입 (카카오/구글) 으로 anonymous → permanent 업그레이드
 - 서비스 워커 (오프라인 캐싱) — Lighthouse "installable" full pass
 

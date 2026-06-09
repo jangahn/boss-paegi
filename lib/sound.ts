@@ -3,7 +3,13 @@
  * AudioContext 는 user gesture 이후에만 생성/실행 가능 (autoplay 정책) — 첫 탭에서 lazy init.
  */
 
-type SoundPreset = "thud" | "slap" | "clack" | "rustle";
+type SoundPreset =
+  | "thud"
+  | "slap"
+  | "clack"
+  | "rustle"
+  | "whoosh"
+  | "scribble";
 
 let ctx: AudioContext | null = null;
 let unlocked = false;
@@ -133,6 +139,40 @@ export function playHitSound(preset: SoundPreset) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.18, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    src.connect(filter).connect(gain).connect(c.destination);
+    src.start(t);
+    return;
+  }
+
+  if (preset === "whoosh") {
+    // 던지기 슈웅 — 백색잡음 lowpass sweep + 짧은 envelope
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.25, 0.8);
+    const filter = c.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(4000, t);
+    filter.frequency.exponentialRampToValueAtTime(400, t + 0.22);
+    filter.Q.value = 0.7;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.35, t + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    src.connect(filter).connect(gain).connect(c.destination);
+    src.start(t);
+    return;
+  }
+
+  if (preset === "scribble") {
+    // 펜 사사삭 — 짧은 highpass noise burst
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.06, 0.6);
+    const filter = c.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 5500;
+    filter.Q.value = 2.0;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
     src.connect(filter).connect(gain).connect(c.destination);
     src.start(t);
     return;

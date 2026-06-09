@@ -41,6 +41,7 @@ export async function createGame(
   app.canvas.style.display = "block";
 
   const scene = new PlayScene({
+    app,
     dollTexture: opts.dollTexture,
     bgTexture: opts.bgTexture,
     weapon: opts.weapon,
