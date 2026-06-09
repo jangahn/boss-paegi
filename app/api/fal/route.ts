@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateBossDoll } from "@/lib/fal";
 import { prepareInputImage } from "@/lib/image-utils";
 
-const MAX_DAILY_FREE = 3;
+// TODO: 테스트 충분히 진행된 후 사용자 요청 시 일일 무료 한도 다시 적용.
+// const MAX_DAILY_FREE = 3;
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export const runtime = "nodejs";
@@ -36,20 +37,8 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { count } = await admin
-    .from("ai_generations")
-    .select("id", { count: "exact", head: true })
-    .eq("owner_id", user.id)
-    .eq("status", "done")
-    .gte("created_at", since);
-
-  if ((count ?? 0) >= MAX_DAILY_FREE) {
-    return NextResponse.json(
-      { error: "daily_limit", limit: MAX_DAILY_FREE, used: count },
-      { status: 429 }
-    );
-  }
+  // 테스트 단계 — rate limit 제거. 사용자 재요청 시 위 MAX_DAILY_FREE 활용해 다시 적용.
+  // (ai_generations 테이블에 status='done' 카운트는 여전히 로깅 → 추후 한도 적용용 데이터 누적.)
 
   // 원본을 1024×1024 정사각형으로 cover-crop → fal 출력도 동일 사이즈 (img2img 는
   // 입력 비율 따라가는 특성). attention 전략으로 얼굴 자동 가운데 정렬.
