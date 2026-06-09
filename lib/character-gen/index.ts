@@ -3,7 +3,8 @@ import { Flux2ProEditProvider } from "./providers/flux2-pro-edit";
 import { FluxPulidProvider } from "./providers/flux-pulid";
 import { CharacterProvider } from "./types";
 
-const DEFAULT_PROVIDER = "flux2-pro-edit";
+// 테스트 단계 default — face fidelity 우선. flux2-pro-edit 로 되돌리려면 여기만 바꾸면 됨.
+const DEFAULT_PROVIDER = "flux-pulid";
 
 /**
  * provider 추상화 layer. 새 provider 추가 시:
