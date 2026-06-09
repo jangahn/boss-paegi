@@ -11,7 +11,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 // TODO: 테스트 충분히 진행된 후 rate limit 다시 적용 (ai_generations status='done' 카운트 활용).
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const maxDuration = 60; // Vercel Hobby max
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
