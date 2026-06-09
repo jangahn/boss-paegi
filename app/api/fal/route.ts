@@ -4,11 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
-import { resolveTemplate } from "@/lib/character-gen/templates";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-// TODO: 테스트 충분히 진행된 후 rate limit 다시 적용 (ai_generations status='done' 카운트 활용).
+// TODO: 테스트 충분히 진행 후 rate limit 다시 적용 (ai_generations status='done' 카운트 활용).
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // Vercel Hobby max
@@ -37,17 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "not_an_image" }, { status: 400 });
   }
 
-  // 옵션 — query 또는 form 에서 template/provider 선택
-  const url = new URL(req.url);
-  const templateKey = url.searchParams.get("template") ?? form.get("template");
-  const providerKey = url.searchParams.get("provider") ?? form.get("provider");
-
-  const template = resolveTemplate(
-    typeof templateKey === "string" ? templateKey : null
-  );
-  const provider = selectProvider(
-    typeof providerKey === "string" ? providerKey : null
-  );
+  const provider = selectProvider(null);
 
   // 입력 정규화 (1024×1024 cover) — 원본은 메모리 안에서만
   const rawBuf = await file.arrayBuffer();
@@ -77,9 +66,9 @@ export async function POST(req: NextRequest) {
 
     const result = await provider.generate({
       faceImageUrl: uploaded.url,
-      templateImageUrl: template.url,
+      // PuLID 는 template 무시 — 호환성 위해 빈 문자열 전달
+      templateImageUrl: "",
       numImages: 3,
-      promptHints: template.styleHint,
     });
 
     await admin
@@ -95,7 +84,6 @@ export async function POST(req: NextRequest) {
       images: result.images,
       generationId: genRow.id,
       provider: result.provider,
-      template: template.key,
       durationMs: result.durationMs,
     });
   } catch (e) {
