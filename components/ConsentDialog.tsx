@@ -34,26 +34,33 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
               type="button"
               key={item.id}
               onClick={() => toggle(item.id)}
-              className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-foreground/10 p-3 text-left transition hover:bg-foreground/5 active:bg-foreground/10"
+              aria-pressed={on}
+              className="flex w-full cursor-pointer touch-manipulation select-none items-start gap-3 rounded-xl border border-foreground/15 p-3 text-left transition hover:bg-foreground/5 active:scale-[0.99] active:bg-foreground/10"
             >
               <span
                 aria-hidden
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition ${
+                className={`pointer-events-none mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition ${
                   on
-                    ? "border-foreground bg-foreground"
-                    : "border-foreground/30 bg-transparent"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-foreground/40 bg-transparent text-transparent"
                 }`}
               >
-                {on && (
-                  <svg
-                    viewBox="0 0 16 16"
-                    className="h-3 w-3 fill-background"
-                  >
-                    <path d="M13.854 3.146a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L6.5 9.793l6.646-6.647a.5.5 0 0 1 .708 0z" />
-                  </svg>
-                )}
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={3.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M5 12l5 5L20 7" />
+                </svg>
               </span>
-              <span className="text-sm leading-relaxed">{item.label}</span>
+              <span className="pointer-events-none text-sm leading-relaxed">
+                {item.label}
+              </span>
             </button>
           );
         })}
