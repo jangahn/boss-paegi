@@ -145,14 +145,14 @@ function DollGrid({
             }}
             disabled={deletingId === d.id}
             aria-label="삭제"
-            className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500/80 active:scale-95 group-hover:opacity-100 sm:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="absolute right-2 top-2 z-10 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur-sm transition hover:bg-red-500/85 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-4 w-4"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
-              strokeWidth={2.2}
+              strokeWidth={2.4}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
