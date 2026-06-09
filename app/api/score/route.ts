@@ -2,9 +2,13 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const MAX_TAPS_PER_SEC = 15;
+// 점수/sec 평균 cap. 콤보 multiplier (1 + floor(combo/5) × 0.5) 가 무한 가능
+// 하다 보니 high-combo 정상 게임도 비현실적으로 큰 점수 나옴.
+// 콤보 30 ≈ multiplier 4 + max strength 18 (keyboard) + 초당 10탭 가정 → ~720/sec.
+// 안전 마진 둬서 1000/sec.
+const MAX_AVG_SCORE_PER_SEC = 1000;
 const MAX_DURATION_MS = 10 * 60 * 1000; // 10분
-const MAX_STRENGTH = 50; // 점수/탭 상한 (cap on hit + combo mult)
+const MAX_SCORE_HARD = 10_000_000; // schema check (DB) 와 동일
 
 export const runtime = "nodejs";
 
@@ -34,8 +38,11 @@ export async function POST(req: NextRequest) {
   if (body.durationMs <= 0 || body.durationMs > MAX_DURATION_MS) {
     return NextResponse.json({ error: "invalid_duration" }, { status: 400 });
   }
-  const ceiling =
-    Math.ceil((body.durationMs / 1000) * MAX_TAPS_PER_SEC * MAX_STRENGTH);
+  // 평균 점수/sec 가 합리적 cap 이하면 OK. 명백히 비현실적인 케이스만 거부.
+  const ceiling = Math.min(
+    Math.ceil((body.durationMs / 1000) * MAX_AVG_SCORE_PER_SEC),
+    MAX_SCORE_HARD
+  );
   if (body.score < 0 || body.score > ceiling) {
     return NextResponse.json(
       { error: "score_out_of_range", ceiling },

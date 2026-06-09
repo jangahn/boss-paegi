@@ -3,13 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 
 type Period = "daily" | "weekly";
 
-type ScoreRow = {
+type RankRow = {
   id: string;
+  owner_id: string;
   score: number;
   weapon: string;
+  duration_ms: number;
   created_at: string;
-  profiles: { display_name: string } | null;
-  dolls: { image_url: string | null } | null;
+  display_name: string | null;
+  doll_image_url: string | null;
 };
 
 export const dynamic = "force-dynamic";
@@ -21,20 +23,14 @@ export default async function LeaderboardPage({
 }) {
   const sp = await searchParams;
   const period: Period = sp.period === "weekly" ? "weekly" : "daily";
-  const hours = period === "weekly" ? 24 * 7 : 24;
-  const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
 
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("scores")
-    .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url)"
-    )
-    .gte("created_at", since)
-    .order("score", { ascending: false })
-    .limit(50);
-
-  const rows = (data ?? []) as unknown as ScoreRow[];
+  // RPC: 사용자별 최고점 1개씩만, score desc limit 50
+  const { data } = await supabase.rpc("get_leaderboard", {
+    period,
+    max_limit: 50,
+  });
+  const rows = (data ?? []) as RankRow[];
 
   return (
     <main className="flex flex-1 flex-col px-6 py-8">
@@ -72,21 +68,9 @@ export default async function LeaderboardPage({
                 <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
                   {i + 1}
                 </span>
-                {r.dolls?.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={r.dolls.image_url}
-                    alt=""
-                    className="h-12 w-12 rounded-xl object-cover"
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-foreground/10 text-xl">
-                    🥊
-                  </div>
-                )}
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-medium">
-                    {r.profiles?.display_name ?? "익명"}
+                    {r.display_name ?? "익명"}
                   </div>
                   <div className="text-xs text-zinc-500">
                     {timeAgo(r.created_at)}

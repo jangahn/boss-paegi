@@ -112,3 +112,50 @@ export async function GET() {
 
   return NextResponse.json({ dolls: data ?? [] });
 }
+
+export async function DELETE(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "id_required" }, { status: 400 });
+  }
+
+  // owner 검증 + Storage 파일 path 받아오기
+  const { data: doll, error: selErr } = await supabase
+    .from("dolls")
+    .select("id, owner_id, image_url")
+    .eq("id", id)
+    .single();
+  if (selErr || !doll) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (doll.owner_id !== user.id) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  // Storage 파일 삭제 (admin — owner 검증은 위에서 통과)
+  const admin = createAdminClient();
+  const storagePath = doll.image_url.split("/dolls/")[1];
+  if (storagePath) {
+    await admin.storage.from(BUCKET).remove([storagePath]).catch(() => {});
+  }
+
+  // dolls row 삭제 — scores.doll_id 는 FK on delete set null 이라 점수는 살아남음
+  const { error: delErr } = await supabase.from("dolls").delete().eq("id", id);
+  if (delErr) {
+    return NextResponse.json(
+      { error: "delete_failed", detail: delErr.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}

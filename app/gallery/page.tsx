@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
@@ -14,31 +14,47 @@ type Doll = {
 export default function GalleryPage() {
   const [dolls, setDolls] = useState<Doll[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      await ensureAuth();
+      const sb = createClient();
+      const { data, error: queryError } = await sb
+        .from("dolls")
+        .select("id, image_url, created_at")
+        .order("created_at", { ascending: false });
+      if (queryError) throw queryError;
+      setDolls(data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "불러오기 실패");
+      setDolls([]);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await ensureAuth();
-        const sb = createClient();
-        const { data, error: queryError } = await sb
-          .from("dolls")
-          .select("id, image_url, created_at")
-          .order("created_at", { ascending: false });
-        if (cancelled) return;
-        if (queryError) throw queryError;
-        setDolls(data ?? []);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "불러오기 실패");
-          setDolls([]);
-        }
+    void load();
+  }, [load]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("이 부장님 인형을 삭제할까요?")) return;
+    setDeletingId(id);
+    setError(null);
+    try {
+      const r = await fetch(`/api/doll?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? "삭제 실패");
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      setDolls((prev) => (prev ?? []).filter((d) => d.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "삭제 실패");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <main className="flex flex-1 flex-col px-6 py-8">
@@ -58,7 +74,7 @@ export default function GalleryPage() {
         ) : dolls.length === 0 ? (
           <EmptyState />
         ) : (
-          <DollGrid dolls={dolls} />
+          <DollGrid dolls={dolls} onDelete={handleDelete} deletingId={deletingId} />
         )}
 
         {error && (
@@ -96,25 +112,54 @@ function GridSkeleton() {
   );
 }
 
-function DollGrid({ dolls }: { dolls: Doll[] }) {
+function DollGrid({
+  dolls,
+  onDelete,
+  deletingId,
+}: {
+  dolls: Doll[];
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {dolls.map((d) => (
-        <Link
+        <div
           key={d.id}
-          href={`/play?doll=${d.id}`}
-          className="group relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 transition hover:border-foreground/40"
+          className="group relative aspect-square overflow-hidden rounded-2xl border border-foreground/10"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={d.image_url}
-            alt=""
-            className="h-full w-full object-cover transition group-hover:scale-105"
-          />
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2 text-xs text-white opacity-0 transition group-hover:opacity-100">
-            패러 가기 →
-          </span>
-        </Link>
+          <Link href={`/play?doll=${d.id}`} className="block h-full w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={d.image_url}
+              alt=""
+              className="h-full w-full object-cover transition group-hover:scale-105"
+            />
+          </Link>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete(d.id);
+            }}
+            disabled={deletingId === d.id}
+            aria-label="삭제"
+            className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500/80 active:scale-95 group-hover:opacity-100 sm:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14zM10 11v6M14 11v6" />
+            </svg>
+          </button>
+        </div>
       ))}
     </div>
   );
