@@ -6,25 +6,34 @@ type DollOptions = {
 };
 
 /**
- * 인형 본체. M2 단계에선 PIXI.Graphics 로 그린 placeholder 얼굴.
- * M3+ 에서 AI 생성 이미지를 texture 로 받아 sprite 로 교체.
+ * 인형 본체. placeholder (Graphics) 또는 AI 생성 PNG sprite.
  *
- * v0.4: matter.js body 와 분리. PlayScene 이 body.position 을 매 프레임 doll.x/y 에 sync.
- * shake 는 internal body container 의 미세 진동으로만 (위치 자체는 물리 결과).
+ * - bodyWrap: shake/펀치 transform 이 걸리는 내부 컨테이너. 낙서 레이어도 여기 붙음 —
+ *   인형이 흔들리거나 던져질 때 낙서가 같은 레이어로 함께 움직임.
+ * - isInsideBody(lx, ly): bodyWrap local 좌표가 캐릭터 실루엣 안인지.
+ *   AI sprite 는 PNG 알파맵 기반 (누끼 딴 실루엣 그대로), placeholder 는 도형 근사.
  */
 export class Doll extends Container {
   /** 인형의 base 지름 (px) — 외부에서 viewport 기반 scale 계산 시 참조 */
   public readonly naturalSize: number;
-  /** AI sprite 인지 placeholder 인지. PlayScene 이 sizeBoost 결정에 활용. */
+  /** AI sprite 인지 placeholder 인지 */
   public readonly isSprite: boolean;
-  /** 낙서 layer 가 부착될 컨테이너 — body 와 같은 transform 따라감 */
+  /** shake transform 대상 + 낙서 레이어 부착 지점 */
   public readonly bodyWrap: Container;
+
   private shakeTime = 0;
+  private shakeIntensity = 1;
+
+  // AI sprite 의 알파맵 (실루엣 판정용)
+  private alphaMap: { data: Uint8ClampedArray; w: number; h: number } | null =
+    null;
+  /** bodyWrap local px → texture px 변환 비율의 역수 (sprite scale) */
+  private spriteScale = 1;
 
   constructor(opts: DollOptions = {}) {
     super();
     this.isSprite = !!opts.texture;
-    // placeholder: 머리+셔츠+넥타이 합쳐 240 base. AI sprite: frame 200 base (캐릭터는 그 안 ~77%).
+    // placeholder: 머리+셔츠+넥타이 합쳐 240 base. AI sprite: frame 200 base.
     this.naturalSize = opts.size ?? (this.isSprite ? 200 : 240);
     this.bodyWrap = opts.texture
       ? this.buildSprite(opts.texture)
@@ -41,14 +50,61 @@ export class Doll extends Container {
     };
   }
 
+  /** bodyWrap local 좌표 (lx, ly) 가 캐릭터 실루엣 안인지 */
+  isInsideBody(lx: number, ly: number): boolean {
+    if (this.alphaMap) {
+      const { data, w, h } = this.alphaMap;
+      const tx = Math.round(lx / this.spriteScale + w / 2);
+      const ty = Math.round(ly / this.spriteScale + h / 2);
+      if (tx < 0 || ty < 0 || tx >= w || ty >= h) return false;
+      return data[(ty * w + tx) * 4 + 3] >= 48;
+    }
+    if (this.isSprite) {
+      // 알파맵 추출 실패 fallback — face circle 근사
+      const r = this.naturalSize * 0.45;
+      return lx * lx + ly * ly <= r * r;
+    }
+    // placeholder: 머리 circle + 셔츠 rect 근사
+    const r = this.naturalSize / 2;
+    if (lx * lx + ly * ly <= r * r) return true;
+    return Math.abs(lx) <= r * 0.7 && ly >= r * 0.55 && ly <= r * 1.45;
+  }
+
   private buildSprite(texture: Texture): Container {
     const wrap = new Container();
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
     const scale = this.naturalSize / Math.max(texture.width, texture.height);
     sprite.scale.set(scale);
+    this.spriteScale = scale;
     wrap.addChild(sprite);
+    this.buildAlphaMap(texture);
     return wrap;
+  }
+
+  /** PNG 알파 채널을 한 번 읽어 실루엣 맵 생성. 실패 시 circle fallback. */
+  private buildAlphaMap(texture: Texture) {
+    try {
+      const tw = Math.max(1, Math.round(texture.width));
+      const th = Math.max(1, Math.round(texture.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = tw;
+      canvas.height = th;
+      const c2d = canvas.getContext("2d", { willReadFrequently: true });
+      if (!c2d) return;
+      c2d.drawImage(
+        texture.source.resource as CanvasImageSource,
+        0,
+        0,
+        tw,
+        th
+      );
+      const img = c2d.getImageData(0, 0, tw, th);
+      this.alphaMap = { data: img.data, w: tw, h: th };
+    } catch (e) {
+      console.warn("[doll] alpha map build failed — circle fallback:", e);
+      this.alphaMap = null;
+    }
   }
 
   private buildPlaceholder(): Container {
@@ -99,9 +155,7 @@ export class Doll extends Container {
     return wrap;
   }
 
-  private shakeIntensity = 1;
-
-  /** 피격 시 호출 — 흔들림/스케일 펀치 시작. intensity 1.0 = 기본, 1.5 = 더 큰 흔들림 */
+  /** 피격 시 호출 — 흔들림/스케일 펀치 시작. intensity 1.0 = 기본 */
   triggerHit(intensity = 1) {
     this.shakeTime = 0.35 * Math.max(0.5, intensity);
     this.shakeIntensity = intensity;
@@ -116,7 +170,8 @@ export class Doll extends Container {
       const amp = 8 * t * this.shakeIntensity;
       this.bodyWrap.x = (Math.random() - 0.5) * amp;
       this.bodyWrap.y = (Math.random() - 0.5) * amp;
-      this.bodyWrap.rotation = (Math.random() - 0.5) * 0.12 * t * this.shakeIntensity;
+      this.bodyWrap.rotation =
+        (Math.random() - 0.5) * 0.12 * t * this.shakeIntensity;
       const punch = 1 + 0.06 * t * this.shakeIntensity;
       this.bodyWrap.scale.set(punch);
     } else {

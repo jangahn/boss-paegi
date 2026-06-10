@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
@@ -24,16 +23,27 @@ function PlayInner() {
   const searchParams = useSearchParams();
   const dollId = searchParams.get("doll");
   const bgParam = searchParams.get("bg");
-  // URL 에 bg 있으면 그거 (사용자 선택 반영), 없으면 마운트 시 한 번 random pick 후 고정.
-  // useState lazy init 으로 random 안 매번 바뀌게 + URL 변경 시 그건 prop 으로 반영.
-  const [randomBg] = useState(() => resolveBackground(null));
-  const bg = bgParam ? resolveBackground(bgParam) : randomBg;
+  // 배경은 게임 도중 자유 전환 — local state 로만 관리, 게임 재생성 X (점수/낙서 유지).
+  // 초기값: URL 의 bg, 없으면 random 1회.
+  const [bgKey, setBgKey] = useState<string>(
+    () => resolveBackground(bgParam).key
+  );
+  // 게임 생성 시점의 초기 배경 — 이후 전환은 setBackground 핫스왑으로만.
+  const initialBgUrlRef = useRef<string | null>(null);
+  if (initialBgUrlRef.current === null) {
+    initialBgUrlRef.current = resolveBackground(bgKey).url;
+  }
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
   const [over, setOver] = useState(false);
   const [taunt, setTaunt] = useState<string | null>(null);
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
+  // 게임 생성(비동기) 중 바뀐 무기/배경을 생성 완료 시점에 재적용하기 위한 미러
+  const weaponRef = useRef(weapon);
+  weaponRef.current = weapon;
+  const bgKeyRef = useRef(bgKey);
+  bgKeyRef.current = bgKey;
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
@@ -66,7 +76,7 @@ function PlayInner() {
             return undefined;
           }
         })(),
-        Assets.load(bg.url).catch((e) => {
+        Assets.load(initialBgUrlRef.current!).catch((e) => {
           console.warn("[play] bg texture load failed:", e);
           return undefined;
         }),
@@ -88,33 +98,71 @@ function PlayInner() {
       }
       myHandle = created;
       gameRef.current = created;
+
+      // 생성하는 동안 사용자가 바꾼 무기/배경 재적용 (로딩 중 변경은
+      // gameRef 가 null 이라 hot-swap effect 에서 조용히 유실됨)
+      created.setWeapon(weaponRef.current);
+      const latestBg = resolveBackground(bgKeyRef.current);
+      if (latestBg.url !== initialBgUrlRef.current) {
+        Assets.load(latestBg.url)
+          .then((tex) => {
+            if (!cancelled && tex && gameRef.current === created) {
+              created.setBackground(tex);
+            }
+          })
+          .catch(() => {});
+      }
     })();
 
     return () => {
       cancelled = true;
       if (myHandle) {
         myHandle.destroy();
-        // gameRef 가 다른 run 의 handle 로 덮어쓰여졌다면 그건 그쪽이 알아서. 내 거만 정리.
         if (gameRef.current === myHandle) gameRef.current = null;
       }
     };
-    // weapon 변경은 별도 effect 에서 setWeapon() 으로 hot-swap (재마운트 X)
+    // weapon/bg 변경은 별도 effect 에서 hot-swap (재마운트 X)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [start, hit, dollId, bg.url]);
+  }, [start, hit, dollId]);
 
   useEffect(() => {
     gameRef.current?.setWeapon(weapon);
   }, [weapon]);
 
-  // 페이지 진입 후 어디서든 첫 user gesture (탭/클릭/터치) 시 AudioContext unlock.
-  // iOS Safari 의 autoplay block 우회 — 사용자가 weapon picker, bg, 또는 인형 어디든
-  // 먼저 누르더라도 소리가 안 끊김.
+  // 배경 전환 — 텍스처만 핫스왑. 게임 상태 (점수/낙서/무기) 그대로.
+  // run-once boolean 가드는 StrictMode 더블 effect 에서 깨지므로
+  // "마지막으로 적용한 키" 비교로 idempotent 하게.
+  const appliedBgKeyRef = useRef(bgKey);
+  useEffect(() => {
+    if (appliedBgKeyRef.current === bgKey) return; // 초기 배경은 게임 생성 시 적용됨
+    appliedBgKeyRef.current = bgKey;
+    const b = resolveBackground(bgKey);
+    let cancelled = false;
+    (async () => {
+      const { Assets } = await import("pixi.js");
+      const tex = await Assets.load(b.url).catch(() => undefined);
+      if (!cancelled && tex) gameRef.current?.setBackground(tex);
+    })();
+    // URL 도 동기화 (공유용) — navigation 없이 replaceState 로만
+    const sp = new URLSearchParams();
+    if (dollId) sp.set("doll", dollId);
+    sp.set("bg", bgKey);
+    window.history.replaceState(null, "", `/play?${sp.toString()}`);
+    return () => {
+      cancelled = true;
+    };
+  }, [bgKey, dollId]);
+
+  // 페이지 진입 후 첫 user gesture 시 AudioContext unlock (iOS Safari autoplay 우회).
   useEffect(() => {
     const onFirst = () => {
       unlockAudio();
     };
     window.addEventListener("pointerdown", onFirst, { once: false });
-    window.addEventListener("touchstart", onFirst, { once: false, passive: true });
+    window.addEventListener("touchstart", onFirst, {
+      once: false,
+      passive: true,
+    });
     return () => {
       window.removeEventListener("pointerdown", onFirst);
       window.removeEventListener("touchstart", onFirst);
@@ -173,7 +221,7 @@ function PlayInner() {
         그만 패기
       </button>
       <WeaponPicker active={weapon.key} onChange={setWeapon} />
-      <BgSwitcher active={bg.key} dollId={dollId} />
+      <BgSwitcher active={bgKey} onChange={setBgKey} />
       <GameOverModal
         open={over}
         onRestart={handleRestart}
@@ -186,24 +234,17 @@ function PlayInner() {
 
 function BgSwitcher({
   active,
-  dollId,
+  onChange,
 }: {
   active: string;
-  dollId: string | null;
+  onChange: (key: string) => void;
 }) {
-  const href = (key: string) => {
-    const sp = new URLSearchParams();
-    if (dollId) sp.set("doll", dollId);
-    sp.set("bg", key);
-    return `/play?${sp.toString()}`;
-  };
-
   return (
     <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-black/50 p-1 backdrop-blur-sm sm:gap-2">
       {BACKGROUNDS.map((b) => (
-        <Link
+        <button
           key={b.key}
-          href={href(b.key)}
+          onClick={() => onChange(b.key)}
           className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:px-3 sm:py-1.5 sm:text-xs ${
             b.key === active
               ? "bg-white text-black"
@@ -211,7 +252,7 @@ function BgSwitcher({
           }`}
         >
           {b.label}
-        </Link>
+        </button>
       ))}
     </div>
   );
@@ -219,7 +260,6 @@ function BgSwitcher({
 
 function PlayKeyed() {
   // dollId 가 바뀌면 PlayInner 를 완전 remount — useState/timer/effect 모두 깔끔 리셋.
-  // (URL 만 바뀌는 동일 page navigation 에서 stale state 잔존 막음.)
   const sp = useSearchParams();
   return <PlayInner key={sp.get("doll") ?? "_default"} />;
 }

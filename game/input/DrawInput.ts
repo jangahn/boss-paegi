@@ -5,22 +5,23 @@ import {
 } from "pixi.js";
 import type { Weapon } from "@/lib/weapons";
 import type { DrawingLayer } from "@/game/entities/DrawingLayer";
+import type { Doll } from "@/game/entities/Doll";
 
 type Callbacks = {
-  onStroke: (length: number, weapon: Weapon) => void;
+  onStroke: (lengthScreenPx: number, weapon: Weapon) => void;
 };
 
-type IsInsideFn = (sx: number, sy: number) => boolean;
-
 /**
- * 펜 낙서 입력. 활성 시 stage 의 pointer 를 trace 해 DrawingLayer 에 누적.
- * 좌표는 stage local. inside 체크는 외부에서 주입 (PlayScene 이 dollBody 위치 + scaled radius 기반 closure).
+ * 펜 낙서 입력.
+ * - 좌표: doll.bodyWrap local 로 변환해 DrawingLayer (bodyWrap 의 child) 에 그림 —
+ *   인형이 흔들리거나 던져져도 낙서가 같은 레이어로 함께 움직임.
+ * - 영역: doll.isInsideBody (PNG 알파맵) 안만 stroke 허용. 밖은 입력 자체 무시.
  */
 export class DrawInput {
   private stage: Container;
+  private doll: Doll;
   private layer: DrawingLayer;
   private cb: Callbacks;
-  private isInsideFn: IsInsideFn;
   private active = false;
   private currentWeapon: Weapon | null = null;
   private pointerId: number | null = null;
@@ -29,15 +30,10 @@ export class DrawInput {
   private wasInside = false;
   private hint: Text;
 
-  constructor(
-    stage: Container,
-    layer: DrawingLayer,
-    isInside: IsInsideFn,
-    cb: Callbacks
-  ) {
+  constructor(stage: Container, doll: Doll, layer: DrawingLayer, cb: Callbacks) {
     this.stage = stage;
+    this.doll = doll;
     this.layer = layer;
-    this.isInsideFn = isInside;
     this.cb = cb;
     this.hint = new Text({
       text: "얼굴에 낙서",
@@ -52,6 +48,7 @@ export class DrawInput {
   setActive(active: boolean, weapon: Weapon | null) {
     this.active = active;
     this.currentWeapon = weapon;
+    if (weapon?.hint) this.hint.text = weapon.hint;
     if (!active) {
       this.endIfActive();
     }
@@ -67,10 +64,10 @@ export class DrawInput {
     if (!this.active || !this.currentWeapon) return;
     if (this.pointerId !== null) return;
     this.pointerId = e.pointerId;
-    const local = this.stage.toLocal(e.global);
+    const local = this.doll.bodyWrap.toLocal(e.global);
     this.lastLocal = { x: local.x, y: local.y };
     this.accumDist = 0;
-    this.wasInside = this.isInsideFn(local.x, local.y);
+    this.wasInside = this.doll.isInsideBody(local.x, local.y);
     if (this.wasInside) {
       this.layer.beginStroke(local.x, local.y);
     }
@@ -81,17 +78,20 @@ export class DrawInput {
     if (this.pointerId === null || e.pointerId !== this.pointerId) return;
     if (!this.currentWeapon) return;
     const w = this.currentWeapon;
-    const local = this.stage.toLocal(e.global);
-    const inside = this.isInsideFn(local.x, local.y);
+    const local = this.doll.bodyWrap.toLocal(e.global);
+    const inside = this.doll.isInsideBody(local.x, local.y);
     if (inside) {
       if (this.wasInside) {
-        this.layer.extendStroke(local.x, local.y, w.color, w.strokeWidth ?? 3);
+        // stroke 두께는 화면 px 기준 → doll scale 로 나눠 local 두께로
+        const dollScale = this.doll.scale.x || 1;
+        const localWidth = (w.strokeWidth ?? 3) / dollScale;
+        this.layer.extendStroke(local.x, local.y, w.color, localWidth);
         if (this.lastLocal) {
           const dx = local.x - this.lastLocal.x;
           const dy = local.y - this.lastLocal.y;
-          const d = Math.hypot(dx, dy);
-          if (d < 60) {
-            this.accumDist += d;
+          const dScreen = Math.hypot(dx, dy) * dollScale;
+          if (dScreen < 80) {
+            this.accumDist += dScreen;
             while (this.accumDist >= 40) {
               this.accumDist -= 40;
               this.cb.onStroke(40, w);
@@ -99,6 +99,7 @@ export class DrawInput {
           }
         }
       } else {
+        // 실루엣 밖 → 안으로 막 들어옴: 새 stroke 시작
         this.layer.beginStroke(local.x, local.y);
       }
     } else if (this.wasInside) {
@@ -113,6 +114,12 @@ export class DrawInput {
     this.endIfActive();
     this.hint.visible = this.active;
   };
+
+  /** 브라우저 pointercancel 등 외부 취소 — stroke 상태만 리셋 */
+  cancel() {
+    this.endIfActive();
+    this.hint.visible = this.active;
+  }
 
   private endIfActive() {
     if (this.pointerId !== null) {

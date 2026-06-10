@@ -92,20 +92,32 @@ export class PhysicsWorld {
     });
   }
 
-  /** 화면 4벽 — 인형 던질 때 튕김. category 0x0008, doll(0x0002)만 충돌. */
-  createWalls(width: number, height: number): Body[] {
-    const thick = 60;
+  /**
+   * 화면 4벽 — 인형 던질 때 튕김. category 0x0008, doll(0x0002)만 충돌.
+   * 두께 400: 고속 fling 이 한 step 에 벽을 관통(tunneling)하거나 침투가
+   * 깊어 분리 임펄스가 바깥쪽으로 향해 탈출하는 것 방지.
+   *
+   * @param overhang 벽 안쪽 면을 화면 밖으로 후퇴시키는 거리(px).
+   *   인형 body 가 화면 폭 대비 클 때 (좁은 모바일) 벽 사이에 끼어
+   *   수평 이동이 불가능해지는 것 방지 — 인형이 화면 밖으로 일부
+   *   나갔다 튕겨 돌아오는 연출도 자연스러움.
+   */
+  createWalls(width: number, height: number, overhang = 0): Body[] {
+    const thick = 400;
     const opts = {
       isStatic: true,
       restitution: 0.7,
       label: "wall",
       collisionFilter: { category: 0x0008, mask: 0x0002 },
     };
+    const o = overhang;
+    const spanW = width + o * 2 + thick * 2;
+    const spanH = height + o * 2 + thick * 2;
     return [
-      Bodies.rectangle(width / 2, -thick / 2, width + thick * 2, thick, opts), // top
-      Bodies.rectangle(width / 2, height + thick / 2, width + thick * 2, thick, opts), // bottom
-      Bodies.rectangle(-thick / 2, height / 2, thick, height + thick * 2, opts), // left
-      Bodies.rectangle(width + thick / 2, height / 2, thick, height + thick * 2, opts), // right
+      Bodies.rectangle(width / 2, -o - thick / 2, spanW, thick, opts), // top
+      Bodies.rectangle(width / 2, height + o + thick / 2, spanW, thick, opts), // bottom
+      Bodies.rectangle(-o - thick / 2, height / 2, thick, spanH, opts), // left
+      Bodies.rectangle(width + o + thick / 2, height / 2, thick, spanH, opts), // right
     ];
   }
 

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/store/gameStore";
 import { shareGameResult } from "@/lib/share";
+import { clampForSubmit } from "@/lib/score-limits";
 
 type Props = {
   open: boolean;
@@ -32,10 +33,18 @@ export function GameOverModal({ open, onRestart, weapon, dollId }: Props) {
     if (durationMs <= 0) return;
 
     setSubmitting(true);
+    // 서버 검증과 동일 공식으로 클램프 — 열심히 팼는데 한도 초과로
+    // score_out_of_range 저장 실패가 나는 일 방지.
+    const clamped = clampForSubmit(score, durationMs);
     fetch("/api/score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score, weapon, durationMs, dollId }),
+      body: JSON.stringify({
+        score: clamped.score,
+        weapon,
+        durationMs: clamped.durationMs,
+        dollId,
+      }),
     })
       .then(async (r) => {
         const data = await r.json();

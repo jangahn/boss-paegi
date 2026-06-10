@@ -15,6 +15,8 @@ export type CreateGameOptions = GameEvents & {
 export type GameHandle = {
   destroy: () => void;
   setWeapon: (w: Weapon) => void;
+  /** 배경 텍스처만 교체 — 점수/낙서 등 게임 상태 유지 */
+  setBackground: (t: Texture) => void;
 };
 
 /**
@@ -37,7 +39,8 @@ export async function createGame(
   // 이전 게임의 잔존 canvas 가 있다면 모두 제거 (race 안전망)
   container.replaceChildren();
   container.appendChild(app.canvas);
-  app.canvas.style.touchAction = "manipulation";
+  // touch-action 은 PIXI EventSystem 이 init 에서 "none" 으로 설정 — 덮어쓰지 않음.
+  // ("manipulation" 은 pan/pinch 를 허용해 모바일 드래그를 브라우저가 가로챔)
   app.canvas.style.display = "block";
 
   const scene = new PlayScene({
@@ -67,13 +70,21 @@ export async function createGame(
   });
   ro.observe(container);
 
+  // pixi 8.19 는 native pointercancel 을 display object 로 전달하지 않음 —
+  // 브라우저가 제스처를 가로채 cancel 하면 진행 중이던 드래그 상태(fling 등)가
+  // 영영 안 풀리므로 DOM 레벨에서 직접 받아 리셋.
+  const onPointerCancel = () => scene.cancelActivePointers();
+  app.canvas.addEventListener("pointercancel", onPointerCancel);
+
   return {
     destroy: () => {
       ro.disconnect();
+      app.canvas.removeEventListener("pointercancel", onPointerCancel);
       app.ticker.remove(onTick);
       scene.destroy();
       app.destroy(true, { children: true });
     },
     setWeapon: (w: Weapon) => scene.setWeapon(w),
+    setBackground: (t: Texture) => scene.setBackground(t),
   };
 }

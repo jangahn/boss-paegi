@@ -110,15 +110,25 @@ v0.3 (2026-06-05 라이브, 실기기 1차 QA 반영):
 - 점수 0 종료 시 홈으로 (모달 X)
 
 v0.4 (2026-06-09, 물리엔진 도입):
-- 무기 6종, 3그룹 — 탭(주먹/싸대기/책) · 던지기(키보드/종이) · 낙서(펜)
-- matter.js 물리: 인형은 spring constraint 로 anchor 에 묶여 밀려났다 자동 복귀, 화면 4벽 튕김
-- **인형 자체 드래그 던지기**: tap/throw 모드에서 인형 잡고 끌면 (≥14px) fling 시작 → 놓는 속도대로 발사 → 0.9초 자유 비행 후 anchor 복귀. 짧은 탭은 기존 mode 액션 유지 (tap=hit)
-- **drag 중 벽 박기 점수**: fling 중 인형이 화면 4벽 margin(60px) 안으로 진입할 때마다 thud + 15점 + shockwave
-- 던지기 무기 (키보드/종이): 화면 드래그→놓기 슬링샷 (당긴 반대 방향 발사, 화살표 미리보기 + power 0~1)
-- 펜 낙서: stage 좌표계 dot row 누적 (graphic + fill, PIXI v8 호환). DrawInput 이 인형 face 화면 반경 안 좌표만 허용. doll body radius 0.55 × naturalSize (충돌 영역 확장)
-- 타격감: projectile↔doll 충돌 시 punch ×1.4, burst ×3, 큰 shockwave + scorePop + 인형에 momentum force 적용. projectile 0.2초 fade 잔존
-- 무기 picker 가로 6개 한 줄, 카테고리 구분선
-- 효과음 2종 추가: whoosh (던지기·인형) · scribble (펜)
+- matter.js 물리: 인형은 spring constraint 로 anchor 에 묶여 밀려났다 자동 복귀, 화면 4벽 (두께 400px, 관통 방지) 튕김
+- **인형 자체 드래그 던지기**: tap/throw 모드에서 인형 잡고 끌면 (≥14px) fling → 놓는 속도대로 발사 (cap 28px/step) → 0.9초 자유 비행 후 anchor 복귀. drag 중 벽 박기 +15점 (4벽 margin 60px edge-trigger)
+- 효과음: punch/thud/slap/clack/rustle/whoosh/scribble — Web Audio 합성, 타격 속도 비례 볼륨
+
+v0.5 (2026-06-10, 무기 메커니즘 개편):
+- 무기 9종 6그룹 — 탭(👊🔨) · 문지르기(✋) · 던지기(📚⌨️📄) · 사격(🔫) · 잡아던지기(🤏) · 낙서(🖊️)
+- **뿅망치(🔨)**: 탭 타격 + 휘두르는 스윙 이펙트 + 만화 스프링 "뿅" 사운드
+- **비비탄총(🔫)**: 빈 곳을 꾹 누르면 🔫이 인형을 자동 조준, 0.18s 간격 연사. pellet 이 날아가 명중 시 pop + 파티클
+- 탭 무기는 타격 지점에 무기 이모지가 뿅 나타나는 emojiPop 이펙트 (주먹 = 펀치, 뿅망치 = 스윙)
+- 모든 무기에 조작 hint (weapons.ts 의 `hint` 필드로 일원화) — 주먹/잡아던지기 포함
+- **잡아던지기(🤏)**: 인형 fling 은 이 무기 선택 시에만. 주먹/던지기 모드에선 인형을 끌 수 없음 (오발사 방지)
+- **주먹**: 둔탁한 한 방 — sine drop + 저역 노이즈 + 어택 클릭 합성 "퍽퍽" 사운드 (타마다 ±8% 디튠)
+- **싸대기**: 드래그하면 손바닥(✋)이 손가락을 따라다니고, 인형 위를 빠르게 (≥500px/s) 왔다갔다 문지르면 속도 비례 데미지 (0.6~2×) + 찰싹. 쿨다운 150ms — 1왕복당 1대
+- **던지기 (책/키보드/종이)**: 무기를 잡고 캐릭터 쪽으로 휘둘러 놓으면 드래그 방향·속도 그대로 발사 (flick, 슬링샷 폐기). 충돌 속도 비례 데미지. 책/키보드 = 둔탁 (thud + momentum 넉백), 종이 = 흩뿌려짐 (paperScatter 팔랑팔랑)
+- **펜**: PNG 알파맵 기반 캐릭터 실루엣 판정 — 실루엣 밖 낙서 불가 (보간 dot 까지 재검증). 낙서는 doll.bodyWrap 의 child — 인형이 흔들리거나 던져지면 낙서도 같은 레이어로 함께 이동
+- **배경 전환 시 게임 상태 유지**: BgSwitcher 가 navigation 대신 텍스처 핫스왑 (`setBackground`) — 점수/콤보/무기/낙서 전부 유지, URL 은 replaceState 동기화
+- 안정성: PIXI v8 globalpointermove 로 fling 추적 (인형 밖 드래그 추적 유지), touch-action none 유지 (모바일 제스처 하이재킹 방지), DOM pointercancel 안전망, 물리 body 반경 표시 scale 동기화, collisionStart 넉백 setVelocity 임펄스화, fling 중 중력 누적 방지, 게임 생성 중 무기/배경 변경 유실 방지
+- 모바일 fling: drag 중 doll↔벽 충돌 off + 벽 overhang (body 반경 70%) — 좁은 화면에서 인형 body 가 좌우 벽에 끼어 상하로만 움직이던 버그 수정
+- 점수 한도 ([lib/score-limits.ts](lib/score-limits.ts), 서버/클라 공유): 콤보 배율 cap 4×, 평균 2000점/sec, 제출 전 클라이언트 클램프 — 정상 플레이에서 score_out_of_range 저장 실패 안 남 (서버 검증은 변조 방어용 유지)
 
 다음:
 - 도메인 연결 (bosspaegi.com 등)

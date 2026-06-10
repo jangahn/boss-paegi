@@ -4,10 +4,14 @@
  */
 
 type SoundPreset =
-  | "thud"
+  | "punch"
+  | "boing"
   | "slap"
+  | "thud"
   | "clack"
   | "rustle"
+  | "pew"
+  | "pop"
   | "whoosh"
   | "scribble";
 
@@ -30,14 +34,11 @@ function getCtx() {
 /**
  * 첫 user gesture (예: 페이지 진입 후 첫 탭) 후 호출.
  * iOS Safari 의 autoplay block 을 풀기 위해 ctx.resume() + silent buffer 한 번 재생.
- * resume 이 promise 라 첫 호출 시점엔 아직 suspended 일 수 있으므로 unlocked 플래그는
- * 실제 state 가 running 일 때만 set.
  */
 export function unlockAudio() {
   if (unlocked) return;
   const c = getCtx();
   if (!c) return;
-  // silent buffer 재생 (iOS unlock 트릭 — user gesture 안에서 실제로 음원 한 번 흘려야 함)
   try {
     const buf = c.createBuffer(1, 1, c.sampleRate);
     const src = c.createBufferSource();
@@ -71,10 +72,12 @@ function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
   return buffer;
 }
 
-export function playHitSound(preset: SoundPreset) {
+/**
+ * @param volume 0~2. 타격 속도/세기에 비례해 호출자가 조절. 기본 1.
+ */
+export function playHitSound(preset: SoundPreset, volume = 1) {
   const c = getCtx();
   if (!c) return;
-  // 아직 unlock 안 됐으면 한 번 더 시도 + 이번 호출은 무음
   if (c.state !== "running") {
     if (c.state === "suspended") {
       c.resume()
@@ -86,32 +89,145 @@ export function playHitSound(preset: SoundPreset) {
     return;
   }
   const t = c.currentTime;
+  const v = Math.max(0.05, Math.min(2, volume));
 
-  if (preset === "thud") {
+  if (preset === "punch") {
+    // 퍽퍽 — 깊은 sine drop + 저역 noise 펀치 + 시작 클릭. 매 타 ±8% 디튠으로 찰지게.
+    const detune = 0.92 + Math.random() * 0.16;
     const osc = c.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(110, t);
-    osc.frequency.exponentialRampToValueAtTime(45, t + 0.15);
+    osc.frequency.setValueAtTime(105 * detune, t);
+    osc.frequency.exponentialRampToValueAtTime(38, t + 0.13);
+    const og = c.createGain();
+    og.gain.setValueAtTime(0.65 * v, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc.connect(og).connect(c.destination);
+    osc.start(t);
+    osc.stop(t + 0.18);
+
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.09, 0.9);
+    const filter = c.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 320 * detune;
+    filter.Q.value = 1.1;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.55 * v, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    src.connect(filter).connect(ng).connect(c.destination);
+    src.start(t);
+
+    // 시작 클릭 (타격 순간 어택감)
+    const click = c.createBufferSource();
+    click.buffer = noiseBuffer(c, 0.012, 0.7);
+    const cf = c.createBiquadFilter();
+    cf.type = "bandpass";
+    cf.frequency.value = 1500;
+    const cg = c.createGain();
+    cg.gain.setValueAtTime(0.3 * v, t);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
+    click.connect(cf).connect(cg).connect(c.destination);
+    click.start(t);
+    return;
+  }
+
+  if (preset === "boing") {
+    // 뿅망치 — 만화 스프링. 위로 휙 올라갔다 내려오는 pitch 곡선.
+    const detune = 0.92 + Math.random() * 0.16;
+    const osc = c.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(260 * detune, t);
+    osc.frequency.exponentialRampToValueAtTime(820 * detune, t + 0.04);
+    osc.frequency.exponentialRampToValueAtTime(170, t + 0.22);
     const gain = c.createGain();
-    gain.gain.setValueAtTime(0.5, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    gain.gain.setValueAtTime(0.4 * v, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
     osc.connect(gain).connect(c.destination);
     osc.start(t);
-    osc.stop(t + 0.2);
+    osc.stop(t + 0.27);
+    return;
+  }
+
+  if (preset === "pew") {
+    // 비비탄 발사 — 짧은 하강 블립
+    const osc = c.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(1400, t);
+    osc.frequency.exponentialRampToValueAtTime(420, t + 0.07);
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.12 * v, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    osc.connect(gain).connect(c.destination);
+    osc.start(t);
+    osc.stop(t + 0.09);
+    return;
+  }
+
+  if (preset === "pop") {
+    // 비비탄 명중 — 짧은 노이즈 팝 + 저역 톡
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.04, 0.8);
+    const filter = c.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 1100;
+    filter.Q.value = 1.8;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.3 * v, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    src.connect(filter).connect(ng).connect(c.destination);
+    src.start(t);
+
+    const osc = c.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(300, t);
+    osc.frequency.exponentialRampToValueAtTime(120, t + 0.05);
+    const og = c.createGain();
+    og.gain.setValueAtTime(0.2 * v, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    osc.connect(og).connect(c.destination);
+    osc.start(t);
+    osc.stop(t + 0.07);
     return;
   }
 
   if (preset === "slap") {
+    const detune = 0.9 + Math.random() * 0.2;
     const src = c.createBufferSource();
     src.buffer = noiseBuffer(c, 0.12);
     const filter = c.createBiquadFilter();
     filter.type = "bandpass";
-    filter.frequency.value = 2500;
+    filter.frequency.value = 2500 * detune;
     filter.Q.value = 1.2;
     const gain = c.createGain();
-    gain.gain.setValueAtTime(0.55, t);
+    gain.gain.setValueAtTime(0.55 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
     src.connect(filter).connect(gain).connect(c.destination);
+    src.start(t);
+    return;
+  }
+
+  if (preset === "thud") {
+    // 둔탁 — 책/키보드 임팩트. punch 보다 더 깊고 길게.
+    const osc = c.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(82, t);
+    osc.frequency.exponentialRampToValueAtTime(32, t + 0.2);
+    const og = c.createGain();
+    og.gain.setValueAtTime(0.75 * v, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+    osc.connect(og).connect(c.destination);
+    osc.start(t);
+    osc.stop(t + 0.26);
+
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.12, 0.8);
+    const filter = c.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 220;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.5 * v, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    src.connect(filter).connect(ng).connect(c.destination);
     src.start(t);
     return;
   }
@@ -122,7 +238,7 @@ export function playHitSound(preset: SoundPreset) {
     osc.frequency.setValueAtTime(900, t);
     osc.frequency.exponentialRampToValueAtTime(450, t + 0.04);
     const gain = c.createGain();
-    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.setValueAtTime(0.25 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
     osc.connect(gain).connect(c.destination);
     osc.start(t);
@@ -137,7 +253,7 @@ export function playHitSound(preset: SoundPreset) {
     filter.type = "highpass";
     filter.frequency.value = 3500;
     const gain = c.createGain();
-    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.setValueAtTime(0.18 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
     src.connect(filter).connect(gain).connect(c.destination);
     src.start(t);
@@ -145,7 +261,6 @@ export function playHitSound(preset: SoundPreset) {
   }
 
   if (preset === "whoosh") {
-    // 던지기 슈웅 — 백색잡음 lowpass sweep + 짧은 envelope
     const src = c.createBufferSource();
     src.buffer = noiseBuffer(c, 0.25, 0.8);
     const filter = c.createBiquadFilter();
@@ -155,7 +270,7 @@ export function playHitSound(preset: SoundPreset) {
     filter.Q.value = 0.7;
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.35, t + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.35 * v, t + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
     src.connect(filter).connect(gain).connect(c.destination);
     src.start(t);
@@ -163,7 +278,6 @@ export function playHitSound(preset: SoundPreset) {
   }
 
   if (preset === "scribble") {
-    // 펜 사사삭 — 짧은 highpass noise burst
     const src = c.createBufferSource();
     src.buffer = noiseBuffer(c, 0.06, 0.6);
     const filter = c.createBiquadFilter();
@@ -171,7 +285,7 @@ export function playHitSound(preset: SoundPreset) {
     filter.frequency.value = 5500;
     filter.Q.value = 2.0;
     const gain = c.createGain();
-    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.setValueAtTime(0.12 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
     src.connect(filter).connect(gain).connect(c.destination);
     src.start(t);

@@ -1,6 +1,12 @@
 import { create } from "zustand";
+import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
 
 const COMBO_DECAY_MS = 1500;
+
+/** 콤보 → 점수 배율. 상한 있음 (무한 증가 시 서버 점수 한도 초과). */
+export function comboMultiplier(combo: number): number {
+  return Math.min(MAX_COMBO_MULTIPLIER, 1 + Math.floor(combo / 5) * 0.5);
+}
 
 type GameState = {
   score: number;
@@ -31,8 +37,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { combo, lastHitAt, maxCombo, score } = get();
     const continued = now - lastHitAt < COMBO_DECAY_MS;
     const nextCombo = continued ? combo + 1 : 1;
-    const multiplier = 1 + Math.floor(nextCombo / 5) * 0.5;
-    const gain = Math.round(strength * multiplier);
+    const gain = Math.round(strength * comboMultiplier(nextCombo));
 
     set({
       score: score + gain,

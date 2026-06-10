@@ -1,11 +1,11 @@
 "use client";
 
-import { useGameStore } from "@/store/gameStore";
+import { comboMultiplier, useGameStore } from "@/store/gameStore";
 
 export function ScoreBoard() {
   const score = useGameStore((s) => s.score);
   const combo = useGameStore((s) => s.combo);
-  const multiplier = 1 + Math.floor(combo / 5) * 0.5;
+  const multiplier = comboMultiplier(combo);
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex flex-col items-center gap-0.5 px-4 text-white sm:gap-1 sm:px-6 sm:pt-2">
