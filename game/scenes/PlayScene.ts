@@ -115,12 +115,21 @@ export class PlayScene extends Container {
     this.doll = new Doll({ texture: opts.dollTexture });
     this.addChild(this.doll);
 
+    // 데칼 루트 — 꼬질꼬질 + 낙서를 담고 인형 실루엣 mask 로 클리핑.
+    // 데칼이 면적을 가져도 (멍 반경, 먼지 spread) 캐릭터 픽셀 밖으로는
+    // 한 픽셀도 안 나감 (sprite = alpha mask, placeholder = 도형 mask).
+    const decalRoot = new Container();
+    decalRoot.eventMode = "none";
+    const silhouette = this.doll.makeSilhouetteMask();
+    this.doll.bodyWrap.addChild(silhouette);
+    decalRoot.mask = silhouette;
+
     // 꼬질꼬질 데칼 — 낙서보다 아래 레이어 (낙서가 항상 위에 보이게)
     this.damageLayer = new DamageLayer(
       (x, y) => this.doll.isInsideBody(x, y),
       this.doll.naturalSize
     );
-    this.doll.bodyWrap.addChild(this.damageLayer);
+    decalRoot.addChild(this.damageLayer);
 
     // 낙서 레이어 — 인형 bodyWrap 에 부착. 흔들림/던지기/회전 전부 인형과 함께.
     // 보간 dot 도 실루엣 안만 허용 (빠른 스트로크가 오목 영역을 가로지를 때 잉크 새는 것 방지)
@@ -128,7 +137,8 @@ export class PlayScene extends Container {
       (x, y) => this.doll.isInsideBody(x, y),
       opts.onDrawingChange
     );
-    this.doll.bodyWrap.addChild(this.drawingLayer);
+    decalRoot.addChild(this.drawingLayer);
+    this.doll.bodyWrap.addChild(decalRoot);
 
     this.fx = new HitEffect();
     // 이펙트 (이모지/점수팝/파티클) 가 hit-test 를 가로채 연타가 씹히는 것 방지

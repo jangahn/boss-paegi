@@ -29,6 +29,8 @@ export class Doll extends Container {
     null;
   /** bodyWrap local px → texture px 변환 비율의 역수 (sprite scale) */
   private spriteScale = 1;
+  /** sprite 경로일 때 원본 텍스처 — 실루엣 mask 생성용 */
+  private texture: Texture | null = null;
 
   constructor(opts: DollOptions = {}) {
     super();
@@ -70,7 +72,27 @@ export class Doll extends Container {
     return Math.abs(lx) <= r * 0.7 && ly >= r * 0.55 && ly <= r * 1.45;
   }
 
+  /**
+   * 실루엣 모양의 mask 객체 생성 — 데칼/낙서 레이어에 적용하면
+   * 캐릭터 픽셀 위에만 그려짐 (빈 공간으로 삐져나가지 않음).
+   * sprite: 같은 텍스처의 Sprite (alpha mask). placeholder: 도형 근사.
+   */
+  makeSilhouetteMask(): Container {
+    if (this.texture) {
+      const m = new Sprite(this.texture);
+      m.anchor.set(0.5);
+      m.scale.set(this.spriteScale);
+      return m;
+    }
+    const r = this.naturalSize / 2;
+    const g = new Graphics();
+    g.circle(0, 0, r).fill(0xffffff);
+    g.roundRect(-r * 0.7, r * 0.55, r * 1.4, r * 0.9, 16).fill(0xffffff);
+    return g;
+  }
+
   private buildSprite(texture: Texture): Container {
+    this.texture = texture;
     const wrap = new Container();
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
