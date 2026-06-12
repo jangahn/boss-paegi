@@ -147,6 +147,19 @@ v0.6 (2026-06-12, 네비게이션·닉네임·보고서):
 **⚠️ Migration 0003 적용 필요** (`supabase/migrations/0003_nickname_and_combo.sql` → Dashboard SQL Editor):
 직장인 닉네임 생성기 + 기존 "익명*" 일괄 변환 + scores.max_combo. 적용 전에도 앱은 동작 (fallback).
 
+v0.7 (2026-06-12, 운영 안전장치·바이럴):
+- **플레이타임 10분 → 1시간** (클라 클램프 + 서버 검증 + DB check, migration 0004). 점수 상한 (시간×2000/sec) 방어선은 유지
+- **AI 생성 1일 2회** (KST 자정 리셋, 실패한 생성은 차감 안 함). `profiles.daily_gen_limit` 로 계정별 관리 — null 로 두면 무제한 (운영 계정용)
+- **fal 잔액 hard cap**: 생성 요청마다 fal billing API (`/v1/account/billing?expand=credits`) 로 잔액 조회 (60초 캐시) — $2 미만이면 전 계정 생성 중단 + "요청이 많아 일시 중단" UI 안내. `FAL_ADMIN_KEY` (ADMIN scope) 필요, 미설정 시 체크 skip
+- **OG 이미지를 결재 보고서 디자인으로**: 문서번호·작성자·점수·판정 등급·부장님 멘트·해소완료 도장·인형 사진 — 카톡/트위터 공유 시 보고서가 그대로 보임
+- **랭킹 익명 버그 수정**: get_leaderboard 가 security invoker 라 RLS 로 타인 닉네임이 null → profiles public read 정책 추가 (migration 0004)
+- 무기 조작 안내를 인형 발치 (PIXI) → **무기 picker 바로 위 (DOM)** 로 이동, PIXI hint 코드 5곳 제거
+- **기본 부장님 교체**: 3D 클레이 스타일 이미지 (`public/sprites/boss-default.png`, 768×1024 누끼 PNG 130KB) — Graphics placeholder 는 텍스처 로드 실패 시 fallback 으로만. 전처리 스크립트 `scripts/prepare-default-boss.mjs` (fal storage 업로드 → birefnet 누끼 → trim → AI 캐릭터 규격 정규화). 코드베이스 정적 자산으로 둔 이유: 전 유저 공통·불변 자산은 Vercel CDN 캐시가 최적, Supabase 대역폭/장애 의존 0
+
+**⚠️ Migration 0004 적용 필요** (`supabase/migrations/0004_quota_balance_rank.sql`):
+profiles public read (랭킹 닉네임) + daily_gen_limit + scores duration 1시간.
+**⚠️ FAL_ADMIN_KEY 발급 필요**: fal dashboard → ADMIN scope 키 → `.env.local` 과 Vercel 환경변수에 추가 (없어도 동작하나 잔액 hard cap 비활성).
+
 다음:
 - **OAuth 로그인**: Supabase 내장 OAuth (Google/Kakao) + `linkIdentity()` 로 익명 계정 승격 (인형/점수/닉네임 유지). 키는 Google Cloud Console / Kakao Developers 에서 발급 → Supabase Dashboard 등록
 - **결제 (생성권)**: AI 캐릭터 생성권 구매 모델. ai_generations 기반 쿼터 확장 + credits 테이블 추가 예정

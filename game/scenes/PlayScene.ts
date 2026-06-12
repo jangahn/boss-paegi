@@ -75,8 +75,6 @@ export class PlayScene extends Container {
   private shootInput: ShootInput;
   private drawInput: DrawInput;
   private mode: WeaponCategory = "tap";
-  // tap/grab 모드용 안내 텍스트 (다른 모드는 각 input 클래스가 자체 hint 관리)
-  private modeHint: Text;
   // 비비탄
   private pellets: Pellet[] = [];
 
@@ -157,16 +155,6 @@ export class PlayScene extends Container {
     this.drawInput = new DrawInput(this, this.doll, this.drawingLayer, {
       onStroke: this.handleDrawStroke,
     });
-    this.modeHint = new Text({
-      text: "",
-      style: { fontSize: 13, fill: 0xffffff, align: "center" },
-    });
-    this.modeHint.anchor.set(0.5, 1);
-    this.modeHint.alpha = 0.55;
-    this.modeHint.visible = false;
-    this.modeHint.eventMode = "none";
-    this.addChild(this.modeHint);
-
     this.on("pointerdown", this.handleStagePointerDown);
     this.on("pointermove", this.handleStagePointerMove);
     this.on("pointerup", this.handleStagePointerUp);
@@ -214,14 +202,6 @@ export class PlayScene extends Container {
     this.shootInput.setActive(this.mode === "shoot", this.weapon);
     this.drawInput.setActive(this.mode === "draw", this.weapon);
 
-    // tap/grab 모드 hint — 다른 모드는 각 input 의 hint 가 표시됨
-    if (this.mode === "tap" || this.mode === "grab") {
-      this.modeHint.text = this.weapon.hint;
-      this.modeHint.visible = true;
-    } else {
-      this.modeHint.visible = false;
-    }
-
     // tap: 인형 탭만. grab: 인형 잡고 fling. 나머지: 인형 위 제스처를 stage 입력에 양보.
     const dollInteractive = this.mode === "tap" || this.mode === "grab";
     this.doll.eventMode = dollInteractive ? "static" : "none";
@@ -259,7 +239,6 @@ export class PlayScene extends Container {
     this.flingActive = false;
     this.flingHistory = [{ x: local.x, y: local.y, t: this.dollDownAt }];
     this.wallState = { L: false, R: false, T: false, B: false };
-    this.modeHint.visible = false;
   };
 
   private handleDollPointerMove = (e: FederatedPointerEvent) => {
@@ -332,9 +311,6 @@ export class PlayScene extends Container {
     if (this.dollPointerId === null || e.pointerId !== this.dollPointerId)
       return;
     this.dollPointerId = null;
-    if (this.mode === "grab") {
-      this.modeHint.visible = true;
-    }
     const upAt = performance.now();
     if (!this.flingActive) {
       // grab 모드에서 threshold 미달로 끝난 짧은 터치 — 아무 일 없음
@@ -766,12 +742,6 @@ export class PlayScene extends Container {
     this.walls = this.physics.createWalls(width, height, overhang);
     for (const w of this.walls) this.physics.add(w);
 
-    this.throwInput.layoutHint(width, height);
-    this.swipeInput.layoutHint(width, height);
-    this.shootInput.layoutHint(width, height);
-    this.drawInput.layoutHint(width, height);
-    this.modeHint.x = width / 2;
-    this.modeHint.y = height - 140;
   }
 
   destroy() {
@@ -788,7 +758,6 @@ export class PlayScene extends Container {
     this.throwInput.destroy();
     this.swipeInput.destroy();
     this.shootInput.destroy();
-    this.drawInput.destroy();
     for (const p of this.projectiles) {
       this.physics.remove(p.body);
       p.destroy({ children: true });

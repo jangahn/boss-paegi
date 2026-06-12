@@ -1,8 +1,4 @@
-import {
-  Container,
-  Text,
-  type FederatedPointerEvent,
-} from "pixi.js";
+import { Container, type FederatedPointerEvent } from "pixi.js";
 import type { Weapon } from "@/lib/weapons";
 import type { DrawingLayer } from "@/game/entities/DrawingLayer";
 import type { Doll } from "@/game/entities/Doll";
@@ -28,37 +24,20 @@ export class DrawInput {
   private accumDist = 0;
   private lastLocal: { x: number; y: number } | null = null;
   private wasInside = false;
-  private hint: Text;
 
   constructor(stage: Container, doll: Doll, layer: DrawingLayer, cb: Callbacks) {
     this.stage = stage;
     this.doll = doll;
     this.layer = layer;
     this.cb = cb;
-    this.hint = new Text({
-      text: "얼굴에 낙서",
-      style: { fontSize: 13, fill: 0xffffff },
-    });
-    this.hint.anchor.set(0.5, 1);
-    this.hint.alpha = 0.55;
-    this.hint.visible = false;
-    this.hint.eventMode = "none";
-    this.stage.addChild(this.hint);
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
     this.active = active;
     this.currentWeapon = weapon;
-    if (weapon?.hint) this.hint.text = weapon.hint;
     if (!active) {
       this.endIfActive();
     }
-    this.hint.visible = active && this.pointerId === null;
-  }
-
-  layoutHint(width: number, height: number) {
-    this.hint.x = width / 2;
-    this.hint.y = height - 140;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {
@@ -72,7 +51,6 @@ export class DrawInput {
     if (this.wasInside) {
       this.layer.beginStroke(local.x, local.y);
     }
-    this.hint.visible = false;
   };
 
   handlePointerMove = (e: FederatedPointerEvent) => {
@@ -113,13 +91,11 @@ export class DrawInput {
   handlePointerUp = (e: FederatedPointerEvent) => {
     if (this.pointerId === null || e.pointerId !== this.pointerId) return;
     this.endIfActive();
-    this.hint.visible = this.active;
   };
 
   /** 브라우저 pointercancel 등 외부 취소 — stroke 상태만 리셋 */
   cancel() {
     this.endIfActive();
-    this.hint.visible = this.active;
   }
 
   private endIfActive() {
@@ -132,7 +108,4 @@ export class DrawInput {
     }
   }
 
-  destroy() {
-    this.hint.destroy();
-  }
 }

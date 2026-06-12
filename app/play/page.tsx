@@ -66,7 +66,15 @@ function PlayInner() {
 
       const [dollTexture, bgTexture] = await Promise.all([
         (async () => {
-          if (!dollId) return undefined;
+          // dollId 없으면 기본 부장님 이미지 — 실패 시 undefined (Graphics placeholder fallback)
+          if (!dollId) {
+            try {
+              return await Assets.load("/sprites/boss-default.png");
+            } catch (e) {
+              console.warn("[play] default boss texture load failed:", e);
+              return undefined;
+            }
+          }
           const sb = createClient();
           const { data } = await sb
             .from("dolls")
@@ -242,6 +250,10 @@ function PlayInner() {
       >
         그만 패기
       </button>
+      {/* 무기 조작 안내 — picker 바로 위 */}
+      <p className="pointer-events-none absolute bottom-[5.75rem] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap text-xs text-white/65 drop-shadow sm:bottom-28 sm:text-sm">
+        {weapon.hint}
+      </p>
       <WeaponPicker
         active={weapon.key}
         onChange={setWeapon}

@@ -1,9 +1,10 @@
 import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
+import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 
 export const runtime = "nodejs";
-export const alt = "부장님 패기 결과";
+export const alt = "스트레스 해소 결과 보고서";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -16,13 +17,16 @@ export default async function OgImage({
   const admin = createAdminClient();
   const { data } = await admin
     .from("scores")
-    .select("score, profiles(display_name), dolls(image_url)")
+    .select("id, score, weapon, created_at, profiles(display_name), dolls(image_url)")
     .eq("id", scoreId)
     .single();
 
   const s = data as
     | {
+        id: string;
         score: number;
+        weapon: string;
+        created_at: string;
         profiles: { display_name: string } | null;
         dolls: { image_url: string | null } | null;
       }
@@ -31,6 +35,9 @@ export default async function OgImage({
   const name = s?.profiles?.display_name ?? "익명";
   const score = (s?.score ?? 0).toLocaleString();
   const dollUrl = s?.dolls?.image_url ?? null;
+  const grade = gradeFor(s?.score ?? 0);
+  const reaction = s ? bossReaction(s.score, s.id) : "";
+  const docNo = s ? reportNo(s.id, s.created_at) : "";
 
   return new ImageResponse(
     (
@@ -39,58 +46,157 @@ export default async function OgImage({
           width: "100%",
           height: "100%",
           display: "flex",
-          background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
-          color: "white",
-          padding: "60px",
+          background: "#3f3f46",
+          padding: "36px",
           alignItems: "center",
-          gap: "60px",
+          justifyContent: "center",
         }}
       >
-        {dollUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={dollUrl}
-            alt=""
-            width="400"
-            height="400"
-            style={{ borderRadius: "32px", objectFit: "cover" }}
-          />
-        )}
+        {/* 보고서 종이 */}
         <div
           style={{
+            width: "100%",
+            height: "100%",
             display: "flex",
             flexDirection: "column",
-            gap: 16,
-            flex: 1,
+            background: "#fbfaf6",
+            borderRadius: 16,
+            padding: "44px 56px",
+            color: "#18181b",
           }}
         >
-          <div style={{ display: "flex", fontSize: 36, color: "#a0a0c0" }}>
-            {name} 님이
-          </div>
+          {/* 헤더 */}
           <div
             style={{
               display: "flex",
-              fontSize: 160,
-              fontWeight: 900,
-              lineHeight: 1,
-              letterSpacing: "-0.04em",
+              flexDirection: "column",
+              alignItems: "center",
+              borderBottom: "5px solid #27272a",
+              paddingBottom: 18,
             }}
           >
-            {score}
+            <div style={{ display: "flex", fontSize: 20, color: "#71717a", letterSpacing: "0.4em" }}>
+              {docNo}
+            </div>
+            <div style={{ display: "flex", fontSize: 52, fontWeight: 900, marginTop: 6 }}>
+              스트레스 해소 결과 보고서
+            </div>
           </div>
-          <div style={{ display: "flex", fontSize: 36, color: "#a0a0c0" }}>
-            점 패고 옴 🥊
+
+          {/* 본문: 인형 + 정보 */}
+          <div style={{ display: "flex", flex: 1, gap: 44, marginTop: 28, alignItems: "center" }}>
+            {dollUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={dollUrl}
+                alt=""
+                width="260"
+                height="260"
+                style={{
+                  borderRadius: 20,
+                  objectFit: "cover",
+                  border: "3px solid #d4d4d8",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 260,
+                  height: 260,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 130,
+                  background: "#f4f4f5",
+                  borderRadius: 20,
+                  border: "3px solid #d4d4d8",
+                }}
+              >
+                😠
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 10 }}>
+              <div style={{ display: "flex", fontSize: 28, color: "#71717a" }}>
+                작성자: {name}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 120,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {score}
+                </div>
+                <div style={{ display: "flex", fontSize: 36, color: "#71717a" }}>점</div>
+              </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 34,
+                    fontWeight: 800,
+                    color: "#18181b",
+                  }}
+                >
+                  판정: {grade.label}
+                </div>
+                <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
+                  · {s ? weaponLabel(s.weapon) : ""}
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 24,
+                  color: "#52525b",
+                  marginTop: 6,
+                  fontStyle: "italic",
+                }}
+              >
+                부장님: &ldquo;{reaction}&rdquo;
+              </div>
+            </div>
+
+            {/* 결재 도장 */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 150,
+                height: 150,
+                borderRadius: 9999,
+                border: "7px solid #ef4444",
+                color: "#ef4444",
+                fontSize: 36,
+                fontWeight: 900,
+                transform: "rotate(-14deg)",
+              }}
+            >
+              해소완료
+            </div>
           </div>
+
+          {/* 푸터 */}
           <div
             style={{
               display: "flex",
-              marginTop: 24,
-              fontSize: 28,
-              color: "#ffd166",
-              fontWeight: 700,
+              justifyContent: "space-between",
+              borderTop: "2px solid #d4d4d8",
+              paddingTop: 14,
             }}
           >
-            {SERVICE_NAME}
+            <div style={{ display: "flex", fontSize: 26, fontWeight: 800, color: "#b45309" }}>
+              {SERVICE_NAME}
+            </div>
+            <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
+              당신의 부장님은 무사하십니까?
+            </div>
           </div>
         </div>
       </div>

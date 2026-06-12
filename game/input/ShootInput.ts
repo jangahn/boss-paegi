@@ -27,7 +27,6 @@ export class ShootInput {
   private fireAccum = 0;
 
   private gunSprite: Text;
-  private hint: Text;
 
   constructor(stage: Container, cb: Callbacks) {
     this.stage = stage;
@@ -36,31 +35,15 @@ export class ShootInput {
     this.gunSprite.anchor.set(0.5);
     this.gunSprite.visible = false;
     this.gunSprite.eventMode = "none";
-    this.hint = new Text({
-      text: "빈 곳을 꾹 누르면 자동 발사",
-      style: { fontSize: 13, fill: 0xffffff, align: "center" },
-    });
-    this.hint.anchor.set(0.5, 1);
-    this.hint.alpha = 0.55;
-    this.hint.visible = false;
-    this.hint.eventMode = "none";
     this.stage.addChild(this.gunSprite);
-    this.stage.addChild(this.hint);
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
     this.active = active;
     this.currentWeapon = weapon;
-    if (weapon?.hint) this.hint.text = weapon.hint;
     if (!active) {
       this.cancel();
     }
-    this.hint.visible = active && this.pointerId === null;
-  }
-
-  layoutHint(width: number, height: number) {
-    this.hint.x = width / 2;
-    this.hint.y = height - 140;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {
@@ -72,7 +55,6 @@ export class ShootInput {
     this.gunSprite.x = local.x;
     this.gunSprite.y = local.y;
     this.gunSprite.visible = true;
-    this.hint.visible = false;
     // 누르자마자 첫 발
     this.fireAccum = FIRE_INTERVAL_SEC;
   };
@@ -88,7 +70,6 @@ export class ShootInput {
   handlePointerUp = (e: FederatedPointerEvent) => {
     if (this.pointerId === null || e.pointerId !== this.pointerId) return;
     this.cancel();
-    this.hint.visible = this.active;
   };
 
   /** 매 프레임 — 조준 회전 + 연사 타이밍. (dollX, dollY) 는 인형 현재 위치. */
@@ -121,6 +102,5 @@ export class ShootInput {
 
   destroy() {
     this.gunSprite.destroy();
-    this.hint.destroy();
   }
 }

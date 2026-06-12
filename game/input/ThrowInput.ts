@@ -39,7 +39,6 @@ export class ThrowInput {
   private history: { x: number; y: number; t: number }[] = [];
 
   private grabbedEmoji: Text;
-  private hint: Text;
 
   constructor(stage: Container, cb: Callbacks) {
     this.stage = stage;
@@ -48,31 +47,15 @@ export class ThrowInput {
     this.grabbedEmoji.anchor.set(0.5);
     this.grabbedEmoji.visible = false;
     this.grabbedEmoji.eventMode = "none";
-    this.hint = new Text({
-      text: "무기를 잡고 휘둘러 던지기",
-      style: { fontSize: 13, fill: 0xffffff, align: "center" },
-    });
-    this.hint.anchor.set(0.5, 1);
-    this.hint.alpha = 0.55;
-    this.hint.visible = false;
-    this.hint.eventMode = "none";
     this.stage.addChild(this.grabbedEmoji);
-    this.stage.addChild(this.hint);
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
     this.active = active;
     this.currentWeapon = weapon;
-    if (weapon?.hint) this.hint.text = weapon.hint;
     if (!active) {
       this.cancel();
     }
-    this.hint.visible = active && this.pointerId === null;
-  }
-
-  layoutHint(width: number, height: number) {
-    this.hint.x = width / 2;
-    this.hint.y = height - 140;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {
@@ -87,7 +70,6 @@ export class ThrowInput {
     this.grabbedEmoji.y = local.y;
     this.grabbedEmoji.alpha = 1;
     this.grabbedEmoji.visible = true;
-    this.hint.visible = false;
   };
 
   handlePointerMove = (e: FederatedPointerEvent) => {
@@ -115,8 +97,6 @@ export class ThrowInput {
     if (this.pointerId === null || e.pointerId !== this.pointerId) return;
     this.pointerId = null;
     this.grabbedEmoji.visible = false;
-    this.grabbedEmoji.rotation = 0;
-    this.hint.visible = this.active;
 
     const w = this.currentWeapon;
     if (!w) return;
@@ -144,6 +124,5 @@ export class ThrowInput {
 
   destroy() {
     this.grabbedEmoji.destroy();
-    this.hint.destroy();
   }
 }

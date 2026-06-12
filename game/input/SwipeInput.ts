@@ -41,7 +41,6 @@ export class SwipeInput {
   private lastHitAt = 0;
 
   private palm: Text;
-  private hint: Text;
 
   constructor(stage: Container, cb: Callbacks) {
     this.stage = stage;
@@ -50,31 +49,15 @@ export class SwipeInput {
     this.palm.anchor.set(0.5);
     this.palm.visible = false;
     this.palm.eventMode = "none";
-    this.hint = new Text({
-      text: "문지르듯 휘둘러 싸대기",
-      style: { fontSize: 13, fill: 0xffffff, align: "center" },
-    });
-    this.hint.anchor.set(0.5, 1);
-    this.hint.alpha = 0.55;
-    this.hint.visible = false;
-    this.hint.eventMode = "none";
     this.stage.addChild(this.palm);
-    this.stage.addChild(this.hint);
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
     this.active = active;
     this.currentWeapon = weapon;
-    if (weapon?.hint) this.hint.text = weapon.hint;
     if (!active) {
       this.cancel();
     }
-    this.hint.visible = active && this.pointerId === null;
-  }
-
-  layoutHint(width: number, height: number) {
-    this.hint.x = width / 2;
-    this.hint.y = height - 140;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {
@@ -86,7 +69,6 @@ export class SwipeInput {
     this.palm.x = local.x;
     this.palm.y = local.y;
     this.palm.visible = true;
-    this.hint.visible = false;
   };
 
   handlePointerMove = (e: FederatedPointerEvent) => {
@@ -137,7 +119,6 @@ export class SwipeInput {
   handlePointerUp = (e: FederatedPointerEvent) => {
     if (this.pointerId === null || e.pointerId !== this.pointerId) return;
     this.cancel();
-    this.hint.visible = this.active;
   };
 
   cancel() {
@@ -150,6 +131,5 @@ export class SwipeInput {
 
   destroy() {
     this.palm.destroy();
-    this.hint.destroy();
   }
 }
