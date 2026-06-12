@@ -58,7 +58,14 @@ export default function GeneratePage() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "failed" }));
         if (err.error === "daily_limit") {
-          throw new Error(`오늘 무료 생성 ${err.limit}회를 모두 사용했어요. 내일 다시 시도해주세요.`);
+          throw new Error(
+            `오늘 무료 생성 ${err.limit}회를 모두 사용했어요. 내일 0시에 다시 만들 수 있어요!`
+          );
+        }
+        if (err.error === "service_paused") {
+          throw new Error(
+            "생성 요청이 많아 AI 캐릭터 만들기가 일시적으로 중단됐어요. 잠시 후 다시 시도해주세요. (기본 부장님으로는 계속 플레이할 수 있어요)"
+          );
         }
         throw new Error(err.error ?? "generation_failed");
       }

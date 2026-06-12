@@ -7,7 +7,9 @@
 /** 평균 점수/sec 상한. v0.5 무기 최대 효율 (싸대기 연타 × 속도 2× × 콤보 4×
  *  ≈ 750/sec, fling+벽콤보 spike 포함) 에 안전 마진. */
 export const MAX_AVG_SCORE_PER_SEC = 2000;
-export const MAX_DURATION_MS = 10 * 60 * 1000; // 10분
+/** 1시간 — 사실상 무제한 체감이되 점수 상한 (duration × 2000/sec) 방어선 유지.
+ *  DB check (migration 0004) 와 동일해야 함. */
+export const MAX_DURATION_MS = 60 * 60 * 1000;
 export const MAX_SCORE_HARD = 10_000_000; // DB check constraint 와 동일
 
 /** 콤보 배율 상한 — 무한 증가 시 점수가 서버 한도를 뚫는 것 방지 (4× = 콤보 30) */

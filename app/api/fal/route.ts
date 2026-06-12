@@ -5,12 +5,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
+import { checkFalBalance } from "@/lib/fal-balance";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-// TODO: 테스트 충분히 진행 후 rate limit 다시 적용 (ai_generations status='done' 카운트 활용).
+/** 기본 일일 생성 한도 — profiles.daily_gen_limit 조회 실패 시 fallback */
+const DEFAULT_DAILY_LIMIT = 2;
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // Vercel Hobby max
+
+/** 오늘 KST 자정 (UTC ISO) — 일일 한도 리셋 기준 */
+function kstMidnightUtcIso(): string {
+  const kst = new Date(Date.now() + 9 * 3600_000);
+  kst.setUTCHours(0, 0, 0, 0);
+  return new Date(kst.getTime() - 9 * 3600_000).toISOString();
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -19,6 +28,39 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ── fal 잔액 hard cap — $2 미만이면 전 계정 생성 일시 중단 ─────────
+  const balance = await checkFalBalance();
+  if (!balance.ok) {
+    return NextResponse.json({ error: "service_paused" }, { status: 503 });
+  }
+
+  // ── 일일 생성 한도 (KST 자정 리셋). daily_gen_limit null = 무제한 ──
+  const adminForQuota = createAdminClient();
+  let limit: number | null = DEFAULT_DAILY_LIMIT;
+  const { data: profileRow, error: profileErr } = await adminForQuota
+    .from("profiles")
+    .select("daily_gen_limit")
+    .eq("id", user.id)
+    .single();
+  if (!profileErr && profileRow && "daily_gen_limit" in profileRow) {
+    limit = profileRow.daily_gen_limit as number | null;
+  }
+  // migration 0004 미적용 (컬럼 없음) 등 조회 실패 → 기본 한도 유지
+  if (limit !== null) {
+    const { count, error: countErr } = await adminForQuota
+      .from("ai_generations")
+      .select("*", { head: true, count: "exact" })
+      .eq("owner_id", user.id)
+      .neq("status", "failed") // 실패한 생성은 차감 안 함
+      .gte("created_at", kstMidnightUtcIso());
+    if (!countErr && (count ?? 0) >= limit) {
+      return NextResponse.json(
+        { error: "daily_limit", limit, used: count ?? 0 },
+        { status: 429 }
+      );
+    }
   }
 
   const form = await req.formData();
