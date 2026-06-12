@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
+import { Spinner } from "@/components/Spinner";
+import { AppNav } from "@/components/AppNav";
 
 type Doll = {
   id: string;
@@ -57,7 +59,9 @@ export default function GalleryPage() {
   };
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-8">
+    <>
+      <AppNav />
+      <main className="flex flex-1 flex-col px-6 py-8">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">내 부장님들</h1>
@@ -81,7 +85,8 @@ export default function GalleryPage() {
           <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">{error}</p>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -124,43 +129,75 @@ function DollGrid({
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {dolls.map((d) => (
-        <div
+        <DollCard
           key={d.id}
-          className="group relative aspect-square overflow-hidden rounded-2xl border border-foreground/10"
-        >
-          <Link href={`/play?doll=${d.id}`} className="block h-full w-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={d.image_url}
-              alt=""
-              className="h-full w-full object-cover transition group-hover:scale-105"
-            />
-          </Link>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onDelete(d.id);
-            }}
-            disabled={deletingId === d.id}
-            aria-label="삭제"
-            className="absolute right-2 top-2 z-10 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur-sm transition hover:bg-red-500/85 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14zM10 11v6M14 11v6" />
-            </svg>
-          </button>
-        </div>
+          doll={d}
+          deleting={deletingId === d.id}
+          onDelete={() => onDelete(d.id)}
+        />
       ))}
+    </div>
+  );
+}
+
+function DollCard({
+  doll,
+  deleting,
+  onDelete,
+}: {
+  doll: Doll;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  return (
+    <div className="group relative aspect-square overflow-hidden rounded-2xl border border-foreground/10">
+      {/* 이미지 로드 전 pulse placeholder */}
+      {!imgLoaded && (
+        <div className="absolute inset-0 animate-pulse bg-foreground/10" />
+      )}
+      <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={doll.image_url}
+          alt=""
+          onLoad={() => setImgLoaded(true)}
+          className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
+            imgLoaded ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      </Link>
+      {/* 삭제 진행 중 — 카드 dim + 스피너 */}
+      {deleting && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[2px]">
+          <Spinner className="h-6 w-6 text-white" />
+          <span className="text-xs font-medium text-white/90">삭제 중...</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete();
+        }}
+        disabled={deleting}
+        aria-label="삭제"
+        className="absolute right-2 top-2 z-10 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur-sm transition hover:bg-red-500/85 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14zM10 11v6M14 11v6" />
+        </svg>
+      </button>
     </div>
   );
 }

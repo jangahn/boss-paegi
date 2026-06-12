@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { AppNav } from "@/components/AppNav";
 
 type Period = "daily" | "weekly";
 
@@ -33,7 +34,9 @@ export default async function LeaderboardPage({
   const rows = (data ?? []) as RankRow[];
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-8">
+    <>
+      <AppNav />
+      <main className="flex flex-1 flex-col px-6 py-8">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">랭킹</h1>
@@ -84,7 +87,8 @@ export default async function LeaderboardPage({
           </ol>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 

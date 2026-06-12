@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PhotoCropper } from "@/components/PhotoCropper";
 import { ensureAuth } from "@/lib/auth-client";
+import { AppNav } from "@/components/AppNav";
 
 type Stage = "consent" | "upload" | "crop" | "generating" | "pick" | "saving";
 
@@ -88,7 +89,9 @@ export default function GeneratePage() {
   };
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-8">
+    <>
+      <AppNav />
+      <main className="flex flex-1 flex-col px-6 py-8">
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
       {stage === "upload" && (
         <UploadStage preview={preview} onFile={handleFile} error={error} />
@@ -105,7 +108,8 @@ export default function GeneratePage() {
         <PickStage results={results} onPick={handlePick} error={error} />
       )}
       {stage === "saving" && <LoadingStage label="저장 중…" />}
-    </main>
+      </main>
+    </>
   );
 }
 
