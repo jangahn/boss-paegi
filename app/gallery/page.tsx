@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
 import { Spinner } from "@/components/Spinner";
 import { AppNav } from "@/components/AppNav";
+import { saveDoll, shareDoll } from "@/lib/doll-share";
 
 type Doll = {
   id: string;
@@ -150,54 +151,143 @@ function DollCard({
   onDelete: () => void;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const flash = (msg: string) => {
+    setActionMsg(msg);
+    setTimeout(() => setActionMsg(null), 1800);
+  };
+
+  const handleShare = async () => {
+    setMenuOpen(false);
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const result = await shareDoll(doll.image_url, doll.id);
+      if (result === "copied") flash("링크 복사됨");
+      else if (result === "failed") flash("공유 실패");
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    setMenuOpen(false);
+    const result = await saveDoll(doll.image_url, doll.id);
+    if (result === "failed") flash("저장 실패");
+  };
 
   return (
-    <div className="group relative aspect-square overflow-hidden rounded-2xl border border-foreground/10">
-      {/* 이미지 로드 전 pulse placeholder */}
-      {!imgLoaded && (
-        <div className="absolute inset-0 animate-pulse bg-foreground/10" />
-      )}
-      <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={doll.image_url}
-          alt=""
-          onLoad={() => setImgLoaded(true)}
-          className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
-            imgLoaded ? "opacity-100" : "opacity-0"
-          }`}
-        />
-      </Link>
-      {/* 삭제 진행 중 — 카드 dim + 스피너 */}
-      {deleting && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[2px]">
-          <Spinner className="h-6 w-6 text-white" />
-          <span className="text-xs font-medium text-white/90">삭제 중...</span>
-        </div>
-      )}
+    // outer 는 overflow 없음 — 드롭다운이 카드 경계 (둥근 모서리 클리핑) 에
+    // 잘리지 않게 이미지 영역과 분리 (작은 폰에서 메뉴가 카드보다 큼)
+    <div className="group relative">
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10">
+        {/* 이미지 로드 전 pulse placeholder */}
+        {!imgLoaded && (
+          <div className="absolute inset-0 animate-pulse bg-foreground/10" />
+        )}
+        <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={doll.image_url}
+            alt=""
+            onLoad={() => setImgLoaded(true)}
+            className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
+              imgLoaded ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        </Link>
+
+        {actionMsg && (
+          <span className="absolute bottom-2 left-2 z-10 rounded-full bg-black/65 px-2.5 py-1 text-[10px] text-white">
+            {actionMsg}
+          </span>
+        )}
+        {sharing && (
+          <span className="absolute bottom-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/65">
+            <Spinner className="h-3.5 w-3.5 text-white" />
+          </span>
+        )}
+
+        {/* 삭제 진행 중 — 카드 dim + 스피너 */}
+        {deleting && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[2px]">
+            <Spinner className="h-6 w-6 text-white" />
+            <span className="text-xs font-medium text-white/90">
+              삭제 중...
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ⋯ 옵션 버튼 — 공유/저장/삭제 메뉴 */}
       <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          onDelete();
+          setMenuOpen((v) => !v);
         }}
         disabled={deleting}
-        aria-label="삭제"
-        className="absolute right-2 top-2 z-10 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur-sm transition hover:bg-red-500/85 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+        aria-label="옵션"
+        className="absolute right-2 top-2 z-20 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-lg font-bold leading-none text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 active:scale-90 disabled:opacity-40"
       >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.4}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14zM10 11v6M14 11v6" />
-        </svg>
+        ⋯
       </button>
+
+      {menuOpen && (
+        <>
+          {/* 바깥 탭으로 닫기 */}
+          <div
+            className="fixed inset-0 z-20"
+            onClick={(e) => {
+              e.preventDefault();
+              setMenuOpen(false);
+            }}
+          />
+          <div className="absolute right-2 top-12 z-30 w-32 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
+            <MenuItem onClick={handleShare}>공유</MenuItem>
+            <MenuItem onClick={handleDownload}>이미지 저장</MenuItem>
+            <MenuItem
+              onClick={() => {
+                setMenuOpen(false);
+                onDelete();
+              }}
+              danger
+            >
+              삭제
+            </MenuItem>
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function MenuItem({
+  onClick,
+  danger = false,
+  children,
+}: {
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`block w-full cursor-pointer touch-manipulation px-4 py-3 text-left text-sm transition hover:bg-foreground/5 ${
+        danger ? "text-red-400" : ""
+      }`}
+    >
+      {children}
+    </button>
   );
 }

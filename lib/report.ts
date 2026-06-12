@@ -66,6 +66,23 @@ export function bossReaction(score: number, seed: string): string {
   return bucket.lines[Math.abs(h) % bucket.lines.length];
 }
 
+/** 인사기록카드 (공유된 인형 페이지) 특이사항 — id 시드 결정적 */
+const DOLL_TRAITS = [
+  "맞을수록 단단해지는 것으로 알려짐",
+  "결재 서류만 보면 언성이 높아짐",
+  "주말 출근을 즐기는 것으로 추정됨",
+  "라떼 토크 무한 보유자",
+  "회식 자리 마이크 독점 이력 다수",
+  "퇴근 5분 전 업무 지시 전문",
+  "본인 아재개그에 본인만 웃음",
+];
+
+export function dollTrait(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return DOLL_TRAITS[Math.abs(h) % DOLL_TRAITS.length];
+}
+
 export function weaponLabel(key: string): string {
   const w = resolveWeapon(key);
   return `${w.emoji} ${w.label}`;
