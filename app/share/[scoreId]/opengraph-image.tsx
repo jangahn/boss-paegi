@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
@@ -7,6 +9,33 @@ export const runtime = "nodejs";
 export const alt = "스트레스 해소 결과 보고서";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+
+/**
+ * 인형 이미지를 data URI 로 — Satori 는 외부 URL <img> 를 자체 fetch 하다
+ * 특정 PNG 에서 조용히 실패함 (영역이 빈 채 렌더). 서버에서 미리 받아 embed.
+ * 커스텀 인형 없으면 기본 부장님 (public/sprites).
+ */
+async function dollDataUri(dollUrl: string | null): Promise<string | null> {
+  try {
+    if (dollUrl) {
+      const r = await fetch(dollUrl, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        const buf = Buffer.from(await r.arrayBuffer());
+        return `data:image/png;base64,${buf.toString("base64")}`;
+      }
+    }
+  } catch {
+    /* 기본 부장님으로 fallback */
+  }
+  try {
+    const buf = await readFile(
+      join(process.cwd(), "public/sprites/boss-default.png")
+    );
+    return `data:image/png;base64,${buf.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
 
 export default async function OgImage({
   params,
@@ -34,7 +63,7 @@ export default async function OgImage({
 
   const name = s?.profiles?.display_name ?? "익명";
   const score = (s?.score ?? 0).toLocaleString();
-  const dollUrl = s?.dolls?.image_url ?? null;
+  const dollSrc = await dollDataUri(s?.dolls?.image_url ?? null);
   const grade = gradeFor(s?.score ?? 0);
   const reaction = s ? bossReaction(s.score, s.id) : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";
@@ -85,17 +114,20 @@ export default async function OgImage({
 
           {/* 본문: 인형 + 정보 */}
           <div style={{ display: "flex", flex: 1, gap: 44, marginTop: 28, alignItems: "center" }}>
-            {dollUrl ? (
+            {dollSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={dollUrl}
+                src={dollSrc}
                 alt=""
-                width="260"
-                height="260"
+                width={260}
+                height={260}
                 style={{
+                  width: 260,
+                  height: 260,
                   borderRadius: 20,
-                  objectFit: "cover",
+                  objectFit: "contain",
                   border: "3px solid #d4d4d8",
+                  backgroundColor: "#f4f4f5",
                 }}
               />
             ) : (

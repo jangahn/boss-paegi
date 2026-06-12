@@ -21,9 +21,17 @@ type Props = {
   onRestart: () => void;
   weapon: string;
   dollId: string | null;
+  /** 보고서에 표시할 인형 이미지 (커스텀 or 기본 부장님) */
+  dollImageUrl?: string;
 };
 
-export function GameOverModal({ open, onRestart, weapon, dollId }: Props) {
+export function GameOverModal({
+  open,
+  onRestart,
+  weapon,
+  dollId,
+  dollImageUrl,
+}: Props) {
   const router = useRouter();
   const score = useGameStore((s) => s.score);
   const maxCombo = useGameStore((s) => s.maxCombo);
@@ -106,8 +114,14 @@ export function GameOverModal({ open, onRestart, weapon, dollId }: Props) {
             </h2>
           </div>
 
-          {/* 결재란 */}
-          <div className="mt-3 flex justify-end">
+          {/* 인형 + 결재란 */}
+          <div className="mt-3 flex items-start justify-between gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={dollImageUrl ?? "/sprites/boss-default.png"}
+              alt="맞은 부장님"
+              className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
+            />
             <table className="border-collapse text-center text-[10px]">
               <tbody>
                 <tr>

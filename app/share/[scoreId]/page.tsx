@@ -106,18 +106,13 @@ export default async function SharePage({
           </div>
 
           <div className="mt-3 flex items-start justify-between gap-3">
-            {score.dolls?.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={score.dolls.image_url}
-                alt="맞은 부장님"
-                className="aspect-square w-24 rounded-xl border border-zinc-300 object-cover"
-              />
-            ) : (
-              <div className="flex aspect-square w-24 items-center justify-center rounded-xl border border-zinc-300 bg-zinc-100 text-4xl">
-                😠
-              </div>
-            )}
+            {/* 커스텀 인형 없으면 기본 부장님 이미지 */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={score.dolls?.image_url ?? "/sprites/boss-default.png"}
+              alt="맞은 부장님"
+              className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
+            />
             <table className="border-collapse text-center text-[10px]">
               <tbody>
                 <tr>
