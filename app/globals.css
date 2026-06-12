@@ -27,3 +27,15 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
+
+/*
+ * 게임 화면용 — 연타/드래그 중 브라우저 기본 인터랙션 전부 차단:
+ * 텍스트 선택, iOS 길게누름 돋보기, 콜아웃 시트(이미지 저장 등), 드래그 시작.
+ */
+.game-surface,
+.game-surface * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}

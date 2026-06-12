@@ -11,10 +11,20 @@ import { Container, Graphics } from "pixi.js";
 export class DrawingLayer extends Container {
   private lastPt: { x: number; y: number } | null = null;
   private isInside: (x: number, y: number) => boolean;
+  /** 비어있음 ↔ 낙서있음 전이 시에만 호출 (React picker 의 펜/지우개 토글용) */
+  private onHasDrawingChange?: (hasDrawing: boolean) => void;
 
-  constructor(isInside: (x: number, y: number) => boolean) {
+  constructor(
+    isInside: (x: number, y: number) => boolean,
+    onHasDrawingChange?: (hasDrawing: boolean) => void
+  ) {
     super();
     this.isInside = isInside;
+    this.onHasDrawingChange = onHasDrawingChange;
+  }
+
+  get hasDrawing(): boolean {
+    return this.children.length > 0;
   }
 
   beginStroke(x: number, y: number) {
@@ -33,6 +43,7 @@ export class DrawingLayer extends Container {
       this.lastPt = { x, y };
       return;
     }
+    const wasEmpty = this.children.length === 0;
     const step = Math.max(1.8, width * 0.7);
     const n = Math.max(1, Math.ceil(dist / step));
     const r = width / 2;
@@ -48,9 +59,21 @@ export class DrawingLayer extends Container {
       this.addChild(g);
     }
     this.lastPt = { x, y };
+    if (wasEmpty && this.children.length > 0) {
+      this.onHasDrawingChange?.(true);
+    }
   }
 
   endStroke() {
     this.lastPt = null;
+  }
+
+  /** 낙서 전체 삭제 — 점수 영향 없음 */
+  clear() {
+    if (this.children.length === 0) return;
+    const removed = this.removeChildren();
+    for (const c of removed) c.destroy();
+    this.lastPt = null;
+    this.onHasDrawingChange?.(false);
   }
 }

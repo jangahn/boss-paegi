@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
 import { SpeechBubble } from "@/components/SpeechBubble";
+import { Spinner } from "@/components/Spinner";
 import { WeaponPicker } from "@/components/WeaponPicker";
 import { useGameStore } from "@/store/gameStore";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +37,10 @@ function PlayInner() {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
+  // 인형/배경 fetch + 게임 init 동안 로딩 오버레이
+  const [gameReady, setGameReady] = useState(false);
+  // 낙서 존재 여부 — picker 의 펜 슬롯이 지우개(🧽)로 토글
+  const [hasDrawing, setHasDrawing] = useState(false);
   const [over, setOver] = useState(false);
   const [taunt, setTaunt] = useState<string | null>(null);
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
@@ -85,19 +90,27 @@ function PlayInner() {
 
       const { createGame } = await import("@/game/BossPaegiGame");
       if (cancelled) return;
-      const created = await createGame(el, {
-        dollTexture,
-        bgTexture,
-        weapon,
-        onHit: ({ strength }) => hit(strength),
-      });
-      // race 안전망: createGame 진행 중 cleanup 됐다면 즉시 destroy
+      const created = await createGame(
+        el,
+        {
+          dollTexture,
+          bgTexture,
+          weapon,
+          onHit: ({ strength, weapon: weaponKey }) => hit(strength, weaponKey),
+          onDrawingChange: setHasDrawing,
+        },
+        () => cancelled
+      );
+      // 취소된 호출은 createGame 이 DOM 안 건드리고 null 반환 (자가 정리)
+      if (!created) return;
+      // race 안전망: createGame 반환 직후 cleanup 됐다면 즉시 destroy
       if (cancelled) {
         created.destroy();
         return;
       }
       myHandle = created;
       gameRef.current = created;
+      setGameReady(true);
 
       // 생성하는 동안 사용자가 바꾼 무기/배경 재적용 (로딩 중 변경은
       // gameRef 가 null 이라 hot-swap effect 에서 조용히 유실됨)
@@ -210,8 +223,17 @@ function PlayInner() {
   };
 
   return (
-    <div className="relative flex flex-1 flex-col bg-zinc-900">
+    <div
+      className="game-surface relative flex flex-1 flex-col bg-zinc-900"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div ref={stageRef} className="flex-1 select-none" />
+      {!gameReady && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
+          <Spinner className="h-8 w-8 text-white/80" />
+          <p className="text-sm text-white/70">부장님 불러오는 중...</p>
+        </div>
+      )}
       <SpeechBubble text={taunt} />
       <ScoreBoard />
       <button
@@ -220,7 +242,12 @@ function PlayInner() {
       >
         그만 패기
       </button>
-      <WeaponPicker active={weapon.key} onChange={setWeapon} />
+      <WeaponPicker
+        active={weapon.key}
+        onChange={setWeapon}
+        hasDrawing={hasDrawing}
+        onClearDrawing={() => gameRef.current?.clearDrawing()}
+      />
       <BgSwitcher active={bgKey} onChange={setBgKey} />
       <GameOverModal
         open={over}

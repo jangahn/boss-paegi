@@ -4,6 +4,8 @@ import { Weapon } from "@/lib/weapons";
 
 export type GameEvents = {
   onHit?: (info: HitInfo) => void;
+  /** 낙서 비어있음 ↔ 있음 전이 시 호출 — picker 의 펜/지우개 토글용 */
+  onDrawingChange?: (hasDrawing: boolean) => void;
 };
 
 export type CreateGameOptions = GameEvents & {
@@ -17,24 +19,39 @@ export type GameHandle = {
   setWeapon: (w: Weapon) => void;
   /** 배경 텍스처만 교체 — 점수/낙서 등 게임 상태 유지 */
   setBackground: (t: Texture) => void;
+  /** 낙서 전체 삭제 — 점수 영향 없음 */
+  clearDrawing: () => void;
 };
 
 /**
  * PixiJS Application 생성 + PlayScene 마운트.
  * 호출자(React) 는 cleanup 시 destroy() 호출, 무기 변경 시 setWeapon().
+ *
+ * @param isCancelled init(비동기) 완료 시점에 이 호출이 이미 취소됐는지.
+ *   StrictMode 더블 마운트에서 늦게 끝난 취소본이 container.replaceChildren 으로
+ *   살아있는 게임의 canvas 를 지워버리는 race 방지 — 취소됐으면 DOM 을 건드리지
+ *   않고 자가 정리 후 null 반환.
  */
 export async function createGame(
   container: HTMLElement,
-  opts: CreateGameOptions = {}
-): Promise<GameHandle> {
+  opts: CreateGameOptions = {},
+  isCancelled?: () => boolean
+): Promise<GameHandle | null> {
+  // resizeTo 는 window resize 이벤트에만 반응해 container 크기 변화를 놓침
+  // (모바일 주소창 수축, 회전 등) → renderer 와 layout 좌표계가 어긋나
+  // 입력 hit-test 가 통째로 빗나감. ResizeObserver 에서 직접 resize 한다.
   const app = new Application();
   await app.init({
     background: 0x111418,
-    resizeTo: container,
     antialias: true,
     resolution: typeof window !== "undefined" ? window.devicePixelRatio : 1,
     autoDensity: true,
   });
+
+  if (isCancelled?.()) {
+    app.destroy(true, { children: true });
+    return null;
+  }
 
   // 이전 게임의 잔존 canvas 가 있다면 모두 제거 (race 안전망)
   container.replaceChildren();
@@ -49,6 +66,7 @@ export async function createGame(
     bgTexture: opts.bgTexture,
     weapon: opts.weapon,
     onHit: opts.onHit,
+    onDrawingChange: opts.onDrawingChange,
   });
   app.stage.addChild(scene);
   // app.screen.width 가 DPR 가산값 반환하는 경우가 있어, container CSS 크기 명시 사용.
@@ -57,6 +75,7 @@ export async function createGame(
     return { w: rect.width, h: rect.height };
   };
   const initial = measure();
+  app.renderer.resize(initial.w, initial.h);
   scene.layout(initial.w, initial.h);
 
   const onTick = (ticker: Ticker) => {
@@ -66,6 +85,8 @@ export async function createGame(
 
   const ro = new ResizeObserver(() => {
     const m = measure();
+    if (m.w <= 0 || m.h <= 0) return;
+    app.renderer.resize(m.w, m.h);
     scene.layout(m.w, m.h);
   });
   ro.observe(container);
@@ -86,5 +107,6 @@ export async function createGame(
     },
     setWeapon: (w: Weapon) => scene.setWeapon(w),
     setBackground: (t: Texture) => scene.setBackground(t),
+    clearDrawing: () => scene.clearDrawing(),
   };
 }

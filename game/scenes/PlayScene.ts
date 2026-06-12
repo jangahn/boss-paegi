@@ -42,6 +42,8 @@ type PlaySceneOptions = {
   bgTexture?: Texture;
   weapon?: Weapon;
   onHit?: (info: HitInfo) => void;
+  /** 낙서 비어있음 ↔ 있음 전이 시 호출 — picker 의 펜/지우개 토글용 */
+  onDrawingChange?: (hasDrawing: boolean) => void;
 };
 
 // fling 으로 전환되는 이동 거리 (stage px)
@@ -114,13 +116,19 @@ export class PlayScene extends Container {
 
     // 낙서 레이어 — 인형 bodyWrap 에 부착. 흔들림/던지기/회전 전부 인형과 함께.
     // 보간 dot 도 실루엣 안만 허용 (빠른 스트로크가 오목 영역을 가로지를 때 잉크 새는 것 방지)
-    this.drawingLayer = new DrawingLayer((x, y) => this.doll.isInsideBody(x, y));
+    this.drawingLayer = new DrawingLayer(
+      (x, y) => this.doll.isInsideBody(x, y),
+      opts.onDrawingChange
+    );
     this.doll.bodyWrap.addChild(this.drawingLayer);
 
     this.fx = new HitEffect();
+    // 이펙트 (이모지/점수팝/파티클) 가 hit-test 를 가로채 연타가 씹히는 것 방지
+    this.fx.eventMode = "none";
     this.addChild(this.fx);
 
     this.projectileLayer = new Container();
+    this.projectileLayer.eventMode = "none";
     this.addChild(this.projectileLayer);
 
     // physics
@@ -156,6 +164,7 @@ export class PlayScene extends Container {
     this.modeHint.anchor.set(0.5, 1);
     this.modeHint.alpha = 0.55;
     this.modeHint.visible = false;
+    this.modeHint.eventMode = "none";
     this.addChild(this.modeHint);
 
     this.on("pointerdown", this.handleStagePointerDown);
@@ -177,6 +186,13 @@ export class PlayScene extends Container {
     if (this.weapon.key === w.key) return;
     this.weapon = w;
     this.updateMode();
+  }
+
+  /** 낙서 전체 삭제 — 점수 영향 없음. 가벼운 쓱싹 사운드만. */
+  clearDrawing() {
+    if (!this.drawingLayer.hasDrawing) return;
+    this.drawingLayer.clear();
+    playHitSound("rustle", 0.7);
   }
 
   /** 배경만 교체 — 게임 상태 (점수/낙서/projectile) 그대로 유지. */
@@ -223,11 +239,18 @@ export class PlayScene extends Container {
     return dx * dx + dy * dy <= r * r;
   }
 
-  // ── doll pointer — tap / fling 통합 ─────────────────────────────────
+  // ── doll pointer — tap / fling ──────────────────────────────────────
   private handleDollPointerDown = (e: FederatedPointerEvent) => {
     unlockAudio();
-    if (this.dollPointerId !== null) return;
-    if (this.mode !== "tap" && this.mode !== "grab") return;
+    if (this.mode === "tap") {
+      // 연타가 생명 — down 즉시 타격, 포인터 잠금 없음 (멀티터치 동시 연타 전부 접수).
+      e.stopPropagation();
+      const local = this.toLocal(e.global);
+      this.executeTap(local.x, local.y);
+      return;
+    }
+    if (this.mode !== "grab") return;
+    if (this.dollPointerId !== null) return; // fling 은 한 손가락만
     e.stopPropagation();
     this.dollPointerId = e.pointerId;
     const local = this.toLocal(e.global);
@@ -236,7 +259,7 @@ export class PlayScene extends Container {
     this.flingActive = false;
     this.flingHistory = [{ x: local.x, y: local.y, t: this.dollDownAt }];
     this.wallState = { L: false, R: false, T: false, B: false };
-    if (this.mode === "grab") this.modeHint.visible = false;
+    this.modeHint.visible = false;
   };
 
   private handleDollPointerMove = (e: FederatedPointerEvent) => {
@@ -309,20 +332,12 @@ export class PlayScene extends Container {
     if (this.dollPointerId === null || e.pointerId !== this.dollPointerId)
       return;
     this.dollPointerId = null;
-    if (this.mode === "tap" || this.mode === "grab") {
+    if (this.mode === "grab") {
       this.modeHint.visible = true;
     }
     const upAt = performance.now();
-    const elapsed = upAt - this.dollDownAt;
     if (!this.flingActive) {
-      // 진짜 탭만: 총 이동거리까지 확인 (경계 밖으로 끌다 놓은 드래그 오발사 방지)
-      const lastPt = this.flingHistory[this.flingHistory.length - 1];
-      const moved = lastPt
-        ? Math.hypot(lastPt.x - this.dollDownPos.x, lastPt.y - this.dollDownPos.y)
-        : 0;
-      if (this.mode === "tap" && elapsed < 350 && moved < FLING_DRAG_THRESHOLD) {
-        this.executeTap(this.dollDownPos.x, this.dollDownPos.y);
-      }
+      // grab 모드에서 threshold 미달로 끝난 짧은 터치 — 아무 일 없음
       return;
     }
     // fling release
@@ -725,7 +740,9 @@ export class PlayScene extends Container {
     this.dollSpring.pointB = { x: anchorX, y: anchorY };
 
     const baseTarget = Math.min(width * 0.75, 420);
-    const targetDoll = this.doll.isSprite ? baseTarget * 1.3 : baseTarget;
+    // AI sprite 는 프레임 안에 캐릭터가 ~60-80% 로 들어가 있어 1.3 boost,
+    // placeholder 는 머리 지름이 곧 전체 폭이라 그대로 두면 AI 보다 커 보임 — 0.8 보정.
+    const targetDoll = this.doll.isSprite ? baseTarget * 1.3 : baseTarget * 0.8;
     this.doll.scale.set(targetDoll / this.doll.naturalSize);
     // 물리 body 반경을 표시 scale 에 동기화 — 안 하면 충돌 판정이
     // 보이는 인형보다 한참 작고 벽 반사도 화면 밖으로 뚫림.

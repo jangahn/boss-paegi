@@ -43,6 +43,7 @@ export class ShootInput {
     this.hint.anchor.set(0.5, 1);
     this.hint.alpha = 0.55;
     this.hint.visible = false;
+    this.hint.eventMode = "none";
     this.stage.addChild(this.gunSprite);
     this.stage.addChild(this.hint);
   }
