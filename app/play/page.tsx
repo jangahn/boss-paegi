@@ -41,6 +41,10 @@ function PlayInner() {
   const [gameReady, setGameReady] = useState(false);
   // 낙서 존재 여부 — picker 의 펜 슬롯이 지우개(🧽)로 토글
   const [hasDrawing, setHasDrawing] = useState(false);
+  // 결과 보고서에 표시할 인형 이미지 (커스텀 or 기본)
+  const [dollImageUrl, setDollImageUrl] = useState<string>(
+    "/sprites/boss-default.png"
+  );
   const [over, setOver] = useState(false);
   const [taunt, setTaunt] = useState<string | null>(null);
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
@@ -82,6 +86,7 @@ function PlayInner() {
             .eq("id", dollId)
             .single();
           if (!data?.image_url) return undefined;
+          setDollImageUrl(data.image_url);
           try {
             return await Assets.load(data.image_url);
           } catch (e) {
@@ -149,6 +154,13 @@ function PlayInner() {
   useEffect(() => {
     gameRef.current?.setWeapon(weapon);
   }, [weapon]);
+
+  // 점수 → 꼬질꼬질 데칼 (zustand subscribe — 리렌더 없이 게임에 전달)
+  useEffect(() => {
+    return useGameStore.subscribe((s) => {
+      gameRef.current?.setDamageScore(s.score);
+    });
+  }, []);
 
   // 배경 전환 — 텍스처만 핫스왑. 게임 상태 (점수/낙서/무기) 그대로.
   // run-once boolean 가드는 StrictMode 더블 effect 에서 깨지므로
@@ -266,6 +278,7 @@ function PlayInner() {
         onRestart={handleRestart}
         weapon={weapon.key}
         dollId={dollId}
+        dollImageUrl={dollImageUrl}
       />
     </div>
   );

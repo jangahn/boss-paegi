@@ -21,6 +21,8 @@ export type GameHandle = {
   setBackground: (t: Texture) => void;
   /** 낙서 전체 삭제 — 점수 영향 없음 */
   clearDrawing: () => void;
+  /** 현재 점수 전달 — 임계 넘으면 인형 꼬질꼬질 데칼 추가, 0 이면 초기화 */
+  setDamageScore: (score: number) => void;
 };
 
 /**
@@ -108,5 +110,6 @@ export async function createGame(
     setWeapon: (w: Weapon) => scene.setWeapon(w),
     setBackground: (t: Texture) => scene.setBackground(t),
     clearDrawing: () => scene.clearDrawing(),
+    setDamageScore: (score: number) => scene.setDamageScore(score),
   };
 }

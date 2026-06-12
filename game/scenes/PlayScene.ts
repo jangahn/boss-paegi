@@ -12,6 +12,7 @@ import { Doll } from "@/game/entities/Doll";
 import { HitEffect } from "@/game/effects/HitEffect";
 import { Projectile } from "@/game/entities/Projectile";
 import { DrawingLayer } from "@/game/entities/DrawingLayer";
+import { DamageLayer } from "@/game/entities/DamageLayer";
 import { PhysicsWorld } from "@/game/physics/PhysicsWorld";
 import { ThrowInput } from "@/game/input/ThrowInput";
 import { SwipeInput } from "@/game/input/SwipeInput";
@@ -68,6 +69,8 @@ export class PlayScene extends Container {
 
   // drawing — doll.bodyWrap 의 child. 인형과 같은 레이어로 함께 움직임.
   private drawingLayer: DrawingLayer;
+  // 점수 누적에 따른 꼬질꼬질 데칼 — 역시 bodyWrap child
+  private damageLayer: DamageLayer;
 
   // input
   private throwInput: ThrowInput;
@@ -111,6 +114,13 @@ export class PlayScene extends Container {
 
     this.doll = new Doll({ texture: opts.dollTexture });
     this.addChild(this.doll);
+
+    // 꼬질꼬질 데칼 — 낙서보다 아래 레이어 (낙서가 항상 위에 보이게)
+    this.damageLayer = new DamageLayer(
+      (x, y) => this.doll.isInsideBody(x, y),
+      this.doll.naturalSize
+    );
+    this.doll.bodyWrap.addChild(this.damageLayer);
 
     // 낙서 레이어 — 인형 bodyWrap 에 부착. 흔들림/던지기/회전 전부 인형과 함께.
     // 보간 dot 도 실루엣 안만 허용 (빠른 스트로크가 오목 영역을 가로지를 때 잉크 새는 것 방지)
@@ -174,6 +184,11 @@ export class PlayScene extends Container {
     if (this.weapon.key === w.key) return;
     this.weapon = w;
     this.updateMode();
+  }
+
+  /** 현재 점수 전달 — 임계 넘으면 인형이 점점 꼬질꼬질해짐. 0 이면 초기화. */
+  setDamageScore(score: number) {
+    this.damageLayer.setScore(score);
   }
 
   /** 낙서 전체 삭제 — 점수 영향 없음. 가벼운 쓱싹 사운드만. */

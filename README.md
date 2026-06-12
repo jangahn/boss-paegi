@@ -154,6 +154,8 @@ v0.7 (2026-06-12, 운영 안전장치·바이럴):
 - **OG 이미지를 결재 보고서 디자인으로**: 문서번호·작성자·점수·판정 등급·부장님 멘트·해소완료 도장·인형 사진 — 카톡/트위터 공유 시 보고서가 그대로 보임
 - **랭킹 익명 버그 수정**: get_leaderboard 가 security invoker 라 RLS 로 타인 닉네임이 null → profiles public read 정책 추가 (migration 0004)
 - 무기 조작 안내를 인형 발치 (PIXI) → **무기 picker 바로 위 (DOM)** 로 이동, PIXI hint 코드 5곳 제거
+- **꼬질꼬질 데미지 데칼** (`DamageLayer`): 점수 임계 (600/1500/3000/5000/8000 — 판정 등급과 동일) 를 넘을 때마다 멍/때/스크래치 데칼을 실루엣 안 랜덤 위치에 추가 (낙서처럼 인형과 함께 움직임). 라운드 리셋 시 초기화. zustand subscribe 로 리렌더 없이 점수 전달. 자연스러움: 멍 = 불규칙 폴리곤 + radial gradient (중심 진함→가장자리 투명), 때 = 가우시안 스프레이 점 군집, 스크래치 = 휜 곡선
+- **OG 인형 이미지 수정**: Satori 가 외부 URL `<img>` 를 자체 fetch 하다 조용히 실패 + attribute width 만으론 크기 미인식 — data URI embed + style 명시로 해결. 커스텀 없으면 기본 부장님 (OG/공유 페이지/결과 보고서 모달 공통)
 - **기본 부장님 교체**: 3D 클레이 스타일 이미지 (`public/sprites/boss-default.png`, 768×1024 누끼 PNG 130KB) — Graphics placeholder 는 텍스처 로드 실패 시 fallback 으로만. 전처리 스크립트 `scripts/prepare-default-boss.mjs` (fal storage 업로드 → birefnet 누끼 → trim → AI 캐릭터 규격 정규화). 코드베이스 정적 자산으로 둔 이유: 전 유저 공통·불변 자산은 Vercel CDN 캐시가 최적, Supabase 대역폭/장애 의존 0
 
 **⚠️ Migration 0004 적용 필요** (`supabase/migrations/0004_quota_balance_rank.sql`):
