@@ -186,9 +186,24 @@ export class PlayScene extends Container {
     this.updateMode();
   }
 
-  /** 현재 점수 전달 — 임계 넘으면 인형이 점점 꼬질꼬질해짐. 0 이면 초기화. */
+  /** 현재 점수 전달 — 1000/10000점 단위로 꼬질꼬질 누적. 0 이면 초기화. */
   setDamageScore(score: number) {
     this.damageLayer.setScore(score);
+  }
+
+  /**
+   * 타격 공통 처리 — 피격 부위 (stage 좌표) 를 bodyWrap local 로 변환해
+   * 데미지 레이어에 기록하고 React 에 점수 콜백.
+   */
+  private reportHit(
+    x: number,
+    y: number,
+    strength: number,
+    weapon: Weapon["key"]
+  ) {
+    const local = this.doll.bodyWrap.toLocal({ x, y }, this);
+    this.damageLayer.noteHit(local.x, local.y);
+    this.onHit?.({ x, y, strength, weapon });
   }
 
   /** 낙서 전체 삭제 — 점수 영향 없음. 가벼운 쓱싹 사운드만. */
@@ -308,12 +323,7 @@ export class PlayScene extends Container {
       this.fx.scorePop(impactX, impactY - 30, points, 0xffd166);
       this.doll.triggerHit(1.4);
       playHitSound("thud");
-      this.onHit?.({
-        x: impactX,
-        y: impactY,
-        strength: points,
-        weapon: this.weapon.key,
-      });
+      this.reportHit(impactX, impactY, points, this.weapon.key);
     };
     if (!this.wallState.L && newL) fire(0, y);
     if (!this.wallState.R && newR) fire(this.viewW, y);
@@ -381,12 +391,12 @@ export class PlayScene extends Container {
         0xef476f
       );
       this.doll.triggerHit(1 + power);
-      this.onHit?.({
-        x: this.dollBody.position.x,
-        y: this.dollBody.position.y,
-        strength: points,
-        weapon: this.weapon.key,
-      });
+      this.reportHit(
+        this.dollBody.position.x,
+        this.dollBody.position.y,
+        points,
+        this.weapon.key
+      );
     }
     this.flingHistory = [];
     this.flingActive = false;
@@ -439,7 +449,7 @@ export class PlayScene extends Container {
       y: (dy / len) * push,
     });
     this.fx.scorePop(x, y - 30, w.strength, w.color);
-    this.onHit?.({ x, y, strength: w.strength, weapon: w.key });
+    this.reportHit(x, y, w.strength, w.key);
   }
 
   // ── swipe (싸대기) ──────────────────────────────────────────────────
@@ -471,7 +481,7 @@ export class PlayScene extends Container {
       x: dirX * 0.012 * factor,
       y: dirY * 0.012 * factor,
     });
-    this.onHit?.({ x, y, strength: points, weapon: weapon.key });
+    this.reportHit(x, y, points, weapon.key);
   };
 
   // ── stage pointer 라우팅 ────────────────────────────────────────────
@@ -584,7 +594,7 @@ export class PlayScene extends Container {
         this.fx.burst(p.x, p.y, w.particleCount, w.color);
         this.fx.scorePop(p.x, p.y - 20, w.strength, w.color);
         playHitSound("pop", 0.9);
-        this.onHit?.({ x: p.x, y: p.y, strength: w.strength, weapon: w.key });
+        this.reportHit(p.x, p.y, w.strength, w.key);
       } else if (!out) {
         continue;
       }
@@ -598,12 +608,12 @@ export class PlayScene extends Container {
   private handleDrawStroke = (length: number, weapon: Weapon) => {
     void length;
     playHitSound("scribble");
-    this.onHit?.({
-      x: this.dollBody.position.x,
-      y: this.dollBody.position.y,
-      strength: weapon.strength,
-      weapon: weapon.key,
-    });
+    this.reportHit(
+      this.dollBody.position.x,
+      this.dollBody.position.y,
+      weapon.strength,
+      weapon.key
+    );
   };
 
   // ── collision (projectile ↔ doll) ──────────────────────────────────
@@ -647,7 +657,7 @@ export class PlayScene extends Container {
       });
     }
     this.fx.scorePop(hx, hy - 30, points, w.color);
-    this.onHit?.({ x: hx, y: hy, strength: points, weapon: w.key });
+    this.reportHit(hx, hy, points, w.key);
   };
 
   update(deltaSec: number) {
