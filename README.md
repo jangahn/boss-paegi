@@ -128,12 +128,31 @@ v0.5 (2026-06-10, 무기 메커니즘 개편):
 - **배경 전환 시 게임 상태 유지**: BgSwitcher 가 navigation 대신 텍스처 핫스왑 (`setBackground`) — 점수/콤보/무기/낙서 전부 유지, URL 은 replaceState 동기화
 - 안정성: PIXI v8 globalpointermove 로 fling 추적 (인형 밖 드래그 추적 유지), touch-action none 유지 (모바일 제스처 하이재킹 방지), DOM pointercancel 안전망, 물리 body 반경 표시 scale 동기화, collisionStart 넉백 setVelocity 임펄스화, fling 중 중력 누적 방지, 게임 생성 중 무기/배경 변경 유실 방지
 - 모바일 fling: drag 중 doll↔벽 충돌 off + 벽 overhang (body 반경 70%) — 좁은 화면에서 인형 body 가 좌우 벽에 끼어 상하로만 움직이던 버그 수정
+- 연타: tap 무기 (주먹/뿅망치) 는 pointerdown 즉시 타격 + 포인터 잠금 없음 — 두 손가락 파바박 연타 전부 접수 (기존엔 단일 포인터 lock + up 판정으로 절반 씹힘)
+- 네이티브 제스처 차단 (`.game-surface`): 게임 화면에서 텍스트 선택 / iOS 길게누름 돋보기 / 콜아웃 시트 / 이미지 드래그 / 컨텍스트 메뉴 차단
+- 로딩 UI: /play 진입 시 "부장님 불러오는 중..." 오버레이, 갤러리 카드 이미지 페이드인 + 삭제 중 카드 dim + 스피너
+- 낙서 지우개: 인형에 낙서가 있으면 picker 의 펜 슬롯이 🧽 로 변함 — 터치하면 낙서 전체 삭제 (점수 무관, 무기 모드 유지), 지워지면 🖊️ 복귀
+- placeholder 인형 크기 0.8× 보정 — 머리 지름이 곧 전체 폭이라 AI 인형 (프레임 내 ~60-80%) 보다 커 보이던 것 균형
+- 게임 생성 race 수정: StrictMode 더블 마운트에서 취소된 생성 호출이 살아있는 게임의 canvas 를 DOM 에서 제거해 입력 전체가 죽던 버그 — createGame 에 isCancelled 체크 추가 (DOM 건드리기 전 자가 정리). renderer 크기도 ResizeObserver 에서 직접 동기화 (resizeTo 는 window resize 만 반응해 모바일 주소창 수축/회전 시 입력 좌표계가 어긋남)
 - 점수 한도 ([lib/score-limits.ts](lib/score-limits.ts), 서버/클라 공유): 콤보 배율 cap 4×, 평균 2000점/sec, 제출 전 클라이언트 클램프 — 정상 플레이에서 score_out_of_range 저장 실패 안 남 (서버 검증은 변조 방어용 유지)
 
+v0.6 (2026-06-12, 네비게이션·닉네임·보고서):
+- **전역 네비게이션** (`AppNav`): 홈/갤러리/랭킹 탭 + 닉네임 표시·수정 버튼. 홈/갤러리/랭킹/생성 페이지 장착 (/play 는 몰입 화면 — 종료 보고서에서 이동 제공)
+- **닉네임**: 기본값 직장인 컨셉 랜덤 ("분노한 사원 3847" 등, migration 0003) + 어디서든 수정 (profiles self-update RLS) → 랭킹/공유 즉시 반영
+- **게임 결과 = 결재 보고서 패러디**: 문서번호·작성자·"해소완료" 도장·항목별 정산 (점수/최대콤보/총타격/주력무기/소요시간/판정등급) + 부장님 피드백 멘트. 등급은 점수 구간별 직급 패러디 (무급 인턴 ~ 전설의 퇴사자)
+- **공유 랜딩 리뉴얼** (/share/[scoreId]): 동일 보고서 포맷 + 커스텀 인형 사진 + "당신의 부장님은 무사하십니까?" 후킹 + CTA 3종. OG 제목도 "[결재완료] 닉네임 — N점 (등급)"
+- scores.max_combo 컬럼 (migration 0003) — 미적용 환경에서도 동작하는 fallback 포함
+- 연타 씹힘 근본 수정: 타격 이펙트 (이모지/점수팝/파티클) 와 hint 텍스트가 PIXI hit-test 를 가로채 같은 자리 빠른 연타가 인형에 닿지 못하던 것 — 이펙트/오버레이 레이어 전부 `eventMode: "none"` (검증: 같은 좌표 40ms 간격 10연타 전부 등록)
+
+**⚠️ Migration 0003 적용 필요** (`supabase/migrations/0003_nickname_and_combo.sql` → Dashboard SQL Editor):
+직장인 닉네임 생성기 + 기존 "익명*" 일괄 변환 + scores.max_combo. 적용 전에도 앱은 동작 (fallback).
+
 다음:
+- **OAuth 로그인**: Supabase 내장 OAuth (Google/Kakao) + `linkIdentity()` 로 익명 계정 승격 (인형/점수/닉네임 유지). 키는 Google Cloud Console / Kakao Developers 에서 발급 → Supabase Dashboard 등록
+- **결제 (생성권)**: AI 캐릭터 생성권 구매 모델. ai_generations 기반 쿼터 확장 + credits 테이블 추가 예정
 - 도메인 연결 (bosspaegi.com 등)
-- 소셜 가입 (카카오/구글) 으로 anonymous → permanent 업그레이드
 - 서비스 워커 (오프라인 캐싱) — Lighthouse "installable" full pass
+- 보고서 OG 이미지를 결재 보고서 디자인으로 (현재는 기존 포맷)
 
 ## 비용 (MVP 단계)
 

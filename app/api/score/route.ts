@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     weapon?: string;
     durationMs?: number;
     dollId?: string | null;
+    maxCombo?: number;
   } | null;
 
   if (
@@ -47,17 +48,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_weapon" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const maxCombo =
+    typeof body.maxCombo === "number"
+      ? Math.min(Math.max(0, Math.round(body.maxCombo)), 99999)
+      : 0;
+
+  const baseRow = {
+    owner_id: user.id,
+    doll_id: body.dollId ?? null,
+    score: body.score,
+    weapon: body.weapon,
+    duration_ms: Math.round(body.durationMs),
+  };
+
+  let { data, error } = await supabase
     .from("scores")
-    .insert({
-      owner_id: user.id,
-      doll_id: body.dollId ?? null,
-      score: body.score,
-      weapon: body.weapon,
-      duration_ms: Math.round(body.durationMs),
-    })
+    .insert({ ...baseRow, max_combo: maxCombo })
     .select("id")
     .single();
+
+  // migration 0003 (max_combo 컬럼) 미적용 환경 fallback — 점수 저장은 항상 성공해야
+  if (error && error.message.includes("max_combo")) {
+    ({ data, error } = await supabase
+      .from("scores")
+      .insert(baseRow)
+      .select("id")
+      .single());
+  }
 
   if (error || !data) {
     return NextResponse.json(
