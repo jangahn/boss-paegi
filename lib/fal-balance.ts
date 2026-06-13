@@ -1,4 +1,5 @@
 import "server-only";
+import { log, errInfo } from "@/lib/log";
 
 /**
  * fal.ai 계정 잔액 hard cap.
@@ -37,7 +38,7 @@ export async function checkFalBalance(): Promise<BalanceCheck> {
       }
     );
     if (!res.ok) {
-      console.warn("[fal-balance] billing API", res.status, "— 체크 skip");
+      log.warn("falbal.api_error", { status: res.status });
       return { ok: true, balance: null };
     }
     const data = (await res.json()) as {
@@ -45,17 +46,18 @@ export async function checkFalBalance(): Promise<BalanceCheck> {
     };
     const balance = data.credits?.current_balance;
     if (typeof balance !== "number") {
-      console.warn("[fal-balance] 응답에 잔액 없음 — 체크 skip");
+      log.warn("falbal.no_balance_field", {});
       return { ok: true, balance: null };
     }
     cached = { balance, at: now };
     if (balance < HARD_CAP_USD) {
-      console.warn(`[fal-balance] 잔액 $${balance} < $${HARD_CAP_USD} — 생성 차단`);
+      log.warn("falbal.hard_cap_hit", { balance, cap: HARD_CAP_USD });
       return { ok: false, balance };
     }
+    log.info("falbal.ok", { balance });
     return { ok: true, balance };
   } catch (e) {
-    console.warn("[fal-balance] 조회 실패 — 체크 skip:", e);
+    log.warn("falbal.check_fail", errInfo(e));
     return { ok: true, balance: null };
   }
 }

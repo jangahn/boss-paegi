@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { shareGameResult } from "@/lib/share";
 import { clampForSubmit } from "@/lib/score-limits";
+import { log, errInfo } from "@/lib/log";
 import {
   bossReaction,
   formatDuration,
@@ -78,7 +79,13 @@ export function GameOverModal({
         if (!r.ok) throw new Error(data.error ?? "submit_failed");
         setScoreId(data.scoreId);
       })
-      .catch((e) => setSubmitError(e.message))
+      .catch((e) => {
+        log.warn("score.client_submit_fail", {
+          score: clamped.score,
+          ...errInfo(e),
+        });
+        setSubmitError(e.message);
+      })
       .finally(() => setSubmitting(false));
   }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo]);
 

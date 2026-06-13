@@ -5,6 +5,7 @@ import {
   MAX_DURATION_MS,
   scoreCeiling,
 } from "@/lib/score-limits";
+import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -39,6 +40,14 @@ export async function POST(req: NextRequest) {
   // (클라이언트가 같은 공식으로 제출 전 클램프 — 정상 플레이는 여기 안 걸림)
   const ceiling = scoreCeiling(body.durationMs);
   if (body.score < 0 || body.score > ceiling) {
+    // 클라가 클램프하므로 여기 걸리면 비정상(치팅 의심 또는 클램프 버그) — 추적
+    log.warn("score.out_of_range", {
+      userId: user.id,
+      score: body.score,
+      ceiling,
+      durationMs: body.durationMs,
+      weapon: body.weapon,
+    });
     return NextResponse.json(
       { error: "score_out_of_range", ceiling },
       { status: 400 }
@@ -69,6 +78,7 @@ export async function POST(req: NextRequest) {
 
   // migration 0003 (max_combo 컬럼) 미적용 환경 fallback — 점수 저장은 항상 성공해야
   if (error && error.message.includes("max_combo")) {
+    log.warn("score.maxcombo_col_missing", { userId: user.id });
     ({ data, error } = await supabase
       .from("scores")
       .insert(baseRow)
@@ -77,10 +87,25 @@ export async function POST(req: NextRequest) {
   }
 
   if (error || !data) {
+    log.error("score.insert_fail", {
+      userId: user.id,
+      score: body.score,
+      ...errInfo(error),
+    });
     return NextResponse.json(
       { error: "insert_failed", detail: error?.message },
       { status: 500 }
     );
   }
+
+  log.info("score.save_success", {
+    userId: user.id,
+    scoreId: data.id,
+    score: body.score,
+    maxCombo,
+    weapon: body.weapon,
+    durationMs: Math.round(body.durationMs),
+    hasDoll: !!body.dollId,
+  });
   return NextResponse.json({ scoreId: data.id });
 }

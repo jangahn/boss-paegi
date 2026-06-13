@@ -14,6 +14,7 @@ import { randomTaunt } from "@/lib/taunts";
 import { BACKGROUNDS, resolveBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon } from "@/lib/weapons";
 import { unlockAudio } from "@/lib/sound";
+import { log, errInfo } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
 
 const TAUNT_INITIAL_DELAY_MS = 1500;
@@ -79,7 +80,7 @@ function PlayInner() {
             try {
               return await Assets.load("/sprites/boss-default.png");
             } catch (e) {
-              console.warn("[play] default boss texture load failed:", e);
+              log.warn("play.default_texture_fail", errInfo(e));
               return undefined;
             }
           }
@@ -94,12 +95,12 @@ function PlayInner() {
           try {
             return await Assets.load(data.image_url);
           } catch (e) {
-            console.warn("[play] doll texture load failed:", e);
+            log.warn("play.doll_texture_fail", { dollId, ...errInfo(e) });
             return undefined;
           }
         })(),
         Assets.load(initialBgUrlRef.current!).catch((e) => {
-          console.warn("[play] bg texture load failed:", e);
+          log.warn("play.bg_texture_fail", errInfo(e));
           return undefined;
         }),
       ]);
@@ -129,6 +130,7 @@ function PlayInner() {
       myHandle = created;
       gameRef.current = created;
       setGameReady(true);
+      log.info("play.game_ready", { dollId: dollId ?? "default" });
 
       // 생성하는 동안 사용자가 바꾼 무기/배경 재적용 (로딩 중 변경은
       // gameRef 가 null 이라 hot-swap effect 에서 조용히 유실됨)
@@ -143,7 +145,10 @@ function PlayInner() {
           })
           .catch(() => {});
       }
-    })();
+    })().catch((e) => {
+      // 게임 init 자체 실패 — 로딩 화면이 안 풀림. 반드시 추적
+      log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
+    });
 
     return () => {
       cancelled = true;

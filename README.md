@@ -50,6 +50,7 @@ boss-paegi/
 │   ├── supabase/           #   client.ts / server.ts
 │   ├── fal.ts              #   fal.ai 호출 + 프롬프트 빌더
 │   ├── policy.ts           #   동의 문구 / 면책 상수
+│   ├── log.ts              #   구조화 JSON 로깅 (Sentry 스왑 지점 / 토큰 스크럽)
 │   └── share.ts            #   Web Share / OG helper
 ├── components/             # React UI
 ├── store/                  # Zustand stores
