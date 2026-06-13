@@ -16,13 +16,15 @@ fal.config({ credentials: SERVER_ENV.FAL_KEY });
  * - 우리 부장님 캐릭터 컨셉을 prompt 에 박아둠
  */
 
-// 캐릭터 묘사 — chibi 부장님 컨셉을 매번 동일하게 강제하기 위한 자세한 prompt.
-const CHARACTER_PROMPT = [
+// 캐릭터 묘사 — 의류 줄을 기준으로 head/tail 분리. 정장 "색"은 고정하지 않고
+// 후보마다 팔레트에서 주입(buildPrompt) → 색 베리에이션 확보. 의류 타입·컨셉은 고정.
+const CHARACTER_PROMPT_HEAD = [
   "A full body chibi character of a Korean office boss,",
   "standing front-facing pose, full body visible from head to feet,",
   "round large head with chibi super-deformed proportions, short body and limbs,",
-  "wearing dark navy blue business suit jacket, white dress shirt, dark blue necktie,",
-  "dark trousers with belt, black dress shoes,",
+].join(" ");
+
+const CHARACTER_PROMPT_TAIL = [
   "slightly grumpy stern facial expression, rosy cheeks,",
   "soft plush fabric doll material texture, felt-like surface,",
   "plain pure white background, no scene, no objects, no shadows on background,",
@@ -34,13 +36,30 @@ const CHARACTER_PROMPT = [
   "1:1 square aspect ratio, centered composition.",
 ].join(" ");
 
+// 오피스 톤 정장 색 팔레트(garish 회피). 생성마다 셔플 → 후보 수만큼 distinct.
+const SUIT_COLORS = [
+  "charcoal grey",
+  "navy blue",
+  "dark brown",
+  "slate blue",
+  "burgundy",
+  "forest green",
+  "tan beige",
+  "light grey",
+  "black",
+];
+function pickSuitColors(n: number): string[] {
+  return [...SUIT_COLORS].sort(() => Math.random() - 0.5).slice(0, n);
+}
+
 // 사용자 face 의 identity 만 추출 강조 — 보존할 attribute 명시.
 const IDENTITY_INSTRUCTION = [
   "Use the reference face with HIGH identity fidelity:",
   "preserve exact eye shape, eyelid type, eye spacing, eyebrow thickness and angle,",
   "nose bridge height, nose tip shape, lip shape, jaw width, cheekbone prominence,",
   "face roundness, skin tone, ethnicity, age appearance.",
-  "The character face must be clearly recognizable as the reference person,",
+  "The character face must be strongly and clearly recognizable as the SAME specific reference person,",
+  "keeping their distinctive unique facial features and proportions intact,",
   "reinterpreted in the plush chibi office boss style described above.",
 ].join(" ");
 
@@ -75,9 +94,13 @@ export class FluxPulidProvider implements CharacterProvider {
   async generate(input: CharacterGenInput): Promise<CharacterGenResult> {
     const t0 = Date.now();
     const num = input.numImages ?? 3;
-    const prompt = `${CHARACTER_PROMPT} ${IDENTITY_INSTRUCTION}${
-      input.promptHints ? ` Additional: ${input.promptHints}.` : ""
-    }`;
+
+    // 후보마다 다른 정장색 주입 → 색 베리에이션. 의류 타입·컨셉·identity 지시는 공통.
+    const buildPrompt = (suitColor: string) =>
+      `${CHARACTER_PROMPT_HEAD} wearing a ${suitColor} business suit jacket, ` +
+      `dress shirt, necktie, dress trousers with belt, dress shoes, ` +
+      `${CHARACTER_PROMPT_TAIL} ${IDENTITY_INSTRUCTION}` +
+      `${input.promptHints ? ` Additional: ${input.promptHints}.` : ""}`;
 
     // 병렬 호출 전체에 공유 타임아웃 — 하나라도 48s 넘기면 그 호출만 abort.
     const abortSignal = AbortSignal.timeout(GENERATE_TIMEOUT_MS);
@@ -85,17 +108,21 @@ export class FluxPulidProvider implements CharacterProvider {
     // allSettled: 1개가 abort/실패해도 나머지 완성본은 살린다.
     // (Promise.all 은 1개 reject 시 전체를 버려 — 큐 혼잡 시 멀쩡한 후보까지 손실)
     const settled = await Promise.allSettled(
-      Array.from({ length: num }, () =>
+      pickSuitColors(num).map((suitColor) =>
         fal.subscribe("fal-ai/flux-pulid", {
           input: {
-            prompt,
+            prompt: buildPrompt(suitColor),
             reference_image_url: input.faceImageUrl,
             image_size: "square_hd",
-            // 화질 ↑ — steps 28 → 35, guidance 4 → 6 으로 prompt 더 엄격히 따름
-            num_inference_steps: 35,
-            guidance_scale: 6,
+            // 닮음도 ↑ — fal 은 id_weight 를 ≤1 로 제한(이미 최대)이라 못 올림.
+            // 남은 레버: true_cfg 1→2(스타일화 씬 identity 융합 + negative_prompt 실효화),
+            // guidance 6→5(identity 토큰 여지). true_cfg 2 는 CFG 2-pass 라 느려
+            // steps 35→28 로 상쇄(60s 한도/48s abort 여유). 레퍼런스 화질(crop 게이트)이
+            // 닮음도의 최대 동력.
+            num_inference_steps: 28,
+            guidance_scale: 5,
             negative_prompt: NEGATIVE_PROMPT,
-            true_cfg: 1,
+            true_cfg: 2,
             id_weight: 1,
             // flux-pulid 전용 필드(true_cfg/id_weight)는 SDK 입력 타입에 없어 캐스팅
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
