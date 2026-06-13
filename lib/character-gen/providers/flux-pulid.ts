@@ -62,6 +62,12 @@ type PulidResponse = {
 
 const COST_CENTS_PER_IMAGE = 4; // ~$0.033/MP × 1MP
 
+// flux-pulid 는 호출당 1장(num_images 무시) → 후보 수만큼 병렬 호출.
+// 실측(2026-06): 단일 ~15s, 3장 병렬 ~29s(계정 동시성에 throttle), 혼잡 시 더 김.
+// Vercel maxDuration=60 강제 종료 전에 깔끔히 실패하도록 abort 가드를 둔다.
+// 48s 에서 끊으면 이후 후보 복사·응답까지 60s 안에 끝낼 여유(~12s) 가 남는다.
+const GENERATE_TIMEOUT_MS = 48_000;
+
 export class FluxPulidProvider implements CharacterProvider {
   readonly name = "flux-pulid";
   readonly supportsTemplate = false;
@@ -73,10 +79,14 @@ export class FluxPulidProvider implements CharacterProvider {
       input.promptHints ? ` Additional: ${input.promptHints}.` : ""
     }`;
 
-    const calls = await Promise.all(
+    // 병렬 호출 전체에 공유 타임아웃 — 하나라도 48s 넘기면 그 호출만 abort.
+    const abortSignal = AbortSignal.timeout(GENERATE_TIMEOUT_MS);
+
+    // allSettled: 1개가 abort/실패해도 나머지 완성본은 살린다.
+    // (Promise.all 은 1개 reject 시 전체를 버려 — 큐 혼잡 시 멀쩡한 후보까지 손실)
+    const settled = await Promise.allSettled(
       Array.from({ length: num }, () =>
         fal.subscribe("fal-ai/flux-pulid", {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           input: {
             prompt,
             reference_image_url: input.faceImageUrl,
@@ -87,25 +97,51 @@ export class FluxPulidProvider implements CharacterProvider {
             negative_prompt: NEGATIVE_PROMPT,
             true_cfg: 1,
             id_weight: 1,
+            // flux-pulid 전용 필드(true_cfg/id_weight)는 SDK 입력 타입에 없어 캐스팅
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
           pollInterval: 1500,
+          abortSignal,
+          // 큐 등록 즉시 request_id 보고 → 라우트가 row 에 저장(복구용)
+          onEnqueue: (requestId) => input.onEnqueue?.(requestId),
         })
       )
     );
 
-    const images = calls.flatMap((r) => {
-      const data = r.data as PulidResponse;
-      return (data.images ?? []).map((i) => ({
-        url: i.url,
-        width: i.width ?? 1024,
-        height: i.height ?? 1024,
-      }));
-    });
+    const images = settled
+      .filter((r) => r.status === "fulfilled")
+      .flatMap((r) => {
+        const data = (r as PromiseFulfilledResult<{ data: PulidResponse }>)
+          .value.data;
+        return (data.images ?? []).map((i) => ({
+          url: i.url,
+          width: i.width ?? 1024,
+          height: i.height ?? 1024,
+        }));
+      });
+
+    if (images.length === 0) {
+      // 전부 실패 — abort(timeout) 였는지 보존해 라우트가 분류·안내하게 한다.
+      const reasons = settled.flatMap((r) =>
+        r.status === "rejected" ? [r.reason] : []
+      );
+      const timedOut = reasons.some(
+        (e) => e?.name === "TimeoutError" || e?.name === "AbortError"
+      );
+      const err = new Error(
+        timedOut
+          ? "generation timed out"
+          : reasons[0]?.message ?? "all generations failed"
+      );
+      if (timedOut) err.name = "TimeoutError";
+      throw err;
+    }
 
     return {
       images,
       provider: this.name,
-      costCents: COST_CENTS_PER_IMAGE * num,
+      // 실제 완성된 장수만 과금 (부분 성공 시 적게)
+      costCents: COST_CENTS_PER_IMAGE * images.length,
       durationMs: Date.now() - t0,
     };
   }

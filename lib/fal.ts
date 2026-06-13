@@ -78,6 +78,8 @@ export async function removeBackground(imageUrl: string): Promise<string> {
   const result = await fal.subscribe("fal-ai/birefnet", {
     input: { image_url: imageUrl },
     pollInterval: 1000,
+    // birefnet 은 실측 ~2s. doll 라우트 maxDuration=30 안에서 hang 방지 가드.
+    abortSignal: AbortSignal.timeout(20_000),
   });
   const data = result.data as BirefnetResponse;
   return data.image.url;

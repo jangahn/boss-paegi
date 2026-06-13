@@ -7,8 +7,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /** dolls 버킷 재사용 — 확정 인형 + 생성 후보 모두 여기에 */
 export const DOLLS_BUCKET = "dolls";
 
-/** 생성 중(queued)인데 이만큼 지나면 끊긴 것으로 간주 (생성 함수 ~60s) */
-export const QUEUED_STALE_MS = 5 * 60 * 1000;
+/**
+ * queued 인데 이만큼 지나도 안 끝나면 "중단됨"으로 노출.
+ * 30분 — 그 안에는 저장된 fal request_id 로 결과를 복구 시도하므로,
+ * fal 이 늦게라도 끝나면 ready 로 살아난다. (복구: lib/generation-recovery.ts)
+ */
+export const QUEUED_STALE_MS = 30 * 60 * 1000;
+
+/**
+ * queued 가 이 시간 이상이면 동기 생성 함수는 이미 죽은(또는 끝난) 것으로 보고
+ * fal 에 결과를 직접 물어 복구를 시도한다. 그 전에는 라이브 함수가 처리 중이라
+ * 보고 폴링과의 충돌(중복 복사)을 피한다. (생성 함수 maxDuration=60s)
+ */
+export const QUEUED_RECOVER_AFTER_MS = 60 * 1000;
 
 /** 안 고르고 방치된 후보(done 미선택) 자동 정리 기간 */
 export const CANDIDATE_TTL_MS = 24 * 60 * 60 * 1000;

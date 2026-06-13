@@ -7,6 +7,11 @@ export type CharacterGenInput = {
   promptHints?: string;
   /** 생성 후보 수 (기본 3) */
   numImages?: number;
+  /**
+   * fal 큐에 요청이 등록될 때마다 호출 (request_id 1개씩).
+   * 라우트가 이 id 를 row 에 즉시 저장 → 함수가 죽어도 나중에 복구 가능.
+   */
+  onEnqueue?: (requestId: string) => void;
 };
 
 export type GeneratedImage = {
