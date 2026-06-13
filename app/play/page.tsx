@@ -7,6 +7,7 @@ import { GameOverModal } from "@/components/GameOverModal";
 import { SpeechBubble } from "@/components/SpeechBubble";
 import { Spinner } from "@/components/Spinner";
 import { WeaponPicker } from "@/components/WeaponPicker";
+import { UltimateButton } from "@/components/UltimateButton";
 import { useGameStore } from "@/store/gameStore";
 import { createClient } from "@/lib/supabase/client";
 import { randomTaunt } from "@/lib/taunts";
@@ -45,6 +46,8 @@ function PlayInner() {
   const [dollImageUrl, setDollImageUrl] = useState<string>(
     "/sprites/boss-default.png"
   );
+  // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
+  const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
   const [taunt, setTaunt] = useState<string | null>(null);
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
@@ -56,6 +59,7 @@ function PlayInner() {
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
+  const consumeUlt = useGameStore((s) => s.consumeUlt);
 
   useEffect(() => {
     start();
@@ -109,7 +113,8 @@ function PlayInner() {
           dollTexture,
           bgTexture,
           weapon,
-          onHit: ({ strength, weapon: weaponKey }) => hit(strength, weaponKey),
+          onHit: ({ strength, weapon: weaponKey, chargeUlt }) =>
+            hit(strength, weaponKey, chargeUlt),
           onDrawingChange: setHasDrawing,
         },
         () => cancelled
@@ -155,12 +160,19 @@ function PlayInner() {
     gameRef.current?.setWeapon(weapon);
   }, [weapon]);
 
-  // 점수 → 꼬질꼬질 데칼 (zustand subscribe — 리렌더 없이 게임에 전달)
+  // 점수 → 꼬질꼬질 데칼 + 궁극기 게이지 상태 (zustand subscribe)
   useEffect(() => {
     return useGameStore.subscribe((s) => {
       gameRef.current?.setDamageScore(s.score);
+      setUltReady(s.ultReady);
     });
   }, []);
+
+  const handleUltimate = () => {
+    if (!useGameStore.getState().ultReady) return;
+    gameRef.current?.triggerUltimate();
+    consumeUlt();
+  };
 
   // 배경 전환 — 텍스처만 핫스왑. 게임 상태 (점수/낙서/무기) 그대로.
   // run-once boolean 가드는 StrictMode 더블 effect 에서 깨지므로
@@ -211,7 +223,8 @@ function PlayInner() {
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
     const show = () => {
-      const t = randomTaunt(lastTaunt);
+      // 현재 점수대에 맞는 톤의 시비 멘트 (초반 무시 → 후반 굴복)
+      const t = randomTaunt(lastTaunt, useGameStore.getState().score);
       lastTaunt = t;
       setTaunt(t);
       hideTimer = setTimeout(() => setTaunt(null), TAUNT_VISIBLE_MS);
@@ -228,6 +241,8 @@ function PlayInner() {
   }, [over]);
 
   const handleEnd = () => {
+    // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
+    gameRef.current?.stopUltimate();
     const currentScore = useGameStore.getState().score;
     end();
     if (currentScore <= 0) {
@@ -262,10 +277,13 @@ function PlayInner() {
       >
         그만 패기
       </button>
-      {/* 무기 조작 안내 — picker 바로 위 */}
-      <p className="pointer-events-none absolute bottom-[5.75rem] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap text-xs text-white/65 drop-shadow sm:bottom-28 sm:text-sm">
-        {weapon.hint}
-      </p>
+      {/* 무기 조작 안내 — picker 바로 위. 반투명 캡슐로 배경 무관 가독 */}
+      <div className="pointer-events-none absolute bottom-[5.75rem] left-1/2 z-10 -translate-x-1/2 sm:bottom-28">
+        <span className="whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm sm:text-sm">
+          {weapon.hint}
+        </span>
+      </div>
+      <UltimateButton ready={ultReady} onFire={handleUltimate} />
       <WeaponPicker
         active={weapon.key}
         onChange={setWeapon}

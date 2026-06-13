@@ -42,6 +42,13 @@ type EmojiPop = {
   swing: boolean;
 };
 
+type Flash = {
+  g: Graphics;
+  life: number;
+  ttl: number;
+  peak: number;
+};
+
 const DEFAULT_COLORS = [0xffd166, 0xef476f, 0xff9f1c, 0xfdf6e3];
 
 /**
@@ -53,6 +60,16 @@ export class HitEffect extends Container {
   private scorePops: ScorePop[] = [];
   private paperPieces: PaperPiece[] = [];
   private emojiPops: EmojiPop[] = [];
+  private flashes: Flash[] = [];
+
+  /** 화면 전체 플래시 — 궁극기 마무리 등 임팩트용 (좌표 0,0 ~ viewW,viewH) */
+  flash(viewW: number, viewH: number, color = 0xffffff, peak = 0.7, ttl = 0.4) {
+    const g = new Graphics();
+    g.rect(0, 0, viewW, viewH).fill(color);
+    g.alpha = peak;
+    this.addChild(g);
+    this.flashes.push({ g, life: 0, ttl, peak });
+  }
 
   burst(x: number, y: number, count = 10, baseColor?: number) {
     const palette = baseColor !== undefined
@@ -242,6 +259,19 @@ export class HitEffect extends Container {
       p.g.y += p.vy * deltaSec;
       p.g.rotation += p.spin * deltaSec;
       p.g.alpha = 1 - t * t;
+    }
+
+    for (let i = this.flashes.length - 1; i >= 0; i--) {
+      const f = this.flashes[i];
+      f.life += deltaSec;
+      const t = f.life / f.ttl;
+      if (t >= 1) {
+        this.removeChild(f.g);
+        f.g.destroy();
+        this.flashes.splice(i, 1);
+        continue;
+      }
+      f.g.alpha = f.peak * (1 - t);
     }
   }
 }

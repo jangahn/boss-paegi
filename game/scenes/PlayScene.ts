@@ -35,7 +35,15 @@ export type HitInfo = {
   y: number;
   strength: number;
   weapon: Weapon["key"];
+  /** false 면 점수만 (궁극기 게이지 충전 제외 — 난타 중 타격) */
+  chargeUlt?: boolean;
 };
+
+// 궁극기 난사타 지속/간격
+const ULT_DURATION_SEC = 3.9;
+const ULT_BLOW_INTERVAL = 0.085;
+// 궁극기 중 인형을 마구 내던지는 간격 + 임펄스 세기 (px/step)
+const ULT_THROW_INTERVAL = 0.4;
 
 type PlaySceneOptions = {
   app: Application;
@@ -99,6 +107,13 @@ export class PlayScene extends Container {
   // viewport memo
   private viewW = 0;
   private viewH = 0;
+
+  // 궁극기 난사타 상태
+  private ultActive = false;
+  private ultTimer = 0;
+  private ultBlowAccum = 0;
+  private ultThrowAccum = 0;
+  private ultShake = 0;
 
   constructor(opts: PlaySceneOptions) {
     super();
@@ -209,11 +224,100 @@ export class PlayScene extends Container {
     x: number,
     y: number,
     strength: number,
-    weapon: Weapon["key"]
+    weapon: Weapon["key"],
+    charge = true
   ) {
     const local = this.doll.bodyWrap.toLocal({ x, y }, this);
     this.damageLayer.noteHit(local.x, local.y);
-    this.onHit?.({ x, y, strength, weapon });
+    // 궁극기 연출 중 어떤 타격(난타·비행 중이던 투척물/비비탄 명중 포함)도
+    // 게이지를 재충전하지 않음 — ultActive 면 charge 강제 false.
+    this.onHit?.({ x, y, strength, weapon, chargeUlt: charge && !this.ultActive });
+  }
+
+  /** 게임 종료/중단 시 궁극기 난타 즉시 정지 + 화면 흔들림 복원 */
+  stopUltimate() {
+    if (!this.ultActive && this.ultShake <= 0.3) return;
+    const wasActive = this.ultActive;
+    this.ultActive = false;
+    this.ultTimer = 0;
+    this.ultShake = 0;
+    this.position.set(0, 0);
+    if (wasActive) this.restoreDollAfterUlt();
+  }
+
+  /** 궁극기 발동 — 난사타 연출 시작. 진행 중엔 입력 차단. */
+  triggerUltimate() {
+    if (this.ultActive) return;
+    // 진행 중이던 드래그/연사 정리 후 난타 시작
+    this.cancelActivePointers();
+    this.ultActive = true;
+    this.ultTimer = ULT_DURATION_SEC;
+    this.ultBlowAccum = 0;
+    this.ultThrowAccum = ULT_THROW_INTERVAL; // 첫 던지기 즉시
+    this.ultShake = 22;
+    // 인형을 멀리 날려보내려 스프링을 약하게 (난타 동안 자유롭게 휘저음)
+    this.dollSpring.stiffness = 0.02;
+    this.dollBody.collisionFilter.mask = 0x0001 | 0x0008; // 벽 튕김 유지
+    playHitSound("whoosh", 1.3);
+  }
+
+  /** 궁극기 중 인형을 랜덤 방향으로 내던짐 (벽에 튕기며 화면을 휘젓다 복귀) */
+  private ultThrow() {
+    const sp = 20 + Math.random() * 16;
+    const a = Math.random() * Math.PI * 2;
+    Body.setVelocity(this.dollBody, { x: Math.cos(a) * sp, y: Math.sin(a) * sp });
+    Body.setAngularVelocity(this.dollBody, (Math.random() - 0.5) * 0.7);
+    playHitSound("whoosh", 0.8);
+  }
+
+  /** 난사타 1발 — 랜덤 무기로 인형 실루엣 내 랜덤 위치 타격 (게이지 재충전 X) */
+  private ultBlow() {
+    const w = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+    const r = this.doll.naturalSize * 0.45 * (this.doll.scale.x || 1);
+    const ang = Math.random() * Math.PI * 2;
+    const rad = Math.random() * r;
+    const x = this.doll.x + Math.cos(ang) * rad;
+    const y = this.doll.y + Math.sin(ang) * rad;
+
+    this.doll.triggerHit(2.2);
+    this.fx.burst(x, y, w.particleCount * 2, w.color);
+    this.fx.shockwave(x, y, 18, 120, w.color);
+    if (Math.random() < 0.55) {
+      this.fx.emojiPop(x, y, w.emoji, { size: 50, swing: w.key === "hammer" });
+    }
+    playHitSound(w.sound, 1.0);
+    // 난타 한 타격당 점수 — 기존(40~85)의 절반 수준
+    const pts = 20 + Math.floor(Math.random() * 22);
+    this.fx.scorePop(x, y - 20, pts, w.color);
+    this.reportHit(x, y, pts, w.key, false);
+  }
+
+  /** 난사타 마무리 — 큰 임팩트 + 화면 플래시 */
+  private ultFinish() {
+    const cx = this.doll.x;
+    const cy = this.doll.y;
+    for (let i = 0; i < 3; i++) {
+      this.fx.shockwave(cx, cy, 30, 200 + i * 70, i === 0 ? 0xffd166 : 0xef476f);
+    }
+    this.fx.burst(cx, cy, 48, 0xef476f);
+    this.fx.flash(this.viewW, this.viewH, 0xffffff, 0.75, 0.45);
+    this.doll.triggerHit(3);
+    playHitSound("thud", 1.4);
+    this.position.set(0, 0);
+    this.ultShake = 0;
+    this.restoreDollAfterUlt();
+  }
+
+  /** 궁극기 종료 — 스프링 복원 + 인형 anchor 즉시 복귀 (던져진 상태 정리) */
+  private restoreDollAfterUlt() {
+    this.dollSpring.stiffness = 0.06;
+    Body.setPosition(this.dollBody, {
+      x: this.viewW / 2,
+      y: this.viewH * 0.55,
+    });
+    Body.setVelocity(this.dollBody, { x: 0, y: 0 });
+    Body.setAngularVelocity(this.dollBody, 0);
+    Body.setAngle(this.dollBody, 0);
   }
 
   /** 낙서 전체 삭제 — 점수 영향 없음. 가벼운 쓱싹 사운드만. */
@@ -261,6 +365,7 @@ export class PlayScene extends Container {
 
   // ── doll pointer — tap / fling ──────────────────────────────────────
   private handleDollPointerDown = (e: FederatedPointerEvent) => {
+    if (this.ultActive) return; // 궁극기 연출 중 입력 차단
     unlockAudio();
     if (this.mode === "tap") {
       // 연타가 생명 — down 즉시 타격, 포인터 잠금 없음 (멀티터치 동시 연타 전부 접수).
@@ -496,6 +601,7 @@ export class PlayScene extends Container {
 
   // ── stage pointer 라우팅 ────────────────────────────────────────────
   private handleStagePointerDown = (e: FederatedPointerEvent) => {
+    if (this.ultActive) return; // 궁극기 연출 중 입력 차단
     unlockAudio();
     if (this.mode === "throw") this.throwInput.handlePointerDown(e);
     else if (this.mode === "swipe") this.swipeInput.handlePointerDown(e);
@@ -671,6 +777,27 @@ export class PlayScene extends Container {
   };
 
   update(deltaSec: number) {
+    // 궁극기 난사타 — 일정 간격으로 랜덤 무기 타격을 퍼부음
+    if (this.ultActive) {
+      this.ultTimer -= deltaSec;
+      this.ultBlowAccum += deltaSec;
+      while (this.ultBlowAccum >= ULT_BLOW_INTERVAL && this.ultTimer > 0.25) {
+        this.ultBlowAccum -= ULT_BLOW_INTERVAL;
+        this.ultBlow();
+        this.ultShake = Math.max(this.ultShake, 16); // 난타 내내 흔들림 유지
+      }
+      // 마무리 직전(0.35s)까진 인형을 계속 내던짐
+      this.ultThrowAccum += deltaSec;
+      while (this.ultThrowAccum >= ULT_THROW_INTERVAL && this.ultTimer > 0.35) {
+        this.ultThrowAccum -= ULT_THROW_INTERVAL;
+        this.ultThrow();
+      }
+      if (this.ultTimer <= 0) {
+        this.ultActive = false;
+        this.ultFinish();
+      }
+    }
+
     // drag 중에는 매 tick 손가락 위치에 고정 — 중력 velocity 누적으로
     // 인형이 손에서 처지거나 (포인터 정지 시) 빠져나가는 것 방지.
     if (this.flingActive) {
@@ -698,7 +825,7 @@ export class PlayScene extends Container {
     }
     this.doll.x = this.dollBody.position.x;
     this.doll.y = this.dollBody.position.y;
-    if (this.flingActive || this.dollSpring.stiffness === 0) {
+    if (this.ultActive || this.flingActive || this.dollSpring.stiffness === 0) {
       this.doll.rotation = this.dollBody.angle;
     } else {
       // spring 복원 중 — 잔여 각도를 서서히 0 으로 (스냅/영구 기울어짐 방지)
@@ -724,6 +851,17 @@ export class PlayScene extends Container {
         p.destroy({ children: true });
         this.projectiles.splice(i, 1);
       }
+    }
+
+    // 화면 흔들림 (궁극기) — ult 중엔 천천히, 끝나면 빠르게 0 으로 수렴
+    if (this.ultShake > 0.3) {
+      this.ultShake *= Math.pow(0.5, deltaSec * (this.ultActive ? 0.6 : 9));
+      this.position.set(
+        (Math.random() - 0.5) * this.ultShake,
+        (Math.random() - 0.5) * this.ultShake
+      );
+    } else if (this.x !== 0 || this.y !== 0) {
+      this.position.set(0, 0);
     }
   }
 

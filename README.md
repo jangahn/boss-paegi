@@ -158,11 +158,18 @@ v0.7 (2026-06-12, 운영 안전장치·바이럴):
 - **OG 인형 이미지 수정**: Satori 가 외부 URL `<img>` 를 자체 fetch 하다 조용히 실패 + attribute width 만으론 크기 미인식 — data URI embed + style 명시로 해결. 커스텀 없으면 기본 부장님 (OG/공유 페이지/결과 보고서 모달 공통)
 - **기본 부장님 교체**: 3D 클레이 스타일 이미지 (`public/sprites/boss-default.png`, 768×1024 누끼 PNG 130KB) — Graphics placeholder 는 텍스처 로드 실패 시 fallback 으로만. 전처리 스크립트 `scripts/prepare-default-boss.mjs` (fal storage 업로드 → birefnet 누끼 → trim → AI 캐릭터 규격 정규화). 코드베이스 정적 자산으로 둔 이유: 전 유저 공통·불변 자산은 Vercel CDN 캐시가 최적, Supabase 대역폭/장애 의존 0
 
-- **갤러리 인형 공유/저장** (바이럴): 카드 우상단 ⋯ 옵션 메뉴 → 공유 / 이미지 저장 / 삭제
-  - 공유: 워터마크 이미지 + `/doll/[id]` 링크를 Web Share 로 (fallback: url share → 링크 복사)
-  - 이미지 저장: **share-first** — 모바일은 공유 시트의 "이미지 저장" 으로 사진 앱 직행 (iOS 는 OS 가 사진 권한 팝업 처리, Android 는 갤러리/Photos), PC·미지원은 다운로드 fallback
-  - 워터마크: 우하단에 작게 (반투명 흰 + 그림자 — 밝은/어두운 배경 모두 가독), 저장·공유 공통
-- **`/doll/[id]` 공개 랜딩 — 인사기록카드 패러디**: 증명사진란 + 성명/직급(만년 부장)/소속(스트레스 유발 1팀)/제작자/특이사항 (id 시드 랜덤 멘트) + "관리대상" 도장 + "나도 우리 부장님 만들기" CTA. 전용 OG 카드 동일 컨셉 (admin client 조회 — RLS 무관, UUID 라 추측 불가)
+- **갤러리 인형 공유** (바이럴): 카드 우상단 ⋯ 옵션 메뉴 → 공유 / 삭제. 공유 = 워터마크 이미지(우하단 작게) + `/doll/[id]` 링크를 Web Share 로 (fallback: url share → 링크 복사). Web Share 공유 시트에 "이미지 저장" 이 이미 포함돼 별도 저장 옵션은 제거
+- **`/doll/[id]` 공개 랜딩 — 인사기록카드 패러디**: 증명사진란 + 성명/직급/소속/제작자/특이사항 + "관리대상" 도장 + "나도 우리 부장님 만들기" CTA. 전용 OG 카드 동일 컨셉 (admin client 조회 — RLS 무관, UUID 라 추측 불가)
+
+v0.8 (2026-06-13, 궁극기·베리에이션·UX):
+- **궁극기** (`UltimateButton`/`DamageLayer` 연계): 명중 100회 누적 시 게이지(`ScoreBoard` 상단 바) 풀 충전 → "궁극기 발동" 버튼 등장 → 탭 시 3.9초 **난사타** (랜덤 무기 타격 다발 + **인형 마구 던져짐** (0.4s마다 랜덤 임펄스, 스프링 약화로 화면 휘젓다 종료 시 anchor 복귀) + 화면 흔들림 + 점수 폭등 + 마무리 화면 플래시). 난타 타격은 게이지 재충전 안 함, 발동 중 입력 차단·재발동 가드, 종료/그만패기 시 `stopUltimate` 로 정리. `gameStore` 의 `ultProgress/ultReady/consumeUlt`
+- **점수 구간 단일 10단계 통일** (`lib/report.ts` `scoreTier()` 한 곳에서 결정, 갭 10000 / 0~90000): 판정 등급·부장님 피드백·OG 설명·play 시비 멘트(`lib/taunts.ts`)가 전부 동일 10단계 공유 (이전엔 등급10/OG5/시비3 으로 제각각이던 것 통일)
+  - **판정 등급 = 패는 사람(직장인)의 경지** (이전 부장님 직급 → 변경): 무급 인턴 → 패기의 신입 → 열혈 사원 → 독기의 대리 → 분노의 과장 → 폭주 차장 → 광기의 부장 → 해탈한 임원 → 사이다 마스터 → **전설의 퇴사자**
+  - 부장님 피드백·시비 멘트는 단계마다 무시→짜증→당황→회유→굴복 톤, OG 설명은 후킹 강도 상승
+  - 인사카드 직급/소속/특이사항(맞는 부장님 정보)은 별개 seed 해시 베리에이션 유지
+- **무기 hint 가독성**: 반투명 캡슐(pill) 배경 — 배경 무관 또렷
+- 갤러리 "이미지 저장" 옵션 제거 (공유에 포함되어 중복)
+- 리뷰 수정 2건: 난타 중 비행 투척물 명중이 게이지 재충전하던 버그(ultActive 중 charge 강제 false), "그만 패기" 시 난타가 모달 뒤에서 잔류하던 버그(`stopUltimate`)
 
 **⚠️ Migration 0004 적용 필요** (`supabase/migrations/0004_quota_balance_rank.sql`):
 profiles public read (랭킹 닉네임) + daily_gen_limit + scores duration 1시간.

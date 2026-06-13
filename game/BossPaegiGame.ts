@@ -23,6 +23,10 @@ export type GameHandle = {
   clearDrawing: () => void;
   /** 현재 점수 전달 — 임계 넘으면 인형 꼬질꼬질 데칼 추가, 0 이면 초기화 */
   setDamageScore: (score: number) => void;
+  /** 궁극기 발동 — 난사타 연출 */
+  triggerUltimate: () => void;
+  /** 게임 종료/중단 시 궁극기 난타 즉시 정지 */
+  stopUltimate: () => void;
 };
 
 /**
@@ -111,5 +115,7 @@ export async function createGame(
     setBackground: (t: Texture) => scene.setBackground(t),
     clearDrawing: () => scene.clearDrawing(),
     setDamageScore: (score: number) => scene.setDamageScore(score),
+    triggerUltimate: () => scene.triggerUltimate(),
+    stopUltimate: () => scene.stopUltimate(),
   };
 }
