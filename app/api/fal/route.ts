@@ -6,6 +6,7 @@ import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 import { checkFalBalance } from "@/lib/fal-balance";
+import { DOLLS_BUCKET, candidatePrefix } from "@/lib/generation";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 /** 기본 일일 생성 한도 — profiles.daily_gen_limit 조회 실패 시 fallback */
@@ -113,17 +114,50 @@ export async function POST(req: NextRequest) {
       numImages: 3,
     });
 
-    await admin
+    // 후보 3장을 Supabase 에 복사 보관 (fal URL 은 만료되므로) — 고르기 전
+    // 이탈/실패에서 갤러리로 이어서 고를 수 있게.
+    const prefix = candidatePrefix(user.id, genRow.id);
+    const candidates: { url: string; width: number; height: number }[] = [];
+    for (let i = 0; i < result.images.length; i++) {
+      const img = result.images[i];
+      try {
+        const r = await fetch(img.url);
+        if (!r.ok) continue;
+        const buf = Buffer.from(await r.arrayBuffer());
+        const path = `${prefix}/${i}.jpg`;
+        const { error: upErr } = await admin.storage
+          .from(DOLLS_BUCKET)
+          .upload(path, buf, { contentType: "image/jpeg", upsert: true });
+        if (upErr) {
+          console.warn("[fal] candidate upload failed:", upErr.message);
+          continue;
+        }
+        const url = admin.storage.from(DOLLS_BUCKET).getPublicUrl(path).data
+          .publicUrl;
+        candidates.push({ url, width: img.width, height: img.height });
+      } catch (e) {
+        console.warn("[fal] candidate copy failed:", e);
+      }
+    }
+    // 복사가 전부 실패하면 fal URL 로 폴백 (이번 세션에선 고를 수 있게)
+    const images = candidates.length > 0 ? candidates : result.images;
+
+    const doneRow = {
+      status: "done",
+      cost_cents: result.costCents,
+      fal_request_id: `${result.provider}:${genRow.id}`,
+    };
+    const { error: doneErr } = await admin
       .from("ai_generations")
-      .update({
-        status: "done",
-        cost_cents: result.costCents,
-        fal_request_id: `${result.provider}:${genRow.id}`,
-      })
+      .update({ ...doneRow, candidate_urls: candidates.map((c) => c.url) })
       .eq("id", genRow.id);
+    // migration 0005 (candidate_urls 컬럼) 미적용 환경 fallback — 생성은 성공해야
+    if (doneErr && doneErr.message.includes("candidate_urls")) {
+      await admin.from("ai_generations").update(doneRow).eq("id", genRow.id);
+    }
 
     return NextResponse.json({
-      images: result.images,
+      images,
       generationId: genRow.id,
       provider: result.provider,
       durationMs: result.durationMs,

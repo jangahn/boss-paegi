@@ -170,6 +170,18 @@ v0.8 (2026-06-13, 궁극기·베리에이션·UX):
 - **무기 hint 가독성**: 반투명 캡슐(pill) 배경 — 배경 무관 또렷
 - 갤러리 "이미지 저장" 옵션 제거 (공유에 포함되어 중복)
 - 리뷰 수정 2건: 난타 중 비행 투척물 명중이 게이지 재충전하던 버그(ultActive 중 charge 강제 false), "그만 패기" 시 난타가 모달 뒤에서 잔류하던 버그(`stopUltimate`)
+- 꼬질꼬질 누적 속도 절반(2000점마다) + 만점 단위 큰 멍 로직 제거, 궁극기 한 타격 점수 절반
+
+v0.9 (2026-06-13, 생성 파이프라인 복구):
+- **캐릭터 생성 중단 복구**: 3장 생성 후 고르기 전 이탈/새로고침/실패/생성중 끊김에서 갤러리로 이어서 진행
+  - fal 결과 3장을 Supabase(dolls 버킷 `candidates/{genId}/` prefix)에 복사 보관 (fal URL 은 만료되므로). `ai_generations.candidate_urls` (migration 0005)
+  - 갤러리 "진행 중인 생성" 영역: 생성 중(스피너) / 3장 완성→썸네일+"이어서 고르기"(`/generate?resume=genId`) / 중단됨→"다시 만들기"
+  - `/api/generations` GET: 미완결 목록 + lazy 정리 (queued 5분 초과=중단, done 미선택 24h 초과=후보 삭제). 생성 중이면 갤러리가 4초 폴링
+  - pick 시 `/api/doll` 가 generationId 로 picked 마킹 + 안 고른 후보 storage 정리
+  - migration 0005 미적용 환경에서도 안전 (생성 done fallback, 복구 기능만 비활성)
+
+**⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
+ai_generations 에 candidate_urls/picked_doll_id 컬럼 + status 에 'picked' 추가. 적용 전엔 복구 기능 비활성(앱은 정상).
 
 **⚠️ Migration 0004 적용 필요** (`supabase/migrations/0004_quota_balance_rank.sql`):
 profiles public read (랭킹 닉네임) + daily_gen_limit + scores duration 1시간.

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PhotoCropper } from "@/components/PhotoCropper";
 import { ensureAuth } from "@/lib/auth-client";
@@ -11,17 +11,53 @@ type Stage = "consent" | "upload" | "crop" | "generating" | "pick" | "saving";
 
 type GeneratedImage = { url: string; width: number; height: number };
 
-export default function GeneratePage() {
+function GeneratePageInner() {
   const router = useRouter();
-  const [stage, setStage] = useState<Stage>("consent");
+  const searchParams = useSearchParams();
+  const resumeId = searchParams.get("resume");
+  const [stage, setStage] = useState<Stage>(resumeId ? "generating" : "consent");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [results, setResults] = useState<GeneratedImage[]>([]);
+  const [generationId, setGenerationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     ensureAuth().catch(() => {});
   }, []);
+
+  // ?resume=genId 진입 — 이미 만들어진 3장 후보를 불러와 고르기 단계로
+  useEffect(() => {
+    if (!resumeId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await ensureAuth();
+        const res = await fetch("/api/generations");
+        const { pending } = (await res.json()) as {
+          pending: { id: string; kind: string; candidateUrls: string[] }[];
+        };
+        if (cancelled) return;
+        const g = pending.find((p) => p.id === resumeId && p.kind === "ready");
+        if (g && g.candidateUrls.length > 0) {
+          setResults(
+            g.candidateUrls.map((url) => ({ url, width: 512, height: 512 }))
+          );
+          setGenerationId(g.id);
+          setStage("pick");
+        } else {
+          // 만료/없음 — 처음부터
+          setError("이어할 생성을 찾지 못했어요. 다시 만들어주세요.");
+          setStage("upload");
+        }
+      } catch {
+        if (!cancelled) setStage("upload");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeId]);
 
   useEffect(() => {
     return () => {
@@ -69,8 +105,12 @@ export default function GeneratePage() {
         }
         throw new Error(err.error ?? "generation_failed");
       }
-      const data = (await res.json()) as { images: GeneratedImage[] };
+      const data = (await res.json()) as {
+        images: GeneratedImage[];
+        generationId?: string;
+      };
       setResults(data.images);
+      setGenerationId(data.generationId ?? null);
       setStage("pick");
     } catch (e) {
       setError(e instanceof Error ? e.message : "알 수 없는 오류");
@@ -84,7 +124,7 @@ export default function GeneratePage() {
       const res = await fetch("/api/doll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: img.url }),
+        body: JSON.stringify({ imageUrl: img.url, generationId }),
       });
       if (!res.ok) throw new Error("저장 실패");
       const { doll } = (await res.json()) as { doll: { id: string } };
@@ -226,5 +266,13 @@ function LoadingStage({ label, sub }: { label: string; sub?: string }) {
       <p className="text-lg font-medium">{label}</p>
       {sub && <p className="text-xs text-zinc-500">{sub}</p>}
     </div>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={null}>
+      <GeneratePageInner />
+    </Suspense>
   );
 }

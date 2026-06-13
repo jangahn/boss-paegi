@@ -4,10 +4,25 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { removeBackground } from "@/lib/fal";
 import { normalizeDollImage } from "@/lib/image-utils";
-
-const BUCKET = "dolls";
+import {
+  DOLLS_BUCKET as BUCKET,
+  cleanupCandidateStorage,
+} from "@/lib/generation";
 
 export const runtime = "nodejs";
+
+/** 신뢰 호스트 — fal 결과 또는 우리 Supabase storage(후보 복사본) */
+function isTrustedImageUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.hostname.endsWith("fal.media")) return true;
+    const sb = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (sb && u.hostname === new URL(sb).hostname) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -21,18 +36,13 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     imageUrl?: string;
     styleMeta?: Record<string, unknown>;
+    generationId?: string;
   } | null;
   if (!body?.imageUrl) {
     return NextResponse.json({ error: "imageUrl_required" }, { status: 400 });
   }
-
-  try {
-    const u = new URL(body.imageUrl);
-    if (!u.hostname.endsWith(".fal.media") && !u.hostname.endsWith("fal.media")) {
-      return NextResponse.json({ error: "untrusted_url" }, { status: 400 });
-    }
-  } catch {
-    return NextResponse.json({ error: "invalid_url" }, { status: 400 });
+  if (!isTrustedImageUrl(body.imageUrl)) {
+    return NextResponse.json({ error: "untrusted_url" }, { status: 400 });
   }
 
   // 누끼 제거
@@ -90,6 +100,16 @@ export async function POST(req: NextRequest) {
       { error: "insert_failed", detail: insertError.message },
       { status: 500 }
     );
+  }
+
+  // 이 doll 이 특정 generation 에서 골라진 거라면: picked 처리 + 안 고른 후보 정리
+  if (body.generationId) {
+    await admin
+      .from("ai_generations")
+      .update({ status: "picked", picked_doll_id: dollId })
+      .eq("id", body.generationId)
+      .eq("owner_id", user.id);
+    await cleanupCandidateStorage(admin, user.id, body.generationId);
   }
 
   return NextResponse.json({ doll });

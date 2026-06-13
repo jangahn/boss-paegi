@@ -7,6 +7,7 @@ import { ensureAuth } from "@/lib/auth-client";
 import { Spinner } from "@/components/Spinner";
 import { AppNav } from "@/components/AppNav";
 import { shareDoll } from "@/lib/doll-share";
+import type { PendingGeneration } from "@/lib/generation";
 
 type Doll = {
   id: string;
@@ -16,6 +17,7 @@ type Doll = {
 
 export default function GalleryPage() {
   const [dolls, setDolls] = useState<Doll[] | null>(null);
+  const [pending, setPending] = useState<PendingGeneration[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -35,9 +37,28 @@ export default function GalleryPage() {
     }
   }, []);
 
+  const loadPending = useCallback(async () => {
+    try {
+      const res = await fetch("/api/generations");
+      if (!res.ok) return;
+      const { pending } = (await res.json()) as { pending: PendingGeneration[] };
+      setPending(pending);
+    } catch {
+      /* 생성 복구는 부가기능 — 실패해도 갤러리 본문엔 영향 없음 */
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadPending();
+  }, [load, loadPending]);
+
+  // 생성 중인 게 있으면 완료 감지 위해 폴링
+  useEffect(() => {
+    if (!pending.some((p) => p.kind === "generating")) return;
+    const t = setInterval(() => void loadPending(), 4000);
+    return () => clearInterval(t);
+  }, [pending, loadPending]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("이 부장님 인형을 삭제할까요?")) return;
@@ -74,10 +95,12 @@ export default function GalleryPage() {
           </Link>
         </div>
 
+        {pending.length > 0 && <PendingGrid pending={pending} />}
+
         {dolls === null ? (
           <GridSkeleton />
         ) : dolls.length === 0 ? (
-          <EmptyState />
+          pending.length === 0 && <EmptyState />
         ) : (
           <DollGrid dolls={dolls} onDelete={handleDelete} deletingId={deletingId} />
         )}
@@ -102,6 +125,71 @@ function EmptyState() {
         첫 부장님 만들기
       </Link>
     </div>
+  );
+}
+
+/** 미완결 생성 — 생성 중 / 고르기 대기 / 중단됨 */
+function PendingGrid({ pending }: { pending: PendingGeneration[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-semibold text-zinc-400">진행 중인 생성</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {pending.map((p) => (
+          <PendingCard key={p.id} gen={p} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PendingCard({ gen }: { gen: PendingGeneration }) {
+  if (gen.kind === "generating") {
+    return (
+      <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/5">
+        <Spinner className="h-7 w-7 text-foreground/70" />
+        <span className="text-xs font-medium text-zinc-500">
+          AI 가 만드는 중…
+        </span>
+      </div>
+    );
+  }
+  if (gen.kind === "interrupted") {
+    return (
+      <Link
+        href="/generate"
+        className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-center transition hover:bg-amber-500/10"
+      >
+        <span className="text-2xl" aria-hidden>
+          ⚠️
+        </span>
+        <span className="text-xs font-medium text-amber-300">
+          생성이 중단됐어요
+        </span>
+        <span className="text-[11px] text-zinc-500">탭해서 다시 만들기</span>
+      </Link>
+    );
+  }
+  // ready — 3장 완성, 고르기 대기
+  return (
+    <Link
+      href={`/generate?resume=${gen.id}`}
+      className="group relative flex aspect-square flex-col overflow-hidden rounded-2xl border border-emerald-500/40 bg-foreground/5 transition hover:border-emerald-500/70"
+    >
+      <div className="grid flex-1 grid-cols-3 gap-px bg-foreground/10">
+        {gen.candidateUrls.slice(0, 3).map((url, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={i}
+            src={url}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-center gap-1 bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-300">
+        고르던 인형 이어서 →
+      </div>
+    </Link>
   );
 }
 
