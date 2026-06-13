@@ -201,8 +201,8 @@ function UploadStage({
             <span className="text-emerald-400">✓</span> 밝은 곳에서 또렷하게 찍힌 사진
           </li>
           <li>
-            <span className="text-emerald-400">✓</span> 안경·모자·마스크 없을 때 더
-            잘 나와요
+            <span className="text-emerald-400">✓</span> 모자·마스크는 벗고 찍으면 더
+            잘 나와요 <span className="text-zinc-600">(안경은 그대로 반영돼요)</span>
           </li>
           <li>
             <span className="text-rose-400">✗</span> 옆모습·어두운·흐릿한 사진,

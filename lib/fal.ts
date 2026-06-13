@@ -1,6 +1,7 @@
 import "server-only";
 import { fal } from "@fal-ai/client";
 import { SERVER_ENV } from "@/lib/env.server";
+import { log, errInfo } from "@/lib/log";
 
 fal.config({ credentials: SERVER_ENV.FAL_KEY });
 
@@ -83,4 +84,30 @@ export async function removeBackground(imageUrl: string): Promise<string> {
   });
   const data = result.data as BirefnetResponse;
   return data.image.url;
+}
+
+type MoondreamResponse = { output?: string };
+
+/**
+ * 입력 얼굴이 안경을 썼는지 VLM(Moondream)으로 판별 — 안경 있을 때만 프롬프트에 반영하기 위해.
+ * PuLID 는 정체성 임베딩이 안경 같은 액세서리를 분리해 그냥 두면 안경이 누락되므로,
+ * 생성 직전 검출해 조건부로 "wearing eyeglasses" 를 넣는다.
+ * 실패/타임아웃 시 false (안경 미반영 = 기존 동작, 생성은 계속).
+ */
+export async function detectGlasses(imageUrl: string): Promise<boolean> {
+  try {
+    const result = await fal.subscribe("fal-ai/moondream3-preview/query", {
+      input: {
+        image_url: imageUrl,
+        prompt:
+          "Is the main person wearing eyeglasses or sunglasses? Answer only 'yes' or 'no'.",
+      },
+      abortSignal: AbortSignal.timeout(8000),
+    });
+    const answer = ((result.data as MoondreamResponse).output ?? "").toLowerCase();
+    return /\byes\b/.test(answer);
+  } catch (e) {
+    log.warn("gen.glasses_detect_fail", errInfo(e));
+    return false;
+  }
 }

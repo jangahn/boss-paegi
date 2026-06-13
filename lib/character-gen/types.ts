@@ -7,6 +7,8 @@ export type CharacterGenInput = {
   promptHints?: string;
   /** 생성 후보 수 (기본 3) */
   numImages?: number;
+  /** 입력 얼굴이 안경을 썼는지 — true 면 프롬프트에 안경 절 주입(조건부 반영) */
+  wearsGlasses?: boolean;
   /**
    * fal 큐에 요청이 등록될 때마다 호출 (request_id 1개씩).
    * 라우트가 이 id 를 row 에 즉시 저장 → 함수가 죽어도 나중에 복구 가능.

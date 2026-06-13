@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
+import { detectGlasses } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { copyCandidatesToStorage } from "@/lib/generation-recovery";
 import { log, errInfo } from "@/lib/log";
@@ -160,11 +161,17 @@ export async function POST(req: NextRequest) {
       });
     };
 
+    // 입력에 안경이 있으면 캐릭터에도 반영 (PuLID 가 액세서리를 떨궈 누락되므로 조건부).
+    // 검출 실패 시 false 폴백(생성은 진행). ~2-3s 직렬이라 60s 한도 내 여유.
+    const wearsGlasses = await detectGlasses(uploaded.url);
+    if (wearsGlasses) log.info("gen.glasses_detected", { genId, userId: user.id });
+
     const result = await provider.generate({
       faceImageUrl: uploaded.url,
       // PuLID 는 template 무시 — 호환성 위해 빈 문자열 전달
       templateImageUrl: "",
       numImages: 3,
+      wearsGlasses,
       onEnqueue: persistRequestIds,
     });
 

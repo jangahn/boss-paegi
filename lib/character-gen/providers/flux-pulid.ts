@@ -95,11 +95,17 @@ export class FluxPulidProvider implements CharacterProvider {
     const t0 = Date.now();
     const num = input.numImages ?? 3;
 
+    // 안경은 입력에 있을 때만 반영(PuLID 가 액세서리를 떨궈서 누락되므로 조건부 주입).
+    const eyewear = input.wearsGlasses ? " wearing eyeglasses," : "";
+    const idEyewear = input.wearsGlasses
+      ? " Preserve the eyeglasses of the reference person."
+      : "";
+
     // 후보마다 다른 정장색 주입 → 색 베리에이션. 의류 타입·컨셉·identity 지시는 공통.
     const buildPrompt = (suitColor: string) =>
       `${CHARACTER_PROMPT_HEAD} wearing a ${suitColor} business suit jacket, ` +
-      `dress shirt, necktie, dress trousers with belt, dress shoes, ` +
-      `${CHARACTER_PROMPT_TAIL} ${IDENTITY_INSTRUCTION}` +
+      `dress shirt, necktie, dress trousers with belt, dress shoes,${eyewear} ` +
+      `${CHARACTER_PROMPT_TAIL} ${IDENTITY_INSTRUCTION}${idEyewear}` +
       `${input.promptHints ? ` Additional: ${input.promptHints}.` : ""}`;
 
     // 병렬 호출 전체에 공유 타임아웃 — 하나라도 48s 넘기면 그 호출만 abort.
@@ -116,11 +122,11 @@ export class FluxPulidProvider implements CharacterProvider {
             image_size: "square_hd",
             // 닮음도 ↑ — fal 은 id_weight 를 ≤1 로 제한(이미 최대)이라 못 올림.
             // 남은 레버: true_cfg 1→2(스타일화 씬 identity 융합 + negative_prompt 실효화),
-            // guidance 6→5(identity 토큰 여지). true_cfg 2 는 CFG 2-pass 라 느려
-            // steps 35→28 로 상쇄(60s 한도/48s abort 여유). 레퍼런스 화질(crop 게이트)이
-            // 닮음도의 최대 동력.
+            // guidance 6→3(프롬프트 지배 ↓ → identity 토큰 여지 ↑). true_cfg 2 는 CFG
+            // 2-pass 라 느려 steps 35→28 로 상쇄(60s 한도/48s abort 여유). 레퍼런스
+            // 화질(crop 게이트)이 닮음도의 최대 동력.
             num_inference_steps: 28,
-            guidance_scale: 5,
+            guidance_scale: 3,
             negative_prompt: NEGATIVE_PROMPT,
             true_cfg: 2,
             id_weight: 1,
