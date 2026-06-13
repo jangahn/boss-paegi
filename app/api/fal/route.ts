@@ -179,21 +179,23 @@ export async function POST(req: NextRequest) {
 
     // 후보 3장을 Supabase 에 복사 보관 (fal URL 은 만료되므로) — 고르기 전
     // 이탈/실패에서 갤러리로 이어서 고를 수 있게. 복구 경로와 동일 헬퍼 공유.
-    const candidates = await copyCandidatesToStorage(
+    const copied = await copyCandidatesToStorage(
       admin,
       user.id,
       genRow.id,
       result.images
     );
-    if (candidates.length < result.images.length) {
+    const storedUrls = copied.filter((c) => c.copied).map((c) => c.url);
+    if (storedUrls.length < result.images.length) {
       log.warn("gen.candidate_copy_partial", {
         genId,
-        copied: candidates.length,
+        copied: storedUrls.length,
         total: result.images.length,
       });
     }
-    // 복사가 전부 실패하면 fal URL 로 폴백 (이번 세션에선 고를 수 있게)
-    const images = candidates.length > 0 ? candidates : result.images;
+    // UI 응답: 생성된 장수 그대로 노출 — 복사 성공은 storage url, 실패 칸은 원본 fal url
+    // 폴백(즉시 고르기엔 유효). 한 장이라도 조용히 사라지지 않게.
+    const images = copied.map(({ url, width, height }) => ({ url, width, height }));
 
     const doneRow = {
       status: "done",
@@ -202,7 +204,8 @@ export async function POST(req: NextRequest) {
     };
     const { error: doneErr } = await admin
       .from("ai_generations")
-      .update({ ...doneRow, candidate_urls: candidates.map((c) => c.url) })
+      // candidate_urls 는 durable storage url 만 (resume 때 fal url 은 만료됨)
+      .update({ ...doneRow, candidate_urls: storedUrls })
       .eq("id", genRow.id);
     // migration 0005 (candidate_urls 컬럼) 미적용 환경 fallback — 생성은 성공해야
     if (doneErr && doneErr.message.includes("candidate_urls")) {
@@ -215,7 +218,8 @@ export async function POST(req: NextRequest) {
     log.info("gen.done", {
       genId,
       userId: user.id,
-      candidatesSaved: candidates.length,
+      candidatesSaved: storedUrls.length,
+      shown: images.length,
       totalMs: Date.now() - startedAt,
     });
 

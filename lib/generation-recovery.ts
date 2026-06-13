@@ -13,64 +13,88 @@ const COST_CENTS_PER_IMAGE = 4;
 
 type SrcImage = { url: string; width: number; height: number };
 export type CandidateImage = { url: string; width: number; height: number };
+/** 복사 결과 — copied=false 면 url 은 원본(fal) url 폴백(즉시 노출용, 곧 만료) */
+export type CopiedCandidate = CandidateImage & { copied: boolean };
+
+// 방금 생성된 fal 이미지는 CDN 전파에 시간이 걸릴 수 있어 넉넉히. 실패 시 1회 재시도.
+const COPY_FETCH_TIMEOUT_MS = 15_000;
+const COPY_ATTEMPTS = 2;
+
+/** 한 장을 fetch+upload (재시도 포함). 끝내 실패하면 copied:false + 원본 url 폴백. */
+async function copyOne(
+  admin: SupabaseClient,
+  prefix: string,
+  img: SrcImage,
+  index: number,
+  genId: string
+): Promise<CopiedCandidate> {
+  for (let attempt = 1; attempt <= COPY_ATTEMPTS; attempt++) {
+    try {
+      const r = await fetch(img.url, {
+        signal: AbortSignal.timeout(COPY_FETCH_TIMEOUT_MS),
+      });
+      if (!r.ok) {
+        log.warn("gen.candidate_copy_fail", {
+          genId,
+          index,
+          attempt,
+          stage: "fetch",
+          httpStatus: r.status,
+        });
+        continue;
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      const path = `${prefix}/${index}.jpg`;
+      const { error: upErr } = await admin.storage
+        .from(DOLLS_BUCKET)
+        .upload(path, buf, { contentType: "image/jpeg", upsert: true });
+      if (upErr) {
+        log.warn("gen.candidate_copy_fail", {
+          genId,
+          index,
+          attempt,
+          stage: "upload",
+          ...errInfo(upErr),
+        });
+        continue;
+      }
+      return {
+        url: admin.storage.from(DOLLS_BUCKET).getPublicUrl(path).data.publicUrl,
+        width: img.width,
+        height: img.height,
+        copied: true,
+      };
+    } catch (e) {
+      log.warn("gen.candidate_copy_fail", {
+        genId,
+        index,
+        attempt,
+        stage: "throw",
+        ...errInfo(e),
+      });
+    }
+  }
+  // 재시도 모두 실패 — 원본(fal) url 폴백. 즉시 고르기엔 유효하나 만료되므로
+  // candidate_urls(durable storage 전용)엔 넣지 않는다(copied:false).
+  log.warn("gen.candidate_copy_giveup", { genId, index });
+  return { url: img.url, width: img.width, height: img.height, copied: false };
+}
 
 /**
  * fal 결과 이미지들을 우리 Supabase storage 로 복사 (fal URL 은 만료되므로).
- * 부분 실패는 건너뛰고 성공분만 반환. fal route·복구가 공유.
+ * 입력 순서 보존. 복사 실패 칸은 copied:false + 원본 url 폴백(즉시 노출용).
+ * 호출부는 copied 플래그로 candidate_urls(durable) 여부를 가른다. fal route·복구가 공유.
  */
 export async function copyCandidatesToStorage(
   admin: SupabaseClient,
   ownerId: string,
   genId: string,
   images: SrcImage[]
-): Promise<CandidateImage[]> {
+): Promise<CopiedCandidate[]> {
   const prefix = candidatePrefix(ownerId, genId);
-  const copied = await Promise.all(
-    images.map(async (img, i) => {
-      try {
-        // per-fetch 타임아웃 — fal CDN 지연이 함수 한도까지 끌고 가지 않게.
-        const r = await fetch(img.url, { signal: AbortSignal.timeout(8000) });
-        if (!r.ok) {
-          log.warn("gen.candidate_copy_fail", {
-            genId,
-            index: i,
-            stage: "fetch",
-            httpStatus: r.status,
-          });
-          return null;
-        }
-        const buf = Buffer.from(await r.arrayBuffer());
-        const path = `${prefix}/${i}.jpg`;
-        const { error: upErr } = await admin.storage
-          .from(DOLLS_BUCKET)
-          .upload(path, buf, { contentType: "image/jpeg", upsert: true });
-        if (upErr) {
-          log.warn("gen.candidate_copy_fail", {
-            genId,
-            index: i,
-            stage: "upload",
-            ...errInfo(upErr),
-          });
-          return null;
-        }
-        return {
-          url: admin.storage.from(DOLLS_BUCKET).getPublicUrl(path).data
-            .publicUrl,
-          width: img.width,
-          height: img.height,
-        };
-      } catch (e) {
-        log.warn("gen.candidate_copy_fail", {
-          genId,
-          index: i,
-          stage: "throw",
-          ...errInfo(e),
-        });
-        return null;
-      }
-    })
+  return Promise.all(
+    images.map((img, i) => copyOne(admin, prefix, img, i, genId))
   );
-  return copied.filter((c): c is CandidateImage => c !== null);
 }
 
 export type RecoverResult = {
@@ -164,21 +188,22 @@ export async function recoverQueuedGeneration(
     return { status: "failed", candidateUrls: [] };
   }
 
-  // 3) 후보 복사 + done 마킹
-  const candidates = await copyCandidatesToStorage(admin, ownerId, genId, images);
-  if (candidates.length === 0) {
+  // 3) 후보 복사 + done 마킹. 복구는 durable storage url 만 사용
+  // (fal queue.result url 도 만료 → resume 때 깨질 수 있어 copied 만).
+  const copied = await copyCandidatesToStorage(admin, ownerId, genId, images);
+  const stored = copied.filter((c) => c.copied);
+  if (stored.length === 0) {
     return { status: "failed", candidateUrls: [] };
   }
-  if (candidates.length < images.length) {
-    // fal route 와 동일하게 partial 복사를 추적 (storage 업로드 일부 실패)
+  if (stored.length < images.length) {
     log.warn("gen.recover_candidate_copy_partial", {
       genId,
-      copied: candidates.length,
+      copied: stored.length,
       total: images.length,
     });
   }
 
-  const urls = candidates.map((c) => c.url);
+  const urls = stored.map((c) => c.url);
   const doneRow = {
     status: "done",
     // 실제 받은 이미지 수 기준 — fal route(images.length)와 일치
@@ -199,7 +224,7 @@ export async function recoverQueuedGeneration(
   log.info("gen.recovered", {
     ownerId,
     genId,
-    candidatesSaved: candidates.length,
+    candidatesSaved: stored.length,
     completedReqs: completedIdx.length,
     stillRunning,
     forced: forceFinalize,
