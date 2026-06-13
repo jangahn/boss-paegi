@@ -5,8 +5,8 @@ import { Container, FillGradient, Graphics } from "pixi.js";
  * Doll.bodyWrap 의 child — 낙서처럼 인형과 함께 흔들리고 던져짐.
  *
  * 누적 규칙 (상한 없음):
- *  - 1,000점마다: 약한 꼬질 1세트 (때 + 작은 멍/스크래치)
- *  - 10,000점마다: 눈에 확 띄는 큰/진한 멍 + 넓은 얼룩
+ *  - 2,000점마다: 약한 꼬질 1세트 (때 + 작은 멍/스크래치) — 궁극기로 점수가
+ *    빠르게 쌓이는 점 반영해 천천히 더러워지게
  *  - 위치는 랜덤이 아니라 "피격 부위" — PlayScene 이 noteHit() 으로 알려준
  *    최근 타격 좌표 부근 (지터 ±). 실루엣 밖이면 근처 재시도 → 랜덤 fallback
  *  - 라운드 리셋 (score 0) 시 전부 제거
@@ -15,8 +15,7 @@ import { Container, FillGradient, Graphics } from "pixi.js";
  * (그 수준이면 이미 포화 상태라 시각 차이 없음).
  */
 
-export const MINOR_STEP = 1000;
-export const MAJOR_STEP = 10000;
+export const MINOR_STEP = 2000;
 const MAX_DECALS = 400;
 const RECENT_HITS_MAX = 10;
 
@@ -49,7 +48,6 @@ export class DamageLayer extends Container {
   /** 데칼 크기 기준 — doll naturalSize */
   private base: number;
   private minorCount = 0;
-  private majorCount = 0;
   /** 최근 피격 좌표 (bodyWrap local) — 데칼 배치 기준 */
   private recentHits: { x: number; y: number }[] = [];
 
@@ -66,28 +64,22 @@ export class DamageLayer extends Container {
     if (this.recentHits.length > RECENT_HITS_MAX) this.recentHits.shift();
   }
 
-  /** 점수 변화 시 호출 — 1000점/10000점 단위 누적, 0 이면 초기화 */
+  /** 점수 변화 시 호출 — 2000점 단위 약한 꼬질 누적, 0 이면 초기화 */
   setScore(score: number) {
     if (score <= 0) {
-      if (this.minorCount || this.majorCount) {
+      if (this.minorCount) {
         const removed = this.removeChildren();
         for (const c of removed) c.destroy();
         this.minorCount = 0;
-        this.majorCount = 0;
         this.recentHits = [];
       }
       return;
     }
     const minor = Math.floor(score / MINOR_STEP);
-    const major = Math.floor(score / MAJOR_STEP);
     // 한 프레임에 점수가 크게 뛰어도 전부 따라잡음
     while (this.minorCount < minor) {
       this.minorCount++;
       this.addMinor();
-    }
-    while (this.majorCount < major) {
-      this.majorCount++;
-      this.addMajor();
     }
   }
 
@@ -99,17 +91,6 @@ export class DamageLayer extends Container {
     } else {
       this.place(this.drawScratch());
     }
-  }
-
-  /** 임팩트 꼬질 — 크고 진한 멍 + 넓은 얼룩 스프레이 */
-  private addMajor() {
-    // 큰 멍: 반경 ~2.5배, 진하게
-    this.place(
-      this.drawBruise(this.base * (0.11 + Math.random() * 0.05), 1.7)
-    );
-    // 주변에 넓게 퍼진 진한 때
-    this.place(this.drawDirt(2.2, 1.5));
-    this.place(this.drawScratch(1.6));
   }
 
   /**
