@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
 import { Spinner } from "@/components/Spinner";
 import { AppNav } from "@/components/AppNav";
-import { saveDoll, shareDoll } from "@/lib/doll-share";
+import { shareDoll } from "@/lib/doll-share";
 
 type Doll = {
   id: string;
@@ -173,12 +173,6 @@ function DollCard({
     }
   };
 
-  const handleDownload = async () => {
-    setMenuOpen(false);
-    const result = await saveDoll(doll.image_url, doll.id);
-    if (result === "failed") flash("저장 실패");
-  };
-
   return (
     // outer 는 overflow 없음 — 드롭다운이 카드 경계 (둥근 모서리 클리핑) 에
     // 잘리지 않게 이미지 영역과 분리 (작은 폰에서 메뉴가 카드보다 큼)
@@ -249,7 +243,6 @@ function DollCard({
           />
           <div className="absolute right-2 top-12 z-30 w-32 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
             <MenuItem onClick={handleShare}>공유</MenuItem>
-            <MenuItem onClick={handleDownload}>이미지 저장</MenuItem>
             <MenuItem
               onClick={() => {
                 setMenuOpen(false);

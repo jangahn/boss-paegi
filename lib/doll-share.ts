@@ -49,54 +49,6 @@ async function composeWatermark(blob: Blob): Promise<Blob> {
   );
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-export type SaveResult = "shared" | "downloaded" | "failed";
-
-/**
- * 이미지 저장 — share-first.
- * 모바일: 공유 시트 (iOS "이미지 저장" → 사진 앱, Android 갤러리/Photos).
- * PC/미지원: 다운로드 fallback.
- */
-export async function saveDoll(
-  imageUrl: string,
-  dollId: string
-): Promise<SaveResult> {
-  let marked: Blob;
-  try {
-    marked = await composeWatermark(await fetchBlob(imageUrl));
-  } catch {
-    return "failed";
-  }
-  const filename = `boss-${dollId.slice(0, 8)}.png`;
-  const file = new File([marked], filename, { type: "image/png" });
-
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: SERVICE_NAME });
-      return "shared";
-    } catch (e) {
-      if ((e as Error).name === "AbortError") return "shared"; // 시트 닫음
-      // share 실패 → 다운로드로
-    }
-  }
-  try {
-    downloadBlob(marked, filename);
-    return "downloaded";
-  } catch {
-    return "failed";
-  }
-}
-
 export type ShareResult = "shared" | "copied" | "failed";
 
 /** 워터마크 이미지 + 공개 페이지 링크를 Web Share 로. fallback 링크 복사. */
