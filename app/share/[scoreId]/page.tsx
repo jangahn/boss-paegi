@@ -8,6 +8,7 @@ import {
   bossReaction,
   formatDuration,
   gradeFor,
+  ogDescription,
   reportNo,
   weaponLabel,
 } from "@/lib/report";
@@ -57,7 +58,7 @@ export async function generateMetadata({
   const name = score.profiles?.display_name ?? "익명";
   const grade = gradeFor(score.score);
   const title = `[결재완료] ${name} — ${score.score.toLocaleString()}점 (${grade.label})`;
-  const description = `스트레스 해소 결과 보고서가 도착했습니다. 우리 부장님도 패러 가기 →`;
+  const description = ogDescription(score.score, score.id);
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   return {
     title,

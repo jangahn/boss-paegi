@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
-import { dollTrait, reportNo } from "@/lib/report";
+import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
 
 export const runtime = "nodejs";
 export const alt = "부장님 인사기록카드";
@@ -144,7 +144,8 @@ export default async function OgImage({
                 성명: 부장님
               </div>
               <div style={{ display: "flex", fontSize: 30, color: "#52525b" }}>
-                직급: 부장 (만년) · 소속: 스트레스 유발 1팀
+                직급: {d ? dollRank(d.id) : ""} · 소속:{" "}
+                {d ? dollDepartment(d.id) : ""}
               </div>
               <div style={{ display: "flex", fontSize: 30, color: "#52525b" }}>
                 제작자: {name}

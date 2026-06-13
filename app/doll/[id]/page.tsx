@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
-import { dollTrait, reportNo } from "@/lib/report";
+import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
 
 type DollRow = {
   id: string;
@@ -97,8 +97,8 @@ export default async function DollPage({
 
             <dl className="flex-1 space-y-2 text-sm">
               <CardRow label="성명">부장님</CardRow>
-              <CardRow label="직급">부장 (만년)</CardRow>
-              <CardRow label="소속">스트레스 유발 1팀</CardRow>
+              <CardRow label="직급">{dollRank(doll.id)}</CardRow>
+              <CardRow label="소속">{dollDepartment(doll.id)}</CardRow>
               <CardRow label="제작자">{name}</CardRow>
               <CardRow label="등록일">
                 {joined.getFullYear()}.
