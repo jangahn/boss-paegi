@@ -82,10 +82,11 @@ type PulidResponse = {
 const COST_CENTS_PER_IMAGE = 4; // ~$0.033/MP × 1MP
 
 // flux-pulid 는 호출당 1장(num_images 무시) → 후보 수만큼 병렬 호출.
-// 실측(2026-06): 단일 ~15s, 3장 병렬 ~29s(계정 동시성에 throttle), 혼잡 시 더 김.
-// Vercel maxDuration=60 강제 종료 전에 깔끔히 실패하도록 abort 가드를 둔다.
-// 48s 에서 끊으면 이후 후보 복사·응답까지 60s 안에 끝낼 여유(~12s) 가 남는다.
-const GENERATE_TIMEOUT_MS = 48_000;
+// 실측(2026-06): 단일 ~15s, 3장 병렬 ~29s(계정 동시성에 throttle), 혼잡 시 50s+ 도 나옴.
+// Vercel maxDuration=60 강제 종료 전에 finally(원본 폐기)가 돌도록 abort 가드를 둔다.
+// 55s 까지 허용 — 50s 대 생성도 동기 성공시키고, 이후 후보 복사·응답에 ~5s 남긴다.
+// 55s 넘겨 abort/하드킬되는 건은 갤러리에서 request_id 로 자가복구(generations route).
+const GENERATE_TIMEOUT_MS = 55_000;
 
 export class FluxPulidProvider implements CharacterProvider {
   readonly name = "flux-pulid";
@@ -122,11 +123,10 @@ export class FluxPulidProvider implements CharacterProvider {
             image_size: "square_hd",
             // 닮음도 ↑ — fal 은 id_weight 를 ≤1 로 제한(이미 최대)이라 못 올림.
             // 남은 레버: true_cfg 1→2(스타일화 씬 identity 융합 + negative_prompt 실효화),
-            // guidance 6→3(프롬프트 지배 ↓ → identity 토큰 여지 ↑). true_cfg 2 는 CFG
-            // 2-pass 라 느려 steps 35→28 로 상쇄(60s 한도/48s abort 여유). 레퍼런스
-            // 화질(crop 게이트)이 닮음도의 최대 동력.
+            // guidance 4(기본값). true_cfg 2 는 CFG 2-pass 라 느려 steps 35→28 로 상쇄.
+            // 레퍼런스 화질(crop 게이트)이 닮음도의 최대 동력.
             num_inference_steps: 28,
-            guidance_scale: 3,
+            guidance_scale: 4,
             negative_prompt: NEGATIVE_PROMPT,
             true_cfg: 2,
             id_weight: 1,

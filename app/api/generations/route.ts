@@ -6,6 +6,7 @@ import {
   CANDIDATE_TTL_MS,
   QUEUED_STALE_MS,
   QUEUED_RECOVER_AFTER_MS,
+  INCOMPLETE_RECLAIM_MS,
   cleanupCandidateStorage,
   type PendingGeneration,
 } from "@/lib/generation";
@@ -41,7 +42,8 @@ export async function GET() {
       .from("ai_generations")
       .select(cols)
       .eq("owner_id", user.id)
-      .in("status", ["queued", "done"])
+      // failed 도 포함 — abort-timeout 으로 실패했지만 fal 은 완성한 건을 되찾기 위해.
+      .in("status", ["queued", "done", "failed"])
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -67,12 +69,13 @@ export async function GET() {
     const candidateUrls = Array.isArray(r.candidate_urls)
       ? (r.candidate_urls as string[])
       : [];
+    const requestIds = Array.isArray(r.fal_request_ids)
+      ? (r.fal_request_ids as string[])
+      : [];
+    // 저장 후보가 fal 요청 수보다 적음 = abort 등으로 일부/전부 누락 → 되찾을 여지
+    const incomplete = requestIds.length > 0 && candidateUrls.length < requestIds.length;
 
     if (r.status === "queued") {
-      const requestIds = Array.isArray(r.fal_request_ids)
-        ? (r.fal_request_ids as string[])
-        : [];
-
       // 60s 이내 — 라이브 생성 함수가 처리 중. 복구가 끼어들지 않게 그냥 생성중.
       if (age <= QUEUED_RECOVER_AFTER_MS) {
         pending.push({ id, kind: "generating", candidateUrls: [], createdAt });
@@ -127,7 +130,42 @@ export async function GET() {
       continue;
     }
 
+    if (r.status === "failed") {
+      // abort-timeout 등으로 failed 마킹됐지만 fal 은 완성했을 수 있음.
+      // 최근(reclaim 창) + 후보 부족 + request_id 있으면 fal 에서 되찾아 done 으로 자가치유.
+      if (incomplete && age <= INCOMPLETE_RECLAIM_MS) {
+        const rec = await recoverQueuedGeneration(admin, user.id, id, requestIds, true);
+        if (rec.status === "ready") {
+          log.info("gen.reclaimed_failed", {
+            userId: user.id,
+            genId: id,
+            ageMs: age,
+            recovered: rec.candidateUrls.length,
+          });
+          pending.push({ id, kind: "ready", candidateUrls: rec.candidateUrls, createdAt });
+        }
+      }
+      // 되찾기 실패/대상 아님 → 목록에 노출 안 함(이미 실패 처리됨)
+      continue;
+    }
+
     // status === "done" (미선택 — picked 는 쿼리에서 제외됨)
+    // 후보 일부 누락(abort-partial) + 최근이면 빠진 것 재확보해 채운다.
+    if (incomplete && age <= INCOMPLETE_RECLAIM_MS) {
+      const rec = await recoverQueuedGeneration(admin, user.id, id, requestIds, true);
+      if (rec.status === "ready" && rec.candidateUrls.length > candidateUrls.length) {
+        log.info("gen.reclaimed_partial", {
+          userId: user.id,
+          genId: id,
+          ageMs: age,
+          before: candidateUrls.length,
+          after: rec.candidateUrls.length,
+        });
+        pending.push({ id, kind: "ready", candidateUrls: rec.candidateUrls, createdAt });
+        continue;
+      }
+      // 되찾기 실패 시 기존 후보로 진행(아래)
+    }
     if (age <= CANDIDATE_TTL_MS && candidateUrls.length > 0) {
       pending.push({ id, kind: "ready", candidateUrls, createdAt });
     } else {

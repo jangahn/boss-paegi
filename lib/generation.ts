@@ -21,6 +21,13 @@ export const QUEUED_STALE_MS = 30 * 60 * 1000;
  */
 export const QUEUED_RECOVER_AFTER_MS = 60 * 1000;
 
+/**
+ * done/failed 인데 저장 후보가 fal 요청 수보다 적은(abort 로 일부/전부 누락) row 를
+ * 이 시간 안에선 request_id 로 fal 결과를 되찾아 채운다(자가치유). 그 이후엔 fal 결과가
+ * 만료됐을 가능성이 커 재시도하지 않는다(불필요한 폴링 차단).
+ */
+export const INCOMPLETE_RECLAIM_MS = 30 * 60 * 1000;
+
 /** 안 고르고 방치된 후보(done 미선택) 자동 정리 기간 */
 export const CANDIDATE_TTL_MS = 24 * 60 * 60 * 1000;
 
