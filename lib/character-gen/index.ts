@@ -11,4 +11,4 @@ export function selectProvider(_key?: string | null): CharacterProvider {
   return new FluxPulidProvider();
 }
 
-export type { CharacterProvider, CharacterGenInput, CharacterGenResult } from "./types";
+export type { CharacterProvider, CharacterGenInput } from "./types";

@@ -6,6 +6,8 @@ import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 
 export const runtime = "nodejs";
+// 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
+export const revalidate = 3600;
 export const alt = "스트레스 해소 결과 보고서";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";

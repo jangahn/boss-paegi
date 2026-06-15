@@ -7,7 +7,6 @@ import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 import { detectGlasses } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
-import { copyCandidatesToStorage } from "@/lib/generation-recovery";
 import { log, errInfo } from "@/lib/log";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -15,7 +14,8 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const DEFAULT_DAILY_LIMIT = 2;
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // Vercel Hobby max
+// 비동기 제출 — fal 에 등록만 하고 즉시 반환(업로드+검출+제출 ~6s)이라 짧게 충분.
+export const maxDuration = 30;
 
 /** 오늘 KST 자정 (UTC ISO) — 일일 한도 리셋 기준 */
 function kstMidnightUtcIso(): string {
@@ -129,150 +129,64 @@ export async function POST(req: NextRequest) {
 
   const genId = genRow.id as string;
   const startedAt = Date.now();
-  log.info("gen.fal_start", {
-    genId,
-    userId: user.id,
-    provider: provider.name,
-    fileSize: file.size,
-  });
 
-  // face 임시 업로드 → signed URL → fal → 결과 → 임시 삭제 (정책: 원본 폐기)
+  // face 임시 업로드 → signed URL → fal 에 제출(결과 대기 X) → 즉시 반환.
+  // 생성은 fal 에서 진행되고, 클라가 /api/generations 폴링으로 완성분을 받는다.
+  // 임시 얼굴은 fal 이 생성 중 fetch 하므로 지금 안 지움 — 복구가 done 시 삭제.
   let facePath: string | null = null;
   try {
-    const uploaded = await uploadFaceTmp(user.id, prepared);
+    const uploaded = await uploadFaceTmp(user.id, genId, prepared);
     facePath = uploaded.path;
 
-    // fal 큐 등록 즉시 request_id 를 row 에 저장 → 함수가 done 전에 죽어도
-    // 갤러리에서 이 id 로 결과를 복구할 수 있다. (직렬 체인으로 덮어쓰기 순서 보장)
-    const requestIds: string[] = [];
-    let persistChain: Promise<unknown> = Promise.resolve();
-    const persistRequestIds = (rid: string) => {
-      requestIds.push(rid);
-      const snapshot = [...requestIds];
-      persistChain = persistChain.then(async () => {
-        const { error } = await admin
-          .from("ai_generations")
-          .update({ fal_request_ids: snapshot })
-          .eq("id", genRow.id);
-        // migration 0006 (fal_request_ids) 미적용이면 복구만 비활성 — 생성은 계속.
-        if (error && !error.message.includes("fal_request_ids")) {
-          log.warn("gen.request_ids_persist_fail", { genId, ...errInfo(error) });
-        }
-      });
-    };
-
     // 입력에 안경이 있으면 캐릭터에도 반영 (PuLID 가 액세서리를 떨궈 누락되므로 조건부).
-    // 검출 실패 시 false 폴백(생성은 진행). ~2-3s 직렬이라 60s 한도 내 여유.
+    // 검출 실패 시 false 폴백(생성은 진행).
     const wearsGlasses = await detectGlasses(uploaded.url);
     if (wearsGlasses) log.info("gen.glasses_detected", { genId, userId: user.id });
 
-    const result = await provider.generate({
+    // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
+    const requestIds = await provider.submitGeneration({
       faceImageUrl: uploaded.url,
-      // PuLID 는 template 무시 — 호환성 위해 빈 문자열 전달
-      templateImageUrl: "",
+      templateImageUrl: "", // PuLID 는 template 무시
       numImages: 3,
       wearsGlasses,
-      onEnqueue: persistRequestIds,
     });
 
-    log.info("gen.fal_success", {
-      genId,
-      userId: user.id,
-      provider: result.provider,
-      durationMs: result.durationMs,
-      costCents: result.costCents,
-      imageCount: result.images.length,
-    });
-
-    // 후보 3장을 Supabase 에 복사 보관 (fal URL 은 만료되므로) — 고르기 전
-    // 이탈/실패에서 갤러리로 이어서 고를 수 있게. 복구 경로와 동일 헬퍼 공유.
-    const copied = await copyCandidatesToStorage(
-      admin,
-      user.id,
-      genRow.id,
-      result.images
-    );
-    const storedUrls = copied.filter((c) => c.copied).map((c) => c.url);
-    if (storedUrls.length < result.images.length) {
-      log.warn("gen.candidate_copy_partial", {
-        genId,
-        copied: storedUrls.length,
-        total: result.images.length,
-      });
-    }
-    // UI 응답: 생성된 장수 그대로 노출 — 복사 성공은 storage url, 실패 칸은 원본 fal url
-    // 폴백(즉시 고르기엔 유효). 한 장이라도 조용히 사라지지 않게.
-    const images = copied.map(({ url, width, height }) => ({ url, width, height }));
-
-    const doneRow = {
-      status: "done",
-      cost_cents: result.costCents,
-      fal_request_id: `${result.provider}:${genRow.id}`,
-    };
-    const { error: doneErr } = await admin
+    // request_id 저장 — 복구(generation-recovery)가 이걸로 fal 결과 회수 + done 마킹.
+    const { error: ridErr } = await admin
       .from("ai_generations")
-      // candidate_urls 는 durable storage url 만 (resume 때 fal url 은 만료됨)
-      .update({ ...doneRow, candidate_urls: storedUrls })
-      .eq("id", genRow.id);
-    // migration 0005 (candidate_urls 컬럼) 미적용 환경 fallback — 생성은 성공해야
-    if (doneErr && doneErr.message.includes("candidate_urls")) {
-      log.warn("gen.candidate_col_missing", { genId });
-      await admin.from("ai_generations").update(doneRow).eq("id", genRow.id);
-    } else if (doneErr) {
-      log.error("gen.done_update_fail", { genId, ...errInfo(doneErr) });
+      .update({ fal_request_ids: requestIds })
+      .eq("id", genId);
+    // migration 0006 미적용이면 복구만 비활성 — 다른 에러는 추적.
+    if (ridErr && !ridErr.message.includes("fal_request_ids")) {
+      log.warn("gen.request_ids_persist_fail", { genId, ...errInfo(ridErr) });
     }
 
-    log.info("gen.done", {
+    log.info("gen.submitted", {
       genId,
       userId: user.id,
-      candidatesSaved: storedUrls.length,
-      shown: images.length,
-      totalMs: Date.now() - startedAt,
+      provider: provider.name,
+      requestCount: requestIds.length,
+      wearsGlasses,
+      elapsedMs: Date.now() - startedAt,
     });
 
-    return NextResponse.json({
-      images,
-      generationId: genRow.id,
-      provider: result.provider,
-      durationMs: result.durationMs,
-    });
+    // 즉시 반환 — 생성중. 클라는 generationId 로 /api/generations 폴링.
+    return NextResponse.json({ generationId: genId, status: "generating" });
   } catch (e) {
-    const { error: failErr } = await admin
-      .from("ai_generations")
-      .update({ status: "failed" })
-      .eq("id", genRow.id);
-    if (failErr) {
-      // failed 마킹마저 실패하면 row 가 queued 로 남아 복구 로직을 교란 → 추적.
-      log.error("gen.failed_status_update_fail", { genId, ...errInfo(failErr) });
-    }
-    // abort(48s 가드) = fal 큐 혼잡으로 시간 초과 → 일반 실패와 구분해 추적/안내.
-    const timedOut =
-      e instanceof Error &&
-      (e.name === "TimeoutError" ||
-        e.name === "AbortError" ||
-        /timed out|timeout|abort/i.test(e.message));
-    log.error(timedOut ? "gen.fal_timeout" : "gen.fal_fail", {
-      genId,
-      userId: user.id,
-      totalMs: Date.now() - startedAt,
-      ...errInfo(e),
-    });
-    const msg = e instanceof Error ? e.message : "unknown";
-    return NextResponse.json(
-      timedOut
-        ? { error: "generation_timeout" }
-        : { error: "generation_failed", detail: msg },
-      { status: timedOut ? 504 : 500 }
-    );
-  } finally {
+    await admin.from("ai_generations").update({ status: "failed" }).eq("id", genId);
+    // 제출 실패 → fal 이 face 를 안 쓰므로 임시 얼굴 즉시 삭제(정책: 원본 폐기).
     if (facePath) {
-      // await — fire-and-forget 면 응답 후 람다가 얼어 원본이 안 지워질 수 있음
-      // (정책: 업로드 원본 즉시 폐기). 실패해도 응답엔 영향 없게 swallow.
-      try {
-        await deleteFaceTmp(facePath);
-      } catch (e) {
-        log.warn("gen.face_cleanup_fail", { genId, ...errInfo(e) });
-      }
+      await deleteFaceTmp(facePath).catch((err) =>
+        log.warn("gen.face_cleanup_fail", { genId, ...errInfo(err) })
+      );
     }
+    log.error("gen.submit_fail", { genId, userId: user.id, ...errInfo(e) });
+    return NextResponse.json(
+      {
+        error: "generation_failed",
+        detail: e instanceof Error ? e.message : "unknown",
+      },
+      { status: 500 }
+    );
   }
 }

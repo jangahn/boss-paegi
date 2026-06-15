@@ -26,10 +26,10 @@ export default async function LeaderboardPage({
   const period: Period = sp.period === "weekly" ? "weekly" : "daily";
 
   const supabase = await createClient();
-  // RPC: 사용자별 최고점 1개씩만, score desc limit 50
+  // RPC: 사용자별 최고점 1개씩만, score desc, 일간/주간 모두 최대 10명
   const { data } = await supabase.rpc("get_leaderboard", {
     period,
-    max_limit: 50,
+    max_limit: 10,
   });
   const rows = (data ?? []) as RankRow[];
 

@@ -9,11 +9,6 @@ export type CharacterGenInput = {
   numImages?: number;
   /** 입력 얼굴이 안경을 썼는지 — true 면 프롬프트에 안경 절 주입(조건부 반영) */
   wearsGlasses?: boolean;
-  /**
-   * fal 큐에 요청이 등록될 때마다 호출 (request_id 1개씩).
-   * 라우트가 이 id 를 row 에 즉시 저장 → 함수가 죽어도 나중에 복구 가능.
-   */
-  onEnqueue?: (requestId: string) => void;
 };
 
 export type GeneratedImage = {
@@ -22,17 +17,14 @@ export type GeneratedImage = {
   height: number;
 };
 
-export type CharacterGenResult = {
-  images: GeneratedImage[];
-  provider: string;
-  costCents: number;
-  durationMs: number;
-};
-
 export interface CharacterProvider {
   /** 식별자. selectProvider 가 이 키로 매칭. */
   readonly name: string;
   /** template 분리 입력 지원 여부 (multi-ref 계열은 true, face-only 계열은 false). */
   readonly supportsTemplate: boolean;
-  generate(input: CharacterGenInput): Promise<CharacterGenResult>;
+  /**
+   * 비동기 제출 — fal 큐에 num 건 등록만 하고 request_id 들을 반환(결과 대기 X).
+   * 결과 회수/후보 저장은 복구 경로(generation-recovery)가 queue.status/result 로 담당.
+   */
+  submitGeneration(input: CharacterGenInput): Promise<string[]>;
 }

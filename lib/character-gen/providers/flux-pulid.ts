@@ -3,7 +3,6 @@ import { fal } from "@fal-ai/client";
 import { SERVER_ENV } from "@/lib/env.server";
 import {
   CharacterGenInput,
-  CharacterGenResult,
   CharacterProvider,
 } from "@/lib/character-gen/types";
 
@@ -13,7 +12,11 @@ fal.config({ credentials: SERVER_ENV.FAL_KEY });
  * FLUX PuLID: face identity 보존 전용 모델.
  * - reference 는 face image 1장 (template image 분리 입력 불가)
  * - 캐릭터 스타일은 prompt 묘사로 통제
- * - 우리 부장님 캐릭터 컨셉을 prompt 에 박아둠
+ * - 호출당 1장(num_images 무시) → 후보 수만큼 제출.
+ *
+ * 비동기: 여기서는 fal 큐에 제출만 하고 request_id 들을 반환한다(결과 대기 X).
+ * 결과 회수/후보 저장은 generation-recovery 가 queue.status/result 로 담당 →
+ * 생성이 82초·2분 걸려도 서버리스 함수를 붙잡지 않음.
  */
 
 // 캐릭터 묘사 — 의류 줄을 기준으로 head/tail 분리. 정장 "색"은 고정하지 않고
@@ -75,25 +78,11 @@ const NEGATIVE_PROMPT = [
   "text, watermark, signature, logo, frame, border",
 ].join(", ");
 
-type PulidResponse = {
-  images?: Array<{ url: string; width?: number; height?: number; content_type?: string }>;
-};
-
-const COST_CENTS_PER_IMAGE = 4; // ~$0.033/MP × 1MP
-
-// flux-pulid 는 호출당 1장(num_images 무시) → 후보 수만큼 병렬 호출.
-// 실측(2026-06): 단일 ~15s, 3장 병렬 ~29s(계정 동시성에 throttle), 혼잡 시 50s+ 도 나옴.
-// Vercel maxDuration=60 강제 종료 전에 finally(원본 폐기)가 돌도록 abort 가드를 둔다.
-// 55s 까지 허용 — 50s 대 생성도 동기 성공시키고, 이후 후보 복사·응답에 ~5s 남긴다.
-// 55s 넘겨 abort/하드킬되는 건은 갤러리에서 request_id 로 자가복구(generations route).
-const GENERATE_TIMEOUT_MS = 55_000;
-
 export class FluxPulidProvider implements CharacterProvider {
   readonly name = "flux-pulid";
   readonly supportsTemplate = false;
 
-  async generate(input: CharacterGenInput): Promise<CharacterGenResult> {
-    const t0 = Date.now();
+  async submitGeneration(input: CharacterGenInput): Promise<string[]> {
     const num = input.numImages ?? 3;
 
     // 안경은 입력에 있을 때만 반영(PuLID 가 액세서리를 떨궈서 누락되므로 조건부 주입).
@@ -109,22 +98,16 @@ export class FluxPulidProvider implements CharacterProvider {
       `${CHARACTER_PROMPT_TAIL} ${IDENTITY_INSTRUCTION}${idEyewear}` +
       `${input.promptHints ? ` Additional: ${input.promptHints}.` : ""}`;
 
-    // 병렬 호출 전체에 공유 타임아웃 — 하나라도 48s 넘기면 그 호출만 abort.
-    const abortSignal = AbortSignal.timeout(GENERATE_TIMEOUT_MS);
-
-    // allSettled: 1개가 abort/실패해도 나머지 완성본은 살린다.
-    // (Promise.all 은 1개 reject 시 전체를 버려 — 큐 혼잡 시 멀쩡한 후보까지 손실)
-    const settled = await Promise.allSettled(
+    // fal 큐에 num 건 제출(결과 대기 X) → request_id 들 반환.
+    const submitted = await Promise.all(
       pickSuitColors(num).map((suitColor) =>
-        fal.subscribe("fal-ai/flux-pulid", {
+        fal.queue.submit("fal-ai/flux-pulid", {
           input: {
             prompt: buildPrompt(suitColor),
             reference_image_url: input.faceImageUrl,
             image_size: "square_hd",
             // 닮음도 ↑ — fal 은 id_weight 를 ≤1 로 제한(이미 최대)이라 못 올림.
-            // 남은 레버: true_cfg 1→2(스타일화 씬 identity 융합 + negative_prompt 실효화),
-            // guidance 4(기본값). true_cfg 2 는 CFG 2-pass 라 느려 steps 35→28 로 상쇄.
-            // 레퍼런스 화질(crop 게이트)이 닮음도의 최대 동력.
+            // true_cfg 2(스타일화 씬 identity 융합 + negative_prompt 실효화), guidance 4(기본).
             num_inference_steps: 28,
             guidance_scale: 4,
             negative_prompt: NEGATIVE_PROMPT,
@@ -133,49 +116,10 @@ export class FluxPulidProvider implements CharacterProvider {
             // flux-pulid 전용 필드(true_cfg/id_weight)는 SDK 입력 타입에 없어 캐스팅
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
-          pollInterval: 1500,
-          abortSignal,
-          // 큐 등록 즉시 request_id 보고 → 라우트가 row 에 저장(복구용)
-          onEnqueue: (requestId) => input.onEnqueue?.(requestId),
         })
       )
     );
 
-    const images = settled
-      .filter((r) => r.status === "fulfilled")
-      .flatMap((r) => {
-        const data = (r as PromiseFulfilledResult<{ data: PulidResponse }>)
-          .value.data;
-        return (data.images ?? []).map((i) => ({
-          url: i.url,
-          width: i.width ?? 1024,
-          height: i.height ?? 1024,
-        }));
-      });
-
-    if (images.length === 0) {
-      // 전부 실패 — abort(timeout) 였는지 보존해 라우트가 분류·안내하게 한다.
-      const reasons = settled.flatMap((r) =>
-        r.status === "rejected" ? [r.reason] : []
-      );
-      const timedOut = reasons.some(
-        (e) => e?.name === "TimeoutError" || e?.name === "AbortError"
-      );
-      const err = new Error(
-        timedOut
-          ? "generation timed out"
-          : reasons[0]?.message ?? "all generations failed"
-      );
-      if (timedOut) err.name = "TimeoutError";
-      throw err;
-    }
-
-    return {
-      images,
-      provider: this.name,
-      // 실제 완성된 장수만 과금 (부분 성공 시 적게)
-      costCents: COST_CENTS_PER_IMAGE * images.length,
-      durationMs: Date.now() - t0,
-    };
+    return submitted.map((s) => s.request_id);
   }
 }

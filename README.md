@@ -177,9 +177,19 @@ v0.9 (2026-06-13, 생성 파이프라인 복구):
 - **캐릭터 생성 중단 복구**: 3장 생성 후 고르기 전 이탈/새로고침/실패/생성중 끊김에서 갤러리로 이어서 진행
   - fal 결과 3장을 Supabase(dolls 버킷 `candidates/{genId}/` prefix)에 복사 보관 (fal URL 은 만료되므로). `ai_generations.candidate_urls` (migration 0005)
   - 갤러리 "진행 중인 생성" 영역: 생성 중(스피너) / 3장 완성→썸네일+"이어서 고르기"(`/generate?resume=genId`) / 중단됨→"다시 만들기"
-  - `/api/generations` GET: 미완결 목록 + lazy 정리 (queued 5분 초과=중단, done 미선택 24h 초과=후보 삭제). 생성 중이면 갤러리가 4초 폴링
+  - `/api/generations` GET: 미완결 목록 + lazy 복구/정리 (queued 는 fal request_id 로 결과 폴링, 30분 초과+복구 실패=중단, done 미선택 24h 초과=후보 삭제). 생성 중이면 갤러리가 4초 폴링
   - pick 시 `/api/doll` 가 generationId 로 picked 마킹 + 안 고른 후보 storage 정리
   - migration 0005 미적용 환경에서도 안전 (생성 done fallback, 복구 기능만 비활성)
+
+v0.10 (2026-06-15, 생성 품질·데이터 감사·랭킹):
+- **생성 비동기 전환** (제출-후-폴링): `/api/fal` 가 fal 에 3건 제출만 하고 즉시 반환(~6s) → 클라가 `/api/generations` 폴링으로 완성분 수집. 생성이 60~120s+ 걸려도 maxDuration/abort 에 안 걸림(기존 동기 대기 → 후보 누락/실패 사고의 구조적 해결). 임시 얼굴은 genId 결정적 경로(`{owner}/tmp/{genId}.jpg`)로 두고 복구가 done 마킹 시 폐기(정책 #1). `/api/generations` 행별 복구 병렬화 + OG 라우트 ISR 캐시(`revalidate=3600`)
+- **입력 얼굴 화질 게이트** (crop 시 해상도≥300px·Laplacian 선명도 검사 → 미달 차단), **안경 조건부 반영** (Moondream VQA 로 입력 안경 검출 → 있을 때만 프롬프트 주입), 의류 색 베리에이션(팔레트), 닮음도 파라미터(true_cfg 2/guidance 4), 후보 복사 재시도+폴백, 느린 생성 자가복구(request_id 기반 reclaim)
+- **감사 컬럼** (migration 0007): 모든 테이블(profiles/dolls/scores/ai_generations)에 `updated_at`·`version` + UPDATE 트리거(`set_updated_at_and_version`)로 자동 갱신 — 데이터 확인/트러블슈팅용
+- **랭킹 KST 자정 초기화** (migration 0008): `get_leaderboard` 윈도우를 롤링(now()−1d/7d)에서 **KST 자정 고정 경계**로 — 일간=매일 0시, 주간=월요일 0시 (Asia/Seoul). 일간/주간 모두 **최대 10명**
+- 갤러리 "이어서/중단됨" 텍스트 라이트모드 대비 수정 (`dark:` variant)
+
+**마이그레이션 적용**: 0006~0008 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
+(`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
 ai_generations 에 candidate_urls/picked_doll_id 컬럼 + status 에 'picked' 추가. 적용 전엔 복구 기능 비활성(앱은 정상).

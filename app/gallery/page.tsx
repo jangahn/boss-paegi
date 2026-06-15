@@ -162,7 +162,7 @@ function PendingCard({ gen }: { gen: PendingGeneration }) {
         <span className="text-2xl" aria-hidden>
           ⚠️
         </span>
-        <span className="text-xs font-medium text-amber-300">
+        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
           생성이 중단됐어요
         </span>
         <span className="text-[11px] text-zinc-500">탭해서 다시 만들기</span>
@@ -186,7 +186,7 @@ function PendingCard({ gen }: { gen: PendingGeneration }) {
           />
         ))}
       </div>
-      <div className="flex items-center justify-center gap-1 bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-300">
+      <div className="flex items-center justify-center gap-1 bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
         고르던 인형 이어서 →
       </div>
     </Link>
