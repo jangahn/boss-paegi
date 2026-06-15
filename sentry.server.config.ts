@@ -7,8 +7,20 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
-    // 성능 트레이싱 OFF — 알림/이슈 목적엔 불필요 (무료티어 절약).
-    tracesSampleRate: 0,
+    // 구조화 로그 → Explore→Logs (lib/sentry-bridge 가 Sentry.logger 로 전송).
+    enableLogs: true,
+    // 라우트별 차등 샘플링(무료 5M spans 제어). /api/generations 는 4초 폴링이라 강 다운샘플.
+    tracesSampler: (ctx) => {
+      const a = (ctx?.attributes ?? {}) as Record<string, unknown>;
+      const hay = `${ctx?.name ?? ""} ${a["http.route"] ?? ""} ${a["url"] ?? a["http.target"] ?? ""}`;
+      if (hay.includes("/monitoring")) return 0; // Sentry 터널
+      if (hay.includes("/api/generations")) return 0.05;
+      if (hay.includes("/api/fal") || hay.includes("/api/doll")) return 1.0;
+      if (hay.includes("/api/score")) return 0.5;
+      return 0.1;
+    },
+    // fal/Supabase(서드파티)엔 trace 헤더 안 붙임 — 자기 도메인만.
+    tracePropagationTargets: ["localhost", /^https:\/\/boss-paegi\.vercel\.app/],
     // 쿠키/IP/요청바디/인증헤더 미전송.
     sendDefaultPii: false,
     beforeSend(event) {

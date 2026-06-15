@@ -1,6 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
 import type { LogLevel, LogContext } from "./log";
 
+// 초고빈도 info 는 Sentry Logs 전송에서 제외(볼륨/비용) — /api/generations 폴링마다 찍히는 요약.
+const LOG_SKIP = new Set<string>(["gen.recover_list"]);
+
 /**
  * 구조화 로그(log.ts emit)를 Sentry 로 브릿지 — emit() 한 곳에서만 호출.
  *  - error/warn → captureMessage: event 명으로 fingerprint 그룹핑 → 이벤트당 1 이슈,
@@ -20,6 +23,12 @@ export function emitToSentry(
 
   const userId = typeof ctx.userId === "string" ? ctx.userId : undefined;
   if (userId) Sentry.setUser({ id: userId });
+
+  // 구조화 로그 → Explore→Logs (모든 레벨; 초고빈도 info 제외). enableLogs 꺼져있으면 no-op.
+  // ctx 는 이미 source 에서 scrubSecrets/urlHost 적용됨(얼굴/토큰/서명URL 미포함 — captureMessage 와 동일 posture).
+  if (!(level === "info" && LOG_SKIP.has(event))) {
+    Sentry.logger?.[level]?.(event, ctx);
+  }
 
   if (level === "info") {
     Sentry.addBreadcrumb({ category: event, level: "info", data: ctx });

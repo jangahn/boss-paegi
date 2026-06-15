@@ -1,4 +1,5 @@
 import "server-only";
+import * as Sentry from "@sentry/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -102,7 +103,10 @@ export async function POST(req: NextRequest) {
   const rawBuf = await file.arrayBuffer();
   let prepared: Buffer;
   try {
-    prepared = await prepareInputImage(rawBuf);
+    prepared = await Sentry.startSpan(
+      { name: "gen.prepare_input", op: "image.process", attributes: { userId: user.id } },
+      () => prepareInputImage(rawBuf)
+    );
   } catch (e) {
     log.error("gen.input_prep_fail", {
       userId: user.id,
@@ -135,21 +139,31 @@ export async function POST(req: NextRequest) {
   // 임시 얼굴은 fal 이 생성 중 fetch 하므로 지금 안 지움 — 복구가 done 시 삭제.
   let facePath: string | null = null;
   try {
-    const uploaded = await uploadFaceTmp(user.id, genId, prepared);
+    const uploaded = await Sentry.startSpan(
+      { name: "gen.face_upload", op: "storage.upload", attributes: { genId } },
+      () => uploadFaceTmp(user.id, genId, prepared)
+    );
     facePath = uploaded.path;
 
     // 입력에 안경이 있으면 캐릭터에도 반영 (PuLID 가 액세서리를 떨궈 누락되므로 조건부).
     // 검출 실패 시 false 폴백(생성은 진행).
-    const wearsGlasses = await detectGlasses(uploaded.url);
+    const wearsGlasses = await Sentry.startSpan(
+      { name: "gen.detect_glasses", op: "fal.vqa", attributes: { genId } },
+      () => detectGlasses(uploaded.url)
+    );
     if (wearsGlasses) log.info("gen.glasses_detected", { genId, userId: user.id });
 
     // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
-    const requestIds = await provider.submitGeneration({
-      faceImageUrl: uploaded.url,
-      templateImageUrl: "", // PuLID 는 template 무시
-      numImages: 3,
-      wearsGlasses,
-    });
+    const requestIds = await Sentry.startSpan(
+      { name: "gen.fal_submit", op: "fal.queue.submit", attributes: { genId, numImages: 3 } },
+      () =>
+        provider.submitGeneration({
+          faceImageUrl: uploaded.url,
+          templateImageUrl: "", // PuLID 는 template 무시
+          numImages: 3,
+          wearsGlasses,
+        })
+    );
 
     // request_id 저장 — 복구(generation-recovery)가 이걸로 fal 결과 회수 + done 마킹.
     const { error: ridErr } = await admin

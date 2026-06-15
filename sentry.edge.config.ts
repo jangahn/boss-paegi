@@ -7,6 +7,8 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
+    enableLogs: true,
+    // proxy 는 모든 요청에 돌아 스팬 폭주 위험 → 트레이싱 off(에러/로그만).
     tracesSampleRate: 0,
     sendDefaultPii: false,
     beforeSend(event) {

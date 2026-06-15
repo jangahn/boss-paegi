@@ -1,4 +1,5 @@
 import "server-only";
+import * as Sentry from "@sentry/nextjs";
 import { fal } from "@fal-ai/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SERVER_ENV } from "@/lib/env.server";
@@ -122,20 +123,28 @@ export async function recoverQueuedGeneration(
   if (requestIds.length === 0) return { status: "failed", candidateUrls: [] };
 
   // 1) 각 request 상태 조회 (결과 만료/없음이면 throw → ERROR 취급)
-  const statuses = await Promise.all(
-    requestIds.map(async (rid) => {
-      try {
-        const s = await fal.queue.status(FLUX_PULID, { requestId: rid });
-        return s.status as string;
-      } catch (e) {
-        log.warn("gen.recover_status_fail", {
-          genId,
-          requestId: rid,
-          ...errInfo(e),
-        });
-        return "ERROR";
-      }
-    })
+  const statuses = await Sentry.startSpan(
+    {
+      name: "gen.fal_status",
+      op: "fal.queue.status",
+      attributes: { genId, requests: requestIds.length },
+    },
+    () =>
+      Promise.all(
+        requestIds.map(async (rid) => {
+          try {
+            const s = await fal.queue.status(FLUX_PULID, { requestId: rid });
+            return s.status as string;
+          } catch (e) {
+            log.warn("gen.recover_status_fail", {
+              genId,
+              requestId: rid,
+              ...errInfo(e),
+            });
+            return "ERROR";
+          }
+        })
+      )
   );
   const completedIdx = statuses
     .map((s, i) => (s === "COMPLETED" ? i : -1))
@@ -157,12 +166,19 @@ export async function recoverQueuedGeneration(
 
   // 2) 완료분 결과 fetch
   const images = (
-    await Promise.all(
-      completedIdx.map(async (i) => {
-        try {
-          const res = await fal.queue.result(FLUX_PULID, {
-            requestId: requestIds[i],
-          });
+    await Sentry.startSpan(
+      {
+        name: "gen.fal_result",
+        op: "fal.queue.result",
+        attributes: { genId, completed: completedIdx.length },
+      },
+      () =>
+        Promise.all(
+          completedIdx.map(async (i) => {
+            try {
+              const res = await fal.queue.result(FLUX_PULID, {
+                requestId: requestIds[i],
+              });
           const data = res.data as {
             images?: { url: string; width?: number; height?: number }[];
           };
@@ -180,6 +196,7 @@ export async function recoverQueuedGeneration(
           return [];
         }
       })
+        )
     )
   ).flat();
 
@@ -190,7 +207,14 @@ export async function recoverQueuedGeneration(
 
   // 3) 후보 복사 + done 마킹. 복구는 durable storage url 만 사용
   // (fal queue.result url 도 만료 → resume 때 깨질 수 있어 copied 만).
-  const copied = await copyCandidatesToStorage(admin, ownerId, genId, images);
+  const copied = await Sentry.startSpan(
+    {
+      name: "gen.copy_candidates",
+      op: "storage.copy",
+      attributes: { genId, images: images.length },
+    },
+    () => copyCandidatesToStorage(admin, ownerId, genId, images)
+  );
   const stored = copied.filter((c) => c.copied);
   if (stored.length === 0) {
     return { status: "failed", candidateUrls: [] };

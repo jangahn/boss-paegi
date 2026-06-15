@@ -79,9 +79,10 @@ boss-paegi/
 
 ## 모니터링 (Sentry)
 
-에러/경고 알림 + breadcrumb 맥락. 성능 트레이싱·세션 리플레이는 OFF(`tracesSampleRate: 0`).
+에러/경고 알림 + **구조화 로그(Logs)** + **트레이싱(성능)**. 세션 리플레이는 OFF(얼굴 개인정보+캔버스).
 
-- **로그 브릿지**: `log.error/warn` → `Sentry.captureMessage`(event 명으로 fingerprint 그룹핑 → 이벤트당 1 이슈, 이벤트별 알림 룰), `log.info` → breadcrumb(에러 시 맥락). 매핑은 `lib/sentry-bridge.ts`, `emit()` 한 곳에서 호출.
+- **로그 브릿지**(`lib/sentry-bridge.ts`, `emit()` 한 곳): `log.error/warn` → `captureMessage`(event 명 fingerprint 그룹핑 → 이벤트당 1 이슈) **+ `Sentry.logger`(Explore→Logs 검색)**, `log.info` → `Sentry.logger.info`+breadcrumb. 초고빈도 `gen.recover_list` 는 Logs 제외(볼륨). `enableLogs: true`.
+- **트레이싱**: server `tracesSampler` 라우트별 차등(`/api/fal`·`/api/doll`=1.0, `/api/score`=0.5, **`/api/generations`=0.05**(폴링), 기본 0.1), client 0.1(Web Vitals 자동). 생성 파이프라인 커스텀 스팬(`gen.prepare_input`/`face_upload`/`detect_glasses`/`fal_submit`, `gen.fal_status`/`fal_result`/`copy_candidates`, `doll.bg_removal`/`normalize`). fal/Supabase 는 fetch 자동계측 `http.client` 스팬(`tracePropagationTargets` 는 자기 도메인만). release health(crash-free)는 release(SHA)+autoSessionTracking 자동.
 - **자동 포착**: 서버/RSC/Route 미처리 에러(`instrumentation.ts` `onRequestError`), 클라 미처리 에러(`instrumentation-client.ts`), 루트 렌더 에러(`app/global-error.tsx`).
 - **PII**: `sendDefaultPii: false` + `beforeSend` 로 URL 쿼리스트링(서명 토큰) 제거. ctx 는 이미 `scrubSecrets`/`urlHost` 적용. 식별자는 익명 UUID(`userId`)만 `setUser`.
 - **설정**: Sentry 프로젝트 생성 → `NEXT_PUBLIC_SENTRY_DSN`(+선택 `SENTRY_*`)을 `.env.local`/Vercel 에 추가. DSN 없으면 init 안 함 → no-op. 광고차단 우회용 터널 `/monitoring`(proxy matcher 에서 제외).

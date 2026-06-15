@@ -9,8 +9,11 @@ if (dsn) {
     dsn,
     environment:
       process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || "development",
-    // 성능 트레이싱 / 세션 리플레이 OFF (replayIntegration 미추가).
-    tracesSampleRate: 0,
+    // 구조화 로그 → Explore→Logs.
+    enableLogs: true,
+    // 성능 트레이싱 10% (browserTracing 자동 = pageload/navigation/Web Vitals 수집).
+    // 세션 리플레이는 OFF — 얼굴(개인정보)+PixiJS 캔버스라 가치 낮음/리스크(replayIntegration 미추가).
+    tracesSampleRate: 0.1,
     sendDefaultPii: false,
     beforeSend(event) {
       const req = event.request;
@@ -21,6 +24,6 @@ if (dsn) {
   });
 }
 
-// 네비게이션 계측 hook (tracesSampleRate=0 이라 실제 트레이스는 생성 안 됨 — 빌드 경고만 제거).
+// 네비게이션 계측 hook — tracesSampleRate>0 이므로 라우트 전환 트레이스 생성.
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 

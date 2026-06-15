@@ -1,4 +1,5 @@
 import "server-only";
+import * as Sentry from "@sentry/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -60,7 +61,10 @@ export async function POST(req: NextRequest) {
   // 누끼 제거
   let cleanedUrl: string;
   try {
-    cleanedUrl = await removeBackground(body.imageUrl);
+    cleanedUrl = await Sentry.startSpan(
+      { name: "doll.bg_removal", op: "fal.birefnet", attributes: { genId: genId ?? "none" } },
+      () => removeBackground(body.imageUrl!)
+    );
   } catch (e) {
     log.error("doll.bg_removal_fail", { userId: user.id, genId, ...errInfo(e) });
     return NextResponse.json({ error: "bg_removal_failed" }, { status: 502 });
@@ -81,7 +85,10 @@ export async function POST(req: NextRequest) {
   // 캐릭터 정중앙 + 일정 비율 frame 으로 정규화 (lib/image-utils)
   let normalized: Buffer;
   try {
-    normalized = await normalizeDollImage(raw);
+    normalized = await Sentry.startSpan(
+      { name: "doll.normalize", op: "image.process", attributes: { genId: genId ?? "none" } },
+      () => normalizeDollImage(raw)
+    );
   } catch (e) {
     log.error("doll.normalize_fail", { userId: user.id, genId, ...errInfo(e) });
     return NextResponse.json({ error: "normalize_failed" }, { status: 500 });
