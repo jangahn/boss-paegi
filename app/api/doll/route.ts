@@ -8,6 +8,7 @@ import {
   DOLLS_BUCKET as BUCKET,
   cleanupCandidateStorage,
 } from "@/lib/generation";
+import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
 import { log, errInfo, urlHost } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -149,6 +150,16 @@ export async function POST(req: NextRequest) {
       });
     }
     await cleanupCandidateStorage(admin, user.id, body.generationId);
+    // 정책 #1(원본 즉시 폐기) 확정 정리 — pick 은 "생성 완료" 확정 시점이고
+    // picked 행은 /api/generations 쿼리에서 제외되므로 폴링 정리 재시도가 사라진다.
+    // 여기서 awaited 로 임시 얼굴을 반드시 폐기(폴링의 best-effort 정리에 의존하지 않음).
+    await deleteFaceTmp(tmpFacePath(user.id, body.generationId)).catch((e) =>
+      log.warn("gen.face_cleanup_fail", {
+        userId: user.id,
+        genId: body.generationId,
+        ...errInfo(e),
+      })
+    );
   }
 
   log.info("doll.save_success", { userId: user.id, genId, dollId });

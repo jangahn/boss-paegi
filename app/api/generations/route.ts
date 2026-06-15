@@ -62,10 +62,12 @@ export async function GET() {
   const now = Date.now();
   const ownerId = user.id;
 
-  // 첫 완성/확정 시 임시 얼굴 삭제(fal 이 fetch 끝난 뒤 — 정책 #1: 원본 폐기). fire-and-forget.
+  // 임시 얼굴 삭제(fal 이 fetch 끝난 뒤 — 정책 #1: 원본 폐기). 호출부에서 await 해야
+  // 서버리스 freeze 전에 완료가 보장된다(fire-and-forget 은 응답 후 드랍될 수 있음).
   // 삭제 실패는 원본이 남아있을 수 있다는 정책 리스크이므로 반드시 가시화(Sentry).
-  const cleanupFace = (genId: string) =>
-    void deleteFaceTmp(tmpFacePath(ownerId, genId)).catch((e) =>
+  // (pick 시 doll route 가 awaited 로 한 번 더 확정 정리 — 폴링이 놓쳐도 안전.)
+  const cleanupFace = (genId: string): Promise<void> =>
+    deleteFaceTmp(tmpFacePath(ownerId, genId)).catch((e) =>
       log.warn("gen.face_cleanup_fail", { userId: ownerId, genId, ...errInfo(e) })
     );
 
@@ -96,7 +98,7 @@ export async function GET() {
           age > QUEUED_STALE_MS
         );
         if (rec.status === "ready") {
-          cleanupFace(id);
+          await cleanupFace(id);
           log.info("gen.recovered_ready", { userId: ownerId, genId: id, ageMs: age });
           return { id, kind: "ready", candidateUrls: rec.candidateUrls, createdAt };
         }
@@ -118,7 +120,7 @@ export async function GET() {
         hadRequestIds: requestIds.length,
       });
       await admin.from("ai_generations").update({ status: "failed" }).eq("id", id);
-      cleanupFace(id);
+      await cleanupFace(id);
       return { id, kind: "interrupted", candidateUrls: [], createdAt };
     }
 
@@ -133,7 +135,7 @@ export async function GET() {
           true
         );
         if (rec.status === "ready") {
-          cleanupFace(id);
+          await cleanupFace(id);
           log.info("gen.reclaimed_failed", {
             userId: ownerId,
             genId: id,
@@ -157,7 +159,7 @@ export async function GET() {
         true
       );
       if (rec.status === "ready" && rec.candidateUrls.length > candidateUrls.length) {
-        cleanupFace(id);
+        await cleanupFace(id);
         log.info("gen.reclaimed_partial", {
           userId: ownerId,
           genId: id,
@@ -180,7 +182,7 @@ export async function GET() {
     });
     await cleanupCandidateStorage(admin, ownerId, id);
     await admin.from("ai_generations").update({ status: "failed" }).eq("id", id);
-    cleanupFace(id);
+    await cleanupFace(id);
     return null;
   };
 

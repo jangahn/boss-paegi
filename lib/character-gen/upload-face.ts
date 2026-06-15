@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { log, errInfo } from "@/lib/log";
 
 const BUCKET = "dolls";
 const TMP_PREFIX = "tmp/face";
@@ -35,8 +36,12 @@ export async function uploadFaceTmp(
     .from(BUCKET)
     .createSignedUrl(path, SIGNED_TTL_SEC);
   if (signError || !data) {
-    // 업로드는 됐는데 signed URL 실패 — 정리 후 throw
-    await admin.storage.from(BUCKET).remove([path]).catch(() => {});
+    // 업로드는 됐는데 signed URL 실패 — 원본 얼굴 정리 후 throw.
+    // 정리 실패는 원본이 tmp 에 남는다는 정책 #1 리스크 → 무로깅 삼키지 말고 가시화(Sentry).
+    await admin.storage
+      .from(BUCKET)
+      .remove([path])
+      .catch((e) => log.warn("gen.face_cleanup_fail", { userId, genId, ...errInfo(e) }));
     throw signError ?? new Error("createSignedUrl returned no data");
   }
 

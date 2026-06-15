@@ -16,13 +16,6 @@ export const DOLLS_BUCKET = "dolls";
 export const QUEUED_STALE_MS = 30 * 60 * 1000;
 
 /**
- * queued 가 이 시간 이상이면 동기 생성 함수는 이미 죽은(또는 끝난) 것으로 보고
- * fal 에 결과를 직접 물어 복구를 시도한다. 그 전에는 라이브 함수가 처리 중이라
- * 보고 폴링과의 충돌(중복 복사)을 피한다. (생성 함수 maxDuration=60s)
- */
-export const QUEUED_RECOVER_AFTER_MS = 60 * 1000;
-
-/**
  * done/failed 인데 저장 후보가 fal 요청 수보다 적은(abort 로 일부/전부 누락) row 를
  * 이 시간 안에선 request_id 로 fal 결과를 되찾아 채운다(자가치유). 그 이후엔 fal 결과가
  * 만료됐을 가능성이 커 재시도하지 않는다(불필요한 폴링 차단).
