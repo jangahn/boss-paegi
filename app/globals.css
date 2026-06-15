@@ -39,3 +39,22 @@ body {
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
 }
+
+/*
+ * 궁극기 게이지 "준비완료" 시 바를 어둡게↔밝게 펄스.
+ * 그라데이션 fill 이나 텍스트에 opacity 애니를 걸면 iOS WebKit 이 합성 레이어/텍스처를
+ * 잘못 갱신해 색 깨짐·텍스트 잔상이 남는다. → 대신 fill 위에 얹은 "솔리드 검정 오버레이"의
+ * opacity 만 0↔0.4 로 애니메이션(솔리드 색은 재래스터해도 손상 안 됨). fill 은 정적 유지.
+ */
+@keyframes ult-dim {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.animate-ult-dim {
+  animation: ult-dim 1.4s ease-in-out infinite;
+}

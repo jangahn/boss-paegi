@@ -26,15 +26,15 @@ export function ScoreBoard() {
         </div>
       )}
 
-      {/* 궁극기 게이지 — iOS WebKit 그라데이션/레이어 손상 방지:
-          ① 그라데이션 fill 에 opacity 애니(animate-pulse) 금지(텍스처 재합성→색 깨짐 트리거).
-             준비완료 반짝임은 라벨 텍스트에만(그라데이션 미포함 → 안전).
-          ② 트랙은 isolate+transform-gpu 로 깨끗한 합성 컨텍스트(둥근 클립+그라데이션 안정화),
-             준비완료 강조는 정적 amber ring(애니 아님).
-          ③ fill 은 ready/charging 전환마다 re-key → 새 레이어로 누적 손상 차단. */}
+      {/* 궁극기 게이지 — iOS WebKit 합성 레이어/텍스처 손상 방지:
+          opacity 애니(animate-pulse)를 그라데이션 fill 이나 텍스트에 걸면 iOS 가 텍스처/텍스트
+          레이어를 잘못 갱신 → 색 깨짐(그라데이션) / 옛 텍스트 잔상 겹침(라벨)이 누적된다.
+          → ① fill·라벨엔 opacity 애니 금지(정적). ② 준비완료 dim/bright 펄스는 fill 위에 얹은
+          "솔리드 검정 오버레이"의 opacity 만 애니(.animate-ult-dim) — 솔리드 색은 손상 안 됨.
+          ③ 트랙 isolate+transform-gpu(깨끗한 합성 컨텍스트), fill·라벨 ready/charging 토글마다 re-key. */}
       <div className="mt-1 flex w-40 flex-col items-center gap-0.5 sm:w-48">
         <div
-          className={`isolate h-2 w-full transform-gpu overflow-hidden rounded-full bg-black/40 ring-1 ${
+          className={`relative isolate h-2 w-full transform-gpu overflow-hidden rounded-full bg-black/40 ring-1 ${
             ultReady ? "ring-amber-400/70" : "ring-white/15"
           }`}
         >
@@ -47,10 +47,17 @@ export function ScoreBoard() {
             }`}
             style={{ width: `${Math.round(ultProgress * 100)}%` }}
           />
+          {ultReady && (
+            <div
+              aria-hidden
+              className="animate-ult-dim pointer-events-none absolute inset-0 rounded-full bg-black"
+            />
+          )}
         </div>
         <span
+          key={ultReady ? "ready" : "charging"}
           className={`text-[9px] font-bold uppercase tracking-widest sm:text-[10px] ${
-            ultReady ? "animate-pulse text-amber-300" : "text-white/45"
+            ultReady ? "text-amber-300" : "text-white/45"
           }`}
         >
           {ultReady ? "★ 궁극기 준비 완료 ★" : "궁극기 게이지"}
