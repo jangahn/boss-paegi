@@ -200,6 +200,7 @@ v0.10 (2026-06-15, 생성 품질·데이터 감사·랭킹):
 - **감사 컬럼** (migration 0007): 모든 테이블(profiles/dolls/scores/ai_generations)에 `updated_at`·`version` + UPDATE 트리거(`set_updated_at_and_version`)로 자동 갱신 — 데이터 확인/트러블슈팅용
 - **랭킹 KST 자정 초기화** (migration 0008): `get_leaderboard` 윈도우를 롤링(now()−1d/7d)에서 **KST 자정 고정 경계**로 — 일간=매일 0시, 주간=월요일 0시 (Asia/Seoul). 일간/주간 모두 **최대 10명**
 - 갤러리 "이어서/중단됨" 텍스트 라이트모드 대비 수정 (`dark:` variant)
+- **배경(맵) 재구성**: 사무실/탕비실/회식자리 새 이미지로 교체 + **복사실·엘리베이터 맵 추가** → 총 **6종**(회의실 유지). BgSwitcher 좁은 폭 가로 스크롤
 
 **마이그레이션 적용**: 0006~0008 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).

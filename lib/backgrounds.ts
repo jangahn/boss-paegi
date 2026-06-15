@@ -1,7 +1,9 @@
 export const BACKGROUNDS = [
   { key: "office", label: "사무실", url: "/bg/office.jpg" },
   { key: "pantry", label: "탕비실", url: "/bg/pantry.jpg" },
+  { key: "copy", label: "복사실", url: "/bg/copy.jpg" },
   { key: "meeting", label: "회의실", url: "/bg/meeting.jpg" },
+  { key: "elevator", label: "엘리베이터", url: "/bg/elevator.jpg" },
   { key: "hwesik", label: "회식자리", url: "/bg/hwesik.jpg" },
 ] as const;
 

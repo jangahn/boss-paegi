@@ -315,7 +315,7 @@ function BgSwitcher({
   onChange: (key: string) => void;
 }) {
   return (
-    <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-black/50 p-1 backdrop-blur-sm sm:gap-2">
+    <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 gap-1 overflow-x-auto rounded-full bg-black/50 p-1 backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-2">
       {BACKGROUNDS.map((b) => (
         <button
           key={b.key}
