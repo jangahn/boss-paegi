@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AppNav } from "@/components/AppNav";
+import { log, errInfo } from "@/lib/log";
 
 type Period = "daily" | "weekly";
 
@@ -27,10 +28,11 @@ export default async function LeaderboardPage({
 
   const supabase = await createClient();
   // RPC: 사용자별 최고점 1개씩만, score desc, 일간/주간 모두 최대 10명
-  const { data } = await supabase.rpc("get_leaderboard", {
+  const { data, error } = await supabase.rpc("get_leaderboard", {
     period,
     max_limit: 10,
   });
+  if (error) log.warn("leaderboard.query_fail", { period, ...errInfo(error) });
   const rows = (data ?? []) as RankRow[];
 
   return (

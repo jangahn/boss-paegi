@@ -50,7 +50,8 @@ boss-paegi/
 │   ├── supabase/           #   client.ts / server.ts
 │   ├── fal.ts              #   fal.ai 호출 + 프롬프트 빌더
 │   ├── policy.ts           #   동의 문구 / 면책 상수
-│   ├── log.ts              #   구조화 JSON 로깅 (Sentry 스왑 지점 / 토큰 스크럽)
+│   ├── log.ts              #   구조화 JSON 로깅 (console + Sentry 브릿지 / 토큰 스크럽)
+│   ├── sentry-bridge.ts    #   로그 이벤트 → Sentry (error/warn=issue, info=breadcrumb)
 │   └── share.ts            #   Web Share / OG helper
 ├── components/             # React UI
 ├── store/                  # Zustand stores
@@ -73,6 +74,18 @@ boss-paegi/
 | `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용. 절대 클라이언트 노출 금지 |
 | `FAL_KEY` | fal.ai API 키. **서버 전용** |
 | `NEXT_PUBLIC_SITE_URL` | 공유 링크 / OG 이미지용 |
+| `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
+| `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
+
+## 모니터링 (Sentry)
+
+에러/경고 알림 + breadcrumb 맥락. 성능 트레이싱·세션 리플레이는 OFF(`tracesSampleRate: 0`).
+
+- **로그 브릿지**: `log.error/warn` → `Sentry.captureMessage`(event 명으로 fingerprint 그룹핑 → 이벤트당 1 이슈, 이벤트별 알림 룰), `log.info` → breadcrumb(에러 시 맥락). 매핑은 `lib/sentry-bridge.ts`, `emit()` 한 곳에서 호출.
+- **자동 포착**: 서버/RSC/Route 미처리 에러(`instrumentation.ts` `onRequestError`), 클라 미처리 에러(`instrumentation-client.ts`), 루트 렌더 에러(`app/global-error.tsx`).
+- **PII**: `sendDefaultPii: false` + `beforeSend` 로 URL 쿼리스트링(서명 토큰) 제거. ctx 는 이미 `scrubSecrets`/`urlHost` 적용. 식별자는 익명 UUID(`userId`)만 `setUser`.
+- **설정**: Sentry 프로젝트 생성 → `NEXT_PUBLIC_SENTRY_DSN`(+선택 `SENTRY_*`)을 `.env.local`/Vercel 에 추가. DSN 없으면 init 안 함 → no-op. 광고차단 우회용 터널 `/monitoring`(proxy matcher 에서 제외).
+- **권장 알림**(Sentry UI, production 한정): `falbal.hard_cap_hit`·`gen.submit_fail`·`auth.anon_sign_in_fail`·`gen.done_update_fail`·`score.out_of_range` 즉시, `gen.fal_timeout`·`gen.candidate_copy_giveup` 스파이크.
 
 ## npm scripts
 

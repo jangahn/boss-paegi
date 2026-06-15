@@ -3,6 +3,7 @@
  * fal route, doll route, generations route 가 공유.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log, errInfo } from "@/lib/log";
 
 /** dolls 버킷 재사용 — 확정 인형 + 생성 후보 모두 여기에 */
 export const DOLLS_BUCKET = "dolls";
@@ -51,7 +52,8 @@ export async function cleanupCandidateStorage(
         .remove(files.map((f) => `${prefix}/${f.name}`));
     }
   } catch (e) {
-    console.warn("[generation] candidate cleanup failed:", e);
+    // 미선택 후보 정리 실패 — storage 누적/비용 모니터링용 (Sentry 가시화).
+    log.warn("gen.candidate_cleanup_fail", { genId, ...errInfo(e) });
   }
 }
 
@@ -59,7 +61,7 @@ export type GenerationStatus = "queued" | "done" | "failed" | "picked";
 
 /**
  * 갤러리에 노출할 미완결 생성.
- *  - generating: 생성 중 (queued, 5분 이내)
+ *  - generating: 생성 중 (queued, fal 처리 중 — 30분 이내)
  *  - ready: 3장 완성·미선택 (고르기 대기)
  *  - interrupted: 생성 중 끊김 (다시 만들기 안내)
  */

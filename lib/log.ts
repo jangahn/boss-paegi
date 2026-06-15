@@ -5,14 +5,16 @@
  * 같은 흐름(예: 한 번의 생성)은 `genId`/`scoreId` 같은 correlation id 로 묶어
  * 시간순 로그를 따라가면 전 과정을 재구성할 수 있다.
  *
- * ── Sentry 스왑 지점 ──────────────────────────────────────────────
- * 지금은 console (Vercel 로그 / 브라우저 콘솔) 로 출력한다. Sentry 도입 시
- * emit() 한 곳만 고치면 된다:
- *   - level "error"  → Sentry.captureException / captureMessage(level:error)
- *   - level "warn"   → Sentry.captureMessage(level:warning)
- *   - level "info"   → Sentry.addBreadcrumb (또는 무시)
- *   ctx 는 Sentry 의 extra/tags 로, userId 는 setUser 로 매핑.
+ * ── Sentry 브릿지 ─────────────────────────────────────────────────
+ * console (Vercel 로그 / 브라우저 콘솔) 출력 + Sentry 전송(sentry-bridge).
+ *   - level "error" → captureMessage(level:error), event 명으로 그룹핑
+ *   - level "warn"  → captureMessage(level:warning)
+ *   - level "info"  → addBreadcrumb (에러 발생 시 맥락)
+ *   ctx 는 contexts.log + tags.event 로, userId 는 setUser 로 매핑.
+ * DSN 미설정이면 브릿지가 no-op (앱 정상). 자세한 매핑은 lib/sentry-bridge.ts.
  */
+
+import { emitToSentry } from "./sentry-bridge";
 
 export type LogLevel = "info" | "warn" | "error";
 export type LogContext = Record<string, unknown>;
@@ -37,6 +39,13 @@ function emit(level: LogLevel, event: string, ctx: LogContext) {
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.log(line);
+
+  // Sentry 전송 (DSN 없으면 no-op). 로거가 Sentry 때문에 안 깨지게 격리.
+  try {
+    emitToSentry(level, event, ctx);
+  } catch {
+    /* Sentry 실패는 무시 — 로깅이 우선 */
+  }
 }
 
 export const log = {

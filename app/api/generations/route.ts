@@ -11,7 +11,7 @@ import {
 } from "@/lib/generation";
 import { recoverQueuedGeneration } from "@/lib/generation-recovery";
 import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
-import { log } from "@/lib/log";
+import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 // 복구가 fal queue.status/result + 후보 복사를 할 수 있어 여유 둠. 행별 복구는 병렬.
@@ -62,9 +62,12 @@ export async function GET() {
   const now = Date.now();
   const ownerId = user.id;
 
-  // 첫 완성/확정 시 임시 얼굴 삭제(fal 이 fetch 끝난 뒤 — 정책: 원본 폐기). fire-and-forget.
+  // 첫 완성/확정 시 임시 얼굴 삭제(fal 이 fetch 끝난 뒤 — 정책 #1: 원본 폐기). fire-and-forget.
+  // 삭제 실패는 원본이 남아있을 수 있다는 정책 리스크이므로 반드시 가시화(Sentry).
   const cleanupFace = (genId: string) =>
-    void deleteFaceTmp(tmpFacePath(ownerId, genId)).catch(() => {});
+    void deleteFaceTmp(tmpFacePath(ownerId, genId)).catch((e) =>
+      log.warn("gen.face_cleanup_fail", { userId: ownerId, genId, ...errInfo(e) })
+    );
 
   const handleRow = async (
     r: Record<string, unknown>

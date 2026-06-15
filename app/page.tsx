@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { SERVICE_NAME } from "@/lib/policy";
 import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
+import { log, errInfo } from "@/lib/log";
 
 export default function Home() {
   const [hasDolls, setHasDolls] = useState(false);
@@ -15,9 +16,10 @@ export default function Home() {
       const sb = createClient();
       const { data: sessionData } = await sb.auth.getSession();
       if (!sessionData.session) return;
-      const { count } = await sb
+      const { count, error } = await sb
         .from("dolls")
         .select("*", { head: true, count: "exact" });
+      if (error) log.warn("home.dolls_count_fail", errInfo(error));
       if (!cancelled) setHasDolls((count ?? 0) > 0);
     })();
     return () => {

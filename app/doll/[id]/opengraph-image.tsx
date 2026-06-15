@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
+import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 // 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
@@ -29,11 +30,13 @@ export default async function OgImage({
 }) {
   const { id } = await params;
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("dolls")
     .select("id, image_url, created_at, profiles(display_name)")
     .eq("id", id)
     .single();
+  // 조회 실패해도 기본 카드로 fallback — 단 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
+  if (error) log.warn("og.doll_query_fail", { dollId: id, ...errInfo(error) });
 
   const d = data as
     | {

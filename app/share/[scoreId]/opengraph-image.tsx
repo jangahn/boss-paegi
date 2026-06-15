@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
+import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 // 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
@@ -46,11 +47,13 @@ export default async function OgImage({
 }) {
   const { scoreId } = await params;
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("scores")
     .select("id, score, weapon, created_at, profiles(display_name), dolls(image_url)")
     .eq("id", scoreId)
     .single();
+  // 조회 실패해도 기본 카드로 fallback — 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
+  if (error) log.warn("og.score_query_fail", { scoreId, ...errInfo(error) });
 
   const s = data as
     | {

@@ -1,4 +1,5 @@
 import { Container, Graphics, Sprite, Texture } from "pixi.js";
+import { log, errInfo } from "@/lib/log";
 
 type DollOptions = {
   texture?: Texture;
@@ -124,7 +125,8 @@ export class Doll extends Container {
       const img = c2d.getImageData(0, 0, tw, th);
       this.alphaMap = { data: img.data, w: tw, h: th };
     } catch (e) {
-      console.warn("[doll] alpha map build failed — circle fallback:", e);
+      // 픽셀 단위 충돌맵 생성 실패 → 원형 fallback (게임 진행엔 무해, 정확도만 저하).
+      log.warn("game.alpha_map_fail", errInfo(e));
       this.alphaMap = null;
     }
   }
