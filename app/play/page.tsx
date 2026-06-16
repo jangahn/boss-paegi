@@ -11,7 +11,7 @@ import { UltimateButton } from "@/components/UltimateButton";
 import { BgSwitcher } from "@/components/play/BgSwitcher";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { setSentryGameContext } from "@/lib/sentry-context";
-import { resolveBackground } from "@/lib/backgrounds";
+import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon } from "@/lib/weapons";
 import { unlockAudio } from "@/lib/sound";
 import { log } from "@/lib/log";
@@ -25,15 +25,18 @@ function PlayInner() {
   const dollId = searchParams.get("doll");
   const bgParam = searchParams.get("bg");
   // 배경은 게임 도중 자유 전환 — local state 로만 관리, 게임 재생성 X (점수/낙서 유지).
-  // 초기값: URL 의 bg, 없으면 random 1회.
+  // SSR/첫 렌더 초기값은 결정적: bg 파라미터 있으면 그 키, 없으면 BACKGROUNDS[0]("office").
+  // 파라미터 없을 때의 "랜덤 1회"는 마운트 후 client effect 에서 확정한다 — render 에서 random 을
+  // 쓰면 SSR/client 결과가 달라 hydration mismatch(BgSwitcher active className 등)가 난다.
   const [bgKey, setBgKey] = useState<string>(
     () => resolveBackground(bgParam).key
   );
-  // 게임 생성 시점의 초기 배경 — 이후 전환은 setBackground 핫스왑으로만.
+  // 게임 생성 시점의 초기 배경 URL — 아래 "초기 배경 확정" effect 가 useGameInit 가 읽기 전에 채운다.
+  // 이후 전환은 setBackground 핫스왑으로만.
   const initialBgUrlRef = useRef<string | null>(null);
-  if (initialBgUrlRef.current === null) {
-    initialBgUrlRef.current = resolveBackground(bgKey).url;
-  }
+  // 사용자가 BgSwitcher 로 직접 바꿨는지 — 초기 random 은 URL 에 안 쓰고(/play 깔끔 유지),
+  // 사용자 전환만 ?bg= 로 동기화한다.
+  const userChangedBgRef = useRef(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
@@ -58,6 +61,20 @@ function PlayInner() {
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
   const consumeUlt = useGameStore((s) => s.consumeUlt);
+
+  // 초기 배경 확정 — 마운트 후 1회. SSR/첫 렌더는 결정적("office" or 유효 ?bg=)이라 hydration 일치하고,
+  // 실제 초기 배경은 여기서 정한다: 유효한 bg 파라미터면 그 배경, 없거나 무효면 client random.
+  // 반드시 게임 생성(useGameInit)·세션 start 로그보다 먼저 선언돼 initialBgUrlRef/bgKeyRef 를
+  // 먼저 채워야 첫 배경 텍스처와 game.start 로그의 bg 가 실제 배경과 일치한다.
+  const bgDecidedRef = useRef(false);
+  useEffect(() => {
+    if (bgDecidedRef.current) return; // StrictMode 더블 effect 가드 — random 은 1회만 고정
+    bgDecidedRef.current = true;
+    const picked = findBackground(bgParam) ?? randomBackground();
+    initialBgUrlRef.current = picked.url;
+    bgKeyRef.current = picked.key;
+    setBgKey(picked.key); // 파라미터와 동일하면 React 가 bail-out (no-op)
+  }, [bgParam]);
 
   // 게임 세션 시작 — 스토어 리셋 + 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 event/replay 에 부착).
   useEffect(() => {
@@ -132,6 +149,7 @@ function PlayInner() {
 
   const handleBg = (key: string) => {
     if (key !== bgKey) {
+      userChangedBgRef.current = true; // 이후 핫스왑이 ?bg= 를 URL 에 동기화
       log.info("game.bg_switch", { from: bgKey, to: key });
       setSentryGameContext({ dollId, weapon: weapon.key, bg: key, gamePhase: "playing" });
     }
@@ -152,11 +170,14 @@ function PlayInner() {
       const tex = await Assets.load(b.url).catch(() => undefined);
       if (!cancelled && tex) gameRef.current?.setBackground(tex);
     })();
-    // URL 도 동기화 (공유용) — navigation 없이 replaceState 로만
-    const sp = new URLSearchParams();
-    if (dollId) sp.set("doll", dollId);
-    sp.set("bg", bgKey);
-    window.history.replaceState(null, "", `/play?${sp.toString()}`);
+    // URL 동기화 (공유용) 는 사용자가 직접 바꾼 경우만 — navigation 없이 replaceState 로만.
+    // 초기 random 전환(office→random)은 URL 에 안 써서 /play 를 깔끔히 유지(현행 UX 보존).
+    if (userChangedBgRef.current) {
+      const sp = new URLSearchParams();
+      if (dollId) sp.set("doll", dollId);
+      sp.set("bg", bgKey);
+      window.history.replaceState(null, "", `/play?${sp.toString()}`);
+    }
     return () => {
       cancelled = true;
     };
