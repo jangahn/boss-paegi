@@ -90,7 +90,12 @@ boss-paegi/
 - **자동 포착**: 서버/RSC/Route 미처리 에러(`instrumentation.ts` `onRequestError`), 클라 미처리 에러(`instrumentation-client.ts`), 루트 렌더 에러(`app/global-error.tsx`).
 - **PII**: `sendDefaultPii: false`(IP·헤더·쿠키 미수집) + `beforeSend` 로 URL 쿼리스트링(서명 토큰) 제거. ctx 는 이미 `scrubSecrets`/`urlHost` 적용. 식별자는 익명 UUID(`userId`)+게임 닉네임(실명 아님)만 `setUser`. **업로드 원본 얼굴은 Replay 에서 마스킹**(`.sentry-block-face`) — AI 생성 후보·플레이 화면은 비민감이라 미마스킹.
 - **설정**: Sentry 프로젝트 생성 → `NEXT_PUBLIC_SENTRY_DSN`(+선택 `SENTRY_*`)을 `.env.local`/Vercel 에 추가. DSN 없으면 init 안 함 → no-op. 광고차단 우회용 터널 `/monitoring`(proxy matcher 에서 제외).
-- **권장 알림**(Sentry UI, production 한정): `falbal.hard_cap_hit`·`gen.submit_fail`·`auth.anon_sign_in_fail`·`gen.done_update_fail`·`score.out_of_range` 즉시, `gen.fal_timeout`·`gen.candidate_copy_giveup` 스파이크.
+- **구성된 모니터링**(Sentry org `ja-inc`, production 한정 — API 로 설정, UI 에서 조정 가능):
+  - 이슈 알림: `새 에러/경고 발생·재발`, `에러 급증 1h 20+`, **`생성 실패 급증`**(`event:gen.submit_fail`/`gen.fal_timeout` 1h 5+).
+  - 메트릭 알림(span dataset `events_analytics_platform`, Sentry 가 transaction→span 마이그레이션 중): **`생성 제출 지연 p95`**(`/api/fal` warn 8s·crit 12s), **`점수 제출 실패율`**(`/api/score` crit 20%).
+  - **Uptime**: `boss-paegi.vercel.app` 5분 간격(무료 1개 한도) → 다운 시 이메일.
+  - **Dashboard `boss-paegi 운영 개요`**: 에러 추이·event 태그별 Top·생성 p95·Web Vitals(p75)·점수 제출·무기 분포.
+  - 추가 권장(미설정): `falbal.hard_cap_hit`·`auth.anon_sign_in_fail`·`gen.done_update_fail` 즉시 알림은 필요 시 UI 에서.
 
 ## npm scripts
 
