@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
   let facePath: string | null = null;
   try {
     const uploaded = await Sentry.startSpan(
-      { name: "gen.face_upload", op: "storage.upload", attributes: { genId } },
+      { name: "gen.face_upload", op: "storage.upload", attributes: { genId, userId: user.id } },
       () => uploadFaceTmp(user.id, genId, prepared)
     );
     facePath = uploaded.path;
@@ -148,14 +148,18 @@ export async function POST(req: NextRequest) {
     // 입력에 안경이 있으면 캐릭터에도 반영 (PuLID 가 액세서리를 떨궈 누락되므로 조건부).
     // 검출 실패 시 false 폴백(생성은 진행).
     const wearsGlasses = await Sentry.startSpan(
-      { name: "gen.detect_glasses", op: "fal.vqa", attributes: { genId } },
+      { name: "gen.detect_glasses", op: "fal.vqa", attributes: { genId, userId: user.id } },
       () => detectGlasses(uploaded.url)
     );
     if (wearsGlasses) log.info("gen.glasses_detected", { genId, userId: user.id });
 
     // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
     const requestIds = await Sentry.startSpan(
-      { name: "gen.fal_submit", op: "fal.queue.submit", attributes: { genId, numImages: 3 } },
+      {
+        name: "gen.fal_submit",
+        op: "fal.queue.submit",
+        attributes: { genId, userId: user.id, numImages: 3, wearsGlasses },
+      },
       () =>
         provider.submitGeneration({
           faceImageUrl: uploaded.url,

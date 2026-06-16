@@ -58,3 +58,9 @@ body {
 .animate-ult-dim {
   animation: ult-dim 1.4s ease-in-out infinite;
 }
+
+/* Sentry User Feedback 위젯(#sentry-feedback)은 /play 몰입화면(.game-surface)에선
+ * 무기바/버튼과 겹치므로 숨김. 그 외 페이지(홈/갤러리/랭킹)에선 노출. */
+body:has(.game-surface) #sentry-feedback {
+  display: none !important;
+}

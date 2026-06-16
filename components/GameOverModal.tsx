@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
@@ -63,30 +64,45 @@ export function GameOverModal({
     setSubmitting(true);
     // 서버 검증과 동일 공식으로 클램프 — 한도 초과 저장 실패 방지
     const clamped = clampForSubmit(score, durationMs);
-    fetch("/api/score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        score: clamped.score,
-        weapon,
-        durationMs: clamped.durationMs,
-        dollId,
-        maxCombo,
-      }),
-    })
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error ?? "submit_failed");
-        setScoreId(data.scoreId);
-      })
-      .catch((e) => {
-        log.warn("score.client_submit_fail", {
+    // 점수 제출 trace(score/maxCombo/weapon/durationMs attribute) → Explore 에서 분석.
+    void Sentry.startSpan(
+      {
+        name: "score.submit",
+        op: "http.client",
+        attributes: {
           score: clamped.score,
-          ...errInfo(e),
-        });
-        setSubmitError(e.message);
-      })
-      .finally(() => setSubmitting(false));
+          maxCombo,
+          weapon,
+          durationMs: clamped.durationMs,
+          dollId: dollId ?? "default",
+        },
+      },
+      () =>
+        fetch("/api/score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            score: clamped.score,
+            weapon,
+            durationMs: clamped.durationMs,
+            dollId,
+            maxCombo,
+          }),
+        })
+          .then(async (r) => {
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error ?? "submit_failed");
+            setScoreId(data.scoreId);
+          })
+          .catch((e) => {
+            log.warn("score.client_submit_fail", {
+              score: clamped.score,
+              ...errInfo(e),
+            });
+            setSubmitError(e.message);
+          })
+          .finally(() => setSubmitting(false))
+    );
   }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo]);
 
   if (!open) return null;

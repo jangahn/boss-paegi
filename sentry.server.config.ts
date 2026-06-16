@@ -10,7 +10,9 @@ if (dsn) {
     // 구조화 로그 → Explore→Logs (lib/sentry-bridge 가 Sentry.logger 로 전송).
     enableLogs: true,
     // 라우트별 차등 샘플링(무료 5M spans 제어). /api/generations 는 4초 폴링이라 강 다운샘플.
+    // 트레이싱은 production 한정 — dev/preview 가 prod 대시보드를 environment:development 로 오염시키지 않게.
     tracesSampler: (ctx) => {
+      if (process.env.VERCEL_ENV !== "production") return 0;
       const a = (ctx?.attributes ?? {}) as Record<string, unknown>;
       const hay = `${ctx?.name ?? ""} ${a["http.route"] ?? ""} ${a["url"] ?? a["http.target"] ?? ""}`;
       if (hay.includes("/monitoring")) return 0; // Sentry 터널

@@ -79,12 +79,16 @@ boss-paegi/
 
 ## 모니터링 (Sentry)
 
-에러/경고 알림 + **구조화 로그(Logs)** + **트레이싱(성능)**. 세션 리플레이는 OFF(얼굴 개인정보+캔버스).
+에러/경고 알림 + **구조화 로그(Logs)** + **트레이싱(성능)** + **세션 리플레이** + **인앱 의견 위젯**. 초반 서비스 품질 향상 위해 유저 행동/피드백을 직접 관찰 — 게임 데이터(캐릭터/플레이/랭킹/닉네임/userKey)는 비민감 취급, **업로드 원본 얼굴만 마스킹**(정책 #1/PIPA).
 
 - **로그 브릿지**(`lib/sentry-bridge.ts`, `emit()` 한 곳): `log.error/warn` → `captureMessage`(event 명 fingerprint 그룹핑 → 이벤트당 1 이슈) **+ `Sentry.logger`(Explore→Logs 검색)**, `log.info` → `Sentry.logger.info`+breadcrumb. 초고빈도 `gen.recover_list` 는 Logs 제외(볼륨). `enableLogs: true`.
-- **트레이싱**: server `tracesSampler` 라우트별 차등(`/api/fal`·`/api/doll`=1.0, `/api/score`=0.5, **`/api/generations`=0.05**(폴링), 기본 0.1), client 0.1(Web Vitals 자동). 생성 파이프라인 커스텀 스팬(`gen.prepare_input`/`face_upload`/`detect_glasses`/`fal_submit`, `gen.fal_status`/`fal_result`/`copy_candidates`, `doll.bg_removal`/`normalize`). fal/Supabase 는 fetch 자동계측 `http.client` 스팬(`tracePropagationTargets` 는 자기 도메인만). release health(crash-free)는 release(SHA)+autoSessionTracking 자동.
+- **게임 액션 로그**(`app/play/page.tsx`): `game.start`(dollId/weapon/bg)·`game.end`(score/maxCombo/hitCount/weaponCounts/mainWeapon/durationMs)·`game.weapon_switch`·`game.bg_switch`·`game.ultimate_fire` → Logs/Discover 에서 무기·점수대·플레이타임 분석. 고빈도 `hit` 은 per-hit 로그 안 함(`game.end` 요약으로 충분).
+- **전역 신원/컨텍스트**(`lib/sentry-context.ts`): `setSentryIdentity(userKey, 닉네임)` → `Sentry.setUser`(모든 event/replay/log 에 자동 부착, `SessionBootstrap`); `setSentryGameContext({dollId,weapon,bg,gamePhase})` → `setTag`(weapon/bg/doll_type/game_phase)+`setContext("game_session")` → 태그로 끊어 보기. 55개 로그 site 안 건드리고 정보 극대화.
+- **트레이싱**(production 한정 — dev/preview 는 0 으로 게이트해 대시보드 오염·span 한도 소모 방지): server `tracesSampler` 라우트별 차등(`/api/fal`·`/api/doll`=1.0, `/api/score`=0.5, **`/api/generations`=0.05**(폴링), 기본 0.1), client 0.1(Web Vitals 자동). 생성 파이프라인 커스텀 스팬(`gen.prepare_input`/`face_upload`/`detect_glasses`/`fal_submit`, `gen.fal_status`/`fal_result`/`copy_candidates`, `doll.bg_removal`/`normalize`) + 점수 제출 스팬(`score.submit`, score/maxCombo/weapon/durationMs/dollId attr). fal/Supabase 는 fetch 자동계측 `http.client` 스팬(`tracePropagationTargets` 는 자기 도메인만). release health(crash-free)는 release(SHA)+autoSessionTracking 자동.
+- **세션 리플레이**(`instrumentation-client.ts`, **production 한정** — dev/preview 는 0 으로 게이트해 공용 50/월 한도 미소모): 에러 세션 100%(`replaysOnErrorSampleRate`) + 일반 20%(`replaysSessionSampleRate`). DOM-only(PixiJS 캔버스 녹화 미사용 = 모바일 perf). 게임 UI/텍스트는 비민감이라 언마스크, **`.sentry-block-face`(`/generate` 업로드 미리보기·`PhotoCropper` 크롭 컨테이너)만 `block`+`mask`** → 원본 얼굴 replay 미포함(크롭 컨테이너 차단이 내부 `<img>`까지 마스킹 — react-easy-crop 은 portal 미사용).
+- **인앱 의견 위젯**(`feedbackAsyncIntegration`, `#sentry-feedback`): 버그·건의 자유 제보. **async = 모달/스크린샷 코드는 클릭 시 CDN 지연로드**(초기 번들 경량 — 모바일 PWA). 스크린샷 OFF(얼굴/캔버스 캡처 방지)·이름/이메일 입력 없음. `/play` 몰입화면(`.game-surface`)에선 무기바와 겹쳐 `globals.css` `:has()` 로 숨김, 그 외(홈/갤러리/랭킹) 노출.
 - **자동 포착**: 서버/RSC/Route 미처리 에러(`instrumentation.ts` `onRequestError`), 클라 미처리 에러(`instrumentation-client.ts`), 루트 렌더 에러(`app/global-error.tsx`).
-- **PII**: `sendDefaultPii: false` + `beforeSend` 로 URL 쿼리스트링(서명 토큰) 제거. ctx 는 이미 `scrubSecrets`/`urlHost` 적용. 식별자는 익명 UUID(`userId`)만 `setUser`.
+- **PII**: `sendDefaultPii: false`(IP·헤더·쿠키 미수집) + `beforeSend` 로 URL 쿼리스트링(서명 토큰) 제거. ctx 는 이미 `scrubSecrets`/`urlHost` 적용. 식별자는 익명 UUID(`userId`)+게임 닉네임(실명 아님)만 `setUser`. **업로드 원본 얼굴은 Replay 에서 마스킹**(`.sentry-block-face`) — AI 생성 후보·플레이 화면은 비민감이라 미마스킹.
 - **설정**: Sentry 프로젝트 생성 → `NEXT_PUBLIC_SENTRY_DSN`(+선택 `SENTRY_*`)을 `.env.local`/Vercel 에 추가. DSN 없으면 init 안 함 → no-op. 광고차단 우회용 터널 `/monitoring`(proxy matcher 에서 제외).
 - **권장 알림**(Sentry UI, production 한정): `falbal.hard_cap_hit`·`gen.submit_fail`·`auth.anon_sign_in_fail`·`gen.done_update_fail`·`score.out_of_range` 즉시, `gen.fal_timeout`·`gen.candidate_copy_giveup` 스파이크.
 

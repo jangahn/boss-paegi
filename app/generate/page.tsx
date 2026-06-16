@@ -314,8 +314,14 @@ function UploadStage({
 
       <label className="flex aspect-[3/4] w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-foreground/20 bg-foreground/5 transition hover:bg-foreground/10 active:bg-foreground/15">
         {preview ? (
+          // sentry-block-face: 업로드 원본 얼굴은 Session Replay 에서 차단(정책 #1/PIPA)
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="" className="h-full w-full object-cover" />
+          <img
+            src={preview}
+            alt=""
+            data-sentry-block
+            className="sentry-block-face h-full w-full object-cover"
+          />
         ) : (
           <span className="text-zinc-500">탭해서 사진 선택</span>
         )}

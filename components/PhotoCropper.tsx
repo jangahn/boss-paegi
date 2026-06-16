@@ -53,7 +53,11 @@ export function PhotoCropper({ imageUrl, onConfirm, onCancel }: Props) {
         </p>
       </div>
 
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-black">
+      {/* sentry-block-face: 크롭 중인 원본 얼굴은 Session Replay 에서 차단(정책 #1/PIPA) */}
+      <div
+        data-sentry-block
+        className="sentry-block-face relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-black"
+      >
         <Cropper
           image={imageUrl}
           crop={crop}

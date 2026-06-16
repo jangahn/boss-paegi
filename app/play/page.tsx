@@ -8,7 +8,8 @@ import { SpeechBubble } from "@/components/SpeechBubble";
 import { Spinner } from "@/components/Spinner";
 import { WeaponPicker } from "@/components/WeaponPicker";
 import { UltimateButton } from "@/components/UltimateButton";
-import { useGameStore } from "@/store/gameStore";
+import { topWeapon, useGameStore } from "@/store/gameStore";
+import { setSentryGameContext } from "@/lib/sentry-context";
 import { createClient } from "@/lib/supabase/client";
 import { randomTaunt } from "@/lib/taunts";
 import { BACKGROUNDS, resolveBackground } from "@/lib/backgrounds";
@@ -64,6 +65,18 @@ function PlayInner() {
 
   useEffect(() => {
     start();
+    // 게임 세션 시작 — 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 모든 event/replay 에 부착).
+    log.info("game.start", {
+      dollId: dollId ?? "default",
+      weapon: weaponRef.current.key,
+      bg: bgKeyRef.current,
+    });
+    setSentryGameContext({
+      dollId,
+      weapon: weaponRef.current.key,
+      bg: bgKeyRef.current,
+      gamePhase: "playing",
+    });
     const el = stageRef.current;
     if (!el) return;
 
@@ -174,9 +187,37 @@ function PlayInner() {
   }, []);
 
   const handleUltimate = () => {
-    if (!useGameStore.getState().ultReady) return;
+    const s = useGameStore.getState();
+    if (!s.ultReady) return;
+    log.info("game.ultimate_fire", {
+      dollId: dollId ?? "default",
+      weapon: weapon.key,
+      score: s.score,
+      combo: s.combo,
+    });
     gameRef.current?.triggerUltimate();
     consumeUlt();
+  };
+
+  // 무기 전환 — 로그 + Sentry 게임 컨텍스트 갱신(이후 event/replay 에 현재 무기 부착).
+  const handleWeapon = (w: Weapon) => {
+    if (w.key !== weapon.key) {
+      log.info("game.weapon_switch", {
+        from: weapon.key,
+        to: w.key,
+        category: w.category,
+      });
+      setSentryGameContext({ dollId, weapon: w.key, bg: bgKey, gamePhase: "playing" });
+    }
+    setWeapon(w);
+  };
+
+  const handleBg = (key: string) => {
+    if (key !== bgKey) {
+      log.info("game.bg_switch", { from: bgKey, to: key });
+      setSentryGameContext({ dollId, weapon: weapon.key, bg: key, gamePhase: "playing" });
+    }
+    setBgKey(key);
   };
 
   // 배경 전환 — 텍스처만 핫스왑. 게임 상태 (점수/낙서/무기) 그대로.
@@ -248,9 +289,21 @@ function PlayInner() {
   const handleEnd = () => {
     // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
     gameRef.current?.stopUltimate();
-    const currentScore = useGameStore.getState().score;
+    const s = useGameStore.getState();
+    // 게임 세션 종료 요약 — Logs/Discover 에서 weapon·점수대·플레이타임 분석.
+    log.info("game.end", {
+      dollId: dollId ?? "default",
+      bg: bgKey,
+      score: s.score,
+      maxCombo: s.maxCombo,
+      hitCount: s.hitCount,
+      mainWeapon: topWeapon(s.weaponCounts),
+      weaponCounts: s.weaponCounts,
+      durationMs: s.startedAt ? Math.round(performance.now() - s.startedAt) : 0,
+    });
+    setSentryGameContext({ dollId, weapon: weapon.key, bg: bgKey, gamePhase: "over" });
     end();
-    if (currentScore <= 0) {
+    if (s.score <= 0) {
       router.push("/");
       return;
     }
@@ -291,11 +344,11 @@ function PlayInner() {
       <UltimateButton ready={ultReady} onFire={handleUltimate} />
       <WeaponPicker
         active={weapon.key}
-        onChange={setWeapon}
+        onChange={handleWeapon}
         hasDrawing={hasDrawing}
         onClearDrawing={() => gameRef.current?.clearDrawing()}
       />
-      <BgSwitcher active={bgKey} onChange={setBgKey} />
+      <BgSwitcher active={bgKey} onChange={handleBg} />
       <GameOverModal
         open={over}
         onRestart={handleRestart}
