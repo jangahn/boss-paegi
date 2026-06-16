@@ -1,3 +1,22 @@
+/**
+ * PlayScene — 게임의 중심 씬(Container). 의도적으로 큰 오케스트레이터로,
+ * 다음 ~12개 책임을 한 곳에서 조율한다(실시간 루프 타이밍·히트 판정이 강결합돼 있어
+ * 분리 시 단편화 비용이 큼):
+ *   1. 게임 루프(update: 델타·궁극기·물리 step·doll/projectile/pellet sync·효과 정리)
+ *   2. 입력 라우팅(stage pointer → 무기 모드별 입력 핸들러 위임)
+ *   3. 히트 처리(reportHit → 점수/데미지레이어/사운드, 6개 입력 컨텍스트 공통)
+ *   4. 궁극기 능력(triggerUltimate/ultBlow/ultThrow/ultFinish/restoreDoll)
+ *   5. 탭/플링 메커닉(doll pointer down/move/up, fling 물리, wall hit)
+ *   6~9. 스와이프/스로우/슛/드로우 핸들러
+ *   10. 충돌(projectile ↔ doll, 임팩트 데미지)
+ *   11. 레이아웃/뷰포트(stage 사이즈, doll scale, 물리 바디 리스케일)
+ *   12. 생명주기(constructor/destroy/setWeapon/setDamageScore 등)
+ *
+ * 제스처별 입력 로직은 이미 game/input/{Throw,Swipe,Shoot,Draw}Input 으로 분리됨
+ * (PlayScene 은 그 콜백을 해석/라우팅만). 추가로 비대해지면 분리 후보:
+ *   - 궁극기 상태머신 → game/abilities/UltimateAbility.ts
+ *   - 탭/플링(grab) → game/input/GrabInput.ts
+ */
 import {
   Application,
   Container,

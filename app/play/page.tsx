@@ -8,19 +8,16 @@ import { SpeechBubble } from "@/components/SpeechBubble";
 import { Spinner } from "@/components/Spinner";
 import { WeaponPicker } from "@/components/WeaponPicker";
 import { UltimateButton } from "@/components/UltimateButton";
+import { BgSwitcher } from "@/components/play/BgSwitcher";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { setSentryGameContext } from "@/lib/sentry-context";
-import { createClient } from "@/lib/supabase/client";
-import { randomTaunt } from "@/lib/taunts";
-import { BACKGROUNDS, resolveBackground } from "@/lib/backgrounds";
+import { resolveBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon } from "@/lib/weapons";
 import { unlockAudio } from "@/lib/sound";
-import { log, errInfo } from "@/lib/log";
+import { log } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
-
-const TAUNT_INITIAL_DELAY_MS = 1500;
-const TAUNT_VISIBLE_MS = 3000;
-const TAUNT_INTERVAL_MS = 5500;
+import { useGameInit } from "./useGameInit";
+import { useTaunts } from "./useTaunts";
 
 function PlayInner() {
   const router = useRouter();
@@ -51,7 +48,6 @@ function PlayInner() {
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
-  const [taunt, setTaunt] = useState<string | null>(null);
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
   // 게임 생성(비동기) 중 바뀐 무기/배경을 생성 완료 시점에 재적용하기 위한 미러
   const weaponRef = useRef(weapon);
@@ -63,9 +59,9 @@ function PlayInner() {
   const hit = useGameStore((s) => s.hit);
   const consumeUlt = useGameStore((s) => s.consumeUlt);
 
+  // 게임 세션 시작 — 스토어 리셋 + 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 event/replay 에 부착).
   useEffect(() => {
     start();
-    // 게임 세션 시작 — 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 모든 event/replay 에 부착).
     log.info("game.start", {
       dollId: dollId ?? "default",
       weapon: weaponRef.current.key,
@@ -77,102 +73,22 @@ function PlayInner() {
       bg: bgKeyRef.current,
       gamePhase: "playing",
     });
-    const el = stageRef.current;
-    if (!el) return;
+  }, [start, dollId]);
 
-    let cancelled = false;
-    let myHandle: GameHandle | undefined;
-
-    (async () => {
-      const { Assets } = await import("pixi.js");
-
-      const [dollTexture, bgTexture] = await Promise.all([
-        (async () => {
-          // dollId 없으면 기본 부장님 이미지 — 실패 시 undefined (Graphics placeholder fallback)
-          if (!dollId) {
-            try {
-              return await Assets.load("/sprites/boss-default.png");
-            } catch (e) {
-              log.warn("play.default_texture_fail", errInfo(e));
-              return undefined;
-            }
-          }
-          const sb = createClient();
-          const { data } = await sb
-            .from("dolls")
-            .select("image_url")
-            .eq("id", dollId)
-            .single();
-          if (!data?.image_url) return undefined;
-          setDollImageUrl(data.image_url);
-          try {
-            return await Assets.load(data.image_url);
-          } catch (e) {
-            log.warn("play.doll_texture_fail", { dollId, ...errInfo(e) });
-            return undefined;
-          }
-        })(),
-        Assets.load(initialBgUrlRef.current!).catch((e) => {
-          log.warn("play.bg_texture_fail", errInfo(e));
-          return undefined;
-        }),
-      ]);
-      if (cancelled) return;
-
-      const { createGame } = await import("@/game/BossPaegiGame");
-      if (cancelled) return;
-      const created = await createGame(
-        el,
-        {
-          dollTexture,
-          bgTexture,
-          weapon,
-          onHit: ({ strength, weapon: weaponKey, chargeUlt }) =>
-            hit(strength, weaponKey, chargeUlt),
-          onDrawingChange: setHasDrawing,
-        },
-        () => cancelled
-      );
-      // 취소된 호출은 createGame 이 DOM 안 건드리고 null 반환 (자가 정리)
-      if (!created) return;
-      // race 안전망: createGame 반환 직후 cleanup 됐다면 즉시 destroy
-      if (cancelled) {
-        created.destroy();
-        return;
-      }
-      myHandle = created;
-      gameRef.current = created;
-      setGameReady(true);
-      log.info("play.game_ready", { dollId: dollId ?? "default" });
-
-      // 생성하는 동안 사용자가 바꾼 무기/배경 재적용 (로딩 중 변경은
-      // gameRef 가 null 이라 hot-swap effect 에서 조용히 유실됨)
-      created.setWeapon(weaponRef.current);
-      const latestBg = resolveBackground(bgKeyRef.current);
-      if (latestBg.url !== initialBgUrlRef.current) {
-        Assets.load(latestBg.url)
-          .then((tex) => {
-            if (!cancelled && tex && gameRef.current === created) {
-              created.setBackground(tex);
-            }
-          })
-          .catch(() => {});
-      }
-    })().catch((e) => {
-      // 게임 init 자체 실패 — 로딩 화면이 안 풀림. 반드시 추적
-      log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
-    });
-
-    return () => {
-      cancelled = true;
-      if (myHandle) {
-        myHandle.destroy();
-        if (gameRef.current === myHandle) gameRef.current = null;
-      }
-    };
-    // weapon/bg 변경은 별도 effect 에서 hot-swap (재마운트 X)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [start, hit, dollId]);
+  // Pixi 게임 인스턴스 생성/해제 (인형·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
+  useGameInit({
+    dollId,
+    stageRef,
+    gameRef,
+    weaponRef,
+    bgKeyRef,
+    initialBgUrlRef,
+    onHit: ({ strength, weapon: weaponKey, chargeUlt }) =>
+      hit(strength, weaponKey, chargeUlt),
+    onDrawingChange: setHasDrawing,
+    setGameReady,
+    setDollImageUrl,
+  });
 
   useEffect(() => {
     gameRef.current?.setWeapon(weapon);
@@ -185,6 +101,8 @@ function PlayInner() {
       setUltReady(s.ultReady);
     });
   }, []);
+
+  const taunt = useTaunts(over);
 
   const handleUltimate = () => {
     const s = useGameStore.getState();
@@ -260,32 +178,6 @@ function PlayInner() {
     };
   }, []);
 
-  useEffect(() => {
-    if (over) {
-      setTaunt(null);
-      return;
-    }
-    let lastTaunt = "";
-    let hideTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const show = () => {
-      // 현재 점수대에 맞는 톤의 시비 멘트 (초반 무시 → 후반 굴복)
-      const t = randomTaunt(lastTaunt, useGameStore.getState().score);
-      lastTaunt = t;
-      setTaunt(t);
-      hideTimer = setTimeout(() => setTaunt(null), TAUNT_VISIBLE_MS);
-    };
-
-    const initial = setTimeout(show, TAUNT_INITIAL_DELAY_MS);
-    const interval = setInterval(show, TAUNT_INTERVAL_MS);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-      if (hideTimer) clearTimeout(hideTimer);
-      setTaunt(null);
-    };
-  }, [over]);
-
   const handleEnd = () => {
     // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
     gameRef.current?.stopUltimate();
@@ -356,32 +248,6 @@ function PlayInner() {
         dollId={dollId}
         dollImageUrl={dollImageUrl}
       />
-    </div>
-  );
-}
-
-function BgSwitcher({
-  active,
-  onChange,
-}: {
-  active: string;
-  onChange: (key: string) => void;
-}) {
-  return (
-    <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 gap-1 overflow-x-auto rounded-full bg-black/50 p-1 backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-2">
-      {BACKGROUNDS.map((b) => (
-        <button
-          key={b.key}
-          onClick={() => onChange(b.key)}
-          className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:px-3 sm:py-1.5 sm:text-xs ${
-            b.key === active
-              ? "bg-white text-black"
-              : "text-white/80 hover:text-white"
-          }`}
-        >
-          {b.label}
-        </button>
-      ))}
     </div>
   );
 }
