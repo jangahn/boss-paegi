@@ -6,14 +6,30 @@ import { assessFaceCrop, type FaceQualityReason } from "@/lib/image-quality";
 
 type Props = {
   imageUrl: string;
-  /** crop 확정 시 호출. 3:4 비율 JPEG Blob 반환. */
+  /** crop 확정 시 호출. crop 영역 JPEG Blob 반환. */
   onConfirm: (blob: Blob) => void;
   onCancel: () => void;
+  /** crop 비율 (default 3:4 — 인형 생성용). 아바타는 1. */
+  aspect?: number;
+  /** 얼굴 화질 검사 (default true — 인형용). 아바타는 false. */
+  assessQuality?: boolean;
+  title?: string;
+  subtitle?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
 };
 
-const ASPECT = 3 / 4;
-
-export function PhotoCropper({ imageUrl, onConfirm, onCancel }: Props) {
+export function PhotoCropper({
+  imageUrl,
+  onConfirm,
+  onCancel,
+  aspect = 3 / 4,
+  assessQuality = true,
+  title = "얼굴 위치 맞추기",
+  subtitle = "드래그로 위치, 두 손가락(또는 슬라이더)으로 줌",
+  confirmLabel = "이대로 만들기",
+  cancelLabel = "다른 사진 선택",
+}: Props) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
@@ -31,11 +47,13 @@ export function PhotoCropper({ imageUrl, onConfirm, onCancel }: Props) {
     setReject(null);
     try {
       const img = await loadImage(imageUrl);
-      // 저화질(작거나 흐린) 얼굴은 깨진 캐릭터를 만들므로 생성 전 차단
-      const quality = assessFaceCrop(img, croppedArea);
-      if (!quality.ok) {
-        setReject(quality.reason);
-        return;
+      // 저화질(작거나 흐린) 얼굴은 깨진 캐릭터를 만들므로 생성 전 차단 (인형 전용)
+      if (assessQuality) {
+        const quality = assessFaceCrop(img, croppedArea);
+        if (!quality.ok) {
+          setReject(quality.reason);
+          return;
+        }
       }
       const blob = await cropToBlob(img, croppedArea);
       onConfirm(blob);
@@ -47,16 +65,15 @@ export function PhotoCropper({ imageUrl, onConfirm, onCancel }: Props) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       <div className="text-center">
-        <h2 className="text-xl font-bold">얼굴 위치 맞추기</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          드래그로 위치, 두 손가락(또는 슬라이더)으로 줌
-        </p>
+        <h2 className="text-xl font-bold">{title}</h2>
+        <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
       </div>
 
-      {/* sentry-block-face: 크롭 중인 원본 얼굴은 Session Replay 에서 차단(정책 #1/PIPA) */}
+      {/* sentry-block-face: 크롭 중인 원본 사진은 Session Replay 에서 차단(정책 #1/PIPA) */}
       <div
         data-sentry-block
-        className="sentry-block-face relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-black"
+        style={{ aspectRatio: String(aspect) }}
+        className="sentry-block-face relative w-full overflow-hidden rounded-2xl bg-black"
       >
         <Cropper
           image={imageUrl}
@@ -64,7 +81,7 @@ export function PhotoCropper({ imageUrl, onConfirm, onCancel }: Props) {
           zoom={zoom}
           minZoom={1}
           maxZoom={4}
-          aspect={ASPECT}
+          aspect={aspect}
           showGrid={true}
           onCropChange={setCrop}
           onZoomChange={setZoom}
@@ -110,14 +127,14 @@ export function PhotoCropper({ imageUrl, onConfirm, onCancel }: Props) {
           disabled={busy}
           className="rounded-full border border-foreground/15 py-3 font-medium transition hover:bg-foreground/5 disabled:opacity-30"
         >
-          다른 사진 선택
+          {cancelLabel}
         </button>
         <button
           onClick={handleConfirm}
           disabled={busy || !croppedArea}
           className="rounded-full bg-foreground py-3 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
         >
-          {busy ? "처리 중…" : "이대로 만들기"}
+          {busy ? "처리 중…" : confirmLabel}
         </button>
       </div>
     </div>

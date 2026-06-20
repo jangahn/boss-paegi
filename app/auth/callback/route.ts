@@ -36,7 +36,11 @@ export async function GET(request: NextRequest) {
     log.warn("auth.callback_exchange_fail", { ...errInfo(error) });
     return redirect("/login?error=exchange");
   }
-  const user = data.user;
+  // linkIdentity 는 OAuth 데이터를 user_metadata 에 머지하지 않음 → identities[].identity_data 에만 있음.
+  // admin 으로 identities 포함된 권위 user 를 조회해야 닉/프사/이메일을 제대로 읽는다.
+  const admin = createAdminClient();
+  const { data: full } = await admin.auth.admin.getUserById(data.user.id);
+  const user = full?.user ?? data.user;
   const profile = extractOAuthProfile(user);
 
   // 3) 이메일 필수 — 없거나 미검증이면 멤버화하지 않고 세션 종료 후 안내.
@@ -53,7 +57,6 @@ export async function GET(request: NextRequest) {
   // 4) 멤버 1회성 초기화 — member_accounts 신규 insert 일 때만 프로필 덮어씀(재로그인 보존).
   if (!user.is_anonymous) {
     try {
-      const admin = createAdminClient();
       const { data: rows, error: upErr } = await admin
         .from("member_accounts")
         .upsert(
