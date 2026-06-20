@@ -22,14 +22,32 @@ type Score = {
   created_at: string;
   profiles: { display_name: string } | null;
   dolls: { image_url: string | null } | null;
+  highlight_clip_path: string | null;
+  highlight_status: string | null;
+  highlight_delta: number | null;
+  highlight_window_ms: number | null;
+  highlight_deleted_at: string | null;
+  highlight_expires_at: string | null;
 };
+
+const HL_COLS =
+  "highlight_clip_path, highlight_status, highlight_delta, highlight_window_ms, highlight_deleted_at, highlight_expires_at";
+
+/** attach 됐고 삭제/만료 안 된 클립이면 public CDN URL, 아니면 null. */
+function clipPublicUrl(s: Score): string | null {
+  if (s.highlight_status !== "attached" || !s.highlight_clip_path) return null;
+  if (s.highlight_deleted_at) return null;
+  if (s.highlight_expires_at && new Date(s.highlight_expires_at) <= new Date())
+    return null;
+  return `${PUBLIC_ENV.SUPABASE_URL}/storage/v1/object/public/highlights/${s.highlight_clip_path}`;
+}
 
 async function fetchScore(scoreId: string): Promise<Score | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url)"
+      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), ${HL_COLS}`
     )
     .eq("id", scoreId)
     .single();
@@ -91,10 +109,36 @@ export default async function SharePage({
   const name = score.profiles?.display_name ?? "익명";
   const grade = gradeFor(score.score);
   const reaction = bossReaction(score.score, score.id);
+  const clipUrl = clipPublicUrl(score);
+  const posterUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
+  const hlSec = score.highlight_window_ms
+    ? (score.highlight_window_ms / 1000).toFixed(1)
+    : null;
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
+        {/* ── 하이라이트 영상 (있을 때만) ──────────────────── */}
+        {clipUrl && (
+          <div className="mb-5 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+            <video
+              src={clipUrl}
+              controls
+              autoPlay
+              loop
+              muted
+              playsInline
+              poster={posterUrl}
+              className="aspect-[9/16] max-h-[70vh] w-full object-contain"
+            />
+            <p className="bg-black/70 py-1.5 text-center text-xs font-medium text-white/80">
+              🔥 점수 급상승 하이라이트
+              {score.highlight_delta ? ` · +${score.highlight_delta.toLocaleString()}점` : ""}
+              {hlSec ? ` (${hlSec}초)` : ""}
+            </p>
+          </div>
+        )}
+
         {/* ── 보고서 (종이) ───────────────────────────────── */}
         <div className="rounded-lg bg-[#fbfaf6] p-5 text-zinc-900 shadow-2xl">
           <div className="border-b-2 border-zinc-800 pb-3 text-center">

@@ -18,6 +18,7 @@ import { log } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
 import { useGameInit } from "./useGameInit";
 import { useTaunts } from "./useTaunts";
+import { useHighlightRecorder } from "./useHighlightRecorder";
 
 function PlayInner() {
   const router = useRouter();
@@ -120,6 +121,12 @@ function PlayInner() {
   }, []);
 
   const taunt = useTaunts(over);
+
+  // 점수 급상승 구간 하이라이트 녹화 (되는 기기만 — 미지원이면 카드 공유로 자동 강등).
+  const { bestClip } = useHighlightRecorder({
+    gameRef,
+    recording: gameReady && !over,
+  });
 
   const handleUltimate = () => {
     const s = useGameStore.getState();
@@ -268,6 +275,7 @@ function PlayInner() {
         weapon={weapon.key}
         dollId={dollId}
         dollImageUrl={dollImageUrl}
+        highlightClip={bestClip}
       />
     </div>
   );

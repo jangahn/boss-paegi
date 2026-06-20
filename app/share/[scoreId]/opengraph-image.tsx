@@ -49,7 +49,9 @@ export default async function OgImage({
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("scores")
-    .select("id, score, weapon, created_at, profiles(display_name), dolls(image_url)")
+    .select(
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), highlight_delta, highlight_window_ms, highlight_status, highlight_deleted_at"
+    )
     .eq("id", scoreId)
     .single();
   // 조회 실패해도 기본 카드로 fallback — 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
@@ -63,8 +65,20 @@ export default async function OgImage({
         created_at: string;
         profiles: { display_name: string } | null;
         dolls: { image_url: string | null } | null;
+        highlight_delta: number | null;
+        highlight_window_ms: number | null;
+        highlight_status: string | null;
+        highlight_deleted_at: string | null;
       }
     | null;
+  // attach 됐고 삭제 안 된 클립의 급상승 폭 (있으면 카드에 표시)
+  const hlDelta =
+    s && s.highlight_status === "attached" && !s.highlight_deleted_at
+      ? s.highlight_delta
+      : null;
+  const hlSec = s?.highlight_window_ms
+    ? (s.highlight_window_ms / 1000).toFixed(1)
+    : null;
 
   const name = s?.profiles?.display_name ?? "익명";
   const score = (s?.score ?? 0).toLocaleString();
@@ -186,6 +200,20 @@ export default async function OgImage({
                   · {s ? weaponLabel(s.weapon) : ""}
                 </div>
               </div>
+              {hlDelta ? (
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 28,
+                    fontWeight: 800,
+                    color: "#dc2626",
+                    marginTop: 4,
+                  }}
+                >
+                  🔥 점수 급상승 +{hlDelta.toLocaleString()}점
+                  {hlSec ? ` (${hlSec}초)` : ""}
+                </div>
+              ) : null}
               <div
                 style={{
                   display: "flex",

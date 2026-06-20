@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
+import type { ScoreSample } from "@/lib/highlight";
 
 const COMBO_DECAY_MS = 1500;
 /** 궁극기 게이지 풀 충전에 필요한 명중 횟수 */
 export const ULT_HITS = 100;
+/** score timeline ring buffer 상한 (100ms 샘플 → 60s≈600) */
+const SCORE_SAMPLE_CAP = 600;
 
 /** 콤보 → 점수 배율. 상한 있음 (무한 증가 시 서버 점수 한도 초과). */
 export function comboMultiplier(combo: number): number {
@@ -26,9 +29,13 @@ type GameState = {
   isPlaying: boolean;
   startedAt: number;
   endedAt: number | null;
+  /** 하이라이트 검출용 score timeline (100ms 샘플, 절대 performance.now()) */
+  scoreSamples: ScoreSample[];
 
   /** charge=false 면 점수만 올리고 게이지는 충전 안 함 (궁극기 난타 중 타격) */
   hit: (strength: number, weaponKey?: string, charge?: boolean) => void;
+  /** 현재 점수를 timeline 에 1샘플 추가 (recorder 가 100ms 마다 호출) */
+  pushScoreSample: () => void;
   /** 궁극기 발동 — 게이지 소진 */
   consumeUlt: () => void;
   start: () => void;
@@ -61,6 +68,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isPlaying: false,
   startedAt: 0,
   endedAt: null,
+  scoreSamples: [],
 
   hit: (strength, weaponKey, charge = true) => {
     const now = performance.now();
@@ -104,6 +112,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   consumeUlt: () => set({ ultReady: false, ultProgress: 0 }),
 
+  pushScoreSample: () => {
+    const { scoreSamples, score } = get();
+    const next =
+      scoreSamples.length >= SCORE_SAMPLE_CAP
+        ? scoreSamples.slice(scoreSamples.length - SCORE_SAMPLE_CAP + 1)
+        : scoreSamples.slice();
+    next.push({ t: performance.now(), score });
+    set({ scoreSamples: next });
+  },
+
   start: () => {
     set({
       score: 0,
@@ -117,6 +135,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       isPlaying: true,
       startedAt: performance.now(),
       endedAt: null,
+      scoreSamples: [],
     });
   },
 
@@ -137,6 +156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       isPlaying: false,
       startedAt: 0,
       endedAt: null,
+      scoreSamples: [],
     });
   },
 }));

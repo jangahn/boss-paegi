@@ -27,6 +27,8 @@ export type GameHandle = {
   triggerUltimate: () => void;
   /** 게임 종료/중단 시 궁극기 난타 즉시 정지 */
   stopUltimate: () => void;
+  /** 하이라이트 녹화용 — 캔버스 MediaStream (미지원 브라우저면 null) */
+  captureStream: (fps?: number) => MediaStream | null;
 };
 
 /**
@@ -117,5 +119,11 @@ export async function createGame(
     setDamageScore: (score: number) => scene.setDamageScore(score),
     triggerUltimate: () => scene.triggerUltimate(),
     stopUltimate: () => scene.stopUltimate(),
+    captureStream: (fps = 30) => {
+      const c = app.canvas as HTMLCanvasElement & {
+        captureStream?: (fps?: number) => MediaStream;
+      };
+      return typeof c.captureStream === "function" ? c.captureStream(fps) : null;
+    },
   };
 }

@@ -212,7 +212,14 @@ v0.10 (2026-06-15, 생성 품질·데이터 감사·랭킹):
 - 갤러리 "이어서/중단됨" 텍스트 라이트모드 대비 수정 (`dark:` variant)
 - **배경(맵) 재구성**: 사무실/탕비실/회식자리 새 이미지로 교체 + **복사실·엘리베이터 맵 추가** → 총 **6종**(회의실 유지). BgSwitcher 좁은 폭 가로 스크롤
 
-**마이그레이션 적용**: 0006~0008 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
+v0.11 (2026-06-20, 하이라이트 클립 공유 — 바이럴):
+- **점수 급상승 하이라이트** (영상 되는 곳은 영상, 아니면 카드 + **항상 링크 공유**): 플레이 중 점수 timeline(100ms ring buffer, `store/gameStore` `scoreSamples`)을 기록하고, velocity/궁극기/콤보 spike 에서 **최대 3회·각 ~4초** 캔버스를 MediaRecorder 로 녹화해 Δscore 최대 **best clip 1개**만 메모리 보관(`app/play/useHighlightRecorder.ts`). `lib/highlight.ts`(순수: `pickHighlightWindow`/velocity/서버 메타 클램프).
+  - **크로스플랫폼 현실**: 클라 녹화+`navigator.share(file)` 는 iOS Safari 불안정·인앱 webview(카톡) 미지원·데스크톱 일부 미지원 → **공유는 항상 `/share/[scoreId]` 링크**(URL primary `navigator.share({url})` → 실패/webview 면 clipboard, **gesture 안에서**), **업로드는 백그라운드**(fire-and-forget). 녹화 미지원/실패/빈 blob → 카드만으로 끊김 없이 공유(fallback 원칙).
+  - **업로드** (`app/api/highlight`): 클립 바이트는 **Vercel 안 거침**(4.5MB 한도 회피) — POST 가 owner 검증 후 `createSignedUploadUrl(highlights/{scoreId}/{uploadId}.{ext})` 발급 → 클라가 Supabase 직접 업로드 → PATCH 가 **`storage.info()` 로 size/mime 서버 검증**(클라값 불신, 초과/불일치 시 object 삭제) + DB attach(score당 1회) + `revalidatePath`. **공유 클릭 시점만 업로드**(매 게임 X).
+  - **`/share`**: 클립 있으면 `<video>`(src=Supabase CDN 직접, Vercel egress 0) + 🔥급상승 stat, 없으면 보고서 카드. OG 카드에도 `+N점` stat. migration 0009(`scores` highlight_* 컬럼 + public `highlights` 버킷, `highlight_expires_at`/`deleted_at` TTL·신고 설계 반영).
+  - 관측: `highlight.record_supported/started/success`·`empty_blob`·`upload_success/rejected_size` (Sentry/Logs).
+
+**마이그레이션 적용**: 0006~0009 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
@@ -233,3 +240,4 @@ profiles public read (랭킹 닉네임) + daily_gen_limit + scores duration 1시
 
 - Vercel Hobby / Supabase Free Tier 무료.
 - fal.ai 생성당 ~$0.025-0.05. 무료 일일 1회 제한으로 통제.
+- **하이라이트 클립 스토리지/egress** (Supabase Free 1GB/5GB egress): **공유 시점만 업로드**(매 게임 X) + 클립 크기 캡(~4s·≤~2MB) + 재생은 Supabase CDN 직접(Vercel egress 0)으로 통제. 바이럴 급증 시 TTL cron(컬럼 설계 완료)·Cloudflare R2(egress 무료) 오프로드·Supabase Pro 가 스케일 경로.
