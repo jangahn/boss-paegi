@@ -4,7 +4,15 @@ import { useCallback, useEffect, useRef } from "react";
 import { ensureAuth } from "@/lib/auth-client";
 import { log, errInfo } from "@/lib/log";
 
-export type Stage = "consent" | "upload" | "crop" | "generating" | "pick" | "saving";
+export type Stage =
+  | "checking"
+  | "consent"
+  | "upload"
+  | "crop"
+  | "generating"
+  | "pick"
+  | "saving"
+  | "no_credits";
 
 export type GeneratedImage = { url: string; width: number; height: number };
 

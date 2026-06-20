@@ -3,20 +3,23 @@
 import { useRef, useState } from "react";
 import { PhotoCropper } from "@/components/PhotoCropper";
 import { ModalShell } from "@/components/ModalShell";
-import { uploadAvatar } from "@/lib/avatar";
+import { uploadAvatar, removeAvatar } from "@/lib/avatar";
 import { Spinner } from "@/components/Spinner";
 
 /**
- * 프로필 사진 변경 — 인형 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
+ * 프로필 사진 변경/삭제 — 인형 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
+ * onSaved(null) = 기본 프사로 삭제됨.
  */
 export function AvatarEditor({
   current,
+  hasCustomAvatar,
   onClose,
   onSaved,
 }: {
   current: string;
+  hasCustomAvatar: boolean;
   onClose: () => void;
-  onSaved: (url: string) => void;
+  onSaved: (url: string | null) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null); // 선택된 원본 objectURL (크롭 대상)
   const [busy, setBusy] = useState(false);
@@ -31,6 +34,18 @@ export function AvatarEditor({
     }
     if (src) URL.revokeObjectURL(src);
     setSrc(URL.createObjectURL(f));
+  };
+
+  const onRemove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await removeAvatar();
+      onSaved(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "삭제 실패");
+      setBusy(false);
+    }
   };
 
   const onConfirm = async (blob: Blob) => {
@@ -103,10 +118,22 @@ export function AvatarEditor({
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="rounded-full border border-foreground/15 px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+          disabled={busy}
+          className="rounded-full border border-foreground/15 px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5 disabled:opacity-50"
         >
           사진 선택
         </button>
+        {hasCustomAvatar && (
+          <button
+            type="button"
+            onClick={() => void onRemove()}
+            disabled={busy}
+            className="flex items-center gap-1.5 text-sm text-red-400 transition hover:text-red-500 disabled:opacity-50"
+          >
+            {busy && <Spinner className="h-3.5 w-3.5" />}
+            기본 사진으로 되돌리기
+          </button>
+        )}
       </div>
       {error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
       <button
