@@ -38,6 +38,10 @@ export async function POST(req: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // 갤러리/생성은 회원 전용 — 익명(비회원)은 차단.
+  if (user.is_anonymous) {
+    return NextResponse.json({ error: "member_only" }, { status: 403 });
+  }
 
   const body = (await req.json().catch(() => null)) as {
     imageUrl?: string;
@@ -181,6 +185,10 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // 갤러리/생성은 회원 전용 — 익명(비회원)은 차단.
+  if (user.is_anonymous) {
+    return NextResponse.json({ error: "member_only" }, { status: 403 });
+  }
 
   const { data } = await supabase
     .from("dolls")
@@ -198,6 +206,10 @@ export async function DELETE(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  // 갤러리/생성은 회원 전용 — 익명(비회원)은 차단.
+  if (user.is_anonymous) {
+    return NextResponse.json({ error: "member_only" }, { status: 403 });
   }
 
   const url = new URL(req.url);

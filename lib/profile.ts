@@ -6,6 +6,9 @@ import { ensureAuth } from "@/lib/auth-client";
 export type MyProfile = {
   id: string;
   display_name: string;
+  avatar_url: string | null;
+  /** 멤버(=비익명, OAuth 로그인) 여부. 익명이면 false. */
+  isMember: boolean;
 };
 
 const NICKNAME_MAX = 12;
@@ -16,10 +19,16 @@ export async function getMyProfile(): Promise<MyProfile | null> {
   const sb = createClient();
   const { data } = await sb
     .from("profiles")
-    .select("id, display_name")
+    .select("id, display_name, avatar_url")
     .eq("id", session.user.id)
     .single();
-  return (data as MyProfile | null) ?? null;
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    display_name: data.display_name as string,
+    avatar_url: (data.avatar_url as string | null) ?? null,
+    isMember: session.user.is_anonymous !== true,
+  };
 }
 
 /**
