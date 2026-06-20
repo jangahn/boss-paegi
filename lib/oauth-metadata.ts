@@ -16,12 +16,24 @@ export type OAuthProfile = {
 };
 
 /**
- * Kakao/Google OAuth user_metadata 에서 프로필 추출 — 제공자별 키 차이를 방어적으로 흡수.
+ * Kakao/Google OAuth 프로필 추출 — 제공자별 키 차이를 방어적으로 흡수.
  * Google: name|full_name / picture / email / email_verified
  * Kakao : name|nickname / avatar_url|picture / email
+ *
+ * ⚠️ linkIdentity(익명 승격) 는 새 identity 데이터를 `user_metadata` 에 머지하지 않음 →
+ * OAuth 닉/프사/이메일은 `identities[].identity_data` 에만 들어온다. 그래서 두 곳을 합쳐서 읽음
+ * (identity_data 우선). user 는 admin.getUserById 로 받아 identities 가 채워진 객체여야 함.
  */
 export function extractOAuthProfile(user: User): OAuthProfile {
-  const m = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const provider = user.app_metadata?.provider;
+  const identities = user.identities ?? [];
+  const identity =
+    identities.find((i) => i.provider === provider) ??
+    identities[identities.length - 1];
+  const idData = (identity?.identity_data ?? {}) as Record<string, unknown>;
+  const um = (user.user_metadata ?? {}) as Record<string, unknown>;
+  // identity_data 가 OAuth 원본 — user_metadata 위에 덮어써 우선시.
+  const m: Record<string, unknown> = { ...um, ...idData };
 
   const rawName = firstString(m.name, m.full_name, m.nickname, m.user_name);
   const displayName = rawName ? rawName.trim().slice(0, NICKNAME_MAX) || null : null;

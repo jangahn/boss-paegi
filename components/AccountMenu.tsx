@@ -8,16 +8,18 @@ import {
   NICKNAME_MAX,
   type MyProfile,
 } from "@/lib/profile";
-import { uploadAvatar } from "@/lib/avatar";
 import { signOut } from "@/lib/auth-oauth";
+import { ModalShell } from "@/components/ModalShell";
+import { AvatarEditor } from "@/components/AvatarEditor";
 import { Spinner } from "@/components/Spinner";
 
 const DEFAULT_AVATAR = "/avatars/default.png";
 
 /**
- * 계정 메뉴 — 익명/멤버에 따라 다른 UI.
- * - 익명: 닉네임 표시·수정 + 로그인 버튼
- * - 멤버: 아바타+닉네임 → 드롭다운(닉네임 변경 / 프사 변경 / 로그아웃)
+ * 계정 메뉴 — 익명/멤버 공통으로 **아바타+닉네임 버튼 → 드롭다운** (UI 일관).
+ * 드롭다운 항목만 상태별로 다름:
+ * - 익명: 로그인/회원가입 · 닉네임 변경
+ * - 멤버: 닉네임 변경 · 프로필 사진 변경 · 로그아웃
  */
 export function AccountMenu() {
   const [profile, setProfile] = useState<MyProfile | null>(null);
@@ -38,7 +40,6 @@ export function AccountMenu() {
     };
   }, []);
 
-  // 바깥 클릭 시 드롭다운 닫기
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
@@ -56,55 +57,22 @@ export function AccountMenu() {
     );
   }
 
-  // ── 익명 — 닉네임 수정 + 로그인 ──────────────────────────────
-  if (!profile.isMember) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => setEditingNick(true)}
-          className="flex max-w-[36vw] items-center gap-1 rounded-full border border-foreground/15 px-2.5 py-1.5 text-sm transition hover:bg-foreground/5"
-          aria-label="닉네임 수정"
-        >
-          <span aria-hidden>👤</span>
-          <span className="truncate">{profile.display_name}</span>
-          <span aria-hidden className="text-xs text-zinc-500">
-            ✎
-          </span>
-        </button>
-        <Link
-          href="/login"
-          className="rounded-full bg-foreground px-3 py-1.5 text-sm font-semibold text-background transition hover:opacity-90"
-        >
-          로그인
-        </Link>
-        {editingNick && (
-          <NicknameEditor
-            current={profile.display_name}
-            onClose={() => setEditingNick(false)}
-            onSaved={(name) => {
-              setProfile((p) => (p ? { ...p, display_name: name } : p));
-              setEditingNick(false);
-            }}
-          />
-        )}
-      </div>
-    );
-  }
+  const isMember = profile.isMember;
+  const avatar = profile.avatar_url ?? DEFAULT_AVATAR;
 
-  // ── 멤버 — 아바타 + 닉네임 드롭다운 ──────────────────────────
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex max-w-[44vw] items-center gap-1.5 rounded-full border border-foreground/15 py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
+        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label="내 계정"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={profile.avatar_url ?? DEFAULT_AVATAR}
+          src={avatar}
           alt=""
           className="h-6 w-6 rounded-full border border-foreground/10 object-cover"
         />
@@ -113,11 +81,22 @@ export function AccountMenu() {
           ▾
         </span>
       </button>
+
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-1.5 w-44 overflow-hidden rounded-2xl border border-foreground/10 bg-background py-1 shadow-xl"
+          className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 bg-background py-1 shadow-xl"
         >
+          {!isMember && (
+            <Link
+              href="/login"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-foreground/5"
+            >
+              로그인 / 회원가입
+            </Link>
+          )}
           <MenuItem
             onClick={() => {
               setEditingNick(true);
@@ -126,22 +105,24 @@ export function AccountMenu() {
           >
             닉네임 변경
           </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setEditingAvatar(true);
-              setOpen(false);
-            }}
-          >
-            프로필 사진 변경
-          </MenuItem>
-          <MenuItem
-            onClick={() => void signOut()}
-            className="text-red-500"
-          >
-            로그아웃
-          </MenuItem>
+          {isMember && (
+            <MenuItem
+              onClick={() => {
+                setEditingAvatar(true);
+                setOpen(false);
+              }}
+            >
+              프로필 사진 변경
+            </MenuItem>
+          )}
+          {isMember && (
+            <MenuItem onClick={() => void signOut()} className="text-red-500">
+              로그아웃
+            </MenuItem>
+          )}
         </div>
       )}
+
       {editingNick && (
         <NicknameEditor
           current={profile.display_name}
@@ -154,7 +135,7 @@ export function AccountMenu() {
       )}
       {editingAvatar && (
         <AvatarEditor
-          current={profile.avatar_url ?? DEFAULT_AVATAR}
+          current={avatar}
           onClose={() => setEditingAvatar(false)}
           onSaved={(url) => {
             setProfile((p) => (p ? { ...p, avatar_url: url } : p));
@@ -251,101 +232,5 @@ function NicknameEditor({
         </button>
       </div>
     </ModalShell>
-  );
-}
-
-function AvatarEditor({
-  current,
-  onClose,
-  onSaved,
-}: {
-  current: string;
-  onClose: () => void;
-  onSaved: (url: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const onFile = async (f: File) => {
-    setError(null);
-    if (!f.type.startsWith("image/")) {
-      setError("이미지 파일만 올릴 수 있어요");
-      return;
-    }
-    setBusy(true);
-    try {
-      const url = await uploadAvatar(f);
-      onSaved(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "업로드 실패");
-      setBusy(false);
-    }
-  };
-
-  return (
-    <ModalShell onClose={onClose}>
-      <h2 className="text-lg font-bold">프로필 사진 변경</h2>
-      <p className="mt-1 text-xs text-zinc-500">
-        랭킹에 표시되는 사진이에요. 정사각형으로 보여요.
-      </p>
-      <div className="mt-4 flex flex-col items-center gap-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={current}
-          alt=""
-          className="h-28 w-28 rounded-full border border-foreground/15 object-cover"
-        />
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void onFile(f);
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="flex items-center justify-center gap-2 rounded-full border border-foreground/15 px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5 disabled:opacity-50"
-        >
-          {busy && <Spinner className="h-4 w-4" />}
-          {busy ? "올리는 중…" : "사진 선택"}
-        </button>
-      </div>
-      {error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-4 w-full rounded-full border border-foreground/15 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
-      >
-        닫기
-      </button>
-    </ModalShell>
-  );
-}
-
-function ModalShell({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-3xl bg-background p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
   );
 }

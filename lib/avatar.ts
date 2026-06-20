@@ -3,30 +3,35 @@
 import { createClient } from "@/lib/supabase/client";
 
 const BUCKET = "avatars";
+const MIN_DIM = 128;
 const MAX_DIM = 512;
 
-/** 선택 이미지를 정사각 512px 이내로 다운스케일 → webp blob (업로드 비용·노출 크기 절감). */
-async function downscale(file: File): Promise<Blob> {
-  const img = await loadImage(file);
-  const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
+/**
+ * 정사각 crop blob → 128~512 정사각 webp 로 정규화.
+ * 너무 작으면 128×128 로 업스케일, 너무 크면 512×512 로 다운스케일.
+ */
+async function normalizeSquare(blob: Blob): Promise<Blob> {
+  const img = await loadImage(blob);
+  const src = Math.min(img.width, img.height); // crop 은 정사각이지만 방어적으로 min
+  const target = Math.min(MAX_DIM, Math.max(MIN_DIM, src));
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = target;
+  canvas.height = target;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas unsupported");
-  ctx.drawImage(img, 0, 0, w, h);
-  const blob = await new Promise<Blob | null>((resolve) =>
+  const sx = (img.width - src) / 2;
+  const sy = (img.height - src) / 2;
+  ctx.drawImage(img, sx, sy, src, src, 0, 0, target, target);
+  const out = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, "image/webp", 0.9)
   );
-  if (!blob) throw new Error("encode failed");
-  return blob;
+  if (!out) throw new Error("encode failed");
+  return out;
 }
 
-function loadImage(file: File): Promise<HTMLImageElement> {
+function loadImage(src: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(src);
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(url);
@@ -41,11 +46,12 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 /**
- * 프로필 사진 업로드 — 다운스케일 → 서명 URL → 직접 업로드 → 검증/반영.
+ * 프로필 사진 업로드 — 정사각 crop blob 정규화 → 서명 URL → 직접 업로드 → 검증/반영.
+ * @param cropped PhotoCropper 가 만든 1:1 crop blob
  * @returns 반영된 public avatar URL
  */
-export async function uploadAvatar(file: File): Promise<string> {
-  const blob = await downscale(file);
+export async function uploadAvatar(cropped: Blob): Promise<string> {
+  const blob = await normalizeSquare(cropped);
   const mime = blob.type || "image/webp";
 
   const r1 = await fetch("/api/avatar", {
