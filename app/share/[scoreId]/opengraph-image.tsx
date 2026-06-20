@@ -131,7 +131,7 @@ export default async function OgImage({
           </div>
 
           {/* 본문: 인형 + 정보 */}
-          <div style={{ display: "flex", flex: 1, gap: 44, marginTop: 28, alignItems: "center" }}>
+          <div style={{ display: "flex", flex: 1, gap: 44, marginTop: 16, alignItems: "center" }}>
             {dollSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -166,15 +166,15 @@ export default async function OgImage({
               </div>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 10 }}>
-              <div style={{ display: "flex", fontSize: 28, color: "#71717a" }}>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 8 }}>
+              <div style={{ display: "flex", fontSize: 26, color: "#71717a" }}>
                 작성자: {name}
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                 <div
                   style={{
                     display: "flex",
-                    fontSize: 120,
+                    fontSize: 100,
                     fontWeight: 900,
                     lineHeight: 1,
                     letterSpacing: "-0.04em",
@@ -182,7 +182,7 @@ export default async function OgImage({
                 >
                   {score}
                 </div>
-                <div style={{ display: "flex", fontSize: 36, color: "#71717a" }}>점</div>
+                <div style={{ display: "flex", fontSize: 30, color: "#71717a" }}>점</div>
               </div>
               <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                 <div
@@ -203,10 +203,10 @@ export default async function OgImage({
                 <div
                   style={{
                     display: "flex",
-                    fontSize: 28,
+                    fontSize: 24,
                     fontWeight: 800,
                     color: "#dc2626",
-                    marginTop: 4,
+                    marginTop: 2,
                   }}
                 >
                   🔥 점수 급상승 +{hlDelta.toLocaleString()}점
@@ -215,9 +215,9 @@ export default async function OgImage({
               <div
                 style={{
                   display: "flex",
-                  fontSize: 24,
+                  fontSize: 22,
                   color: "#52525b",
-                  marginTop: 6,
+                  marginTop: 2,
                   fontStyle: "italic",
                 }}
               >

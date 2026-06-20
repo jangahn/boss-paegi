@@ -11,24 +11,21 @@ export function HighlightPlayer({
   clipUrl,
   posterUrl,
   shareUrl,
-  score,
   delta,
 }: {
   clipUrl: string;
   posterUrl: string;
   shareUrl: string;
-  score: number;
   delta: number | null;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const text = `부장님 ${score.toLocaleString()}점 패고 옴 🥊`;
 
-  // 전 환경 동작하는 링크 재공유(파일 공유 실패/미지원 폴백 포함).
+  // 파일 공유 실패/미지원 시 링크 재공유 폴백(멘트 없이 — OG 미리보기가 맥락 제공).
   const linkShare = async () => {
     try {
       if (typeof navigator !== "undefined" && "share" in navigator) {
-        await navigator.share({ url: shareUrl, text, title: "부장님 패기" });
+        await navigator.share({ url: shareUrl });
         log.info("highlight.share_url_success", {});
         return;
       }
@@ -36,14 +33,15 @@ export function HighlightPlayer({
       if (e instanceof Error && e.name === "AbortError") return;
     }
     try {
-      await navigator.clipboard.writeText(`${text}\n${shareUrl}`);
+      await navigator.clipboard.writeText(shareUrl);
       setMsg("링크 복사됨");
     } catch {
       setMsg("공유 실패");
     }
   };
 
-  // 영상 파일 공유·저장 — 저장 탭 시에만 fetch(egress 절감). gesture 만료/CORS/미지원 → 링크 폴백.
+  // 영상 파일 공유·저장 — 저장 탭 시에만 fetch(egress 절감). **멘트 없이 영상만** 공유.
+  // gesture 만료/CORS/미지원 → 링크 재공유 폴백.
   const onShareSave = async () => {
     if (busy) return;
     setBusy(true);
@@ -57,7 +55,7 @@ export function HighlightPlayer({
             type: blob.type || "video/mp4",
           });
           if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], text, title: "부장님 패기" });
+            await navigator.share({ files: [file] }); // 영상만(멘트 X)
             log.info("highlight.share_url_success", { withFile: true });
             return;
           }
@@ -100,15 +98,6 @@ export function HighlightPlayer({
         >
           🔥 영상 공유·저장
         </button>
-        <a
-          href={clipUrl}
-          download="boss-paegi-highlight.mp4"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-zinc-400 underline-offset-4 hover:underline"
-        >
-          영상 다운로드
-        </a>
         {msg && <p className="text-xs text-zinc-400">{msg}</p>}
       </div>
     </div>

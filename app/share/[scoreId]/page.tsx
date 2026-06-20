@@ -136,7 +136,6 @@ export default async function SharePage({
             clipUrl={clipUrl}
             posterUrl={posterUrl}
             shareUrl={`${PUBLIC_ENV.SITE_URL}/share/${scoreId}`}
-            score={score.score}
             delta={hlDelta}
           />
         ) : hlDelta ? (
