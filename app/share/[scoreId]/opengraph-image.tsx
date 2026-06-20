@@ -50,14 +50,19 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at)"
     )
     .eq("id", scoreId)
     .single();
   // 조회 실패해도 기본 카드로 fallback — 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
   if (error) log.warn("og.score_query_fail", { scoreId, ...errInfo(error) });
 
-  const s = data as
+  // highlight 는 score_highlights(1:1) → flatten 해 기존 render 로직 재사용.
+  const rawHl = (data as Record<string, unknown> | null)?.score_highlights;
+  const hlRow = Array.isArray(rawHl) ? rawHl[0] ?? null : rawHl ?? null;
+  const s = (data
+    ? { ...data, ...((hlRow as Record<string, unknown>) ?? {}) }
+    : null) as
     | {
         id: string;
         score: number;
