@@ -18,12 +18,18 @@ export async function GET(request: NextRequest) {
   const code = url.searchParams.get("code");
   const errorCode = url.searchParams.get("error_code");
   const next = safeNext(url.searchParams.get("next"));
+  const rawP = url.searchParams.get("p");
+  const provider = rawP === "kakao" || rawP === "google" ? rawP : null; // allowlist
 
   const redirect = (path: string) => NextResponse.redirect(new URL(path, request.url));
 
-  // 1) linkIdentity 가 "이미 연결된 식별자" 로 실패 → 기존 계정 재로그인 유도.
+  // 1) linkIdentity 가 "이미 연결된 식별자" 로 실패 → 기존 계정으로 자동 재로그인.
+  //    거부 화면 없이 /login?auto=<provider> 로 보내 signInWithOAuth 를 즉시 재개.
+  //    (signInWithOAuth 는 로그인이라 identity_already_exists 를 안 냄 → 루프 없음)
   if (errorCode === "identity_already_exists") {
-    return redirect(`/login?relogin=1&next=${encodeURIComponent(next)}`);
+    return provider
+      ? redirect(`/login?auto=${provider}&next=${encodeURIComponent(next)}`)
+      : redirect(`/login?error=oauth&next=${encodeURIComponent(next)}`);
   }
   if (!code) {
     if (errorCode) log.warn("auth.callback_provider_error", { errorCode });

@@ -99,3 +99,40 @@ export async function PATCH(req: NextRequest) {
   log.info("avatar.updated", { userId: user.id, size });
   return NextResponse.json({ ok: true, avatarUrl: publicUrl });
 }
+
+/** DELETE — 프로필 사진 삭제(기본 프사로 복귀). avatar_url=null + 버킷 객체면 best-effort 제거. */
+export async function DELETE() {
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user } = gate;
+
+  const admin = createAdminClient();
+  const { data: prof } = await admin
+    .from("profiles")
+    .select("avatar_url")
+    .eq("id", user.id)
+    .single();
+  const prevUrl = (prof?.avatar_url as string | null) ?? null;
+
+  const { error: upErr } = await admin
+    .from("profiles")
+    .update({ avatar_url: null })
+    .eq("id", user.id);
+  if (upErr) {
+    log.error("avatar.delete_update_fail", { userId: user.id, ...errInfo(upErr) });
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
+  }
+
+  // 기존 값이 avatars 버킷의 본인 객체일 때만 제거. 외부 핫링크(구글/카카오)면 스킵.
+  // storage 삭제 실패는 플로우 막지 말고 로그만.
+  if (prevUrl) {
+    const prevPath = prevUrl.split(`/${BUCKET}/`)[1];
+    if (prevPath && prevPath.startsWith(`${user.id}/`)) {
+      const { error: rmErr } = await admin.storage.from(BUCKET).remove([prevPath]);
+      if (rmErr) log.warn("avatar.delete_storage_fail", { userId: user.id, ...errInfo(rmErr) });
+    }
+  }
+
+  log.info("avatar.deleted", { userId: user.id });
+  return NextResponse.json({ ok: true });
+}

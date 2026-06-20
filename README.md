@@ -250,7 +250,13 @@ v0.12 (2026-06-20, OAuth 회원 + 생성권 크레딧):
 - **계정 UI**: `AppNav`/`AccountMenu` 익명(닉네임+로그인) vs 멤버(아바타+드롭다운: 닉네임/프사 변경·로그아웃). `/api/avatar`(서명 업로드 → admin 검증 → `profiles.avatar_url`), 랭킹에 프로필 아바타(없으면 `/avatars/default.png`).
 - 계정 정책: Supabase 자동 linking 수용(동일 verified 이메일 Kakao/Google = 같은 계정), 멀티연동 UI 없음. Provider 키는 앱 env 가 아니라 Supabase Auth config. 익명 dolls→운영계정 이관은 즉시 X — grace period 후 후속 정리(미승격 익명 보호).
 
-**마이그레이션 적용**: 0006~0010 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
+v0.13 (2026-06-20, OAuth 후속 폴리시):
+- **매끄러운 재로그인**: 이미 가입된 계정으로 로그인 시 거부 바운스 제거. `startOAuth` 가 `redirectTo` 에 `p=provider` 를 실어보내고, 콜백이 `identity_already_exists` 면 `/login?auto=<provider>` 로 → `LoginForm` 이 스피너 보이며 `signInWithOAuth` 자동 재개(allowlist + `useRef` 1회 guard, 루프 없음). 신규 가입(linkIdentity)은 그대로.
+- **생성권 노출/가드**: `getMyProfile` 가 멤버면 `member_accounts.gen_credits` 도 반환(`formatCredits`: ≥9999 "무제한"). 계정 메뉴·갤러리에 "생성권 N개", `/generate` 는 `checking`→`no_credits` stage 로 0 이면 진입 차단(우측하단 의견 위젯 안내). 클라는 UX 가드일 뿐 — 최종 차단은 `/api/fal`(조회 실패 시 consent 로 진행).
+- **프로필 사진 삭제**: `/api/avatar` DELETE(avatar_url=null + 버킷 본인객체만 best-effort 삭제, 외부 핫링크 스킵), `AvatarEditor` "기본 사진으로 되돌리기".
+- 익명 dolls→운영계정(f81c8a92) **이관 실행**(0011 전, `doll_owner_migration_log` 백업). `member_accounts` 에 감사 컬럼(updated_at/version), `daily_gen_limit` 컬럼 제거(0011).
+
+**마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):

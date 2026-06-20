@@ -18,7 +18,9 @@ export async function startOAuth(
 ): Promise<void> {
   const sb = createClient();
   const next = safeNext(opts?.next);
-  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  // p=provider 를 함께 실어 보냄 — identity_already_exists 바운스 시 콜백이 어느 provider 로
+  // 자동 재로그인할지 알 수 있게 (next 처럼 redirectTo 쿼리는 에러 redirect 에도 보존됨).
+  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&p=${provider}`;
 
   let isAnon = false;
   if (!opts?.forceSignIn) {

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   getMyProfile,
   updateNickname,
+  formatCredits,
   NICKNAME_MAX,
   type MyProfile,
 } from "@/lib/profile";
@@ -87,6 +88,14 @@ export function AccountMenu() {
           role="menu"
           className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 bg-background py-1 shadow-xl"
         >
+          {isMember && profile.genCredits !== null && (
+            <div className="border-b border-foreground/10 px-4 py-2.5 text-sm text-zinc-500">
+              생성권{" "}
+              <span className="font-semibold text-foreground">
+                {formatCredits(profile.genCredits)}
+              </span>
+            </div>
+          )}
           {!isMember && (
             <Link
               href="/login"
@@ -136,6 +145,7 @@ export function AccountMenu() {
       {editingAvatar && (
         <AvatarEditor
           current={avatar}
+          hasCustomAvatar={profile.avatar_url !== null}
           onClose={() => setEditingAvatar(false)}
           onSaved={(url) => {
             setProfile((p) => (p ? { ...p, avatar_url: url } : p));

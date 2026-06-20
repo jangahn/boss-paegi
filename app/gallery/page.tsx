@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
+import { getMyProfile, formatCredits } from "@/lib/profile";
 import { Spinner } from "@/components/Spinner";
 import { AppNav } from "@/components/AppNav";
 import { shareDoll } from "@/lib/doll-share";
@@ -20,6 +21,7 @@ export default function GalleryPage() {
   const [pending, setPending] = useState<PendingGeneration[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -51,6 +53,9 @@ export default function GalleryPage() {
   useEffect(() => {
     void load();
     void loadPending();
+    getMyProfile()
+      .then((p) => setCredits(p?.genCredits ?? null))
+      .catch(() => {});
   }, [load, loadPending]);
 
   // 생성 중인 게 있으면 완료 감지 위해 폴링
@@ -86,7 +91,14 @@ export default function GalleryPage() {
       <main className="flex flex-1 flex-col px-6 py-8">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold">내 부장님들</h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-2xl font-bold">내 부장님들</h1>
+            {credits !== null && (
+              <span className="text-sm text-zinc-500">
+                생성권 {formatCredits(credits)}
+              </span>
+            )}
+          </div>
           <Link
             href="/generate"
             className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"

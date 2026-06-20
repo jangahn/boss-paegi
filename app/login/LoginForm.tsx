@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SERVICE_NAME } from "@/lib/policy";
 import { startOAuth, type OAuthProvider } from "@/lib/auth-oauth";
 import { safeNext } from "@/lib/oauth-metadata";
@@ -51,26 +51,51 @@ const ERROR_MESSAGES: Record<string, string> = {
 export function LoginForm() {
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
-  const relogin = params.get("relogin") === "1";
+  const rawAuto = params.get("auto");
+  const auto: OAuthProvider | null =
+    rawAuto === "kakao" || rawAuto === "google" ? rawAuto : null; // allowlist
   const errorKey = params.get("error");
   const errorMsg = errorKey ? ERROR_MESSAGES[errorKey] ?? ERROR_MESSAGES.oauth : null;
 
-  const [busy, setBusy] = useState<OAuthProvider | null>(null);
+  const [busy, setBusy] = useState<OAuthProvider | null>(auto);
   const [err, setErr] = useState<string | null>(null);
+  const [autoFailed, setAutoFailed] = useState(false);
+  const autoStarted = useRef(false);
+
+  // 자동 재로그인 (identity_already_exists 후) — useRef 로 StrictMode/재렌더 중복 실행 방지, 1회만.
+  useEffect(() => {
+    if (!auto || autoStarted.current) return;
+    autoStarted.current = true;
+    startOAuth(auto, { next, forceSignIn: true }).catch(() => {
+      setAutoFailed(true);
+      setBusy(null);
+    });
+  }, [auto, next]);
 
   const onLogin = async (provider: OAuthProvider) => {
     if (busy) return;
     setBusy(provider);
     setErr(null);
     try {
-      // relogin=1 이면 기존 OAuth 계정 재로그인 → linkIdentity 건너뛰고 signInWithOAuth.
-      await startOAuth(provider, { next, forceSignIn: relogin });
+      await startOAuth(provider, { next });
       // 성공 시 OAuth 페이지로 리다이렉트됨 (이 줄 도달 안 함).
     } catch {
       setErr("로그인을 시작하지 못했어요. 잠시 후 다시 시도해주세요.");
       setBusy(null);
     }
   };
+
+  // 자동 재로그인 진행 중 — 버튼 대신 스피너 (거부 화면 없음).
+  if (auto && !autoFailed) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+        <div className="flex flex-col items-center gap-4">
+          <Spinner className="h-8 w-8" />
+          <p className="text-sm text-zinc-500">로그인 중…</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
@@ -84,9 +109,9 @@ export function LoginForm() {
           만들어보세요.
         </p>
 
-        {relogin && (
+        {autoFailed && (
           <p className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-            이미 가입된 계정이에요. 같은 방법으로 다시 로그인해주세요.
+            자동 로그인에 실패했어요. 아래 버튼으로 다시 시도해주세요.
           </p>
         )}
         {errorMsg && (

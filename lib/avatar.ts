@@ -77,3 +77,9 @@ export async function uploadAvatar(cropped: Blob): Promise<string> {
   const { avatarUrl } = (await r2.json()) as { avatarUrl: string };
   return avatarUrl;
 }
+
+/** 프로필 사진 삭제 → 기본 프사로 복귀. */
+export async function removeAvatar(): Promise<void> {
+  const r = await fetch("/api/avatar", { method: "DELETE" });
+  if (!r.ok) throw new Error("기본 사진으로 되돌리지 못했어요");
+}

@@ -8,7 +8,7 @@ import { AppNav } from "@/components/AppNav";
 import { UploadStage } from "@/components/generate/UploadStage";
 import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
-import { ensureAuth } from "@/lib/auth-client";
+import { getMyProfile } from "@/lib/profile";
 import { log, errInfo } from "@/lib/log";
 import {
   useGenerationPolling,
@@ -20,7 +20,7 @@ function GeneratePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resumeId = searchParams.get("resume");
-  const [stage, setStage] = useState<Stage>(resumeId ? "generating" : "consent");
+  const [stage, setStage] = useState<Stage>(resumeId ? "generating" : "checking");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [results, setResults] = useState<GeneratedImage[]>([]);
@@ -30,10 +30,23 @@ function GeneratePageInner() {
   // 폴링 대상 genId — resume(URL) 우선, fresh 는 state. 리로드 시 URL 이 살아있어 이어짐.
   const activeGenId = resumeId ?? generationId;
 
-  // 익명 세션 워밍업 (best-effort).
+  // 진입 가드: 생성권 확인(getMyProfile 가 세션 워밍업도 겸함). resume 은 이미 진행 중이라 스킵.
+  // 멤버 & 생성권 0 확정이면 차단. 비멤버(프록시가 이미 막음)·조회 실패는 consent 로(서버가 최종 판단).
   useEffect(() => {
-    ensureAuth().catch(() => {});
-  }, []);
+    if (resumeId) return;
+    let cancelled = false;
+    getMyProfile()
+      .then((p) => {
+        if (cancelled) return;
+        setStage(p?.isMember && p.genCredits === 0 ? "no_credits" : "consent");
+      })
+      .catch(() => {
+        if (!cancelled) setStage("consent");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeId]);
 
   // 진행 중 생성 폴링(fresh/resume 공통) — ready 면 고르기 단계로. 동시폴/취소/복귀 처리는 hook 내부.
   useGenerationPolling({
@@ -134,6 +147,7 @@ function GeneratePageInner() {
     <>
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
+      {stage === "checking" && <LoadingStage label="생성권 확인 중…" />}
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
       {stage === "upload" && (
         <UploadStage preview={preview} onFile={handleFile} error={error} />
@@ -155,6 +169,25 @@ function GeneratePageInner() {
         <PickStage results={results} onPick={handlePick} error={error} />
       )}
       {stage === "saving" && <LoadingStage label="저장 중…" />}
+      {stage === "no_credits" && (
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-amber-500/40 bg-amber-500/5 p-10 text-center">
+          <span className="text-3xl" aria-hidden>
+            🎫
+          </span>
+          <h2 className="text-lg font-bold">생성권을 다 썼어요</h2>
+          <p className="text-sm leading-relaxed text-zinc-500">
+            화면 우측 아래 &apos;의견&apos; 버튼으로 닉네임과 함께 생성권을
+            요청해주세요. 확인하고 채워드릴게요!
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/gallery")}
+            className="rounded-full border border-foreground/15 px-6 py-3 text-sm font-medium transition hover:bg-foreground/5"
+          >
+            갤러리로 돌아가기
+          </button>
+        </div>
+      )}
       </main>
     </>
   );
