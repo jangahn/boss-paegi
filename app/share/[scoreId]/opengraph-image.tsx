@@ -110,6 +110,7 @@ export default async function OgImage({
             borderRadius: 16,
             padding: "44px 56px",
             color: "#18181b",
+            overflow: "hidden",
           }}
         >
           {/* 헤더 */}
@@ -122,7 +123,7 @@ export default async function OgImage({
               paddingBottom: 18,
             }}
           >
-            <div style={{ display: "flex", fontSize: 20, color: "#71717a", letterSpacing: "0.4em" }}>
+            <div style={{ display: "flex", fontSize: 20, color: "#71717a", letterSpacing: "0.4em", whiteSpace: "nowrap" }}>
               {docNo}
             </div>
             <div style={{ display: "flex", fontSize: 52, fontWeight: 900, marginTop: 6 }}>
@@ -166,29 +167,39 @@ export default async function OgImage({
               </div>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 8 }}>
-              <div style={{ display: "flex", fontSize: 26, color: "#71717a" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: 1,
+                minWidth: 0,
+                gap: 8,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "flex", fontSize: 26, color: "#71717a", whiteSpace: "nowrap" }}>
                 작성자: {name}
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                 <div
                   style={{
                     display: "flex",
-                    fontSize: 100,
+                    fontSize: 90,
                     fontWeight: 900,
                     lineHeight: 1,
                     letterSpacing: "-0.04em",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {score}
                 </div>
-                <div style={{ display: "flex", fontSize: 30, color: "#71717a" }}>점</div>
+                <div style={{ display: "flex", fontSize: 30, color: "#71717a", whiteSpace: "nowrap" }}>점</div>
               </div>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", whiteSpace: "nowrap" }}>
                 <div
                   style={{
                     display: "flex",
-                    fontSize: 34,
+                    fontSize: 30,
                     fontWeight: 800,
                     color: "#18181b",
                   }}
@@ -207,6 +218,7 @@ export default async function OgImage({
                     fontWeight: 800,
                     color: "#dc2626",
                     marginTop: 2,
+                    whiteSpace: "nowrap",
                   }}
                 >
                   🔥 점수 급상승 +{hlDelta.toLocaleString()}점
@@ -219,6 +231,7 @@ export default async function OgImage({
                   color: "#52525b",
                   marginTop: 2,
                   fontStyle: "italic",
+                  whiteSpace: "nowrap",
                 }}
               >
                 부장님: &ldquo;{reaction}&rdquo;
@@ -239,6 +252,7 @@ export default async function OgImage({
                 fontSize: 36,
                 fontWeight: 900,
                 transform: "rotate(-14deg)",
+                whiteSpace: "nowrap",
               }}
             >
               해소완료

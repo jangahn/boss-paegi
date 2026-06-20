@@ -75,6 +75,7 @@ export default async function OgImage({
             borderRadius: 16,
             padding: "44px 56px",
             color: "#18181b",
+            overflow: "hidden",
           }}
         >
           <div
@@ -92,6 +93,7 @@ export default async function OgImage({
                 fontSize: 20,
                 color: "#71717a",
                 letterSpacing: "0.4em",
+                whiteSpace: "nowrap",
               }}
             >
               {docNo}
@@ -144,24 +146,37 @@ export default async function OgImage({
               </div>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 14 }}>
-              <div style={{ display: "flex", fontSize: 42, fontWeight: 900 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: 1,
+                minWidth: 0,
+                gap: 12,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "flex", fontSize: 42, fontWeight: 900, whiteSpace: "nowrap" }}>
                 성명: 부장님
               </div>
-              <div style={{ display: "flex", fontSize: 30, color: "#52525b" }}>
-                직급: {d ? dollRank(d.id) : ""} · 소속:{" "}
-                {d ? dollDepartment(d.id) : ""}
+              {/* 직급/소속 분리 — 합치면 최장값(전설의 꼰대 부장 · 스트레스 유발 1팀)이 영역 초과 */}
+              <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
+                직급: {d ? dollRank(d.id) : ""}
               </div>
-              <div style={{ display: "flex", fontSize: 30, color: "#52525b" }}>
+              <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
+                소속: {d ? dollDepartment(d.id) : ""}
+              </div>
+              <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
                 제작자: {name}
               </div>
               <div
                 style={{
                   display: "flex",
-                  fontSize: 26,
+                  fontSize: 22,
                   color: "#3f3f46",
-                  marginTop: 8,
+                  marginTop: 6,
                   fontStyle: "italic",
+                  whiteSpace: "nowrap",
                 }}
               >
                 특이사항: &ldquo;{trait}&rdquo;
