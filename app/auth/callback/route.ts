@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
   //    거부 화면 없이 /login?auto=<provider> 로 보내 signInWithOAuth 를 즉시 재개.
   //    (signInWithOAuth 는 로그인이라 identity_already_exists 를 안 냄 → 루프 없음)
   if (errorCode === "identity_already_exists") {
+    // 점수 있는 익명이 기존 계정 로그인 시도한 드문 케이스(조건부 linkIdentity 의 fallback).
+    // 점수 없는 재로그인은 이제 signInWithOAuth 로 직행하므로 여기 거의 안 옴 — 빈도 관측용.
+    log.info("auth.relogin_bounce", { provider, reason: "identity_already_exists" });
     return provider
       ? redirect(`/login?auto=${provider}&next=${encodeURIComponent(next)}`)
       : redirect(`/login?error=oauth&next=${encodeURIComponent(next)}`);

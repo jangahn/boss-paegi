@@ -22,13 +22,44 @@ export async function startOAuth(
   // 자동 재로그인할지 알 수 있게 (next 처럼 redirectTo 쿼리는 에러 redirect 에도 보존됨).
   const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&p=${provider}`;
 
-  let isAnon = false;
+  // 익명 분기 결정: 보존할 데이터(점수)가 있을 때만 linkIdentity(같은 user.id 보존).
+  // 점수 없는 새 익명 = 재로그인 케이스 → signInWithOAuth 로 OAuth round-trip 1회 → 계정 선택 1회.
+  // (구글 재로그인이 linkIdentity 실패→auto signInWithOAuth 로 2회 선택되던 버그 해결.)
+  let useLink = false;
+  let isAnonymous = false;
+  let scoreCount = 0;
+  let countFailed = false;
+
   if (!opts?.forceSignIn) {
     const { data } = await sb.auth.getUser();
-    isAnon = data.user?.is_anonymous === true;
+    const user = data.user;
+    isAnonymous = user?.is_anonymous === true;
+    if (isAnonymous && user) {
+      const { count, error } = await sb
+        .from("scores")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_id", user.id);
+      if (error) {
+        // 조회 실패 → 데이터 유실 방지 우선(linkIdentity). 최악 2회 선택이지만 점수 보존 기회 유지.
+        countFailed = true;
+        useLink = true;
+      } else {
+        scoreCount = count ?? 0;
+        useLink = scoreCount > 0; // 점수 있으면 보존, 없으면 깔끔히 signInWithOAuth
+      }
+    }
   }
 
-  if (isAnon) {
+  const method = useLink ? "linkIdentity" : "signInWithOAuth";
+  log.info("auth.oauth_start_decision", {
+    provider,
+    isAnonymous,
+    scoreCount,
+    countFailed,
+    method,
+  });
+
+  if (useLink) {
     const { error } = await sb.auth.linkIdentity({
       provider,
       options: { redirectTo },
