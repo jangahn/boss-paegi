@@ -19,6 +19,7 @@ import type { GameHandle } from "@/game/BossPaegiGame";
 import { useGameInit } from "./useGameInit";
 import { useTaunts } from "./useTaunts";
 import { useHighlightRecorder } from "./useHighlightRecorder";
+import { useScoreTimeline } from "./useScoreTimeline";
 
 function PlayInner() {
   const router = useRouter();
@@ -122,8 +123,12 @@ function PlayInner() {
 
   const taunt = useTaunts(over);
 
+  // 점수 timeline 샘플링 — 녹화 지원 무관 항상(카드-only 하이라이트 계산용).
+  const { getTimelineHighlight } = useScoreTimeline({
+    recording: gameReady && !over,
+  });
   // 점수 급상승 구간 하이라이트 녹화 (되는 기기만 — 미지원이면 카드 공유로 자동 강등).
-  const { bestClip } = useHighlightRecorder({
+  const { bestClip, finalize: finalizeHighlight } = useHighlightRecorder({
     gameRef,
     recording: gameReady && !over,
   });
@@ -206,7 +211,7 @@ function PlayInner() {
     };
   }, []);
 
-  const handleEnd = () => {
+  const handleEnd = async () => {
     // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
     gameRef.current?.stopUltimate();
     const s = useGameStore.getState();
@@ -227,6 +232,8 @@ function PlayInner() {
       router.push("/");
       return;
     }
+    // 진행 중 녹화가 있으면 마감해서 마지막 클라이맥스 클립이 버려지지 않게 한 뒤 모달 오픈.
+    await finalizeHighlight();
     setOver(true);
   };
 
@@ -276,6 +283,7 @@ function PlayInner() {
         dollId={dollId}
         dollImageUrl={dollImageUrl}
         highlightClip={bestClip}
+        getCardHighlight={getTimelineHighlight}
       />
     </div>
   );

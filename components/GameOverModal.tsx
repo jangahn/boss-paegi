@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
-import { shareGameResult, uploadHighlightClip } from "@/lib/share";
+import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
 import { bossReaction, gradeFor, reportNo } from "@/lib/report";
 import { getMyProfile } from "@/lib/profile";
 import type { HighlightClip } from "@/lib/highlight";
@@ -20,6 +20,8 @@ type Props = {
   dollImageUrl?: string;
   /** 하이라이트 녹화분 (없으면 카드만 공유) */
   highlightClip?: HighlightClip | null;
+  /** 클립 없을 때 카드용 급상승 메타 (timeline 기반) */
+  getCardHighlight?: () => { delta: number; windowMs: number } | null;
 };
 
 export function GameOverModal({
@@ -29,6 +31,7 @@ export function GameOverModal({
   dollId,
   dollImageUrl,
   highlightClip,
+  getCardHighlight,
 }: Props) {
   const router = useRouter();
   const score = useGameStore((s) => s.score);
@@ -79,12 +82,25 @@ export function GameOverModal({
   const reaction = bossReaction(score, scoreId ?? String(score));
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
 
-  // gesture 안에서 URL 즉시 공유, 클립 업로드는 백그라운드(fire-and-forget).
+  // gesture 안에서 URL 즉시 공유(친구는 보통 수 초+ 뒤 열어 그때면 attach 완료).
+  // 클립 업로드/카드 저장은 같은 탭의 백그라운드 — 실패해도 링크 공유는 이미 됨(불변 원칙).
   const handleShare = () => {
     if (!scoreId) return;
+    const sid = scoreId;
     setShareMsg(null);
-    if (clip) void uploadHighlightClip(scoreId, clip);
-    void shareGameResult(scoreId, score).then((result) => {
+    void (async () => {
+      if (clip) {
+        const r = await uploadHighlightClip(sid, clip);
+        if (r === "failed") {
+          const h = getCardHighlight?.();
+          if (h) await saveCardHighlight(sid, h);
+        }
+      } else {
+        const h = getCardHighlight?.();
+        if (h) await saveCardHighlight(sid, h);
+      }
+    })();
+    void shareGameResult(sid, score).then((result) => {
       if (result === "shared") setShareMsg("공유했어요!");
       else if (result === "copied") setShareMsg("링크 복사됨");
       else if (result === "failed") setShareMsg("공유 실패");
@@ -92,8 +108,10 @@ export function GameOverModal({
   };
 
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-sm">
+    // 스크롤-센터: 짧으면 가운데, 길면(클립 프리뷰로 키 큼) 위→아래 전체 스크롤 도달(상단 안 잘림).
+    <div className="absolute inset-0 z-20 overflow-y-auto bg-black/70 backdrop-blur-sm">
+      <div className="flex min-h-full items-center justify-center px-4 py-6">
+        <div className="w-full max-w-sm">
         {/* ── 보고서 (종이) ───────────────────────────────── */}
         <ScoreReport
           docNo={docNo}
@@ -159,6 +177,7 @@ export function GameOverModal({
           {shareMsg && (
             <p className="text-center text-xs text-zinc-400">{shareMsg}</p>
           )}
+        </div>
         </div>
       </div>
     </div>

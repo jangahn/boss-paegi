@@ -50,7 +50,7 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), highlight_delta, highlight_window_ms, highlight_status, highlight_deleted_at"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at"
     )
     .eq("id", scoreId)
     .single();
@@ -66,19 +66,18 @@ export default async function OgImage({
         profiles: { display_name: string } | null;
         dolls: { image_url: string | null } | null;
         highlight_delta: number | null;
-        highlight_window_ms: number | null;
         highlight_status: string | null;
         highlight_deleted_at: string | null;
+        highlight_expires_at: string | null;
       }
     | null;
-  // attach 됐고 삭제 안 된 클립의 급상승 폭 (있으면 카드에 표시)
-  const hlDelta =
-    s && s.highlight_status === "attached" && !s.highlight_deleted_at
-      ? s.highlight_delta
-      : null;
-  const hlSec = s?.highlight_window_ms
-    ? (s.highlight_window_ms / 1000).toFixed(1)
-    : null;
+  // 급상승 폭 — clip(attached) 또는 card, 삭제/만료 안 됐을 때만 표시.
+  const hlLive =
+    !!s &&
+    (s.highlight_status === "attached" || s.highlight_status === "card") &&
+    !s.highlight_deleted_at &&
+    !(s.highlight_expires_at && new Date(s.highlight_expires_at) <= new Date());
+  const hlDelta = hlLive ? s!.highlight_delta : null;
 
   const name = s?.profiles?.display_name ?? "익명";
   const score = (s?.score ?? 0).toLocaleString();
@@ -211,7 +210,6 @@ export default async function OgImage({
                   }}
                 >
                   🔥 점수 급상승 +{hlDelta.toLocaleString()}점
-                  {hlSec ? ` (${hlSec}초)` : ""}
                 </div>
               ) : null}
               <div

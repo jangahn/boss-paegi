@@ -17,6 +17,8 @@ type SoundPreset =
 
 let ctx: AudioContext | null = null;
 let unlocked = false;
+let master: GainNode | null = null;
+let recordDest: MediaStreamAudioDestinationNode | null = null;
 
 function getCtx() {
   if (typeof window === "undefined") return null;
@@ -32,6 +34,39 @@ function getCtx() {
 }
 
 /**
+ * 모든 효과음이 거치는 마스터 버스 (→ 스피커 + 하이라이트 녹화 탭).
+ * 기존엔 각 사운드가 c.destination 에 직접 연결돼 캡처 지점이 없었음.
+ */
+function out(c: AudioContext): AudioNode {
+  if (!master) {
+    master = c.createGain();
+    master.connect(c.destination);
+  }
+  return master;
+}
+
+/**
+ * 하이라이트 녹화용 오디오 MediaStream — 마스터 버스를 탭해서 게임 효과음을 캡처.
+ * recordDest 는 **lazy singleton**, master→recordDest 연결은 **1회만**.
+ * 반환된 audio track 은 다음 녹화에서 재사용하므로 **stop 하면 안 됨**(stop 시 이후 무음).
+ * AudioContext/지원 없으면 null → 호출부는 video-only 로 폴백.
+ */
+export function getRecordingStream(): MediaStream | null {
+  const c = getCtx();
+  if (!c) return null;
+  try {
+    out(c); // master 보장
+    if (!recordDest) {
+      recordDest = c.createMediaStreamDestination();
+      master!.connect(recordDest);
+    }
+    return recordDest.stream;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 첫 user gesture (예: 페이지 진입 후 첫 탭) 후 호출.
  * iOS Safari 의 autoplay block 을 풀기 위해 ctx.resume() + silent buffer 한 번 재생.
  */
@@ -43,7 +78,7 @@ export function unlockAudio() {
     const buf = c.createBuffer(1, 1, c.sampleRate);
     const src = c.createBufferSource();
     src.buffer = buf;
-    src.connect(c.destination);
+    src.connect(out(c));
     src.start(0);
   } catch {
     /* noop */
@@ -101,7 +136,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const og = c.createGain();
     og.gain.setValueAtTime(0.65 * v, t);
     og.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-    osc.connect(og).connect(c.destination);
+    osc.connect(og).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.18);
 
@@ -114,7 +149,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const ng = c.createGain();
     ng.gain.setValueAtTime(0.55 * v, t);
     ng.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-    src.connect(filter).connect(ng).connect(c.destination);
+    src.connect(filter).connect(ng).connect(out(c));
     src.start(t);
 
     // 시작 클릭 (타격 순간 어택감)
@@ -126,7 +161,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const cg = c.createGain();
     cg.gain.setValueAtTime(0.3 * v, t);
     cg.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
-    click.connect(cf).connect(cg).connect(c.destination);
+    click.connect(cf).connect(cg).connect(out(c));
     click.start(t);
     return;
   }
@@ -142,7 +177,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.4 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    osc.connect(gain).connect(c.destination);
+    osc.connect(gain).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.27);
     return;
@@ -157,7 +192,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.12 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    osc.connect(gain).connect(c.destination);
+    osc.connect(gain).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.09);
     return;
@@ -174,7 +209,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const ng = c.createGain();
     ng.gain.setValueAtTime(0.3 * v, t);
     ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-    src.connect(filter).connect(ng).connect(c.destination);
+    src.connect(filter).connect(ng).connect(out(c));
     src.start(t);
 
     const osc = c.createOscillator();
@@ -184,7 +219,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const og = c.createGain();
     og.gain.setValueAtTime(0.2 * v, t);
     og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    osc.connect(og).connect(c.destination);
+    osc.connect(og).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.07);
     return;
@@ -201,7 +236,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.55 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-    src.connect(filter).connect(gain).connect(c.destination);
+    src.connect(filter).connect(gain).connect(out(c));
     src.start(t);
     return;
   }
@@ -215,7 +250,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const og = c.createGain();
     og.gain.setValueAtTime(0.75 * v, t);
     og.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-    osc.connect(og).connect(c.destination);
+    osc.connect(og).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.26);
 
@@ -227,7 +262,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const ng = c.createGain();
     ng.gain.setValueAtTime(0.5 * v, t);
     ng.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-    src.connect(filter).connect(ng).connect(c.destination);
+    src.connect(filter).connect(ng).connect(out(c));
     src.start(t);
     return;
   }
@@ -240,7 +275,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.25 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    osc.connect(gain).connect(c.destination);
+    osc.connect(gain).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.1);
     return;
@@ -255,7 +290,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.18 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-    src.connect(filter).connect(gain).connect(c.destination);
+    src.connect(filter).connect(gain).connect(out(c));
     src.start(t);
     return;
   }
@@ -272,7 +307,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(0.35 * v, t + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    src.connect(filter).connect(gain).connect(c.destination);
+    src.connect(filter).connect(gain).connect(out(c));
     src.start(t);
     return;
   }
@@ -287,7 +322,7 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.12 * v, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    src.connect(filter).connect(gain).connect(c.destination);
+    src.connect(filter).connect(gain).connect(out(c));
     src.start(t);
     return;
   }

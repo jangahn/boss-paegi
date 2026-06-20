@@ -74,15 +74,15 @@ export async function PATCH(req: NextRequest) {
 
   const body = (await req.json().catch(() => null)) as {
     scoreId?: string;
+    mode?: string;
     uploadId?: string;
     ext?: string;
     delta?: number;
     windowMs?: number;
   } | null;
   const scoreId = body?.scoreId;
-  const uploadId = body?.uploadId;
-  const ext = body?.ext === "mp4" || body?.ext === "webm" ? body.ext : null;
-  if (!scoreId || !uploadId || !ext) {
+  const mode = body?.mode === "card" ? "card" : "clip";
+  if (!scoreId) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
@@ -96,12 +96,51 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const path = `${scoreId}/${uploadId}.${ext}`;
+  // 표시용 메타 검증/클램프 (클라 값 불신) — clip/card 공통
+  const meta = sanitizeHighlightMeta(
+    { delta: body?.delta, windowMs: body?.windowMs },
+    typeof row.score === "number" ? row.score : 0
+  );
 
-  // 이미 attach됨 → 이번 업로드는 orphan, 제거 (score당 1회 정책)
-  if (row.highlight_status === "attached") {
+  const expiresAt = new Date(Date.now() + TTL_MS).toISOString();
+
+  // score당 하이라이트 1회만 (attached/card 이미 확정이면 거부)
+  const already =
+    row.highlight_status === "attached" || row.highlight_status === "card";
+
+  // ── card 모드: 클립 없이 급상승 stat 만 저장(녹화 미지원/실패 폴백) ─────
+  if (mode === "card") {
+    if (already)
+      return NextResponse.json({ error: "already_set" }, { status: 409 });
+    const { error: upErr } = await admin
+      .from("scores")
+      .update({
+        highlight_status: "card",
+        highlight_delta: meta.delta,
+        highlight_window_ms: meta.windowMs,
+        highlight_expires_at: expiresAt,
+      })
+      .eq("id", scoreId);
+    if (upErr) {
+      log.error("highlight.card_attach_fail", { scoreId, ...errInfo(upErr) });
+      return NextResponse.json({ error: "card_failed" }, { status: 500 });
+    }
+    revalidatePath(`/share/${scoreId}`);
+    log.info("highlight.highlight_card_saved", { scoreId, delta: meta.delta });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── clip 모드: 업로드된 object 검증 후 attach ───────────────────────
+  const uploadId = body?.uploadId;
+  const ext = body?.ext === "mp4" || body?.ext === "webm" ? body.ext : null;
+  if (!uploadId || !ext) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+  const path = `${scoreId}/${uploadId}.${ext}`;
+  if (already) {
+    // 이미 확정 → 이번 업로드는 orphan, 제거
     await admin.storage.from(BUCKET).remove([path]).catch(() => {});
-    return NextResponse.json({ error: "already_attached" }, { status: 409 });
+    return NextResponse.json({ error: "already_set" }, { status: 409 });
   }
 
   // 서버측 object metadata 검증 (클라 size/mime 불신)
@@ -121,11 +160,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "rejected" }, { status: 400 });
   }
 
-  const meta = sanitizeHighlightMeta(
-    { delta: body?.delta, windowMs: body?.windowMs },
-    typeof row.score === "number" ? row.score : 0
-  );
-
   const { error: upErr } = await admin
     .from("scores")
     .update({
@@ -136,7 +170,7 @@ export async function PATCH(req: NextRequest) {
       highlight_clip_size: size,
       highlight_delta: meta.delta,
       highlight_window_ms: meta.windowMs,
-      highlight_expires_at: new Date(Date.now() + TTL_MS).toISOString(),
+      highlight_expires_at: expiresAt,
     })
     .eq("id", scoreId);
   if (upErr) {
