@@ -33,11 +33,13 @@ npm run dev                  # http://localhost:3000
 ```
 boss-paegi/
 ├── app/                    # Next.js App Router
-│   ├── api/                #   서버 Route (fal.ai 프록시, score, doll)
-│   ├── generate/           #   인형 생성 플로우
+│   ├── api/                #   서버 Route (fal.ai 프록시, score, doll, avatar)
+│   ├── auth/callback/      #   OAuth 콜백 (linkIdentity/로그인 → 세션 + 멤버 초기화)
+│   ├── login/              #   Kakao/Google 로그인 (가입 = 첫 로그인)
+│   ├── generate/           #   인형 생성 플로우 (회원 전용)
 │   ├── play/               #   게임 화면 (PixiJS 마운트)
-│   ├── gallery/            #   내 인형 갤러리
-│   ├── leaderboard/        #   랭킹
+│   ├── gallery/            #   내 인형 갤러리 (회원 전용)
+│   ├── leaderboard/        #   랭킹 (프로필 아바타 표시)
 │   ├── layout.tsx
 │   └── page.tsx            #   랜딩
 ├── game/                   # PixiJS 게임 로직 (React 와 분리)
@@ -47,7 +49,11 @@ boss-paegi/
 │   ├── physics/            #   matter.js wrapper (PhysicsWorld)
 │   └── input/              #   ThrowInput, DrawInput
 ├── lib/
-│   ├── supabase/           #   client.ts / server.ts
+│   ├── supabase/           #   client.ts / server.ts / admin.ts / middleware.ts
+│   ├── auth-server.ts      #   requireMember (회원 전용 라우트 게이트)
+│   ├── oauth-metadata.ts   #   OAuth 프로필 추출 + safeNext (open redirect 차단)
+│   ├── auth-oauth.ts       #   startOAuth (linkIdentity/signInWithOAuth) / signOut
+│   ├── avatar.ts           #   프로필 사진 업로드 (다운스케일 → 서명 URL)
 │   ├── fal.ts              #   fal.ai 호출 + 프롬프트 빌더
 │   ├── policy.ts           #   동의 문구 / 면책 상수
 │   ├── log.ts              #   구조화 JSON 로깅 (console + Sentry 브릿지 / 토큰 스크럽)
@@ -59,6 +65,7 @@ boss-paegi/
 └── public/
     ├── manifest.webmanifest
     ├── icons/              # PWA 아이콘
+    ├── avatars/            # 기본 프로필 사진 (default.png — 교체 가능)
     ├── sprites/            # 기본 인형 + 무기 sprite
     └── bg/                 # 배경
 ```
@@ -72,10 +79,25 @@ boss-paegi/
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (클라이언트 안전) |
 | `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용. 절대 클라이언트 노출 금지 |
+| `OPS_USER_ID` | 운영 계정 user.id — 생성권 무제한 (선택) |
 | `FAL_KEY` | fal.ai API 키. **서버 전용** |
 | `NEXT_PUBLIC_SITE_URL` | 공유 링크 / OG 이미지용 |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
+
+> Kakao/Google OAuth provider 키(client id/secret)는 앱 env 가 아니라 **Supabase Auth config**(Management API `PATCH /config/auth`)에 저장 — 아래 *회원 / 인증* 참조.
+
+## 회원 / 인증 (OAuth)
+
+익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹은 자유, **생성·갤러리는 회원 전용**(`proxy.ts` 가 `/generate`·`/gallery` 를 익명 시 `/login` 으로 리다이렉트).
+
+- **로그인 = 가입**: 별도 가입 페이지 없음 — `/login` 버튼뿐. DB 에 계정 없으면 그 로그인이 곧 가입.
+- **마이그레이션(linkIdentity)**: 익명 상태에서 첫 OAuth 로그인 시 같은 `user.id` 로 멤버 승격 → 익명 때 만든 dolls/scores 보존. 로그아웃하면 새 익명 세션으로 분리. 이미 가입된 OAuth 로 재로그인(`identity_already_exists`)은 `/login?relogin=1` → `signInWithOAuth`(현재 익명 데이터는 자동 병합 안 함).
+- **계정 분리**: Supabase 자동 linking 수용 — 동일 **verified 이메일**의 Kakao/Google 은 같은 계정으로 연결될 수 있음. 다른 이메일이면 별개 계정. 멀티연동 UI 없음.
+- **이메일 필수**: 이메일 없는/미검증 OAuth 는 멤버화 차단(`/login?error=email_required`). Kakao 는 Biz 인증 + `account_email` 필수 동의 필요.
+- **테이블 분리**: 공개 프로필은 `profiles`(display_name/avatar_url, public read), 멤버십·생성권은 private `member_accounts`(self-read만, write 는 service-role/`SECURITY DEFINER` RPC). `profiles.avatar_url` 은 컬럼레벨 grant 로 클라 직접 변조 차단 → 변경은 검증된 `/api/avatar`(admin) 경유.
+- **생성권(크레딧)**: 가입 시 5개 지급(`member_accounts.gen_credits`), 생성마다 1개 차감(서버 `consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). 소진 시 우측하단 의견 위젯으로 추가 요청 안내. `OPS_USER_ID` 는 무제한.
+- **Provider 설정**(Management API `PATCH /config/auth`): Kakao/Google enabled+client_id+secret, `manual linking` 활성(linkIdentity 필수), `site_url`, `uri_allow_list`(prod+localhost `/auth/callback`). provider 측 redirect URI = `https://<ref>.supabase.co/auth/v1/callback`(앱의 `/auth/callback` 아님).
 
 ## 모니터링 (Sentry)
 
@@ -113,7 +135,7 @@ npm run typecheck   # tsc --noEmit
 - **동의 다이얼로그**: 생성 직전 3개 체크박스 강제 (본인 또는 사용권 있는 이미지 / 타인 비방 목적 아님 / 캐릭터화 변형 동의).
 - **AI 프롬프트**: 강한 캐릭터화 (3D claymation, caricature, exaggerated chibi) — 실제 얼굴과 닮음 최소화.
 - **API 키**: `FAL_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 는 **서버 전용**. 클라이언트 번들 절대 포함 금지.
-- **Rate limit**: AI 생성은 `ai_generations` 테이블로 일일 N회 / 사용자 강제 (서버 Route 검증).
+- **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 5개, 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 의견 위젯으로 추가 요청. `OPS_USER_ID` 무제한.
 
 전체 정책 결정은 [CLAUDE.md](./CLAUDE.md) 참조.
 
@@ -219,7 +241,16 @@ v0.11 (2026-06-20, 하이라이트 클립 공유 — 바이럴):
   - **`/share`**: 클립 있으면 `<video>`(src=Supabase CDN 직접, Vercel egress 0) + 🔥급상승 stat, 없으면 보고서 카드. OG 카드에도 `+N점` stat. migration 0009(`scores` highlight_* 컬럼 + public `highlights` 버킷, `highlight_expires_at`/`deleted_at` TTL·신고 설계 반영).
   - 관측: `highlight.record_supported/started/success`·`empty_blob`·`upload_success/rejected_size` (Sentry/Logs).
 
-**마이그레이션 적용**: 0006~0009 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
+v0.12 (2026-06-20, OAuth 회원 + 생성권 크레딧):
+- **Kakao/Google 로그인 회원제**: 익명 전용 → OAuth 회원 도입. 비회원도 플레이·랭킹 유지, **생성·갤러리는 회원 전용**(`proxy.ts` 게이팅 → `/login`). 별도 가입 페이지 없이 로그인 버튼이 곧 가입.
+- **linkIdentity 마이그레이션**: 익명 상태 첫 OAuth 로그인 시 같은 `user.id` 로 멤버 승격 → 익명 때 만든 dolls/scores 보존. 로그아웃=새 익명 분리. 이미 가입된 OAuth 재로그인은 `identity_already_exists`→`/login?relogin=1`→`signInWithOAuth`(현재 익명 데이터 자동 병합 안 함).
+- **공개/멤버십 분리** (migration 0010): 공개 프로필 `profiles`(+`avatar_url`, public read; 컬럼레벨 grant 로 클라는 `display_name` 만 수정) / private `member_accounts`(`gen_credits`·`member_since`, self-read만, write 는 service-role/`SECURITY DEFINER` RPC) — 익명 변조·노출 차단.
+- **생성권 크레딧**(일일 한도 대체): 가입 시 5개, 생성마다 1개 차감(`consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). 소진 시 우측하단 의견 위젯으로 추가 요청 안내. `OPS_USER_ID` 무제한.
+- **콜백/게이트**: `/auth/callback`(code 교환 + **이메일 필수 게이트**(verified-email linking 안전성) + 멤버 1회성 초기화 — `member_accounts` 신규 insert 시만 OAuth 닉/프사 반영, 재로그인 보존), `lib/auth-server.ts` `requireMember`(401/member_only/member_setup_required), `safeNext`(open redirect 차단).
+- **계정 UI**: `AppNav`/`AccountMenu` 익명(닉네임+로그인) vs 멤버(아바타+드롭다운: 닉네임/프사 변경·로그아웃). `/api/avatar`(서명 업로드 → admin 검증 → `profiles.avatar_url`), 랭킹에 프로필 아바타(없으면 `/avatars/default.png`).
+- 계정 정책: Supabase 자동 linking 수용(동일 verified 이메일 Kakao/Google = 같은 계정), 멀티연동 UI 없음. Provider 키는 앱 env 가 아니라 Supabase Auth config. 익명 dolls→운영계정 이관은 즉시 X — grace period 후 후속 정리(미승격 익명 보호).
+
+**마이그레이션 적용**: 0006~0010 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):

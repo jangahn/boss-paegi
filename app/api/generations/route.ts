@@ -35,6 +35,10 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // 생성 폴링은 회원 전용 — 익명(비회원)은 차단.
+  if (user.is_anonymous) {
+    return NextResponse.json({ error: "member_only" }, { status: 403 });
+  }
 
   const admin = createAdminClient();
   const baseQuery = (cols: string) =>

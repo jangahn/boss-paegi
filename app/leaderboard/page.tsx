@@ -14,7 +14,10 @@ type RankRow = {
   created_at: string;
   display_name: string | null;
   doll_image_url: string | null;
+  avatar_url: string | null;
 };
+
+const DEFAULT_AVATAR = "/avatars/default.png";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +76,12 @@ export default async function LeaderboardPage({
                 <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
                   {i + 1}
                 </span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={r.avatar_url ?? DEFAULT_AVATAR}
+                  alt=""
+                  className="h-9 w-9 shrink-0 rounded-full border border-foreground/10 object-cover"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-medium">
                     {r.display_name ?? "익명"}

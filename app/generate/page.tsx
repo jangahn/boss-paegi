@@ -79,10 +79,15 @@ function GeneratePageInner() {
       const res = await fetch("/api/fal", { method: "POST", body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "failed" }));
-        if (err.error === "daily_limit") {
+        if (err.error === "no_credits") {
           throw new Error(
-            `오늘 무료 생성 ${err.limit}회를 모두 사용했어요. 내일 0시에 다시 만들 수 있어요!`
+            "무료 생성권을 모두 사용했어요. 화면 우측 아래 '의견' 버튼으로 닉네임과 함께 생성권을 요청해주세요!"
           );
+        }
+        if (err.error === "member_only" || err.error === "member_setup_required") {
+          // 비회원/멤버화 미완 — 로그인 페이지로.
+          router.push("/login?next=/generate");
+          return;
         }
         if (err.error === "service_paused") {
           throw new Error(

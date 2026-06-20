@@ -1,85 +1,44 @@
 import "server-only";
 import * as Sentry from "@sentry/nextjs";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 import { detectGlasses } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
+import { SERVER_ENV } from "@/lib/env.server";
 import { log, errInfo } from "@/lib/log";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-/** 기본 일일 생성 한도 — profiles.daily_gen_limit 조회 실패 시 fallback */
-const DEFAULT_DAILY_LIMIT = 2;
 
 export const runtime = "nodejs";
 // 비동기 제출 — fal 에 등록만 하고 즉시 반환(업로드+검출+제출 ~6s)이라 짧게 충분.
 export const maxDuration = 30;
 
-/** 오늘 KST 자정 (UTC ISO) — 일일 한도 리셋 기준 */
-function kstMidnightUtcIso(): string {
-  const kst = new Date(Date.now() + 9 * 3600_000);
-  kst.setUTCHours(0, 0, 0, 0);
-  return new Date(kst.getTime() - 9 * 3600_000).toISOString();
-}
-
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  // 회원 전용 게이트 (비회원/무세션/멤버화 미완 → 401/403)
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user, member } = gate;
 
   log.info("gen.request", { userId: user.id });
+
+  // 운영 계정은 생성권 무제한.
+  const isOps = !!SERVER_ENV.OPS_USER_ID && user.id === SERVER_ENV.OPS_USER_ID;
+
+  // ── 생성권 빠른 차단 (prep/제출 낭비 방지) — 실제 차감은 fal submit 직전 원자적으로 ──
+  if (!isOps && member.gen_credits < 1) {
+    log.warn("gen.no_credits_precheck", { userId: user.id });
+    return NextResponse.json({ error: "no_credits" }, { status: 402 });
+  }
 
   // ── fal 잔액 hard cap — $2 미만이면 전 계정 생성 일시 중단 ─────────
   const balance = await checkFalBalance();
   if (!balance.ok) {
     log.warn("gen.balance_blocked", { userId: user.id, balance: balance.balance });
     return NextResponse.json({ error: "service_paused" }, { status: 503 });
-  }
-
-  // ── 일일 생성 한도 (KST 자정 리셋). daily_gen_limit null = 무제한 ──
-  const adminForQuota = createAdminClient();
-  let limit: number | null = DEFAULT_DAILY_LIMIT;
-  const { data: profileRow, error: profileErr } = await adminForQuota
-    .from("profiles")
-    .select("daily_gen_limit")
-    .eq("id", user.id)
-    .single();
-  if (!profileErr && profileRow && "daily_gen_limit" in profileRow) {
-    limit = profileRow.daily_gen_limit as number | null;
-  } else {
-    // migration 0004 미적용(컬럼 없음) / profile row 없음(PGRST116) / 조회 에러
-    // → 기본 한도 유지. errInfo 로 세 원인 구분 가능하게 남김.
-    log.warn("gen.daily_limit_col_missing", {
-      userId: user.id,
-      fallbackLimit: DEFAULT_DAILY_LIMIT,
-      ...errInfo(profileErr),
-    });
-  }
-  if (limit !== null) {
-    const { count, error: countErr } = await adminForQuota
-      .from("ai_generations")
-      .select("*", { head: true, count: "exact" })
-      .eq("owner_id", user.id)
-      .neq("status", "failed") // 실패한 생성은 차감 안 함
-      .gte("created_at", kstMidnightUtcIso());
-    if (countErr) {
-      // 카운트 확인 실패 = 한도가 적용되지 않은 채 생성이 진행됨(fail-open).
-      // 정책 #5(카운트 확인 후 진행) 위반 사고이므로 반드시 추적 가능해야 함.
-      log.error("gen.daily_count_fail", { userId: user.id, limit, ...errInfo(countErr) });
-    } else if ((count ?? 0) >= limit) {
-      log.warn("gen.daily_limit", { userId: user.id, used: count ?? 0, limit });
-      return NextResponse.json(
-        { error: "daily_limit", limit, used: count ?? 0 },
-        { status: 429 }
-      );
-    }
   }
 
   const form = await req.formData();
@@ -138,6 +97,7 @@ export async function POST(req: NextRequest) {
   // 생성은 fal 에서 진행되고, 클라가 /api/generations 폴링으로 완성분을 받는다.
   // 임시 얼굴은 fal 이 생성 중 fetch 하므로 지금 안 지움 — 복구가 done 시 삭제.
   let facePath: string | null = null;
+  let creditConsumed = false;
   try {
     const uploaded = await Sentry.startSpan(
       { name: "gen.face_upload", op: "storage.upload", attributes: { genId, userId: user.id } },
@@ -152,6 +112,27 @@ export async function POST(req: NextRequest) {
       () => detectGlasses(uploaded.url)
     );
     if (wearsGlasses) log.info("gen.glasses_detected", { genId, userId: user.id });
+
+    // ── 생성권 차감 — 외부 비용(fal submit) 직전, 원자적 RPC(동시요청 안전) ──
+    if (!isOps) {
+      const { data: remaining, error: consumeErr } = await admin.rpc(
+        "consume_gen_credit",
+        { p_user: user.id }
+      );
+      if (consumeErr || remaining === null) {
+        // 차감 불가(소진/동시요청 경합 패배) → 만든 row·임시얼굴 정리 후 402.
+        await admin.from("ai_generations").update({ status: "failed" }).eq("id", genId);
+        if (facePath) {
+          await deleteFaceTmp(facePath).catch((err) =>
+            log.warn("gen.face_cleanup_fail", { genId, ...errInfo(err) })
+          );
+        }
+        log.warn("gen.no_credits", { userId: user.id, genId, ...errInfo(consumeErr) });
+        return NextResponse.json({ error: "no_credits" }, { status: 402 });
+      }
+      creditConsumed = true;
+      log.info("gen.credit_consumed", { userId: user.id, genId, remaining });
+    }
 
     // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
     const requestIds = await Sentry.startSpan(
@@ -197,6 +178,19 @@ export async function POST(req: NextRequest) {
       await deleteFaceTmp(facePath).catch((err) =>
         log.warn("gen.face_cleanup_fail", { genId, ...errInfo(err) })
       );
+    }
+    // 차감했는데 제출 실패 → 생성권 환불(원자적). ops 는 차감 안 했으니 스킵.
+    if (creditConsumed && !isOps) {
+      const { error: refundErr } = await admin.rpc("refund_gen_credit", {
+        p_user: user.id,
+      });
+      if (refundErr) {
+        log.error("gen.credit_refund_fail", {
+          genId,
+          userId: user.id,
+          ...errInfo(refundErr),
+        });
+      }
     }
     log.error("gen.submit_fail", { genId, userId: user.id, ...errInfo(e) });
     return NextResponse.json(

@@ -9,6 +9,7 @@ import { log, errInfo } from "@/lib/log";
 
 export default function Home() {
   const [hasDolls, setHasDolls] = useState(false);
+  const [isMember, setIsMember] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -16,6 +17,8 @@ export default function Home() {
       const sb = createClient();
       const { data: sessionData } = await sb.auth.getSession();
       if (!sessionData.session) return;
+      if (!cancelled)
+        setIsMember(sessionData.session.user.is_anonymous !== true);
       const { count, error } = await sb
         .from("dolls")
         .select("*", { head: true, count: "exact" });
@@ -43,7 +46,7 @@ export default function Home() {
 
           <div className="mt-4 flex w-full flex-col gap-3">
             <Link
-              href="/generate"
+              href={isMember ? "/generate" : "/login?next=/generate"}
               className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
             >
               내 부장님 만들기
@@ -55,7 +58,7 @@ export default function Home() {
               기본 부장님으로 바로 시작
             </Link>
             <div className="flex justify-center gap-4 pt-1 text-sm">
-              {hasDolls && (
+              {isMember && hasDolls && (
                 <Link
                   href="/gallery"
                   className="font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
