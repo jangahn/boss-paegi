@@ -20,7 +20,7 @@ export default function GalleryPage() {
   const [dolls, setDolls] = useState<Doll[] | null>(null);
   const [pending, setPending] = useState<PendingGeneration[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [credits, setCredits] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -66,8 +66,9 @@ export default function GalleryPage() {
   }, [pending, loadPending]);
 
   const handleDelete = async (id: string) => {
+    if (deletingIds.has(id)) return;
     if (!confirm("이 부장님 인형을 삭제할까요?")) return;
-    setDeletingId(id);
+    setDeletingIds((prev) => new Set(prev).add(id));
     setError(null);
     try {
       const r = await fetch(`/api/doll?id=${encodeURIComponent(id)}`, {
@@ -81,7 +82,12 @@ export default function GalleryPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패");
     } finally {
-      setDeletingId(null);
+      // 이 id 만 해제 — 동시에 진행 중인 다른 삭제의 스피너를 건드리지 않음.
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -114,7 +120,7 @@ export default function GalleryPage() {
         ) : dolls.length === 0 ? (
           pending.length === 0 && <EmptyState />
         ) : (
-          <DollGrid dolls={dolls} onDelete={handleDelete} deletingId={deletingId} />
+          <DollGrid dolls={dolls} onDelete={handleDelete} deletingIds={deletingIds} />
         )}
 
         {error && (
@@ -221,11 +227,11 @@ function GridSkeleton() {
 function DollGrid({
   dolls,
   onDelete,
-  deletingId,
+  deletingIds,
 }: {
   dolls: Doll[];
   onDelete: (id: string) => void;
-  deletingId: string | null;
+  deletingIds: Set<string>;
 }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -233,7 +239,7 @@ function DollGrid({
         <DollCard
           key={d.id}
           doll={d}
-          deleting={deletingId === d.id}
+          deleting={deletingIds.has(d.id)}
           onDelete={() => onDelete(d.id)}
         />
       ))}

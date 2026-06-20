@@ -42,13 +42,18 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
   const { data: row } = await admin
     .from("scores")
-    .select("id, owner_id, highlight_status")
+    .select("id, owner_id")
     .eq("id", scoreId)
     .single();
   if (!row || row.owner_id !== user.id) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  if (row.highlight_status === "attached") {
+  const { data: hl } = await admin
+    .from("score_highlights")
+    .select("highlight_status")
+    .eq("score_id", scoreId)
+    .maybeSingle();
+  if (hl?.highlight_status === "attached") {
     return NextResponse.json({ error: "already_attached" }, { status: 409 });
   }
 
@@ -89,7 +94,7 @@ export async function PATCH(req: NextRequest) {
   const admin = createAdminClient();
   const { data: row } = await admin
     .from("scores")
-    .select("id, owner_id, score, highlight_status")
+    .select("id, owner_id, score")
     .eq("id", scoreId)
     .single();
   if (!row || row.owner_id !== user.id) {
@@ -103,26 +108,22 @@ export async function PATCH(req: NextRequest) {
   );
 
   const expiresAt = new Date(Date.now() + TTL_MS).toISOString();
-
-  // score당 하이라이트 1회만 (attached/card 이미 확정이면 거부)
-  const already =
-    row.highlight_status === "attached" || row.highlight_status === "card";
+  // attach-once 는 score_highlights.score_id PK insert 로 보장 (중복 = 23505 → already_set).
+  // upsert 안 씀 — 두 탭/더블클릭/clip-card 경합에서 기존 하이라이트 덮어쓰기 방지.
 
   // ── card 모드: 클립 없이 급상승 stat 만 저장(녹화 미지원/실패 폴백) ─────
   if (mode === "card") {
-    if (already)
-      return NextResponse.json({ error: "already_set" }, { status: 409 });
-    const { error: upErr } = await admin
-      .from("scores")
-      .update({
-        highlight_status: "card",
-        highlight_delta: meta.delta,
-        highlight_window_ms: meta.windowMs,
-        highlight_expires_at: expiresAt,
-      })
-      .eq("id", scoreId);
-    if (upErr) {
-      log.error("highlight.card_attach_fail", { scoreId, ...errInfo(upErr) });
+    const { error: insErr } = await admin.from("score_highlights").insert({
+      score_id: scoreId,
+      highlight_status: "card",
+      highlight_delta: meta.delta,
+      highlight_window_ms: meta.windowMs,
+      highlight_expires_at: expiresAt,
+    });
+    if (insErr) {
+      if (insErr.code === "23505")
+        return NextResponse.json({ error: "already_set" }, { status: 409 });
+      log.error("highlight.card_attach_fail", { scoreId, ...errInfo(insErr) });
       return NextResponse.json({ error: "card_failed" }, { status: 500 });
     }
     revalidatePath(`/share/${scoreId}`);
@@ -137,11 +138,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
   const path = `${scoreId}/${uploadId}.${ext}`;
-  if (already) {
-    // 이미 확정 → 이번 업로드는 orphan, 제거
-    await admin.storage.from(BUCKET).remove([path]).catch(() => {});
-    return NextResponse.json({ error: "already_set" }, { status: 409 });
-  }
 
   // 서버측 object metadata 검증 (클라 size/mime 불신)
   const { data: info, error: infoErr } = await admin.storage.from(BUCKET).info(path);
@@ -160,21 +156,24 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "rejected" }, { status: 400 });
   }
 
-  const { error: upErr } = await admin
-    .from("scores")
-    .update({
-      highlight_clip_path: path,
-      highlight_upload_id: uploadId,
-      highlight_status: "attached",
-      highlight_clip_mime: mimetype,
-      highlight_clip_size: size,
-      highlight_delta: meta.delta,
-      highlight_window_ms: meta.windowMs,
-      highlight_expires_at: expiresAt,
-    })
-    .eq("id", scoreId);
-  if (upErr) {
-    log.error("highlight.attach_fail", { scoreId, ...errInfo(upErr) });
+  const { error: insErr } = await admin.from("score_highlights").insert({
+    score_id: scoreId,
+    highlight_clip_path: path,
+    highlight_upload_id: uploadId,
+    highlight_status: "attached",
+    highlight_clip_mime: mimetype,
+    highlight_clip_size: size,
+    highlight_delta: meta.delta,
+    highlight_window_ms: meta.windowMs,
+    highlight_expires_at: expiresAt,
+  });
+  if (insErr) {
+    if (insErr.code === "23505") {
+      // 이미 확정 → 이번 업로드는 orphan, 제거
+      await admin.storage.from(BUCKET).remove([path]).catch(() => {});
+      return NextResponse.json({ error: "already_set" }, { status: 409 });
+    }
+    log.error("highlight.attach_fail", { scoreId, ...errInfo(insErr) });
     return NextResponse.json({ error: "attach_failed" }, { status: 500 });
   }
 

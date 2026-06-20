@@ -83,7 +83,7 @@ export function HighlightPlayer({
           playsInline
           poster={posterUrl}
           onError={() => log.warn("highlight.clip_play_unsupported", {})}
-          className="mx-auto aspect-[9/16] w-full max-w-[420px] object-contain"
+          className="mx-auto aspect-[9/16] max-h-64 w-full object-contain"
         />
         <p className="bg-black/70 py-1.5 text-center text-xs font-medium text-white/80">
           🔥 점수 급상승 하이라이트

@@ -56,17 +56,26 @@ function highlightDelta(s: Score): number | null {
   return s.highlight_delta;
 }
 
+/** highlight 컬럼은 score_highlights(1:1) 에 있음 → score 객체로 flatten 해 기존 helper 재사용. */
+function flattenScore(row: Record<string, unknown>): Score {
+  const raw = row.score_highlights;
+  const hl = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
+  const { score_highlights: _omit, ...rest } = row;
+  void _omit;
+  return { ...rest, ...((hl as Record<string, unknown>) ?? {}) } as unknown as Score;
+}
+
 async function fetchScore(scoreId: string): Promise<Score | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("scores")
     .select(
-      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), ${HL_COLS}`
+      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS})`
     )
     .eq("id", scoreId)
     .single();
-  if (data) return data as unknown as Score;
-  // migration 0003 미적용 fallback
+  if (data) return flattenScore(data as Record<string, unknown>);
+  // migration 0003 미적용 fallback (highlight 없이)
   const { data: legacy } = await admin
     .from("scores")
     .select(
