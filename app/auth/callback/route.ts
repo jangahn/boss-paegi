@@ -85,6 +85,21 @@ export async function GET(request: NextRequest) {
         }
         log.info("auth.member_created", { userId: user.id });
       }
+
+      // 이메일 최신화(이벤트/연락용) — 실제로 바뀐 경우에만 update(0011 audit version 불필요 증가 방지).
+      // 매 로그인마다 호출되지만 변경 없으면 no-op. profile.email 은 위 이메일 게이트 통과값.
+      const { data: cur } = await admin
+        .from("member_accounts")
+        .select("email")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (profile.email && cur && cur.email !== profile.email) {
+        await admin
+          .from("member_accounts")
+          .update({ email: profile.email })
+          .eq("user_id", user.id);
+        log.info("auth.member_email_synced", { userId: user.id, isNew: isNewMember });
+      }
     } catch (e) {
       // 멤버 row 생성 실패 → permanent user 지만 멤버 상태 없음.
       // requireMember 가 member_setup_required 로 처리하므로 치명적이진 않으나 추적.
