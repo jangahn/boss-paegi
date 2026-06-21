@@ -39,6 +39,8 @@ function PlayInner() {
   // 사용자가 BgSwitcher 로 직접 바꿨는지 — 초기 random 은 URL 에 안 쓰고(/play 깔끔 유지),
   // 사용자 전환만 ?bg= 로 동기화한다.
   const userChangedBgRef = useRef(false);
+  // 플레이 중 들른 배경 key 집합 — 해석 리포트용(store 밖 상태). 종료 시 모달로 전달.
+  const bgVisitsRef = useRef<Set<string>>(new Set());
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
@@ -75,6 +77,7 @@ function PlayInner() {
     const picked = findBackground(bgParam) ?? randomBackground();
     initialBgUrlRef.current = picked.url;
     bgKeyRef.current = picked.key;
+    bgVisitsRef.current.add(picked.key);
     setBgKey(picked.key); // 파라미터와 동일하면 React 가 bail-out (no-op)
   }, [bgParam]);
 
@@ -162,6 +165,7 @@ function PlayInner() {
   const handleBg = (key: string) => {
     if (key !== bgKey) {
       userChangedBgRef.current = true; // 이후 핫스왑이 ?bg= 를 URL 에 동기화
+      bgVisitsRef.current.add(key);
       log.info("game.bg_switch", { from: bgKey, to: key });
       setSentryGameContext({ dollId, weapon: weapon.key, bg: key, gamePhase: "playing" });
     }
@@ -239,6 +243,7 @@ function PlayInner() {
 
   const handleRestart = () => {
     setOver(false);
+    bgVisitsRef.current = new Set([bgKeyRef.current]); // 새 세션 — 현재 배경만
     start();
   };
 
@@ -284,6 +289,7 @@ function PlayInner() {
         dollImageUrl={dollImageUrl}
         highlightClip={bestClip}
         getCardHighlight={getTimelineHighlight}
+        bgVisits={Array.from(bgVisitsRef.current)}
       />
     </div>
   );

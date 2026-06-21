@@ -1,8 +1,9 @@
 import { formatDuration, weaponLabel } from "@/lib/report";
+import type { Persona } from "@/lib/persona";
 import { Spinner } from "@/components/Spinner";
 
 /**
- * 게임 결과 "보고서(종이)" 표현 — 점수/콤보/등급/부장님 반응 + 결재란.
+ * 게임 결과 "보고서(종이)" 표현 — 패기 유형(페르소나) 해석 + 점수/콤보/등급/부장님 반응.
  * 점수 계산/제출/공유 로직은 GameOverModal 이 담당, 여긴 순수 프레젠테이션.
  */
 export function ScoreReport({
@@ -16,6 +17,7 @@ export function ScoreReport({
   reaction,
   nickname,
   dollImageUrl,
+  persona,
   submitting,
   submitError,
 }: {
@@ -29,6 +31,7 @@ export function ScoreReport({
   reaction: string;
   nickname: string;
   dollImageUrl?: string;
+  persona?: Persona;
   submitting: boolean;
   submitError: string | null;
 }) {
@@ -41,6 +44,22 @@ export function ScoreReport({
           스트레스 해소 결과 보고서
         </h2>
       </div>
+
+      {/* 오늘의 패기 유형 (페르소나 해석 리빌) — 보고서의 하이라이트 */}
+      {persona && (
+        <div className="mt-3 rounded-md border-2 border-zinc-800 bg-zinc-900 p-3 text-center text-white">
+          <p className="text-[10px] tracking-[0.25em] text-amber-300">
+            오늘의 패기 유형
+          </p>
+          <p className="mt-1 text-xl font-extrabold">
+            {persona.emoji} {persona.label}
+          </p>
+          <p className="mt-1 text-xs text-zinc-300">&ldquo;{persona.blurb}&rdquo;</p>
+          <p className="mt-2 inline-block rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-medium text-amber-200">
+            📊 {persona.evidence}
+          </p>
+        </div>
+      )}
 
       {/* 인형 + 결재란 */}
       <div className="mt-3 flex items-start justify-between gap-3">

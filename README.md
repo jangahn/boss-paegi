@@ -256,6 +256,14 @@ v0.13 (2026-06-20, OAuth 후속 폴리시):
 - **프로필 사진 삭제**: `/api/avatar` DELETE(avatar_url=null + 버킷 본인객체만 best-effort 삭제, 외부 핫링크 스킵), `AvatarEditor` "기본 사진으로 되돌리기".
 - 익명 dolls→운영계정(f81c8a92) **이관 실행**(0011 전, `doll_owner_migration_log` 백업). `member_accounts` 에 감사 컬럼(updated_at/version), `daily_gen_limit` 컬럼 제거(0011).
 
+v0.14 (2026-06-21, 플레이 해석 리포트 — 페르소나, PR1/4):
+- **"부장님 패기 인사평가 리포트"**: 종료화면에 score/combo 를 넘어 **플레이 스타일 페르소나** 즉시 리빌 → 이탈 방지·공유 유도. 룰베이스 결정적(LLM 없음, 대기 0) — 같은 플레이=같은 페르소나.
+- **엔진 계측**(`store/gameStore.ts`): `weaponScores`(무기별 **final gain**=콤보배율 적용 점수기여), `ultimateCount`, `firstHitMs` 추가. `bgVisits` 는 store 밖이라 `app/play/page.tsx` ref 로 수집.
+- **해석 엔진**(순수 모듈, SSR/CSR 공용): `lib/stats.ts`(`GameplayStats`/파생/서버검증), `lib/persona.ts`(~10종 결정적 우선순위 + **트리거 stat evidence** 동봉 — "이 분석은 이 데이터에서"). `lib/report.ts` 카피 자산 재사용.
+- **저장**(migration 0015 `score_stats` — 1:1, public read, service-role write; highlight attach-once 불변식 보호 위해 별도 테이블): `/api/score` 가 점수 저장 **후 best-effort** 로 stats 검증·페르소나 계산·저장(`badge_ids`/`percentile` 은 후속 PR). 검증 = `sum(weaponScores)≈score`·`sum(weaponCounts)≈hitCount`(조작방지) → 실패 시 stats 폐기·점수는 항상 저장.
+- 종료화면(`GameOverModal`/`ScoreReport`)이 페르소나를 **클라 즉시 계산**(서버 대기 없음). 익명도 동일 적용(승격 시 보존).
+- 후속: PR2 공유/OG 반영 · PR3 뱃지+백분위 · PR4 인게임 미션/기록중 토스트.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
 import { bossReaction, gradeFor, reportNo } from "@/lib/report";
+import { buildGameplayStats } from "@/lib/stats";
+import { matchPersona } from "@/lib/persona";
 import { getMyProfile } from "@/lib/profile";
 import type { HighlightClip } from "@/lib/highlight";
 import { useScoreSubmission } from "./useScoreSubmission";
@@ -22,6 +24,8 @@ type Props = {
   highlightClip?: HighlightClip | null;
   /** 클립 없을 때 카드용 급상승 메타 (timeline 기반) */
   getCardHighlight?: () => { delta: number; windowMs: number } | null;
+  /** 플레이 중 들른 배경 key 목록 (해석 리포트용 — store 밖이라 page 가 전달) */
+  bgVisits?: string[];
 };
 
 export function GameOverModal({
@@ -32,14 +36,45 @@ export function GameOverModal({
   dollImageUrl,
   highlightClip,
   getCardHighlight,
+  bgVisits,
 }: Props) {
   const router = useRouter();
   const score = useGameStore((s) => s.score);
   const maxCombo = useGameStore((s) => s.maxCombo);
   const hitCount = useGameStore((s) => s.hitCount);
   const weaponCounts = useGameStore((s) => s.weaponCounts);
+  const weaponScores = useGameStore((s) => s.weaponScores);
+  const ultimateCount = useGameStore((s) => s.ultimateCount);
+  const firstHitMs = useGameStore((s) => s.firstHitMs);
   const startedAt = useGameStore((s) => s.startedAt);
   const endedAt = useGameStore((s) => s.endedAt);
+
+  // 플레이 해석 스탯 + 페르소나 — 룰베이스 즉시 계산(서버 대기 0). 저장도 같은 객체 제출.
+  const gameplayStats = useMemo(
+    () =>
+      buildGameplayStats({
+        hitCount,
+        maxCombo,
+        durationMs: endedAt && startedAt ? endedAt - startedAt : 0,
+        weaponCounts,
+        weaponScores,
+        ultimateCount,
+        firstHitMs,
+        bgVisits: bgVisits ?? [],
+      }),
+    [
+      hitCount,
+      maxCombo,
+      endedAt,
+      startedAt,
+      weaponCounts,
+      weaponScores,
+      ultimateCount,
+      firstHitMs,
+      bgVisits,
+    ]
+  );
+  const persona = useMemo(() => matchPersona(gameplayStats), [gameplayStats]);
 
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [nickname, setNickname] = useState<string>("");
@@ -53,6 +88,7 @@ export function GameOverModal({
     weapon,
     dollId,
     maxCombo,
+    gameplayStats,
   });
 
   useEffect(() => {
@@ -124,6 +160,7 @@ export function GameOverModal({
           reaction={reaction}
           nickname={nickname}
           dollImageUrl={dollImageUrl}
+          persona={persona}
           submitting={submitting}
           submitError={submitError}
         />
