@@ -43,9 +43,17 @@ if (dsn) {
         enableScreenshot: false,
         showName: false,
         showEmail: false,
+        // 폼엔 이름/이메일 칸 숨기되, 로그인 유저의 닉네임·email 은 Sentry.setUser 값에서
+        // 가져와 숨김 컨텍스트로 피드백에 첨부 → 누가 보냈는지 식별. 익명은 email 없어 닉네임만.
+        useSentryUser: { email: "email", name: "username" },
+        isEmailRequired: false,
+        isNameRequired: false,
         triggerLabel: "의견",
         formTitle: "의견 보내기",
-        messagePlaceholder: "버그·건의 무엇이든 자유롭게 남겨주세요",
+        messageLabel: "내용", // 기본 라벨이 영문("Description")이라 폼 전체 한글 통일
+        // 개인정보 안내 — 로그인 상태에선 닉네임·이메일이 함께 전송됨을 폼에서 고지.
+        messagePlaceholder:
+          "버그·건의 무엇이든 자유롭게 남겨주세요.\n로그인 상태에선 닉네임·이메일이 함께 전송돼요.",
         submitButtonLabel: "보내기",
         cancelButtonLabel: "취소",
         successMessageText: "보내주셔서 감사합니다!",

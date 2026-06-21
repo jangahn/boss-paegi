@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { safeNext } from "@/lib/oauth-metadata";
 import { clearProfileCache } from "@/lib/profile";
+import { clearSentryIdentity } from "@/lib/sentry-context";
 import { log, errInfo } from "@/lib/log";
 
 export type OAuthProvider = "kakao" | "google";
@@ -86,6 +87,7 @@ export async function startOAuth(
 export async function signOut(): Promise<void> {
   const sb = createClient();
   clearProfileCache(); // user별 프로필 캐시 정리 (다음 계정 오표시 방지)
+  clearSentryIdentity(); // Sentry user 초기화 (이전 멤버 email/닉네임이 다음 익명에 잔류 방지)
   const { error } = await sb.auth.signOut();
   if (error) log.warn("auth.sign_out_fail", { ...errInfo(error) });
   window.location.href = "/";

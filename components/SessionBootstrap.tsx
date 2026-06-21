@@ -15,9 +15,12 @@ export function SessionBootstrap() {
     // 여기서 또 로깅하면 같은 사건이 두 줄(레벨·포맷 불일치)로 갈린다 → 침묵.
     (async () => {
       const session = await ensureAuth();
-      setSentryIdentity(session.user.id); // 닉네임 조회 전에 userKey 먼저
+      // session.user.email — 멤버=값, 익명=null. 이미 세션에 있어 추가 DB 조회 X.
+      // (email 은 Sentry 식별 + admin 추출 전용 — getMyProfile/캐시엔 넣지 않음.)
+      const email = session.user.email ?? undefined;
+      setSentryIdentity(session.user.id, undefined, email); // 닉네임 조회 전에 userKey+email 먼저
       const profile = await getMyProfile();
-      setSentryIdentity(session.user.id, profile?.display_name);
+      setSentryIdentity(session.user.id, profile?.display_name, email);
     })().catch(() => {});
   }, []);
   return null;

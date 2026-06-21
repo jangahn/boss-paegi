@@ -3,12 +3,26 @@
 import * as Sentry from "@sentry/nextjs";
 
 /**
- * 익명 userKey + 닉네임을 Sentry user 로 설정 — 이후 모든 event/replay/log 에 자동 부착.
- * (게임 닉네임은 실명 아님 = 비민감. IP 는 sendDefaultPii:false 로 미수집.)
+ * userKey + 닉네임 (+ 멤버면 email) 을 Sentry user 로 설정 — 이후 모든 event/replay/log·
+ * 그리고 **유저 피드백(의견 위젯)** 에 자동 부착 → 누가 보낸 피드백인지 식별.
+ * email 은 멤버만 전달(익명=undefined). 게임 닉네임은 실명 아님=비민감, IP 는 미수집(sendDefaultPii:false).
  */
-export function setSentryIdentity(userId?: string, nickname?: string | null): void {
+export function setSentryIdentity(
+  userId?: string,
+  nickname?: string | null,
+  email?: string | null
+): void {
   if (!userId) return;
-  Sentry.setUser({ id: userId, username: nickname ?? undefined });
+  Sentry.setUser({
+    id: userId,
+    username: nickname ?? undefined,
+    email: email ?? undefined,
+  });
+}
+
+/** 로그아웃/익명 전환 시 Sentry user 초기화 — 이전 멤버 email/닉네임이 다음 세션에 남지 않게. */
+export function clearSentryIdentity(): void {
+  Sentry.setUser(null);
 }
 
 /**
