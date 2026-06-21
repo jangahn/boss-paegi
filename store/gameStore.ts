@@ -21,8 +21,10 @@ type GameState = {
   hitCount: number;
   /** 무기별 타격 횟수 — 주력 무기 산정 (보고서용) */
   weaponCounts: Record<string, number>;
-  /** 무기별 누적 점수(콤보배율 적용 final gain) — 점수기여 기준 주력무기 (해석 리포트용) */
+  /** 무기별 누적 점수(콤보배율 적용 final gain, 궁극기 제외) — 점수기여 기준 주력무기 (해석 리포트용) */
   weaponScores: Record<string, number>;
+  /** 궁극기 난타로 얻은 점수 — 스탯/뱃지엔 미반영, 서버 검증(score-ultScore)용 */
+  ultScore: number;
   /** 궁극기 발동 횟수 (해석 리포트용) */
   ultimateCount: number;
   /** 첫 타격까지 걸린 시간(ms) — startedAt 기준, 미타격이면 null */
@@ -69,6 +71,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   hitCount: 0,
   weaponCounts: {},
   weaponScores: {},
+  ultScore: 0,
   ultimateCount: 0,
   firstHitMs: null,
   ultProgress: 0,
@@ -81,6 +84,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   hit: (strength, weaponKey, charge = true) => {
     const now = performance.now();
+    // 궁극기 난타(charge=false): 점수만(동결 콤보배율) + ultScore 누적 + 콤보 유지(lastHitAt).
+    // combo/maxCombo/hitCount/weaponCounts/weaponScores/firstHitMs 등 뱃지·페르소나 통계엔 미반영.
+    // → combo/hit/weapon 증가 전에 early return.
+    if (!charge) {
+      const s = get();
+      const gain = Math.round(strength * comboMultiplier(s.combo));
+      set({ score: s.score + gain, ultScore: s.ultScore + gain, lastHitAt: now });
+      return;
+    }
     const {
       combo,
       lastHitAt,
@@ -155,6 +167,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hitCount: 0,
       weaponCounts: {},
       weaponScores: {},
+      ultScore: 0,
       ultimateCount: 0,
       firstHitMs: null,
       ultProgress: 0,
@@ -179,6 +192,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hitCount: 0,
       weaponCounts: {},
       weaponScores: {},
+      ultScore: 0,
       ultimateCount: 0,
       firstHitMs: null,
       ultProgress: 0,

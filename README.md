@@ -266,6 +266,10 @@ v0.14 (2026-06-21, 플레이 해석 리포트 — 페르소나, PR1/4):
 - **뱃지 + 백분위**(PR3/4): migration 0016 — `user_badges`(owner_id별 누적 수집, 승격 시 보존) + `get_score_percentile` RPC(**전체 플레이 기준** `상위 ceil%`, ≤100 cap; 랭킹과 별개 지표). `lib/badges.ts`(11종 단일게임 업적). `/api/score` 가 best-effort 로 뱃지 부여·백분위 산정 후 `score_stats`(badge_ids/percentile 스냅샷)+`user_badges` 저장. 종료화면=이번 판 뱃지(클라 즉시)+NEW 표시+수집 N/M+백분위(서버 스켈레톤→채움), 공유/OG=스냅샷 렌더(`components/BadgeStrip` 공용).
 - **인게임 동기부여**(PR4): `components/play/MissionHud`(소프트목표 무기3종/콤보30/궁극기1회 — 세션 연장·무기 다양성 유도, "● 분석 기록 중" 으로 데이터 수집 암시) + `app/play/useGameMilestones`(store.subscribe 기반 토스트 — 콤보 10단위·새 무기·궁극기 발동마다 "📊 보고서에 기록 중" 암시; recorder 와 신호원만 공유, **별도 interval 없음**). 페르소나→공유→뱃지/백분위→인게임 **4개 PR 완료**.
 
+v0.15 (2026-06-21, 뱃지 통합 후속 — 4 PR; 마이그레이션 없음):
+- **궁극기 제외**(PR1): 궁극기 난타(`charge===false`)는 **점수만**(`gameStore.hit()` early return — score+`ultScore` 누적·콤보 유지, combo/maxCombo/hitCount/weaponCounts/weaponScores/firstHitMs 미반영). 랜덤 무기·자동 콤보가 뱃지/페르소나/미션을 부풀리던 문제 해결 — 콤보·무기 통계가 **순수 수동 플레이** 기준이 됨. `GameplayStats` **v:2**(`ultScore` 추가) + 검증 `sum(weaponScores)≈score−ultScore`(v:1 tolerant). 궁극기 발동 자체(ultimateCount)·점수 뱃지엔 ult 포함(정당 득점).
+- 후속: PR2 카탈로그 패밀리화(~50개·진행도 API) · PR3 수집 페이지(/badges) · PR4 인게임 뱃지 통합(도전 과제 라이브 체크리스트).
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 

@@ -45,6 +45,7 @@ export function GameOverModal({
   const hitCount = useGameStore((s) => s.hitCount);
   const weaponCounts = useGameStore((s) => s.weaponCounts);
   const weaponScores = useGameStore((s) => s.weaponScores);
+  const ultScore = useGameStore((s) => s.ultScore);
   const ultimateCount = useGameStore((s) => s.ultimateCount);
   const firstHitMs = useGameStore((s) => s.firstHitMs);
   const startedAt = useGameStore((s) => s.startedAt);
@@ -59,6 +60,7 @@ export function GameOverModal({
         durationMs: endedAt && startedAt ? endedAt - startedAt : 0,
         weaponCounts,
         weaponScores,
+        ultScore,
         ultimateCount,
         firstHitMs,
         bgVisits: bgVisits ?? [],
@@ -70,6 +72,7 @@ export function GameOverModal({
       startedAt,
       weaponCounts,
       weaponScores,
+      ultScore,
       ultimateCount,
       firstHitMs,
       bgVisits,
