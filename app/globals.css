@@ -59,6 +59,26 @@ body {
   animation: ult-dim 1.4s ease-in-out infinite;
 }
 
+/* 마일스톤 토스트(MissionHud) — 살짝 떠오르며 페이드 인→유지→아웃 (수명 2.2s 일치). */
+@keyframes milestone-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  12%,
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+.animate-milestone {
+  animation: milestone-pop 2.2s ease-in-out forwards;
+}
+
 /* Sentry User Feedback 위젯(#sentry-feedback)은 /play 몰입화면(.game-surface)에선
  * 무기바/버튼과 겹치므로 숨김. 그 외 페이지(홈/갤러리/랭킹)에선 노출. */
 body:has(.game-surface) #sentry-feedback {
