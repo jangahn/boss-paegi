@@ -9,6 +9,7 @@ import { Spinner } from "@/components/Spinner";
 import { WeaponPicker } from "@/components/WeaponPicker";
 import { UltimateButton } from "@/components/UltimateButton";
 import { BgSwitcher } from "@/components/play/BgSwitcher";
+import { MissionHud } from "@/components/play/MissionHud";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { setSentryGameContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
@@ -20,6 +21,7 @@ import { useGameInit } from "./useGameInit";
 import { useTaunts } from "./useTaunts";
 import { useHighlightRecorder } from "./useHighlightRecorder";
 import { useScoreTimeline } from "./useScoreTimeline";
+import { useGameMilestones } from "./useGameMilestones";
 
 function PlayInner() {
   const router = useRouter();
@@ -135,6 +137,8 @@ function PlayInner() {
     gameRef,
     recording: gameReady && !over,
   });
+  // 플레이 중 "기록 중" 마일스톤 토스트 (이탈 방지 — store.subscribe 기반)
+  const { milestones } = useGameMilestones({ recording: gameReady && !over });
 
   const handleUltimate = () => {
     const s = useGameStore.getState();
@@ -261,6 +265,19 @@ function PlayInner() {
       )}
       <SpeechBubble text={taunt} />
       <ScoreBoard />
+      {gameReady && !over && <MissionHud />}
+      {gameReady && !over && milestones.length > 0 && (
+        <div className="pointer-events-none absolute left-1/2 top-1/4 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5">
+          {milestones.map((m) => (
+            <div
+              key={m.id}
+              className="animate-milestone whitespace-nowrap rounded-full bg-amber-400/95 px-3 py-1 text-xs font-bold text-zinc-900 shadow-lg"
+            >
+              {m.text}
+            </div>
+          ))}
+        </div>
+      )}
       <button
         onClick={handleEnd}
         className="pointer-events-auto absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:right-4 sm:top-4 sm:px-4 sm:py-2 sm:text-sm"
