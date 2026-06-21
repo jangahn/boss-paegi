@@ -1,6 +1,7 @@
 import { formatDuration, weaponLabel } from "@/lib/report";
 import type { Persona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
+import { BadgeStrip } from "@/components/BadgeStrip";
 import { Spinner } from "@/components/Spinner";
 
 /**
@@ -19,6 +20,10 @@ export function ScoreReport({
   nickname,
   dollImageUrl,
   persona,
+  percentile,
+  badges,
+  newBadges,
+  collectedCount,
   submitting,
   submitError,
 }: {
@@ -33,6 +38,14 @@ export function ScoreReport({
   nickname: string;
   dollImageUrl?: string;
   persona?: Persona;
+  /** 전체 상위 N% — 서버 응답 전 null */
+  percentile?: number | null;
+  /** 이번 판 획득 뱃지 id (클라 즉시) */
+  badges?: string[];
+  /** 새로 획득한 뱃지 id (서버) */
+  newBadges?: string[];
+  /** 누적 수집 수 (서버) */
+  collectedCount?: number;
   submitting: boolean;
   submitError: string | null;
 }) {
@@ -91,6 +104,17 @@ export function ScoreReport({
           </span>
           <span className="ml-1 text-xs text-zinc-500">점</span>
         </ReportRow>
+        {(percentile != null || submitting) && (
+          <ReportRow label="전체 상위">
+            {percentile != null ? (
+              <span className="font-bold text-amber-600">상위 {percentile}%</span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+                <Spinner className="h-3 w-3" /> 계산 중
+              </span>
+            )}
+          </ReportRow>
+        )}
         <ReportRow label="최대 콤보">x{maxCombo}</ReportRow>
         <ReportRow label="총 타격">{hitCount.toLocaleString()}회</ReportRow>
         <ReportRow label="주력 무기">{weaponLabel(mainWeapon)}</ReportRow>
@@ -106,6 +130,15 @@ export function ScoreReport({
         <p className="text-[10px] font-semibold text-zinc-500">피격자 의견</p>
         <p className="mt-0.5 text-sm font-medium">&ldquo;{reaction}&rdquo;</p>
       </div>
+
+      {/* 획득 뱃지 (이번 판 + NEW + 누적 수집) */}
+      {badges && badges.length > 0 && (
+        <BadgeStrip
+          badgeIds={badges}
+          newIds={newBadges}
+          collected={collectedCount}
+        />
+      )}
 
       {submitting && (
         <p className="mt-3 flex items-center justify-center gap-2 text-xs text-zinc-500">

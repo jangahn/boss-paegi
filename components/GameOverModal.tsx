@@ -8,6 +8,7 @@ import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/s
 import { bossReaction, gradeFor, reportNo } from "@/lib/report";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
+import { evaluateBadges } from "@/lib/badges";
 import { getMyProfile } from "@/lib/profile";
 import type { HighlightClip } from "@/lib/highlight";
 import { useScoreSubmission } from "./useScoreSubmission";
@@ -75,21 +76,27 @@ export function GameOverModal({
     ]
   );
   const persona = useMemo(() => matchPersona(gameplayStats), [gameplayStats]);
+  // 이번 판 달성 뱃지 — 클라 즉시(서버 응답이 NEW/수집수를 채움)
+  const earnedBadges = useMemo(
+    () => evaluateBadges(gameplayStats, score),
+    [gameplayStats, score]
+  );
 
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [nickname, setNickname] = useState<string>("");
 
   // 점수 자동 제출(중복/0점 가드·클램프·trace 는 hook 내부)
-  const { scoreId, submitting, submitError } = useScoreSubmission({
-    open,
-    score,
-    endedAt,
-    startedAt,
-    weapon,
-    dollId,
-    maxCombo,
-    gameplayStats,
-  });
+  const { scoreId, submitting, submitError, percentile, newBadges, collectedCount } =
+    useScoreSubmission({
+      open,
+      score,
+      endedAt,
+      startedAt,
+      weapon,
+      dollId,
+      maxCombo,
+      gameplayStats,
+    });
 
   useEffect(() => {
     if (!open) return;
@@ -161,6 +168,10 @@ export function GameOverModal({
           nickname={nickname}
           dollImageUrl={dollImageUrl}
           persona={persona}
+          percentile={percentile}
+          badges={earnedBadges}
+          newBadges={newBadges}
+          collectedCount={collectedCount}
           submitting={submitting}
           submitError={submitError}
         />

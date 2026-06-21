@@ -12,6 +12,7 @@ import {
   type GameplayStats,
 } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
+import { evaluateBadges } from "@/lib/badges";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -117,8 +118,11 @@ export async function POST(req: NextRequest) {
     hasDoll: !!body.dollId,
   });
 
-  // ── 부가 리포트(상세 스탯 + 페르소나) — best-effort. 점수 저장 실패로 절대 번지지 않게. ──
+  // ── 부가 리포트(스탯·페르소나·뱃지·백분위) — best-effort. 점수 저장과 완전 분리. ──
   let personaId: string | null = null;
+  let percentile: number | null = null;
+  let newBadges: string[] = [];
+  let collectedCount = 0;
   const raw = body.gameplayStats;
   if (raw && typeof raw === "object" && typeof raw.hitCount === "number") {
     try {
@@ -135,19 +139,60 @@ export async function POST(req: NextRequest) {
       });
       if (validateGameplayStats(canonical, body.score)) {
         personaId = matchPersona(canonical).id;
+        const earned = evaluateBadges(canonical, body.score);
         const admin = createAdminClient();
-        const { error: statsErr } = await admin
-          .from("score_stats")
-          .insert({
-            score_id: data.id,
-            gameplay_stats: canonical,
-            persona_id: personaId,
+
+        // 백분위 (전체 플레이 기준) — best-effort
+        try {
+          const { data: pct } = await admin.rpc("get_score_percentile", {
+            p_score: body.score,
           });
+          if (typeof pct === "number") percentile = pct;
+        } catch (e) {
+          log.warn("percentile.error", { scoreId: data.id, ...errInfo(e) });
+        }
+
+        // score_stats — 스탯 + 페르소나 + 이번 판 뱃지 + 백분위 스냅샷
+        const { error: statsErr } = await admin.from("score_stats").insert({
+          score_id: data.id,
+          gameplay_stats: canonical,
+          persona_id: personaId,
+          badge_ids: earned,
+          percentile,
+        });
         if (statsErr)
           log.warn("score_stats.insert_fail", {
             scoreId: data.id,
             ...errInfo(statsErr),
           });
+
+        // user_badges 누적 — 신규만 insert(ignoreDuplicates → 반환=새로 획득분)
+        if (earned.length) {
+          const { data: ins, error: bErr } = await admin
+            .from("user_badges")
+            .upsert(
+              earned.map((badge_id) => ({
+                owner_id: user.id,
+                badge_id,
+                first_score_id: data.id,
+              })),
+              { onConflict: "owner_id,badge_id", ignoreDuplicates: true }
+            )
+            .select("badge_id");
+          if (bErr)
+            log.warn("user_badges.insert_fail", {
+              scoreId: data.id,
+              ...errInfo(bErr),
+            });
+          else newBadges = (ins ?? []).map((r) => r.badge_id as string);
+        }
+
+        // 수집 카운트 (종료화면 N/M 표시)
+        const { count } = await admin
+          .from("user_badges")
+          .select("badge_id", { count: "exact", head: true })
+          .eq("owner_id", user.id);
+        collectedCount = count ?? 0;
       } else {
         log.warn("score_stats.validation_fail", {
           scoreId: data.id,
@@ -159,11 +204,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // percentile/newBadges 는 후속 PR — 현재 null/[] 고정(응답 계약 미리 확정).
   return NextResponse.json({
     scoreId: data.id,
     personaId,
-    percentile: null,
-    newBadges: [],
+    percentile,
+    newBadges,
+    collectedCount,
   });
 }

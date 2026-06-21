@@ -16,6 +16,7 @@ import {
 import { matchPersona } from "@/lib/persona";
 import type { GameplayStats } from "@/lib/stats";
 import { PersonaCard } from "@/components/PersonaCard";
+import { BadgeStrip } from "@/components/BadgeStrip";
 
 type Score = {
   id: string;
@@ -34,6 +35,10 @@ type Score = {
   highlight_expires_at: string | null;
   /** 플레이 해석 스탯 (score_stats 1:1) — 페르소나 렌더용 */
   gameplay_stats: GameplayStats | null;
+  /** 이번 판 획득 뱃지 스냅샷 */
+  badge_ids: string[] | null;
+  /** 플레이 당시 전체 상위 N% */
+  percentile: number | null;
 };
 
 const HL_COLS =
@@ -67,14 +72,18 @@ function flattenScore(row: Record<string, unknown>): Score {
   const hl = Array.isArray(rawHl) ? rawHl[0] ?? null : rawHl ?? null;
   const rawStats = row.score_stats;
   const stats = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
+  const st = stats as
+    | { gameplay_stats?: GameplayStats; badge_ids?: string[]; percentile?: number }
+    | null;
   const { score_highlights: _h, score_stats: _s, ...rest } = row;
   void _h;
   void _s;
   return {
     ...rest,
     ...((hl as Record<string, unknown>) ?? {}),
-    gameplay_stats:
-      (stats as { gameplay_stats?: GameplayStats } | null)?.gameplay_stats ?? null,
+    gameplay_stats: st?.gameplay_stats ?? null,
+    badge_ids: st?.badge_ids ?? null,
+    percentile: st?.percentile ?? null,
   } as unknown as Score;
 }
 
@@ -83,7 +92,7 @@ async function fetchScore(scoreId: string): Promise<Score | null> {
   const { data } = await admin
     .from("scores")
     .select(
-      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS}), score_stats(gameplay_stats)`
+      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
     )
     .eq("id", scoreId)
     .single();
@@ -97,7 +106,13 @@ async function fetchScore(scoreId: string): Promise<Score | null> {
     .eq("id", scoreId)
     .single();
   return legacy
-    ? ({ ...legacy, max_combo: null, gameplay_stats: null } as unknown as Score)
+    ? ({
+        ...legacy,
+        max_combo: null,
+        gameplay_stats: null,
+        badge_ids: null,
+        percentile: null,
+      } as unknown as Score)
     : null;
 }
 
@@ -223,6 +238,13 @@ export default async function SharePage({
               </span>
               <span className="ml-1 text-xs text-zinc-500">점</span>
             </Row>
+            {score.percentile != null && (
+              <Row label="전체 상위">
+                <span className="font-bold text-amber-600">
+                  상위 {score.percentile}%
+                </span>
+              </Row>
+            )}
             {score.max_combo !== null && score.max_combo > 0 && (
               <Row label="최대 콤보">x{score.max_combo}</Row>
             )}
@@ -242,6 +264,10 @@ export default async function SharePage({
             </p>
             <p className="mt-0.5 text-sm font-medium">&ldquo;{reaction}&rdquo;</p>
           </div>
+
+          {score.badge_ids && score.badge_ids.length > 0 && (
+            <BadgeStrip badgeIds={score.badge_ids} />
+          )}
         </div>
 
         {/* ── 후킹 CTA ───────────────────────────────────── */}
