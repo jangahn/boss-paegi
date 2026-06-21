@@ -211,13 +211,19 @@ export function GameOverModal({
           >
             다시 패기
           </button>
-          <div className="flex justify-center gap-5 pt-1 text-sm text-zinc-300">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-1 text-sm text-zinc-300">
             <button
               onClick={() => router.push("/leaderboard")}
               className="underline-offset-4 hover:underline"
             >
-              랭킹 보기
+              랭킹
             </button>
+            <Link
+              href="/badges"
+              className="font-semibold text-amber-300 underline-offset-4 hover:underline"
+            >
+              🏅 내 뱃지
+            </Link>
             <Link href="/gallery" className="underline-offset-4 hover:underline">
               갤러리
             </Link>
