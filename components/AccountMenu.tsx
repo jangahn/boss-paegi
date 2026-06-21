@@ -6,9 +6,12 @@ import {
   getMyProfile,
   updateNickname,
   formatCredits,
+  readCachedProfile,
+  writeCachedProfile,
   NICKNAME_MAX,
   type MyProfile,
 } from "@/lib/profile";
+import { createClient } from "@/lib/supabase/client";
 import { signOut } from "@/lib/auth-oauth";
 import { ModalShell } from "@/components/ModalShell";
 import { AvatarEditor } from "@/components/AvatarEditor";
@@ -31,9 +34,24 @@ export function AccountMenu() {
 
   useEffect(() => {
     let cancelled = false;
+    // 1) 로컬 세션 → 캐시된 닉/프사 즉시 렌더(네트워크 없이) → nav 스피너 제거.
+    createClient()
+      .auth.getSession()
+      .then(({ data }) => {
+        const uid = data.session?.user.id;
+        if (!uid || cancelled) return;
+        const cached = readCachedProfile(uid);
+        // prev ?? — 백그라운드 fresh 가 먼저 도착했으면 덮어쓰지 않음.
+        if (cached)
+          setProfile((prev) => prev ?? { id: uid, ...cached, genCredits: null });
+      })
+      .catch(() => {});
+    // 2) 백그라운드 fresh 조회(genCredits 포함) + 캐시 갱신.
     getMyProfile()
       .then((p) => {
-        if (!cancelled && p) setProfile(p);
+        if (cancelled || !p) return;
+        setProfile(p);
+        writeCachedProfile(p.id, p);
       })
       .catch(() => {});
     return () => {
@@ -137,7 +155,12 @@ export function AccountMenu() {
           current={profile.display_name}
           onClose={() => setEditingNick(false)}
           onSaved={(name) => {
-            setProfile((p) => (p ? { ...p, display_name: name } : p));
+            setProfile((p) => {
+              if (!p) return p;
+              const next = { ...p, display_name: name };
+              writeCachedProfile(p.id, next);
+              return next;
+            });
             setEditingNick(false);
           }}
         />
@@ -148,7 +171,12 @@ export function AccountMenu() {
           hasCustomAvatar={profile.avatar_url !== null}
           onClose={() => setEditingAvatar(false)}
           onSaved={(url) => {
-            setProfile((p) => (p ? { ...p, avatar_url: url } : p));
+            setProfile((p) => {
+              if (!p) return p;
+              const next = { ...p, avatar_url: url };
+              writeCachedProfile(p.id, next);
+              return next;
+            });
             setEditingAvatar(false);
           }}
         />
