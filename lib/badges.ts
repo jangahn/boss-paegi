@@ -36,7 +36,7 @@ const FAMILIES: Family[] = [
     key: "score",
     name: "점수",
     emoji: "🏆",
-    tiers: [100, 500, 1000, 3000, 5000, 10000, 30000, 50000, 100000, 1000000],
+    tiers: [1000, 3000, 5000, 10000, 30000, 50000, 100000, 300000, 500000, 1000000],
     value: (_s, score) => score,
     label: (t) => `${t.toLocaleString()}점`,
     desc: (t) => `총 정산 점수 ${t.toLocaleString()}점 달성`,
@@ -72,7 +72,7 @@ const FAMILIES: Family[] = [
     key: "ult",
     name: "궁극기",
     emoji: "💥",
-    tiers: [1, 3, 5, 10, 20],
+    tiers: [1, 2, 3, 5, 10, 15, 20, 30, 40, 50],
     value: (s) => s.ultimateCount,
     label: (t) => `궁극기 ${t}회`,
     desc: (t) => `한 판에 궁극기 ${t}회 발동`,
@@ -81,7 +81,7 @@ const FAMILIES: Family[] = [
     key: "time",
     name: "플레이",
     emoji: "⏱️",
-    tiers: [1, 2, 3, 5, 10], // 분 단위 — 체크리스트 cur/goal 깔끔하게(ms 아님)
+    tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], // 분 단위 — 체크리스트 cur/goal 깔끔하게(ms 아님)
     value: (s) => Math.floor(s.durationMs / 60000),
     label: (t) => `${t}분`,
     desc: (t) => `${t}분 이상 플레이`,
