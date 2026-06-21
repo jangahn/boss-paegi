@@ -54,7 +54,8 @@ const FAMILIES: Family[] = [
     key: "hits",
     name: "타격",
     emoji: "👊",
-    tiers: [100, 300, 500, 1000, 1500, 2000, 3000, 5000, 7500, 10000],
+    // 콤보(100·200·300·500·1k·1.5k·2k·3k·5k·10k)보다 크고 값 겹침 없게. 150~30,000.
+    tiers: [150, 400, 700, 1200, 2500, 4000, 7000, 12000, 20000, 30000],
     value: (s) => s.hitCount,
     label: (t) => `${t.toLocaleString()}타`,
     desc: (t) => `한 판에 ${t.toLocaleString()}타 (궁극기 제외)`,
