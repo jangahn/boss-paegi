@@ -81,10 +81,10 @@ const FAMILIES: Family[] = [
     key: "time",
     name: "플레이",
     emoji: "⏱️",
-    tiers: [60000, 120000, 180000, 300000, 600000],
-    value: (s) => s.durationMs,
-    label: (t) => `${Math.round(t / 60000)}분`,
-    desc: (t) => `${Math.round(t / 60000)}분 이상 플레이`,
+    tiers: [1, 2, 3, 5, 10], // 분 단위 — 체크리스트 cur/goal 깔끔하게(ms 아님)
+    value: (s) => Math.floor(s.durationMs / 60000),
+    label: (t) => `${t}분`,
+    desc: (t) => `${t}분 이상 플레이`,
   },
   {
     key: "map",

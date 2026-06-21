@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
@@ -9,7 +9,7 @@ import { Spinner } from "@/components/Spinner";
 import { WeaponPicker } from "@/components/WeaponPicker";
 import { UltimateButton } from "@/components/UltimateButton";
 import { BgSwitcher } from "@/components/play/BgSwitcher";
-import { MissionHud } from "@/components/play/MissionHud";
+import { BadgeChallenge } from "@/components/play/BadgeChallenge";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { setSentryGameContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
@@ -21,7 +21,7 @@ import { useGameInit } from "./useGameInit";
 import { useTaunts } from "./useTaunts";
 import { useHighlightRecorder } from "./useHighlightRecorder";
 import { useScoreTimeline } from "./useScoreTimeline";
-import { useGameMilestones } from "./useGameMilestones";
+import { useBadgeChallenge } from "./useBadgeChallenge";
 
 function PlayInner() {
   const router = useRouter();
@@ -138,7 +138,13 @@ function PlayInner() {
     recording: gameReady && !over,
   });
   // 플레이 중 "기록 중" 마일스톤 토스트 (이탈 방지 — store.subscribe 기반)
-  const { milestones } = useGameMilestones({ recording: gameReady && !over });
+  // 뱃지 도전 라이브 체크리스트 + 획득 토스트(단일 소스 lib/badges 구동).
+  // bgVisits 는 store 밖 ref → 안정 getter 로 전달(맵 패밀리 진행도 반영).
+  const getBgVisits = useCallback(() => Array.from(bgVisitsRef.current), []);
+  const { slots, toasts } = useBadgeChallenge({
+    recording: gameReady && !over,
+    getBgVisits,
+  });
 
   const handleUltimate = () => {
     const s = useGameStore.getState();
@@ -265,15 +271,15 @@ function PlayInner() {
       )}
       <SpeechBubble text={taunt} />
       <ScoreBoard />
-      {gameReady && !over && <MissionHud />}
-      {gameReady && !over && milestones.length > 0 && (
+      {gameReady && !over && <BadgeChallenge slots={slots} />}
+      {gameReady && !over && toasts.length > 0 && (
         <div className="pointer-events-none absolute left-1/2 top-1/4 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5">
-          {milestones.map((m) => (
+          {toasts.map((t) => (
             <div
-              key={m.id}
+              key={t.id}
               className="animate-milestone whitespace-nowrap rounded-full bg-amber-400/95 px-3 py-1 text-xs font-bold text-zinc-900 shadow-lg"
             >
-              {m.text}
+              🏅 {t.text}
             </div>
           ))}
         </div>
