@@ -269,7 +269,8 @@ v0.14 (2026-06-21, 플레이 해석 리포트 — 페르소나, PR1/4):
 v0.15 (2026-06-21, 뱃지 통합 후속 — 4 PR; 마이그레이션 없음):
 - **궁극기 제외**(PR1): 궁극기 난타(`charge===false`)는 **점수만**(`gameStore.hit()` early return — score+`ultScore` 누적·콤보 유지, combo/maxCombo/hitCount/weaponCounts/weaponScores/firstHitMs 미반영). 랜덤 무기·자동 콤보가 뱃지/페르소나/미션을 부풀리던 문제 해결 — 콤보·무기 통계가 **순수 수동 플레이** 기준이 됨. `GameplayStats` **v:2**(`ultScore` 추가) + 검증 `sum(weaponScores)≈score−ultScore`(v:1 tolerant). 궁극기 발동 자체(ultimateCount)·점수 뱃지엔 ult 포함(정당 득점).
 - **카탈로그 패밀리화**(PR2): `lib/badges.ts` 를 **패밀리×티어 생성(50개)** 단일 소스로 재작성 — 점수/콤보/총타격 각 10단계(100~100만 / 100~1만 / 100~1만), 무기/궁극기/플레이타임/맵 5단계. 상위는 사실상 불가(전설). **`badgeValue(def,stats,score)`** 진행도 API(인게임 체크리스트·수집페이지 공용), `summarizeBadges`(패밀리별 최고 티어 압축 — 종료/공유 strip ≤7칩), **`KNOWN_BADGE_IDS`**(구 badge_id 고아를 모든 카운트에서 제외 — `collectedCount`·N/M). `components/BadgeStrip` 압축 적용.
-- 후속: PR3 수집 페이지(/badges) · PR4 인게임 뱃지 통합(도전 과제 라이브 체크리스트).
+- **수집 페이지**(PR3): `app/badges/page.tsx`(클라 self-RLS) — 프로필 메뉴 **"🏅 내 뱃지"** 진입(`AccountMenu`, 익명/회원 공통). 패밀리별 섹션(획득=이모지+임계라벨, **미획득=🔒/"?"** 조건 숨김), 상단 "N/50 수집"·섹션 k/n. 카운트는 known id 만(고아 제외). `proxy.ts` MEMBER_ONLY 미포함=공개.
+- 후속: PR4 인게임 뱃지 통합(도전 과제 라이브 체크리스트).
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
