@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { safeNext } from "@/lib/oauth-metadata";
+import { clearProfileCache } from "@/lib/profile";
 import { log, errInfo } from "@/lib/log";
 
 export type OAuthProvider = "kakao" | "google";
@@ -84,6 +85,7 @@ export async function startOAuth(
 /** 로그아웃 — 세션 종료 후 홈으로. 다음 진입 시 SessionBootstrap 이 새 익명 세션 생성. */
 export async function signOut(): Promise<void> {
   const sb = createClient();
+  clearProfileCache(); // user별 프로필 캐시 정리 (다음 계정 오표시 방지)
   const { error } = await sb.auth.signOut();
   if (error) log.warn("auth.sign_out_fail", { ...errInfo(error) });
   window.location.href = "/";

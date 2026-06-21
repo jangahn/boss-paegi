@@ -73,4 +73,49 @@ export async function updateNickname(raw: string): Promise<string> {
   return name;
 }
 
+// ── 프로필 즉시표시 캐시 (nav 스피너 제거) — user.id 별 키. genCredits 는 변동성 커서 캐시 안 함. ──
+const PROFILE_CACHE_PREFIX = "boss-paegi:profile:";
+
+export type CachedProfile = {
+  display_name: string;
+  avatar_url: string | null;
+  isMember: boolean;
+};
+
+export function readCachedProfile(userId: string): CachedProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_PREFIX + userId);
+    return raw ? (JSON.parse(raw) as CachedProfile) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedProfile(userId: string, p: CachedProfile): void {
+  try {
+    localStorage.setItem(
+      PROFILE_CACHE_PREFIX + userId,
+      JSON.stringify({
+        display_name: p.display_name,
+        avatar_url: p.avatar_url,
+        isMember: p.isMember,
+      })
+    );
+  } catch {
+    /* localStorage 불가(프라이빗 모드 등) — 캐시 없이 동작 */
+  }
+}
+
+/** 로그아웃/계정 변경 시 전체 프로필 캐시 정리. */
+export function clearProfileCache(): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PROFILE_CACHE_PREFIX)) localStorage.removeItem(k);
+    }
+  } catch {
+    /* noop */
+  }
+}
+
 export { NICKNAME_MAX };
