@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
         durationMs: body.durationMs,
         weaponCounts: raw.weaponCounts ?? {},
         weaponScores: raw.weaponScores ?? {},
+        ultScore: Math.min(Math.max(0, raw.ultScore ?? 0), body.score),
         ultimateCount: raw.ultimateCount ?? 0,
         firstHitMs: typeof raw.firstHitMs === "number" ? raw.firstHitMs : null,
         bgVisits: Array.isArray(raw.bgVisits) ? raw.bgVisits.slice(0, 12) : [],
