@@ -3,6 +3,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { useEffect, useState } from "react";
 import { clampForSubmit } from "@/lib/score-limits";
+import type { GameplayStats } from "@/lib/stats";
 import { log, errInfo } from "@/lib/log";
 
 /**
@@ -18,8 +19,11 @@ export function useScoreSubmission(opts: {
   weapon: string;
   dollId: string | null;
   maxCombo: number;
+  /** 플레이 해석 리포트용 상세 스탯 (best-effort 저장) */
+  gameplayStats: GameplayStats | null;
 }): { scoreId: string | null; submitting: boolean; submitError: string | null } {
-  const { open, score, endedAt, startedAt, weapon, dollId, maxCombo } = opts;
+  const { open, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats } =
+    opts;
   const [scoreId, setScoreId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -56,6 +60,7 @@ export function useScoreSubmission(opts: {
             durationMs: clamped.durationMs,
             dollId,
             maxCombo,
+            gameplayStats,
           }),
         })
           .then(async (r) => {
@@ -72,7 +77,8 @@ export function useScoreSubmission(opts: {
           })
           .finally(() => setSubmitting(false))
     );
-  }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo]);
+    // gameplayStats 는 제출 1회 가드(scoreId/submitting) 안에서만 쓰이므로 identity 변동 무해.
+  }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats]);
 
   return { scoreId, submitting, submitError };
 }

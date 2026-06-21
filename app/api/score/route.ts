@@ -1,10 +1,17 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   MAX_DURATION_MS,
   scoreCeiling,
 } from "@/lib/score-limits";
+import {
+  buildGameplayStats,
+  validateGameplayStats,
+  type GameplayStats,
+} from "@/lib/stats";
+import { matchPersona } from "@/lib/persona";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -24,6 +31,8 @@ export async function POST(req: NextRequest) {
     durationMs?: number;
     dollId?: string | null;
     maxCombo?: number;
+    /** 플레이 해석 리포트용 상세 스탯 (bgVisits 포함). 검증·저장은 best-effort. */
+    gameplayStats?: GameplayStats;
   } | null;
 
   if (
@@ -107,5 +116,54 @@ export async function POST(req: NextRequest) {
     durationMs: Math.round(body.durationMs),
     hasDoll: !!body.dollId,
   });
-  return NextResponse.json({ scoreId: data.id });
+
+  // ── 부가 리포트(상세 스탯 + 페르소나) — best-effort. 점수 저장 실패로 절대 번지지 않게. ──
+  let personaId: string | null = null;
+  const raw = body.gameplayStats;
+  if (raw && typeof raw === "object" && typeof raw.hitCount === "number") {
+    try {
+      // 클라 신뢰 최소화 — weaponCounts 로 categoryCounts 재파생, durationMs 는 서버 제출값.
+      const canonical = buildGameplayStats({
+        hitCount: raw.hitCount,
+        maxCombo,
+        durationMs: body.durationMs,
+        weaponCounts: raw.weaponCounts ?? {},
+        weaponScores: raw.weaponScores ?? {},
+        ultimateCount: raw.ultimateCount ?? 0,
+        firstHitMs: typeof raw.firstHitMs === "number" ? raw.firstHitMs : null,
+        bgVisits: Array.isArray(raw.bgVisits) ? raw.bgVisits.slice(0, 12) : [],
+      });
+      if (validateGameplayStats(canonical, body.score)) {
+        personaId = matchPersona(canonical).id;
+        const admin = createAdminClient();
+        const { error: statsErr } = await admin
+          .from("score_stats")
+          .insert({
+            score_id: data.id,
+            gameplay_stats: canonical,
+            persona_id: personaId,
+          });
+        if (statsErr)
+          log.warn("score_stats.insert_fail", {
+            scoreId: data.id,
+            ...errInfo(statsErr),
+          });
+      } else {
+        log.warn("score_stats.validation_fail", {
+          scoreId: data.id,
+          score: body.score,
+        });
+      }
+    } catch (e) {
+      log.warn("score_stats.error", { scoreId: data.id, ...errInfo(e) });
+    }
+  }
+
+  // percentile/newBadges 는 후속 PR — 현재 null/[] 고정(응답 계약 미리 확정).
+  return NextResponse.json({
+    scoreId: data.id,
+    personaId,
+    percentile: null,
+    newBadges: [],
+  });
 }

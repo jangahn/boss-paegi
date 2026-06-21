@@ -21,6 +21,12 @@ type GameState = {
   hitCount: number;
   /** 무기별 타격 횟수 — 주력 무기 산정 (보고서용) */
   weaponCounts: Record<string, number>;
+  /** 무기별 누적 점수(콤보배율 적용 final gain) — 점수기여 기준 주력무기 (해석 리포트용) */
+  weaponScores: Record<string, number>;
+  /** 궁극기 발동 횟수 (해석 리포트용) */
+  ultimateCount: number;
+  /** 첫 타격까지 걸린 시간(ms) — startedAt 기준, 미타격이면 null */
+  firstHitMs: number | null;
   /** 궁극기 게이지 0~1 */
   ultProgress: number;
   /** 게이지 풀 충전 — 궁극기 발동 가능 */
@@ -62,6 +68,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   maxCombo: 0,
   hitCount: 0,
   weaponCounts: {},
+  weaponScores: {},
+  ultimateCount: 0,
+  firstHitMs: null,
   ultProgress: 0,
   ultReady: false,
   lastHitAt: 0,
@@ -79,6 +88,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       score,
       hitCount,
       weaponCounts,
+      weaponScores,
+      startedAt,
+      firstHitMs,
       ultProgress,
       ultReady,
     } = get();
@@ -89,6 +101,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const nextCounts = weaponKey
       ? { ...weaponCounts, [weaponKey]: (weaponCounts[weaponKey] ?? 0) + 1 }
       : weaponCounts;
+    // final gain(콤보배율 적용 후) 누적 — 점수기여 기준 주력무기 산정
+    const nextScores = weaponKey
+      ? { ...weaponScores, [weaponKey]: (weaponScores[weaponKey] ?? 0) + gain }
+      : weaponScores;
 
     // 게이지 충전 — 이미 ready 거나 난타 중(charge=false)이면 그대로
     let nextProgress = ultProgress;
@@ -104,13 +120,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       maxCombo: Math.max(maxCombo, nextCombo),
       hitCount: hitCount + 1,
       weaponCounts: nextCounts,
+      weaponScores: nextScores,
+      firstHitMs:
+        hitCount === 0 && startedAt ? Math.round(now - startedAt) : firstHitMs,
       ultProgress: nextProgress,
       ultReady: nextReady,
       lastHitAt: now,
     });
   },
 
-  consumeUlt: () => set({ ultReady: false, ultProgress: 0 }),
+  // 궁극기 발동 — 게이지 소진 + 발동 횟수 누적
+  consumeUlt: () =>
+    set((s) => ({
+      ultReady: false,
+      ultProgress: 0,
+      ultimateCount: s.ultimateCount + 1,
+    })),
 
   pushScoreSample: () => {
     const { scoreSamples, score } = get();
@@ -129,6 +154,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       maxCombo: 0,
       hitCount: 0,
       weaponCounts: {},
+      weaponScores: {},
+      ultimateCount: 0,
+      firstHitMs: null,
       ultProgress: 0,
       ultReady: false,
       lastHitAt: 0,
@@ -150,6 +178,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       maxCombo: 0,
       hitCount: 0,
       weaponCounts: {},
+      weaponScores: {},
+      ultimateCount: 0,
+      firstHitMs: null,
       ultProgress: 0,
       ultReady: false,
       lastHitAt: 0,
