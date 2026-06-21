@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
+import { matchPersona } from "@/lib/persona";
+import type { GameplayStats } from "@/lib/stats";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -50,7 +52,7 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at)"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at), score_stats(gameplay_stats)"
     )
     .eq("id", scoreId)
     .single();
@@ -83,6 +85,13 @@ export default async function OgImage({
     !s.highlight_deleted_at &&
     !(s.highlight_expires_at && new Date(s.highlight_expires_at) <= new Date());
   const hlDelta = hlLive ? s!.highlight_delta : null;
+
+  // 페르소나 — score_stats(1:1) 의 gameplay_stats 에서 재계산(저장된 raw 기준 결정적).
+  const rawStats = (data as Record<string, unknown> | null)?.score_stats;
+  const statsRow = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
+  const gameplayStats =
+    (statsRow as { gameplay_stats?: GameplayStats } | null)?.gameplay_stats ?? null;
+  const persona = gameplayStats ? matchPersona(gameplayStats) : null;
 
   const name = s?.profiles?.display_name ?? "익명";
   const score = (s?.score ?? 0).toLocaleString();
@@ -200,6 +209,19 @@ export default async function OgImage({
                 </div>
                 <div style={{ display: "flex", fontSize: 30, color: "#71717a", whiteSpace: "nowrap" }}>점</div>
               </div>
+              {persona ? (
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 32,
+                    fontWeight: 800,
+                    color: "#b45309",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {persona.emoji} {persona.label}
+                </div>
+              ) : null}
               <div style={{ display: "flex", gap: 12, alignItems: "center", whiteSpace: "nowrap" }}>
                 <div
                   style={{

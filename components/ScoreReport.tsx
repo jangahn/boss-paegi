@@ -1,5 +1,6 @@
 import { formatDuration, weaponLabel } from "@/lib/report";
 import type { Persona } from "@/lib/persona";
+import { PersonaCard } from "@/components/PersonaCard";
 import { Spinner } from "@/components/Spinner";
 
 /**
@@ -47,17 +48,8 @@ export function ScoreReport({
 
       {/* 오늘의 패기 유형 (페르소나 해석 리빌) — 보고서의 하이라이트 */}
       {persona && (
-        <div className="mt-3 rounded-md border-2 border-zinc-800 bg-zinc-900 p-3 text-center text-white">
-          <p className="text-[10px] tracking-[0.25em] text-amber-300">
-            오늘의 패기 유형
-          </p>
-          <p className="mt-1 text-xl font-extrabold">
-            {persona.emoji} {persona.label}
-          </p>
-          <p className="mt-1 text-xs text-zinc-300">&ldquo;{persona.blurb}&rdquo;</p>
-          <p className="mt-2 inline-block rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-medium text-amber-200">
-            📊 {persona.evidence}
-          </p>
+        <div className="mt-3">
+          <PersonaCard persona={persona} />
         </div>
       )}
 
