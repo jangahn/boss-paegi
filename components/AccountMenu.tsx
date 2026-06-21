@@ -114,6 +114,14 @@ export function AccountMenu() {
               </span>
             </div>
           )}
+          <Link
+            href="/badges"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-foreground/5"
+          >
+            🏅 내 뱃지
+          </Link>
           {!isMember && (
             <Link
               href="/login"
