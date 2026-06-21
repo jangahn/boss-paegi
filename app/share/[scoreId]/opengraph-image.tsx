@@ -52,7 +52,7 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at), score_stats(gameplay_stats)"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at), score_stats(gameplay_stats, percentile)"
     )
     .eq("id", scoreId)
     .single();
@@ -92,6 +92,8 @@ export default async function OgImage({
   const gameplayStats =
     (statsRow as { gameplay_stats?: GameplayStats } | null)?.gameplay_stats ?? null;
   const persona = gameplayStats ? matchPersona(gameplayStats) : null;
+  const percentile =
+    (statsRow as { percentile?: number } | null)?.percentile ?? null;
 
   const name = s?.profiles?.display_name ?? "익명";
   const score = (s?.score ?? 0).toLocaleString();
@@ -220,6 +222,19 @@ export default async function OgImage({
                   }}
                 >
                   {persona.emoji} {persona.label}
+                </div>
+              ) : null}
+              {percentile != null ? (
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 26,
+                    fontWeight: 800,
+                    color: "#dc2626",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🏆 전체 상위 {percentile}%
                 </div>
               ) : null}
               <div style={{ display: "flex", gap: 12, alignItems: "center", whiteSpace: "nowrap" }}>
