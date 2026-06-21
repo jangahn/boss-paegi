@@ -1,8 +1,9 @@
-import { badgeById, BADGE_TOTAL } from "@/lib/badges";
+import { badgeById, summarizeBadges, BADGE_TOTAL } from "@/lib/badges";
 
 /**
  * 획득 뱃지 칩 스트립 — 종료화면(이번 판 + NEW + 수집카운트)·공유페이지(이번 판 스냅샷) 공용.
- * 이번 판 badgeIds 는 클라/서버 결정적 동일. newIds·collected 는 서버 응답(종료화면만).
+ * ladder 동반획득으로 id 가 많아 **패밀리별 최고 티어만 압축**(summarizeBadges, ≤7칩).
+ * 한 패밀리에 신규획득(newIds)이 있으면 그 칩에 NEW. collected/total 은 known id 기준.
  */
 export function BadgeStrip({
   badgeIds,
@@ -18,7 +19,10 @@ export function BadgeStrip({
   heading?: string;
 }) {
   if (!badgeIds.length) return null;
-  const newSet = new Set(newIds ?? []);
+  const shown = summarizeBadges(badgeIds); // 패밀리별 최고 티어
+  const newFamilies = new Set(
+    (newIds ?? []).map((id) => badgeById(id)?.familyKey).filter(Boolean)
+  );
   return (
     <div className="mt-3 rounded-md border border-zinc-300 bg-zinc-50 p-3">
       <div className="flex items-center justify-between">
@@ -30,10 +34,10 @@ export function BadgeStrip({
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
-        {badgeIds.map((id) => {
+        {shown.map((id) => {
           const b = badgeById(id);
           if (!b) return null;
-          const isNew = newSet.has(id);
+          const isNew = newFamilies.has(b.familyKey);
           return (
             <span
               key={id}

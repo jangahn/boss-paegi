@@ -12,7 +12,7 @@ import {
   type GameplayStats,
 } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
-import { evaluateBadges } from "@/lib/badges";
+import { evaluateBadges, KNOWN_BADGE_IDS } from "@/lib/badges";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -188,11 +188,12 @@ export async function POST(req: NextRequest) {
           else newBadges = (ins ?? []).map((r) => r.badge_id as string);
         }
 
-        // 수집 카운트 (종료화면 N/M 표시)
+        // 수집 카운트 (종료화면 N/M) — known id 만(구 badge_id 고아 제외)
         const { count } = await admin
           .from("user_badges")
           .select("badge_id", { count: "exact", head: true })
-          .eq("owner_id", user.id);
+          .eq("owner_id", user.id)
+          .in("badge_id", [...KNOWN_BADGE_IDS]);
         collectedCount = count ?? 0;
       } else {
         log.warn("score_stats.validation_fail", {
