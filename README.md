@@ -262,7 +262,8 @@ v0.14 (2026-06-21, 플레이 해석 리포트 — 페르소나, PR1/4):
 - **해석 엔진**(순수 모듈, SSR/CSR 공용): `lib/stats.ts`(`GameplayStats`/파생/서버검증), `lib/persona.ts`(~10종 결정적 우선순위 + **트리거 stat evidence** 동봉 — "이 분석은 이 데이터에서"). `lib/report.ts` 카피 자산 재사용.
 - **저장**(migration 0015 `score_stats` — 1:1, public read, service-role write; highlight attach-once 불변식 보호 위해 별도 테이블): `/api/score` 가 점수 저장 **후 best-effort** 로 stats 검증·페르소나 계산·저장(`badge_ids`/`percentile` 은 후속 PR). 검증 = `sum(weaponScores)≈score`·`sum(weaponCounts)≈hitCount`(조작방지) → 실패 시 stats 폐기·점수는 항상 저장.
 - 종료화면(`GameOverModal`/`ScoreReport`)이 페르소나를 **클라 즉시 계산**(서버 대기 없음). 익명도 동일 적용(승격 시 보존).
-- 후속: PR2 공유/OG 반영 · PR3 뱃지+백분위 · PR4 인게임 미션/기록중 토스트.
+- **공유/OG 반영**(PR2/4): `/share/[scoreId]`·OG 가 `score_stats` 조인해 페르소나 카드 렌더(`components/PersonaCard` — 종료화면과 공용 DRY), CTA 를 "당신의 패기 유형은?"·"나도 패기 유형 받아보기"로 → 받는 사람 호기심→플레이 전환. OG 는 satori 제약상 페르소나 라벨 1줄(차트 없음).
+- 후속: PR3 뱃지+백분위 · PR4 인게임 미션/기록중 토스트.
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).

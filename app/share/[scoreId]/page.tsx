@@ -13,6 +13,9 @@ import {
   reportNo,
   weaponLabel,
 } from "@/lib/report";
+import { matchPersona } from "@/lib/persona";
+import type { GameplayStats } from "@/lib/stats";
+import { PersonaCard } from "@/components/PersonaCard";
 
 type Score = {
   id: string;
@@ -29,6 +32,8 @@ type Score = {
   highlight_window_ms: number | null;
   highlight_deleted_at: string | null;
   highlight_expires_at: string | null;
+  /** 플레이 해석 스탯 (score_stats 1:1) — 페르소나 렌더용 */
+  gameplay_stats: GameplayStats | null;
 };
 
 const HL_COLS =
@@ -56,13 +61,21 @@ function highlightDelta(s: Score): number | null {
   return s.highlight_delta;
 }
 
-/** highlight 컬럼은 score_highlights(1:1) 에 있음 → score 객체로 flatten 해 기존 helper 재사용. */
+/** highlight(score_highlights)·stats(score_stats) 1:1 → score 객체로 flatten 해 기존 helper 재사용. */
 function flattenScore(row: Record<string, unknown>): Score {
-  const raw = row.score_highlights;
-  const hl = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
-  const { score_highlights: _omit, ...rest } = row;
-  void _omit;
-  return { ...rest, ...((hl as Record<string, unknown>) ?? {}) } as unknown as Score;
+  const rawHl = row.score_highlights;
+  const hl = Array.isArray(rawHl) ? rawHl[0] ?? null : rawHl ?? null;
+  const rawStats = row.score_stats;
+  const stats = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
+  const { score_highlights: _h, score_stats: _s, ...rest } = row;
+  void _h;
+  void _s;
+  return {
+    ...rest,
+    ...((hl as Record<string, unknown>) ?? {}),
+    gameplay_stats:
+      (stats as { gameplay_stats?: GameplayStats } | null)?.gameplay_stats ?? null,
+  } as unknown as Score;
 }
 
 async function fetchScore(scoreId: string): Promise<Score | null> {
@@ -70,7 +83,7 @@ async function fetchScore(scoreId: string): Promise<Score | null> {
   const { data } = await admin
     .from("scores")
     .select(
-      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS})`
+      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS}), score_stats(gameplay_stats)`
     )
     .eq("id", scoreId)
     .single();
@@ -83,7 +96,9 @@ async function fetchScore(scoreId: string): Promise<Score | null> {
     )
     .eq("id", scoreId)
     .single();
-  return legacy ? ({ ...legacy, max_combo: null } as unknown as Score) : null;
+  return legacy
+    ? ({ ...legacy, max_combo: null, gameplay_stats: null } as unknown as Score)
+    : null;
 }
 
 export async function generateMetadata({
@@ -132,6 +147,7 @@ export default async function SharePage({
   const name = score.profiles?.display_name ?? "익명";
   const grade = gradeFor(score.score);
   const reaction = bossReaction(score.score, score.id);
+  const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = clipPublicUrl(score);
   const posterUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   const hlDelta = highlightDelta(score); // clip 있으면 clip delta, card-only 면 card delta (만료/삭제 X)
@@ -163,6 +179,12 @@ export default async function SharePage({
               스트레스 해소 결과 보고서
             </h1>
           </div>
+
+          {persona && (
+            <div className="mt-3">
+              <PersonaCard persona={persona} heading={`${name}님의 패기 유형`} />
+            </div>
+          )}
 
           <div className="mt-3 flex items-start justify-between gap-3">
             {/* 커스텀 인형 없으면 기본 부장님 이미지 */}
@@ -225,7 +247,9 @@ export default async function SharePage({
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
           <p className="text-sm text-zinc-400">
-            당신의 부장님은 무사하십니까?
+            {persona
+              ? "당신의 패기 유형은 무엇일까요?"
+              : "당신의 부장님은 무사하십니까?"}
           </p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
@@ -238,7 +262,7 @@ export default async function SharePage({
               href="/play"
               className="rounded-full border border-foreground/15 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
             >
-              기본 부장님으로 바로 풀기
+              {persona ? "나도 패기 유형 받아보기" : "기본 부장님으로 바로 풀기"}
             </Link>
             <Link
               href="/leaderboard"
