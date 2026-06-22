@@ -284,6 +284,13 @@ v0.16 (2026-06-22, 게임 기록 보기 — 본인/타인 회고):
 - **메뉴 위계 평탄화 + 순서**: "내 뱃지"·"내 기록" 이모지(🏅)·볼드 제거(다른 메뉴와 동일 위계), 게임종료화면 하단 "내 뱃지" 링크도 평탄화. **비로그인 시 "로그인 / 회원가입"을 메뉴 최상단**으로. 인게임 뱃지 HUD/토스트·결과 뱃지칩은 유지.
 - **dev/preview 영구 설정**: `npm run dev` 가 nvm v22 를 자동 선택(`PATH` prepend)하고 `--hostname 0.0.0.0` 로 바인딩 → 시스템 기본 node 와 무관하게 항상 기동 + **같은 WiFi 폰에서 `http://<맥 LAN IP>:3000` 접속**(next.config `allowedDevOrigins` 192.168.* 등 허용).
 
+v0.17 (2026-06-22, 캐릭터 롤 확장 — 부장 → 5종):
+- **롤 5종**: 부장(기본)·임원·팀장·거래처·짜증나는 직장동료. 캐릭터별 **피격자 의견·시비 멘트·인사기록(직급/소속/특이사항)·호칭·무기힌트·OG**가 롤별 고유(점수 10단계 풀뎁스). 판정등급·페르소나는 플레이어 것이라 롤 중립.
+- **레지스트리** `lib/roles/`(RoleId·ROLE_META·getRoleContent, `TieredLines` 10단계 컴파일 강제 + dev assert). 셀렉터(report/taunts/weapons)에 `role` 파라미터(기본 boss). boss 출력은 리팩터 전과 동일(회귀 0).
+- **데이터**: `dolls.role`(migration 0017, default 'boss', CHECK 5롤, 기존 doll 자동 boss 백필). 롤 변경 = `PATCH /api/doll`(owner 검증, unknown role 400). 갤러리 카드 좌상단 롤 칩 + 점세개 "롤 변경". 생성 기본 boss, **이미지/프롬프트 불변(롤=메타데이터)**.
+- **배선**: play(시비멘트/게임오버 의견)·`/share`·`/doll` 인사기록·`/history`·OG 가 doll.role 로 분기(공유/기록은 라이브 doll join + 삭제 시 boss 폴백). 한국어 조사는 명사형(`noun`)+완성형(`targetObj`/`ctaSafe`/`ogLines`)으로 정확.
+- **브랜드 유지**: 앱명("부장님 패기")·홈·메타·login 은 부장 그대로. 갤러리 집합 카피만 "캐릭터"로 중립화.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 

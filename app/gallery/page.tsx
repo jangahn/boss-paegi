@@ -8,12 +8,14 @@ import { getMyProfile, formatCredits } from "@/lib/profile";
 import { Spinner } from "@/components/Spinner";
 import { AppNav } from "@/components/AppNav";
 import { shareDoll } from "@/lib/doll-share";
+import { ROLE_IDS, ROLE_META, asRole, type RoleId } from "@/lib/roles";
 import type { PendingGeneration } from "@/lib/generation";
 
 type Doll = {
   id: string;
   image_url: string;
   created_at: string;
+  role: string;
 };
 
 export default function GalleryPage() {
@@ -29,7 +31,7 @@ export default function GalleryPage() {
       const sb = createClient();
       const { data, error: queryError } = await sb
         .from("dolls")
-        .select("id, image_url, created_at")
+        .select("id, image_url, created_at, role")
         .order("created_at", { ascending: false });
       if (queryError) throw queryError;
       setDolls(data ?? []);
@@ -65,9 +67,13 @@ export default function GalleryPage() {
     return () => clearInterval(t);
   }, [pending, loadPending]);
 
+  const handleRoleChange = useCallback((id: string, role: RoleId) => {
+    setDolls((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, role } : d)));
+  }, []);
+
   const handleDelete = async (id: string) => {
     if (deletingIds.has(id)) return;
-    if (!confirm("이 부장님 인형을 삭제할까요?")) return;
+    if (!confirm("이 캐릭터를 삭제할까요?")) return;
     setDeletingIds((prev) => new Set(prev).add(id));
     setError(null);
     try {
@@ -98,7 +104,7 @@ export default function GalleryPage() {
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
-            <h1 className="text-2xl font-bold">내 부장님들</h1>
+            <h1 className="text-2xl font-bold">내 캐릭터들</h1>
             {credits !== null && (
               <span className="text-sm text-zinc-500">
                 생성권 {formatCredits(credits)}
@@ -120,7 +126,12 @@ export default function GalleryPage() {
         ) : dolls.length === 0 ? (
           pending.length === 0 && <EmptyState />
         ) : (
-          <DollGrid dolls={dolls} onDelete={handleDelete} deletingIds={deletingIds} />
+          <DollGrid
+            dolls={dolls}
+            onDelete={handleDelete}
+            onRoleChange={handleRoleChange}
+            deletingIds={deletingIds}
+          />
         )}
 
         {error && (
@@ -135,12 +146,12 @@ export default function GalleryPage() {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center gap-4 rounded-3xl border border-dashed border-foreground/15 p-12 text-center">
-      <p className="text-zinc-500">아직 만든 부장님이 없어요.</p>
+      <p className="text-zinc-500">아직 만든 캐릭터가 없어요.</p>
       <Link
         href="/generate"
         className="rounded-full bg-foreground px-6 py-3 font-semibold text-background"
       >
-        첫 부장님 만들기
+        첫 캐릭터 만들기
       </Link>
     </div>
   );
@@ -227,10 +238,12 @@ function GridSkeleton() {
 function DollGrid({
   dolls,
   onDelete,
+  onRoleChange,
   deletingIds,
 }: {
   dolls: Doll[];
   onDelete: (id: string) => void;
+  onRoleChange: (id: string, role: RoleId) => void;
   deletingIds: Set<string>;
 }) {
   return (
@@ -241,6 +254,7 @@ function DollGrid({
           doll={d}
           deleting={deletingIds.has(d.id)}
           onDelete={() => onDelete(d.id)}
+          onRoleChange={onRoleChange}
         />
       ))}
     </div>
@@ -251,14 +265,19 @@ function DollCard({
   doll,
   deleting,
   onDelete,
+  onRoleChange,
 }: {
   doll: Doll;
   deleting: boolean;
   onDelete: () => void;
+  onRoleChange: (id: string, role: RoleId) => void;
 }) {
+  const role = asRole(doll.role);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [roleMenu, setRoleMenu] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [savingRole, setSavingRole] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   const flash = (msg: string) => {
@@ -266,16 +285,48 @@ function DollCard({
     setTimeout(() => setActionMsg(null), 1800);
   };
 
-  const handleShare = async () => {
+  const closeMenu = () => {
     setMenuOpen(false);
+    setRoleMenu(false);
+  };
+
+  const handleShare = async () => {
+    closeMenu();
     if (sharing) return;
     setSharing(true);
     try {
-      const result = await shareDoll(doll.image_url, doll.id);
+      const result = await shareDoll(doll.image_url, doll.id, role);
       if (result === "copied") flash("링크 복사됨");
       else if (result === "failed") flash("공유 실패");
     } finally {
       setSharing(false);
+    }
+  };
+
+  const handleRole = async (next: RoleId) => {
+    if (savingRole) return;
+    if (next === role) {
+      closeMenu();
+      return;
+    }
+    setSavingRole(true);
+    try {
+      const r = await fetch("/api/doll", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: doll.id, role: next }),
+      });
+      if (!r.ok) {
+        flash("롤 변경 실패");
+        return;
+      }
+      onRoleChange(doll.id, next);
+      flash(`${ROLE_META[next].chip} 으로 변경`);
+    } catch {
+      flash("롤 변경 실패");
+    } finally {
+      setSavingRole(false);
+      closeMenu();
     }
   };
 
@@ -322,12 +373,18 @@ function DollCard({
         )}
       </div>
 
-      {/* ⋯ 옵션 버튼 — 공유/저장/삭제 메뉴 */}
+      {/* 롤 칩 (좌상단 — ⋯ 버튼/공유 스피너와 안 겹치게) */}
+      <span className="pointer-events-none absolute left-2 top-2 z-20 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm">
+        {ROLE_META[role].chip}
+      </span>
+
+      {/* ⋯ 옵션 버튼 — 공유/롤 변경/삭제 메뉴 */}
       <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          setRoleMenu(false);
           setMenuOpen((v) => !v);
         }}
         disabled={deleting}
@@ -344,20 +401,32 @@ function DollCard({
             className="fixed inset-0 z-20"
             onClick={(e) => {
               e.preventDefault();
-              setMenuOpen(false);
+              closeMenu();
             }}
           />
-          <div className="absolute right-2 top-12 z-30 w-32 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
-            <MenuItem onClick={handleShare}>공유</MenuItem>
-            <MenuItem
-              onClick={() => {
-                setMenuOpen(false);
-                onDelete();
-              }}
-              danger
-            >
-              삭제
-            </MenuItem>
+          <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
+            {roleMenu ? (
+              ROLE_IDS.map((rid) => (
+                <MenuItem key={rid} onClick={() => void handleRole(rid)}>
+                  {ROLE_META[rid].chip}
+                  {rid === role ? " ✓" : ""}
+                </MenuItem>
+              ))
+            ) : (
+              <>
+                <MenuItem onClick={handleShare}>공유</MenuItem>
+                <MenuItem onClick={() => setRoleMenu(true)}>롤 변경</MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    closeMenu();
+                    onDelete();
+                  }}
+                  danger
+                >
+                  삭제
+                </MenuItem>
+              </>
+            )}
           </div>
         </>
       )}

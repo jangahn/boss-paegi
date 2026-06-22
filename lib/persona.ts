@@ -28,7 +28,7 @@ const DEFS = {
     id: "graffiti",
     label: "낙서 테러범",
     emoji: "🖊️",
-    blurb: "때리기보다 펜으로 부장님 체면을 박살낸 예술가.",
+    blurb: "때리기보다 펜으로 상대의 체면을 박살낸 예술가.",
   },
   sniper: {
     id: "sniper",
@@ -46,7 +46,7 @@ const DEFS = {
     id: "grabber",
     label: "들었다 놨다형",
     emoji: "🤏",
-    blurb: "부장님을 통째로 집어던진 물리력의 화신.",
+    blurb: "상대를 통째로 집어던진 물리력의 화신.",
   },
   combo: {
     id: "combo",

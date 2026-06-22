@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
 import { fetchScoreDetail, hasLiveHighlight } from "@/lib/score-detail";
+import { asRole, ROLE_META } from "@/lib/roles";
 import { formatDuration, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 import { matchPersona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
@@ -38,6 +39,7 @@ export default async function HistoryDetailPage({
   if (score.owner_id !== userId) notFound();
 
   const name = score.profiles?.display_name ?? "익명";
+  const rlabel = ROLE_META[asRole(score.dolls?.role)].label;
   const grade = gradeFor(score.score);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const hitCount = score.gameplay_stats?.hitCount ?? null;
@@ -76,7 +78,7 @@ export default async function HistoryDetailPage({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={score.dolls?.image_url ?? "/sprites/boss-default.png"}
-                alt="맞은 부장님"
+                alt={`맞은 ${rlabel}`}
                 className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
               />
               <table className="border-collapse text-center text-[10px]">
@@ -138,7 +140,7 @@ export default async function HistoryDetailPage({
             scoreId={scoreId}
             score={score.score}
             highlight={hasHighlight}
-            text={`${name}님 부장님 ${score.score.toLocaleString()}점 패기 결과 🥊`}
+            text={`${name}님 ${rlabel} ${score.score.toLocaleString()}점 패기 결과 🥊`}
           />
         </div>
       </main>

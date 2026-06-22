@@ -1,6 +1,7 @@
 "use client";
 
 import { SERVICE_NAME } from "@/lib/policy";
+import { getRoleContent, type RoleId } from "@/lib/roles";
 
 /**
  * 갤러리 커스텀 인형의 저장/공유.
@@ -54,10 +55,12 @@ export type ShareResult = "shared" | "copied" | "failed";
 /** 워터마크 이미지 + 공개 페이지 링크를 Web Share 로. fallback 링크 복사. */
 export async function shareDoll(
   imageUrl: string,
-  dollId: string
+  dollId: string,
+  role: RoleId = "boss"
 ): Promise<ShareResult> {
   const pageUrl = `${location.origin}/doll/${dollId}`;
-  const text = `내가 만든 부장님을 소개합니다. 당신의 부장님은 무사하십니까?`;
+  const c = getRoleContent(role);
+  const text = `내가 만든 ${c.targetObj} 소개합니다. ${c.ctaSafe}`;
 
   try {
     const composed = await composeWatermark(await fetchBlob(imageUrl));

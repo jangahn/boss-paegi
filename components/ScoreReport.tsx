@@ -19,6 +19,7 @@ export function ScoreReport({
   reaction,
   nickname,
   dollImageUrl,
+  roleLabel = "부장님",
   persona,
   percentile,
   badges,
@@ -37,6 +38,8 @@ export function ScoreReport({
   reaction: string;
   nickname: string;
   dollImageUrl?: string;
+  /** 맞는 캐릭터 호칭 (alt 등) — 기본 "부장님" */
+  roleLabel?: string;
   persona?: Persona;
   /** 전체 상위 N% — 서버 응답 전 null */
   percentile?: number | null;
@@ -71,7 +74,7 @@ export function ScoreReport({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={dollImageUrl ?? "/sprites/boss-default.png"}
-          alt="맞은 부장님"
+          alt={`맞은 ${roleLabel}`}
           className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
         />
         <table className="border-collapse text-center text-[10px]">

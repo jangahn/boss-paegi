@@ -1,3 +1,5 @@
+import { getRoleContent, type RoleId } from "@/lib/roles";
+
 export type WeaponKey =
   | "fist"
   | "hammer"
@@ -191,4 +193,15 @@ export const WEAPONS: readonly Weapon[] = [
 
 export function resolveWeapon(key?: string | null): Weapon {
   return WEAPONS.find((w) => w.key === key) ?? WEAPONS[0];
+}
+
+/**
+ * 롤 반영 무기 힌트. boss 는 기존 hint 와 동일(회귀 0), 그 외 롤은 힌트 속 대상 명사
+ * ("부장님을")를 해당 롤의 목적격(targetObj, 예 "거래처를")으로 치환. 대상 명사가 없는
+ * 힌트("무기를 잡고…" 등)는 그대로. WEAPONS.hint 를 깨지 않고 함수로 감싼다.
+ */
+export function weaponHint(key: string | null | undefined, role: RoleId = "boss"): string {
+  const hint = resolveWeapon(key).hint;
+  if (role === "boss") return hint;
+  return hint.replace(getRoleContent("boss").targetObj, getRoleContent(role).targetObj);
 }

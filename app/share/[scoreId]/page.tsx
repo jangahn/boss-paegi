@@ -20,6 +20,7 @@ import {
   clipPublicUrl,
   highlightDelta,
 } from "@/lib/score-detail";
+import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
 
 export async function generateMetadata({
   params,
@@ -34,7 +35,7 @@ export async function generateMetadata({
   const name = score.profiles?.display_name ?? "익명";
   const grade = gradeFor(score.score);
   const title = `[결재완료] ${name} — ${score.score.toLocaleString()}점 (${grade.label})`;
-  const description = ogDescription(score.score, score.id);
+  const description = ogDescription(score.score, score.id, asRole(score.dolls?.role));
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   return {
     title,
@@ -65,8 +66,10 @@ export default async function SharePage({
   if (!score) notFound();
 
   const name = score.profiles?.display_name ?? "익명";
+  const role = asRole(score.dolls?.role);
+  const rlabel = ROLE_META[role].label;
   const grade = gradeFor(score.score);
-  const reaction = bossReaction(score.score, score.id);
+  const reaction = bossReaction(score.score, score.id, role);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = clipPublicUrl(score);
   const posterUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
@@ -111,7 +114,7 @@ export default async function SharePage({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={score.dolls?.image_url ?? "/sprites/boss-default.png"}
-              alt="맞은 부장님"
+              alt={`맞은 ${rlabel}`}
               className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
             />
             <table className="border-collapse text-center text-[10px]">
@@ -165,7 +168,7 @@ export default async function SharePage({
 
           <div className="mt-4 rounded-md border border-dashed border-zinc-400 bg-zinc-50 p-3">
             <p className="text-[10px] font-semibold text-zinc-500">
-              피격자(부장님) 의견
+              피격자({rlabel}) 의견
             </p>
             <p className="mt-0.5 text-sm font-medium">&ldquo;{reaction}&rdquo;</p>
           </div>
@@ -180,14 +183,14 @@ export default async function SharePage({
           <p className="text-sm text-zinc-400">
             {persona
               ? "당신의 패기 유형은 무엇일까요?"
-              : "당신의 부장님은 무사하십니까?"}
+              : getRoleContent(role).ctaSafe}
           </p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"
               className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
             >
-              우리 부장님도 패러 가기
+              우리 {rlabel}도 패러 가기
             </Link>
             <Link
               href="/play"

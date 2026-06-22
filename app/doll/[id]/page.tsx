@@ -5,11 +5,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
+import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
 
 type DollRow = {
   id: string;
   image_url: string;
   created_at: string;
+  role: string | null;
   profiles: { display_name: string } | null;
 };
 
@@ -17,7 +19,7 @@ async function fetchDoll(id: string): Promise<DollRow | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("dolls")
-    .select("id, image_url, created_at, profiles(display_name)")
+    .select("id, image_url, created_at, role, profiles(display_name)")
     .eq("id", id)
     .single();
   return (data as unknown as DollRow) ?? null;
@@ -32,8 +34,9 @@ export async function generateMetadata({
   const doll = await fetchDoll(id);
   if (!doll) return { title: SERVICE_NAME };
   const name = doll.profiles?.display_name ?? "익명";
-  const title = `[인사기록] ${name}님의 부장님`;
-  const description = `특이사항: ${dollTrait(doll.id)} — 당신의 부장님은 무사하십니까?`;
+  const role = asRole(doll.role);
+  const title = `[인사기록] ${name}님의 ${ROLE_META[role].label}`;
+  const description = `특이사항: ${dollTrait(doll.id, role)} — ${getRoleContent(role).ctaSafe}`;
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/doll/${id}/opengraph-image`;
   return {
     title,
@@ -64,7 +67,9 @@ export default async function DollPage({
   if (!doll) notFound();
 
   const name = doll.profiles?.display_name ?? "익명";
-  const trait = dollTrait(doll.id);
+  const role = asRole(doll.role);
+  const rlabel = ROLE_META[role].label;
+  const trait = dollTrait(doll.id, role);
   const joined = new Date(doll.created_at);
 
   return (
@@ -87,7 +92,7 @@ export default async function DollPage({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={doll.image_url}
-                alt="부장님 증명사진"
+                alt={`${rlabel} 증명사진`}
                 className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100 object-contain"
               />
               <p className="mt-1 text-center text-[10px] text-zinc-400">
@@ -96,9 +101,9 @@ export default async function DollPage({
             </div>
 
             <dl className="flex-1 space-y-2 text-sm">
-              <CardRow label="성명">부장님</CardRow>
-              <CardRow label="직급">{dollRank(doll.id)}</CardRow>
-              <CardRow label="소속">{dollDepartment(doll.id)}</CardRow>
+              <CardRow label="성명">{rlabel}</CardRow>
+              <CardRow label="직급">{dollRank(doll.id, role)}</CardRow>
+              <CardRow label="소속">{dollDepartment(doll.id, role)}</CardRow>
               <CardRow label="제작자">{name}</CardRow>
               <CardRow label="등록일">
                 {joined.getFullYear()}.
@@ -122,15 +127,13 @@ export default async function DollPage({
 
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-zinc-400">
-            당신의 부장님은 무사하십니까?
-          </p>
+          <p className="text-sm text-zinc-400">{getRoleContent(role).ctaSafe}</p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"
               className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
             >
-              나도 우리 부장님 만들기
+              나도 우리 {rlabel} 만들기
             </Link>
             <Link
               href="/play"

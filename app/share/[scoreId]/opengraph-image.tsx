@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
+import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
 import { matchPersona } from "@/lib/persona";
 import type { GameplayStats } from "@/lib/stats";
 import { log, errInfo } from "@/lib/log";
@@ -52,7 +53,7 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at), score_stats(gameplay_stats, percentile)"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url, role), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at), score_stats(gameplay_stats, percentile)"
     )
     .eq("id", scoreId)
     .single();
@@ -71,7 +72,7 @@ export default async function OgImage({
         weapon: string;
         created_at: string;
         profiles: { display_name: string } | null;
-        dolls: { image_url: string | null } | null;
+        dolls: { image_url: string | null; role: string | null } | null;
         highlight_delta: number | null;
         highlight_status: string | null;
         highlight_deleted_at: string | null;
@@ -96,10 +97,12 @@ export default async function OgImage({
     (statsRow as { percentile?: number } | null)?.percentile ?? null;
 
   const name = s?.profiles?.display_name ?? "익명";
+  const role = asRole(s?.dolls?.role);
+  const rlabel = ROLE_META[role].label;
   const score = (s?.score ?? 0).toLocaleString();
   const dollSrc = await dollDataUri(s?.dolls?.image_url ?? null);
   const grade = gradeFor(s?.score ?? 0);
-  const reaction = s ? bossReaction(s.score, s.id) : "";
+  const reaction = s ? bossReaction(s.score, s.id, role) : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";
 
   return new ImageResponse(
@@ -276,7 +279,7 @@ export default async function OgImage({
                   whiteSpace: "nowrap",
                 }}
               >
-                부장님: &ldquo;{reaction}&rdquo;
+                {rlabel}: &ldquo;{reaction}&rdquo;
               </div>
             </div>
 
@@ -314,7 +317,7 @@ export default async function OgImage({
               {SERVICE_NAME}
             </div>
             <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
-              당신의 부장님은 무사하십니까?
+              {getRoleContent(role).ctaSafe}
             </div>
           </div>
         </div>

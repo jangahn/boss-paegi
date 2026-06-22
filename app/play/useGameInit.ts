@@ -4,6 +4,7 @@ import { useEffect, type RefObject, type MutableRefObject } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveBackground } from "@/lib/backgrounds";
 import { log, errInfo } from "@/lib/log";
+import { asRole, type RoleId } from "@/lib/roles";
 import type { Weapon } from "@/lib/weapons";
 import type { GameHandle, CreateGameOptions } from "@/game/BossPaegiGame";
 
@@ -25,6 +26,8 @@ export function useGameInit(opts: {
   onDrawingChange: (v: boolean) => void;
   setGameReady: (v: boolean) => void;
   setDollImageUrl: (url: string) => void;
+  /** doll 의 롤을 호출부에 전달 (시비 멘트·게임오버 보고서 분기용). 기본 플레이(dollId 없음)는 미호출 → boss 유지. */
+  setDollRole: (role: RoleId) => void;
 }): void {
   const {
     dollId,
@@ -37,6 +40,7 @@ export function useGameInit(opts: {
     onDrawingChange,
     setGameReady,
     setDollImageUrl,
+    setDollRole,
   } = opts;
 
   useEffect(() => {
@@ -63,11 +67,12 @@ export function useGameInit(opts: {
           const sb = createClient();
           const { data } = await sb
             .from("dolls")
-            .select("image_url")
+            .select("image_url, role")
             .eq("id", dollId)
             .single();
           if (!data?.image_url) return undefined;
           setDollImageUrl(data.image_url);
+          setDollRole(asRole((data as { role?: string }).role));
           try {
             return await Assets.load(data.image_url);
           } catch (e) {

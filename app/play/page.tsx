@@ -13,7 +13,8 @@ import { BadgeChallenge } from "@/components/play/BadgeChallenge";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { setSentryGameContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
-import { WEAPONS, Weapon } from "@/lib/weapons";
+import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
+import type { RoleId } from "@/lib/roles";
 import { unlockAudio } from "@/lib/sound";
 import { log } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
@@ -54,6 +55,8 @@ function PlayInner() {
   const [dollImageUrl, setDollImageUrl] = useState<string>(
     "/sprites/boss-default.png"
   );
+  // 맞는 캐릭터의 롤 — useGameInit 가 doll 로드 시 setRole. 기본 플레이(doll 없음)=boss.
+  const [role, setRole] = useState<RoleId>("boss");
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
@@ -112,6 +115,7 @@ function PlayInner() {
     onDrawingChange: setHasDrawing,
     setGameReady,
     setDollImageUrl,
+    setDollRole: setRole,
   });
 
   useEffect(() => {
@@ -126,7 +130,7 @@ function PlayInner() {
     });
   }, []);
 
-  const taunt = useTaunts(over);
+  const taunt = useTaunts(over, role);
 
   // 점수 timeline 샘플링 — 녹화 지원 무관 항상(카드-only 하이라이트 계산용).
   const { getTimelineHighlight } = useScoreTimeline({
@@ -266,7 +270,7 @@ function PlayInner() {
       {!gameReady && (
         <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
           <Spinner className="h-8 w-8 text-white/80" />
-          <p className="text-sm text-white/70">부장님 불러오는 중...</p>
+          <p className="text-sm text-white/70">캐릭터 불러오는 중...</p>
         </div>
       )}
       <SpeechBubble text={taunt} />
@@ -293,7 +297,7 @@ function PlayInner() {
       {/* 무기 조작 안내 — picker 바로 위. 반투명 캡슐로 배경 무관 가독 */}
       <div className="pointer-events-none absolute bottom-[5.75rem] left-1/2 z-10 -translate-x-1/2 sm:bottom-28">
         <span className="whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm sm:text-sm">
-          {weapon.hint}
+          {weaponHint(weapon.key, role)}
         </span>
       </div>
       <UltimateButton ready={ultReady} onFire={handleUltimate} />
@@ -309,6 +313,7 @@ function PlayInner() {
         onRestart={handleRestart}
         weapon={weapon.key}
         dollId={dollId}
+        role={role}
         dollImageUrl={dollImageUrl}
         highlightClip={bestClip}
         getCardHighlight={getTimelineHighlight}

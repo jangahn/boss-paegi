@@ -2,12 +2,13 @@ import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
+import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 // 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
 export const revalidate = 3600;
-export const alt = "부장님 인사기록카드";
+export const alt = "인사기록카드";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -32,7 +33,7 @@ export default async function OgImage({
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("dolls")
-    .select("id, image_url, created_at, profiles(display_name)")
+    .select("id, image_url, created_at, role, profiles(display_name)")
     .eq("id", id)
     .single();
   // 조회 실패해도 기본 카드로 fallback — 단 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
@@ -43,12 +44,15 @@ export default async function OgImage({
         id: string;
         image_url: string;
         created_at: string;
+        role: string | null;
         profiles: { display_name: string } | null;
       }
     | null;
 
   const name = d?.profiles?.display_name ?? "익명";
-  const trait = d ? dollTrait(d.id) : "";
+  const role = asRole(d?.role);
+  const rlabel = ROLE_META[role].label;
+  const trait = d ? dollTrait(d.id, role) : "";
   const docNo = d ? reportNo(d.id, d.created_at) : "";
   const dollSrc = d ? await dollDataUri(d.image_url) : null;
 
@@ -157,14 +161,14 @@ export default async function OgImage({
               }}
             >
               <div style={{ display: "flex", fontSize: 42, fontWeight: 900, whiteSpace: "nowrap" }}>
-                성명: 부장님
+                성명: {rlabel}
               </div>
               {/* 직급/소속 분리 — 합치면 최장값(전설의 꼰대 부장 · 스트레스 유발 1팀)이 영역 초과 */}
               <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
-                직급: {d ? dollRank(d.id) : ""}
+                직급: {d ? dollRank(d.id, role) : ""}
               </div>
               <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
-                소속: {d ? dollDepartment(d.id) : ""}
+                소속: {d ? dollDepartment(d.id, role) : ""}
               </div>
               <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
                 제작자: {name}
@@ -215,7 +219,7 @@ export default async function OgImage({
               {SERVICE_NAME}
             </div>
             <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
-              당신의 부장님은 무사하십니까?
+              {getRoleContent(role).ctaSafe}
             </div>
           </div>
         </div>

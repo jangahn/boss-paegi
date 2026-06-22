@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
 import { bossReaction, gradeFor, reportNo } from "@/lib/report";
+import { ROLE_META, type RoleId } from "@/lib/roles";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
 import { evaluateBadges } from "@/lib/badges";
@@ -19,7 +20,9 @@ type Props = {
   onRestart: () => void;
   weapon: string;
   dollId: string | null;
-  /** 보고서에 표시할 인형 이미지 (커스텀 or 기본 부장님) */
+  /** 맞는 캐릭터의 롤 — 피격자 의견·공유 문구 분기. 기본 boss. */
+  role?: RoleId;
+  /** 보고서에 표시할 인형 이미지 (커스텀 or 기본) */
   dollImageUrl?: string;
   /** 하이라이트 녹화분 (없으면 카드만 공유) */
   highlightClip?: HighlightClip | null;
@@ -34,6 +37,7 @@ export function GameOverModal({
   onRestart,
   weapon,
   dollId,
+  role = "boss",
   dollImageUrl,
   highlightClip,
   getCardHighlight,
@@ -125,7 +129,7 @@ export function GameOverModal({
   const durationMs = endedAt && startedAt ? endedAt - startedAt : 0;
   const grade = gradeFor(score);
   const mainWeapon = topWeapon(weaponCounts) ?? weapon;
-  const reaction = bossReaction(score, scoreId ?? String(score));
+  const reaction = bossReaction(score, scoreId ?? String(score), role);
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
 
   // gesture 안에서 URL 즉시 공유(친구는 보통 수 초+ 뒤 열어 그때면 attach 완료).
@@ -146,7 +150,9 @@ export function GameOverModal({
         if (h) await saveCardHighlight(sid, h);
       }
     })();
-    void shareGameResult(sid, score).then((result) => {
+    void shareGameResult(sid, score, {
+      text: `${ROLE_META[role].label} ${score.toLocaleString()}점 패고 옴 🥊`,
+    }).then((result) => {
       if (result === "shared") setShareMsg("공유했어요!");
       else if (result === "copied") setShareMsg("링크 복사됨");
       else if (result === "failed") setShareMsg("공유 실패");
@@ -170,6 +176,7 @@ export function GameOverModal({
           reaction={reaction}
           nickname={nickname}
           dollImageUrl={dollImageUrl}
+          roleLabel={ROLE_META[role].label}
           persona={persona}
           percentile={percentile}
           badges={earnedBadges}

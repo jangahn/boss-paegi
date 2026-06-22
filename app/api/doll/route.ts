@@ -11,6 +11,7 @@ import {
 } from "@/lib/generation";
 import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
 import { log, errInfo, urlHost } from "@/lib/log";
+import { isRoleId } from "@/lib/roles";
 
 export const runtime = "nodejs";
 // 누끼(birefnet ~2s) + fetch/normalize/upload/insert. 30s 면 충분.
@@ -192,7 +193,7 @@ export async function GET() {
 
   const { data } = await supabase
     .from("dolls")
-    .select("id, image_url, created_at")
+    .select("id, image_url, created_at, role")
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -260,4 +261,63 @@ export async function DELETE(req: NextRequest) {
 
   log.info("doll.delete", { userId: user.id, dollId: id });
   return NextResponse.json({ ok: true });
+}
+
+/** 캐릭터 롤 변경 (갤러리 점세개 메뉴). 쓰기 API라 unknown role 은 400(렌더의 boss 폴백과 달리 엄격). */
+export async function PATCH(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (user.is_anonymous) {
+    return NextResponse.json({ error: "member_only" }, { status: 403 });
+  }
+
+  const body = (await req.json().catch(() => null)) as {
+    id?: string;
+    role?: string;
+  } | null;
+  if (!body?.id) {
+    return NextResponse.json({ error: "id_required" }, { status: 400 });
+  }
+  if (!isRoleId(body.role)) {
+    return NextResponse.json({ error: "invalid_role" }, { status: 400 });
+  }
+
+  // owner 검증 (DELETE 패턴 동일)
+  const { data: doll, error: selErr } = await supabase
+    .from("dolls")
+    .select("id, owner_id")
+    .eq("id", body.id)
+    .single();
+  if (selErr || !doll) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (doll.owner_id !== user.id) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+  const { error: updErr } = await admin
+    .from("dolls")
+    .update({ role: body.role })
+    .eq("id", body.id);
+  if (updErr) {
+    log.error("doll.role_update_fail", {
+      userId: user.id,
+      dollId: body.id,
+      role: body.role,
+      ...errInfo(updErr),
+    });
+    return NextResponse.json(
+      { error: "update_failed", detail: updErr.message },
+      { status: 500 }
+    );
+  }
+
+  log.info("doll.role_change", { userId: user.id, dollId: body.id, role: body.role });
+  return NextResponse.json({ ok: true, role: body.role });
 }

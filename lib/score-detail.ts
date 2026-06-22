@@ -22,7 +22,7 @@ export type Score = {
   max_combo: number | null;
   created_at: string;
   profiles: { display_name: string } | null;
-  dolls: { image_url: string | null } | null;
+  dolls: { image_url: string | null; role: string | null } | null;
   highlight_clip_path: string | null;
   highlight_status: string | null;
   highlight_delta: number | null;
@@ -98,7 +98,7 @@ export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
   const { data } = await admin
     .from("scores")
     .select(
-      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
+      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url, role), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
     )
     .eq("id", scoreId)
     .single();
@@ -107,7 +107,7 @@ export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
   const { data: legacy } = await admin
     .from("scores")
     .select(
-      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(image_url)"
+      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(image_url, role)"
     )
     .eq("id", scoreId)
     .single();
