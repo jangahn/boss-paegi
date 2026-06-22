@@ -25,6 +25,17 @@ export function isRoleId(v: unknown): v is RoleId {
   return typeof v === "string" && ROLE_SET.has(v);
 }
 
+/**
+ * 한국어 조사 "(으)로" — 받침 없음 또는 ㄹ받침이면 "로", 그 외 "으로".
+ * 예: 부장으로 / 임원으로 / 팀장으로 / 거래처로 / 동료로.
+ */
+export function josaEuro(word: string): string {
+  const code = word.charCodeAt(word.length - 1);
+  if (Number.isNaN(code) || code < 0xac00 || code > 0xd7a3) return "로"; // 비한글 기본
+  const jong = (code - 0xac00) % 28; // 종성 인덱스 (0=받침없음, 8=ㄹ)
+  return jong === 0 || jong === 8 ? "로" : "으로";
+}
+
 /** 표시 메타 — label(호칭/단일 표시), chip(갤러리 칩 짧은 라벨). */
 export const ROLE_META: Record<RoleId, { label: string; chip: string }> = {
   boss: { label: "부장님", chip: "부장" },

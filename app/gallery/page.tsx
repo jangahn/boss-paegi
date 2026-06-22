@@ -8,7 +8,7 @@ import { getMyProfile, formatCredits } from "@/lib/profile";
 import { Spinner } from "@/components/Spinner";
 import { AppNav } from "@/components/AppNav";
 import { shareDoll } from "@/lib/doll-share";
-import { ROLE_IDS, ROLE_META, asRole, type RoleId } from "@/lib/roles";
+import { ROLE_IDS, ROLE_META, asRole, josaEuro, type RoleId } from "@/lib/roles";
 import type { PendingGeneration } from "@/lib/generation";
 
 type Doll = {
@@ -309,6 +309,7 @@ function DollCard({
       closeMenu();
       return;
     }
+    closeMenu(); // 메뉴 닫고 카드 오버레이("변경 중…")로 진행 표시
     setSavingRole(true);
     try {
       const r = await fetch("/api/doll", {
@@ -321,12 +322,11 @@ function DollCard({
         return;
       }
       onRoleChange(doll.id, next);
-      flash(`${ROLE_META[next].chip} 으로 변경`);
+      flash(`${ROLE_META[next].chip}${josaEuro(ROLE_META[next].chip)} 변경`);
     } catch {
       flash("롤 변경 실패");
     } finally {
       setSavingRole(false);
-      closeMenu();
     }
   };
 
@@ -369,6 +369,14 @@ function DollCard({
             <span className="text-xs font-medium text-white/90">
               삭제 중...
             </span>
+          </div>
+        )}
+
+        {/* 롤 변경 진행 중 — 카드 dim + 스피너 (탭/대기 구분) */}
+        {savingRole && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[2px]">
+            <Spinner className="h-6 w-6 text-white" />
+            <span className="text-xs font-medium text-white/90">변경 중…</span>
           </div>
         )}
       </div>

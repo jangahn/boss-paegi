@@ -9,6 +9,7 @@ import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 import { detectGlasses } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
+import { isRoleId } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -56,6 +57,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "not_an_image" }, { status: 400 });
   }
 
+  // 생성 시 선택한 롤 — 복장·표정 프롬프트 + doll.role 에 반영. 미전송이면 boss, 미지값은 400.
+  const roleRaw = form.get("role")?.toString() ?? "boss";
+  if (!isRoleId(roleRaw)) {
+    return NextResponse.json({ error: "invalid_role" }, { status: 400 });
+  }
+  const role = roleRaw;
+
   const provider = selectProvider(null);
 
   // 입력 정규화 (1024×1024 cover) — 원본은 메모리 안에서만
@@ -79,7 +87,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
   const { data: genRow, error: logError } = await admin
     .from("ai_generations")
-    .insert({ owner_id: user.id, status: "queued" })
+    .insert({ owner_id: user.id, status: "queued", role })
     .select("id")
     .single();
   if (logError || !genRow) {
@@ -147,6 +155,7 @@ export async function POST(req: NextRequest) {
           templateImageUrl: "", // PuLID 는 template 무시
           numImages: 3,
           wearsGlasses,
+          role,
         })
     );
 

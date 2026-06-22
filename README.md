@@ -291,6 +291,12 @@ v0.17 (2026-06-22, 캐릭터 롤 확장 — 부장 → 5종):
 - **배선**: play(시비멘트/게임오버 의견)·`/share`·`/doll` 인사기록·`/history`·OG 가 doll.role 로 분기(공유/기록은 라이브 doll join + 삭제 시 boss 폴백). 한국어 조사는 명사형(`noun`)+완성형(`targetObj`/`ctaSafe`/`ogLines`)으로 정확.
 - **브랜드 유지**: 앱명("부장님 패기")·홈·메타·login 은 부장 그대로. 갤러리 집합 카피만 "캐릭터"로 중립화.
 
+v0.18 (2026-06-22, 롤 후속 — 생성 시 롤 선택 + 감정선/포맷/조사):
+- **생성 시 롤 선택**: 사진 crop 후 `role-select` 단계(`components/generate/RoleSelectStage`, 5칩·boss 기본) → 고른 롤이 **fal 프롬프트(복장·표정·분위기, `flux-pulid` `ROLE_VISUALS`)** 와 `dolls.role` 에 반영. 강한 캐릭터화(chibi·plush·identity) 정책은 공통 고정, **복장/표정만 롤 차등**(임원=고급정장+포켓스퀘어, 팀장=노타이·소매 걷음, 거래처=정장+방문증, 동료=니트 가디건). 이미지=생성 시 롤 반영, 이후 갤러리 롤 변경=텍스트만(재생성 없음).
+- **데이터/배선**: `ai_generations.role`(migration 0018, default 'boss', CHECK 5롤). `/api/fal` role 추출·검증(미지 400)·저장·프롬프트 전달. `/api/doll` POST 는 `ai_generations.role` 을 **권위 소스**로 읽어 doll.role 저장(클라 신뢰 X). resume/"이어서" 복귀 시 `/api/generations` 가 role 반환 → `useGenerationPolling` 이 복구.
+- **감정선 전면 재정렬**: 4롤 `taunts`+`reactions` 를 boss 아크(0~4 고압 → 5 전환 → 6~9 점진 비굴)로 재작성 — tier5 이전엔 굴복 금지(기존엔 너무 빨리 비굴). 4롤 파일을 boss.ts 포맷(tier 1줄)으로 통일.
+- **조사/UX**: `josaEuro(word)`(받침 따라 으로/로) → "동료로 변경"(기존 "동료 으로" 오류 수정). 갤러리 롤 변경 중 **"변경 중…" 오버레이**(삭제 패턴 복제) — 탭/대기 구분.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 

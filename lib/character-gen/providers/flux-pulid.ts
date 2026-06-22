@@ -5,6 +5,7 @@ import {
   CharacterGenInput,
   CharacterProvider,
 } from "@/lib/character-gen/types";
+import type { RoleId } from "@/lib/roles";
 
 fal.config({ credentials: SERVER_ENV.FAL_KEY });
 
@@ -19,16 +20,58 @@ fal.config({ credentials: SERVER_ENV.FAL_KEY });
  * 생성이 82초·2분 걸려도 서버리스 함수를 붙잡지 않음.
  */
 
-// 캐릭터 묘사 — 의류 줄을 기준으로 head/tail 분리. 정장 "색"은 고정하지 않고
-// 후보마다 팔레트에서 주입(buildPrompt) → 색 베리에이션 확보. 의류 타입·컨셉은 고정.
-const CHARACTER_PROMPT_HEAD = [
-  "A full body chibi character of a Korean office boss,",
-  "standing front-facing pose, full body visible from head to feet,",
-  "round large head with chibi super-deformed proportions, short body and limbs,",
-].join(" ");
+// 롤별 묘사 — subject(직군)·attire(복장, 후보색 주입)·expression(표정/분위기).
+// 공통(chibi super-deformed, plush felt, 흰 배경, sharp focus, identity)은 head/tail 에 고정 →
+// 강한 캐릭터화 정책 유지. 복장/표정만 롤 색을 입힌다.
+const ROLE_VISUALS: Record<
+  RoleId,
+  { subject: string; attire: (suitColor: string) => string; expression: string }
+> = {
+  boss: {
+    subject: "Korean office boss",
+    attire: (c) =>
+      `a ${c} business suit jacket, dress shirt, necktie, dress trousers with belt, dress shoes`,
+    expression: "slightly grumpy stern facial expression, rosy cheeks,",
+  },
+  exec: {
+    subject: "senior Korean corporate executive",
+    attire: (c) =>
+      `a premium tailored ${c} suit jacket with a pocket square, crisp dress shirt, silk necktie, dress trousers, polished dress shoes`,
+    expression:
+      "composed smug confident facial expression, dignified air, rosy cheeks,",
+  },
+  teamlead: {
+    subject: "Korean team manager",
+    attire: (c) =>
+      `a ${c} business-casual blazer with no necktie, dress shirt with rolled-up sleeves, chinos, loafers`,
+    expression:
+      "earnest slightly weary facial expression, faint nervous smile, rosy cheeks,",
+  },
+  client: {
+    subject: "visiting Korean business client",
+    attire: (c) =>
+      `a formal ${c} business suit, dress shirt, necktie, a visitor lanyard badge around the neck, dress shoes`,
+    expression:
+      "cordial but demanding facial expression, polite yet pushy look, rosy cheeks,",
+  },
+  coworker: {
+    subject: "Korean office coworker",
+    attire: (c) =>
+      `a casual ${c} knit cardigan over a collared shirt, no suit jacket, chinos, clean sneakers`,
+    expression:
+      "friendly easygoing cheeky facial expression, casual grin, rosy cheeks,",
+  },
+};
+
+// 정장 "색"은 후보마다 팔레트에서 주입(buildPrompt) → 색 베리에이션. 직군/구도/스타일은 고정.
+const headFor = (subject: string) =>
+  [
+    `A full body chibi character of a ${subject},`,
+    "standing front-facing pose, full body visible from head to feet,",
+    "round large head with chibi super-deformed proportions, short body and limbs,",
+  ].join(" ");
 
 const CHARACTER_PROMPT_TAIL = [
-  "slightly grumpy stern facial expression, rosy cheeks,",
   "soft plush fabric doll material texture, felt-like surface,",
   "plain pure white background, no scene, no objects, no shadows on background,",
   // 화질 + focus 강제 — 균일한 sharpness, photoreal depth-of-field 효과 배제
@@ -63,7 +106,7 @@ const IDENTITY_INSTRUCTION = [
   "face roundness, skin tone, ethnicity, age appearance.",
   "The character face must be strongly and clearly recognizable as the SAME specific reference person,",
   "keeping their distinctive unique facial features and proportions intact,",
-  "reinterpreted in the plush chibi office boss style described above.",
+  "reinterpreted in the plush chibi office character style described above.",
 ].join(" ");
 
 // negative — 일반적인 화질 저하 + 이상한 focus 효과 명시 배제
@@ -91,11 +134,12 @@ export class FluxPulidProvider implements CharacterProvider {
       ? " Preserve the eyeglasses of the reference person."
       : "";
 
-    // 후보마다 다른 정장색 주입 → 색 베리에이션. 의류 타입·컨셉·identity 지시는 공통.
+    // 롤별 묘사(복장·표정) + 후보마다 다른 색 주입. chibi/plush/identity 지시는 공통.
+    const v = ROLE_VISUALS[input.role ?? "boss"];
+    const head = headFor(v.subject);
     const buildPrompt = (suitColor: string) =>
-      `${CHARACTER_PROMPT_HEAD} wearing a ${suitColor} business suit jacket, ` +
-      `dress shirt, necktie, dress trousers with belt, dress shoes,${eyewear} ` +
-      `${CHARACTER_PROMPT_TAIL} ${IDENTITY_INSTRUCTION}${idEyewear}` +
+      `${head} wearing ${v.attire(suitColor)},${eyewear} ` +
+      `${v.expression} ${CHARACTER_PROMPT_TAIL} ${IDENTITY_INSTRUCTION}${idEyewear}` +
       `${input.promptHints ? ` Additional: ${input.promptHints}.` : ""}`;
 
     // fal 큐에 num 건 제출(결과 대기 X) → request_id 들 반환.

@@ -8,7 +8,9 @@ import { AppNav } from "@/components/AppNav";
 import { UploadStage } from "@/components/generate/UploadStage";
 import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
+import { RoleSelectStage } from "@/components/generate/RoleSelectStage";
 import { getMyProfile } from "@/lib/profile";
+import { type RoleId } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
 import {
   useGenerationPolling,
@@ -25,6 +27,7 @@ function GeneratePageInner() {
   const [preview, setPreview] = useState<string | null>(null);
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [generationId, setGenerationId] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState<RoleId>("boss");
   const [error, setError] = useState<string | null>(null);
 
   // 폴링 대상 genId — resume(URL) 우선, fresh 는 state. 리로드 시 URL 이 살아있어 이어짐.
@@ -56,6 +59,7 @@ function GeneratePageInner() {
     setGenerationId,
     setStage,
     setError,
+    setSelectedRole,
   });
 
   useEffect(() => {
@@ -77,17 +81,18 @@ function GeneratePageInner() {
     const newPreview = URL.createObjectURL(blob);
     setPreview(newPreview);
     setFile(new File([blob], "cropped.jpg", { type: "image/jpeg" }));
-    // crop 끝나면 바로 생성 시작
-    void handleGenerate(new File([blob], "cropped.jpg", { type: "image/jpeg" }));
+    // crop 끝나면 롤 선택 단계로 (롤 확정 후 생성 — 고른 롤이 프롬프트·doll.role 에 반영)
+    setStage("role-select");
   };
 
-  const handleGenerate = async (uploadFile?: File) => {
+  const handleGenerate = async (uploadFile?: File, role: RoleId = selectedRole) => {
     const target = uploadFile ?? file;
     if (!target) return;
     setStage("generating");
     setError(null);
     const form = new FormData();
     form.append("image", target);
+    form.append("role", role);
     try {
       const res = await fetch("/api/fal", { method: "POST", body: form });
       if (!res.ok) {
@@ -131,7 +136,7 @@ function GeneratePageInner() {
       const res = await fetch("/api/doll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: img.url, generationId }),
+        body: JSON.stringify({ imageUrl: img.url, generationId, role: selectedRole }),
       });
       if (!res.ok) throw new Error("저장 실패");
       const { doll } = (await res.json()) as { doll: { id: string } };
@@ -157,6 +162,15 @@ function GeneratePageInner() {
           imageUrl={preview}
           onConfirm={handleCropConfirm}
           onCancel={() => setStage("upload")}
+        />
+      )}
+      {stage === "role-select" && (
+        <RoleSelectStage
+          initialRole={selectedRole}
+          onConfirm={(role) => {
+            setSelectedRole(role);
+            void handleGenerate(undefined, role);
+          }}
         />
       )}
       {stage === "generating" && (

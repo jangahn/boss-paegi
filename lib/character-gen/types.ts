@@ -1,3 +1,5 @@
+import type { RoleId } from "@/lib/roles";
+
 export type CharacterGenInput = {
   /** 사용자 얼굴 이미지 URL (Supabase signed URL — 짧은 TTL). identity 만 참고. */
   faceImageUrl: string;
@@ -9,6 +11,8 @@ export type CharacterGenInput = {
   numImages?: number;
   /** 입력 얼굴이 안경을 썼는지 — true 면 프롬프트에 안경 절 주입(조건부 반영) */
   wearsGlasses?: boolean;
+  /** 생성 시 선택한 롤 — 복장·표정·분위기 프롬프트 분기 (기본 boss) */
+  role?: RoleId;
 };
 
 export type GeneratedImage = {

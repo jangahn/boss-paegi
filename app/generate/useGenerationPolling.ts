@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import { ensureAuth } from "@/lib/auth-client";
 import { log, errInfo } from "@/lib/log";
+import { asRole, type RoleId } from "@/lib/roles";
 
 export type Stage =
   | "checking"
   | "consent"
   | "upload"
   | "crop"
+  | "role-select"
   | "generating"
   | "pick"
   | "saving"
@@ -16,9 +18,9 @@ export type Stage =
 
 export type GeneratedImage = { url: string; width: number; height: number };
 
-type PendingRow = { id: string; kind: string; candidateUrls: string[] };
+type PendingRow = { id: string; kind: string; candidateUrls: string[]; role?: string };
 type PollResult =
-  | { status: "ready"; urls: string[] }
+  | { status: "ready"; urls: string[]; role: RoleId }
   | { status: "interrupted" }
   | { status: "unauthorized" }
   | { status: "timeout" };
@@ -57,7 +59,7 @@ async function pollGeneration(
         const { pending } = (await res.json()) as { pending: PendingRow[] };
         const g = pending.find((p) => p.id === genId);
         if (g?.kind === "ready" && g.candidateUrls.length > 0) {
-          return { status: "ready", urls: g.candidateUrls };
+          return { status: "ready", urls: g.candidateUrls, role: asRole(g.role) };
         }
         if (g?.kind === "interrupted") return { status: "interrupted" };
         // generating / 아직 목록에 없음 → 계속 폴링
@@ -87,9 +89,18 @@ export function useGenerationPolling(opts: {
   setGenerationId: (id: string) => void;
   setStage: (s: Stage) => void;
   setError: (e: string) => void;
+  /** resume/복귀 시 생성에 기록된 롤 복구 → pick 후 doll.role 정합 */
+  setSelectedRole: (r: RoleId) => void;
 }): void {
-  const { activeGenId, stage, setResults, setGenerationId, setStage, setError } =
-    opts;
+  const {
+    activeGenId,
+    stage,
+    setResults,
+    setGenerationId,
+    setStage,
+    setError,
+    setSelectedRole,
+  } = opts;
 
   // 폴링 동시 실행 방지 — 한 번에 루프 하나만 (StrictMode 더블 + URL 동기화 재트리거
   // + 포그라운드 복귀 합쳐도). 현재 실행의 취소 토큰은 cleanup 이 그 실행만 무효화.
@@ -109,6 +120,7 @@ export function useGenerationPolling(opts: {
         if (result.status === "ready") {
           setResults(result.urls.map((url) => ({ url, width: 512, height: 512 })));
           setGenerationId(genId);
+          setSelectedRole(result.role); // 복귀/이어서 시 고른 롤 복구
           setStage("pick");
         } else if (result.status === "interrupted") {
           setError("이어할 생성이 중단됐어요. 다시 만들어주세요.");
@@ -134,7 +146,7 @@ export function useGenerationPolling(opts: {
         }
       }
     },
-    [setResults, setGenerationId, setStage, setError]
+    [setResults, setGenerationId, setStage, setError, setSelectedRole]
   );
 
   // activeGenId 가 있고 생성중 단계면 폴링 시작. cleanup 은 현재 실행만 취소 + 플래그 해제

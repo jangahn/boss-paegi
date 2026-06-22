@@ -63,4 +63,6 @@ export type PendingGeneration = {
   kind: "generating" | "ready" | "interrupted";
   candidateUrls: string[];
   createdAt: string;
+  /** 생성 시 선택한 롤 — resume/이어서 시 doll.role 복구용 (없으면 boss) */
+  role?: string;
 };

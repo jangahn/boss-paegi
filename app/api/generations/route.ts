@@ -54,10 +54,10 @@ export async function GET() {
   // migration 0006(fal_request_ids) 미적용 환경이면 컬럼 없이 재조회 (복구만 비활성)
   let rows: Record<string, unknown>[];
   const sel = await baseQuery(
-    "id, status, candidate_urls, created_at, fal_request_ids"
+    "id, status, candidate_urls, created_at, role, fal_request_ids"
   );
   if (sel.error && sel.error.message.includes("fal_request_ids")) {
-    const fb = await baseQuery("id, status, candidate_urls, created_at");
+    const fb = await baseQuery("id, status, candidate_urls, created_at, role");
     rows = (fb.data as Record<string, unknown>[] | null) ?? [];
   } else {
     rows = (sel.data as Record<string, unknown>[] | null) ?? [];
@@ -191,8 +191,13 @@ export async function GET() {
   };
 
   // 행별 복구를 병렬로 — 직렬이면 worst ~25s, 병렬이면 가장 느린 1건(~5s). 순서 보존.
+  // handleRow 는 role 을 안 채우므로, 순서 보존되는 rows[i] 에서 role 을 덧붙인다(resume 복구용).
   const settled = await Promise.all(rows.map(handleRow));
-  const pending = settled.filter((p): p is PendingGeneration => p !== null);
+  const pending = settled
+    .map((p, i): (PendingGeneration & { role?: string }) | null =>
+      p ? { ...p, role: (rows[i].role as string | undefined) ?? undefined } : null
+    )
+    .filter((p): p is PendingGeneration & { role?: string } => p !== null);
 
   if (pending.length > 0) {
     log.info("gen.recover_list", {

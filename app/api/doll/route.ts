@@ -11,7 +11,7 @@ import {
 } from "@/lib/generation";
 import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
 import { log, errInfo, urlHost } from "@/lib/log";
-import { isRoleId } from "@/lib/roles";
+import { asRole, isRoleId, type RoleId } from "@/lib/roles";
 
 export const runtime = "nodejs";
 // 누끼(birefnet ~2s) + fetch/normalize/upload/insert. 30s 면 충분.
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     imageUrl?: string;
     styleMeta?: Record<string, unknown>;
     generationId?: string;
+    role?: string;
   } | null;
   if (!body?.imageUrl) {
     return NextResponse.json({ error: "imageUrl_required" }, { status: 400 });
@@ -103,6 +104,21 @@ export async function POST(req: NextRequest) {
   const path = `${user.id}/${dollId}.png`;
 
   const admin = createAdminClient();
+
+  // 생성 시 고른 롤 — ai_generations 가 권위(클라 body 는 폴백). 미지/없음은 boss.
+  let dollRole: RoleId = "boss";
+  if (genId) {
+    const { data: genRole } = await admin
+      .from("ai_generations")
+      .select("role")
+      .eq("id", genId)
+      .eq("owner_id", user.id)
+      .single();
+    dollRole = asRole(genRole?.role);
+  } else if (isRoleId(body.role)) {
+    dollRole = body.role;
+  }
+
   const { error: uploadError } = await admin.storage
     .from(BUCKET)
     .upload(path, normalized, { contentType: "image/png", upsert: false });
@@ -128,6 +144,7 @@ export async function POST(req: NextRequest) {
       owner_id: user.id,
       image_url: publicUrl,
       style_meta: body.styleMeta ?? {},
+      role: dollRole,
     })
     .select()
     .single();
