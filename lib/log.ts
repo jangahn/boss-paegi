@@ -56,7 +56,10 @@ export const log = {
 
 /**
  * 알 수 없는 에러를 로그용 컨텍스트로 안전 변환.
- * Error 의 name/message/stack(앞 4줄) + fal SDK 에러의 status/body 까지 추출.
+ * - Error: name/message/stack(앞 4줄) + fal SDK 에러의 status/body + code 추출.
+ * - 비-Error 객체: Supabase/PostgREST 는 throwOnError 미사용 시 에러를 Error 가 아닌
+ *   평범한 객체({message, code, details, hint})로 반환한다. 이때 String(e) 하면
+ *   "[object Object]" 가 되어 원인이 통째로 유실되므로, 알려진 에러 필드를 직접 추출한다.
  */
 export function errInfo(e: unknown): LogContext {
   if (e instanceof Error) {
@@ -64,10 +67,26 @@ export function errInfo(e: unknown): LogContext {
     if (e.stack) ctx.errStack = e.stack.split("\n").slice(0, 4).join(" | ");
     const any = e as unknown as Record<string, unknown>;
     if (any.status !== undefined) ctx.errStatus = any.status;
+    if (any.code !== undefined) ctx.errCode = any.code;
     if (any.body !== undefined) {
       ctx.errBody = scrubSecrets(safeStringify(any.body)).slice(0, 500);
     }
     ctx.errMessage = scrubSecrets(e.message);
+    return ctx;
+  }
+  // 비-Error 객체(Supabase/PostgREST/OAuth 에러 등): 필드를 직접 꺼내 message 유실 방지.
+  if (e !== null && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const ctx: LogContext = {};
+    const msg = o.message ?? o.error_description ?? o.error ?? o.msg;
+    ctx.errMessage = scrubSecrets(
+      typeof msg === "string" ? msg : safeStringify(e).slice(0, 500),
+    );
+    if (typeof o.name === "string") ctx.errName = o.name;
+    if (o.code !== undefined) ctx.errCode = o.code;
+    if (o.status !== undefined) ctx.errStatus = o.status;
+    if (typeof o.details === "string") ctx.errDetails = scrubSecrets(o.details).slice(0, 500);
+    if (typeof o.hint === "string") ctx.errHint = o.hint;
     return ctx;
   }
   return { errMessage: scrubSecrets(String(e)) };
