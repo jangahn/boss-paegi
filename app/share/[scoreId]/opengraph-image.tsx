@@ -5,8 +5,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
-import { matchPersona } from "@/lib/persona";
-import type { GameplayStats } from "@/lib/stats";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -53,19 +51,14 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url, role), score_highlights(highlight_delta, highlight_status, highlight_deleted_at, highlight_expires_at), score_stats(gameplay_stats, percentile)"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url, role), score_stats(percentile)"
     )
     .eq("id", scoreId)
     .single();
   // 조회 실패해도 기본 카드로 fallback — 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
   if (error) log.warn("og.score_query_fail", { scoreId, ...errInfo(error) });
 
-  // highlight 는 score_highlights(1:1) → flatten 해 기존 render 로직 재사용.
-  const rawHl = (data as Record<string, unknown> | null)?.score_highlights;
-  const hlRow = Array.isArray(rawHl) ? rawHl[0] ?? null : rawHl ?? null;
-  const s = (data
-    ? { ...data, ...((hlRow as Record<string, unknown>) ?? {}) }
-    : null) as
+  const s = data as
     | {
         id: string;
         score: number;
@@ -73,26 +66,12 @@ export default async function OgImage({
         created_at: string;
         profiles: { display_name: string } | null;
         dolls: { image_url: string | null; role: string | null } | null;
-        highlight_delta: number | null;
-        highlight_status: string | null;
-        highlight_deleted_at: string | null;
-        highlight_expires_at: string | null;
       }
     | null;
-  // 급상승 폭 — clip(attached) 또는 card, 삭제/만료 안 됐을 때만 표시.
-  const hlLive =
-    !!s &&
-    (s.highlight_status === "attached" || s.highlight_status === "card") &&
-    !s.highlight_deleted_at &&
-    !(s.highlight_expires_at && new Date(s.highlight_expires_at) <= new Date());
-  const hlDelta = hlLive ? s!.highlight_delta : null;
 
-  // 페르소나 — score_stats(1:1) 의 gameplay_stats 에서 재계산(저장된 raw 기준 결정적).
+  // 상위 % — score_stats(1:1).
   const rawStats = (data as Record<string, unknown> | null)?.score_stats;
   const statsRow = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
-  const gameplayStats =
-    (statsRow as { gameplay_stats?: GameplayStats } | null)?.gameplay_stats ?? null;
-  const persona = gameplayStats ? matchPersona(gameplayStats) : null;
   const percentile =
     (statsRow as { percentile?: number } | null)?.percentile ?? null;
 
@@ -203,7 +182,7 @@ export default async function OgImage({
                 <div
                   style={{
                     display: "flex",
-                    fontSize: 90,
+                    fontSize: 76,
                     fontWeight: 900,
                     lineHeight: 1,
                     letterSpacing: "-0.04em",
@@ -212,21 +191,8 @@ export default async function OgImage({
                 >
                   {score}
                 </div>
-                <div style={{ display: "flex", fontSize: 30, color: "#71717a", whiteSpace: "nowrap" }}>점</div>
+                <div style={{ display: "flex", fontSize: 28, color: "#71717a", whiteSpace: "nowrap" }}>점</div>
               </div>
-              {persona ? (
-                <div
-                  style={{
-                    display: "flex",
-                    fontSize: 32,
-                    fontWeight: 800,
-                    color: "#b45309",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {persona.emoji} {persona.label}
-                </div>
-              ) : null}
               {percentile != null ? (
                 <div
                   style={{
@@ -255,20 +221,6 @@ export default async function OgImage({
                   · {s ? weaponLabel(s.weapon) : ""}
                 </div>
               </div>
-              {hlDelta ? (
-                <div
-                  style={{
-                    display: "flex",
-                    fontSize: 24,
-                    fontWeight: 800,
-                    color: "#dc2626",
-                    marginTop: 2,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  🔥 점수 급상승 +{hlDelta.toLocaleString()}점
-                </div>
-              ) : null}
               <div
                 style={{
                   display: "flex",
