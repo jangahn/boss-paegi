@@ -155,6 +155,17 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(sec / 60)}분 ${sec % 60}초`;
 }
 
+/** ISO 시각 → "방금/N분 전/N시간 전/N일 전" 상대 표기 (목록·랭킹 공용). */
+export function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  return `${Math.floor(hr / 24)}일 전`;
+}
+
 /** 보고서 문서번호 — 공유 링크마다 고정 (scoreId 앞 8자) */
 export function reportNo(scoreId: string, createdAt: string | Date): string {
   const d = new Date(createdAt);

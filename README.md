@@ -39,7 +39,8 @@ boss-paegi/
 │   ├── generate/           #   인형 생성 플로우 (회원 전용)
 │   ├── play/               #   게임 화면 (PixiJS 마운트)
 │   ├── gallery/            #   내 인형 갤러리 (회원 전용)
-│   ├── leaderboard/        #   랭킹 (프로필 아바타 표시)
+│   ├── leaderboard/        #   랭킹 (프로필 아바타 표시 → 행 클릭 시 기록 페이지)
+│   ├── history/[userId]/   #   지난 게임 기록 목록·상세 (본인/타인 공용, 공개)
 │   ├── layout.tsx
 │   └── page.tsx            #   랜딩
 ├── game/                   # PixiJS 게임 로직 (React 와 분리)
@@ -58,7 +59,8 @@ boss-paegi/
 │   ├── policy.ts           #   동의 문구 / 면책 상수
 │   ├── log.ts              #   구조화 JSON 로깅 (console + Sentry 브릿지 / 토큰 스크럽)
 │   ├── sentry-bridge.ts    #   로그 이벤트 → Sentry (error/warn=issue, info=breadcrumb)
-│   └── share.ts            #   Web Share / OG helper
+│   ├── share.ts            #   Web Share / OG helper
+│   └── score-detail.ts     #   한 게임 상세 fetch (share·history 공용, server-only)
 ├── components/             # React UI
 ├── store/                  # Zustand stores
 ├── supabase/migrations/    # SQL 마이그레이션
@@ -272,6 +274,15 @@ v0.15 (2026-06-21, 뱃지 통합 후속 — 4 PR; 마이그레이션 없음):
 - **수집 페이지**(PR3): `app/badges/page.tsx`(클라 self-RLS) — 프로필 메뉴 **"🏅 내 뱃지"** 진입(`AccountMenu`, 익명/회원 공통). 패밀리별 섹션(획득=이모지+임계라벨, **미획득=🔒/"?"** 조건 숨김), 상단 "N/50 수집"·섹션 k/n. 카운트는 known id 만(고아 제외). `proxy.ts` MEMBER_ONLY 미포함=공개.
 - **인게임 뱃지 통합**(PR4): MissionHud/useGameMilestones 폐기 → **`components/play/BadgeChallenge`**(🏅 도전 과제 — 패밀리별 1개씩 획득 임박 3슬롯·진행바) + **`app/play/useBadgeChallenge`**(`lib/badges` 단일 소스 구동: store.subscribe 로 라이브 진행도, **뱃지 실제 획득 순간 "「○○」 획득!" 토스트 + ✅ 핀 1.2s → 다음 임박 리필**). 성능: setState 는 슬롯·진행률(floor%)·✅ 변동 시에만, 별도 interval 없음. **"분석/기록" 표현 → "도전 과제/획득"** 리네임. HUD 를 SpeechBubble 아래(top-28%)로 — **iPhone SE 말풍선 비가림**. 뱃지 4 PR 완료(궁극기제외→카탈로그50→수집페이지→인게임).
 - **뱃지 튜닝**(후속): 캡 **30분/500만점**(`score-limits` MAX_DURATION_MS/MAX_SCORE_HARD — DB check 1h/10M 보다 타이트, 마이그레이션 불요). 카탈로그 **60개**로 — 점수 1,000~1,000,000(10), 궁극기 1~50회(10), 플레이타임 1~20분(10), **타격 150~30,000(10 — 콤보값과 비겹침·콤보보다 큼)**; 콤보(100~10,000)/무기(2~9)/맵(2~6) 현행. 종료화면 CTA 에 "🏅 내 뱃지"(/badges) 랜딩. BadgeChallenge HUD **컴팩트**(폭 88px·숫자 제거 progress bar 만 → 원래 면적 ~30%, 소형 폰서 캐릭터 비가림).
+
+v0.16 (2026-06-22, 게임 기록 보기 — 본인/타인 회고):
+- **지난 게임 기록** (`/history/[userId]` 목록 + `/history/[userId]/[scoreId]` 상세): 우상단 프로필 메뉴 "내 기록" / 랭킹 행 클릭으로 진입. 본인·타인 **같은 컴포넌트**(경로 키=userId, self/other 분기 없음, 헤더는 항상 "{닉}님의 기록"). scores/score_stats/profiles public-read 기반 공개 — 신규 PII·DB 변경 없음(목록 인덱스 `scores(owner_id, created_at desc)` 는 0001 기존).
+- **목록**: 10개씩 페이징(server component, `?page=` SSR · `.range()`+`count:'exact'`). 행 = 등급·주력무기·콤보·소요시간·상대시간 + 점수. 빈 상태/페이지 경계 처리.
+- **상세**: "기록 회고" 역할 — 종료화면(즉시 축하)·`/share`(바이럴 자랑)와 분리. 보고서 카드 **축약판**(문서번호·인형·점수·상위%·콤보·총타격·주력무기·소요시간·등급·페르소나·획득뱃지). **부장님 멘트·OG·하이라이트 임베드는 제외**(역할 분리). `score.owner_id !== userId` 면 404(URL 변조 방지).
+- **공용 추출**: `/share` 의 fetch/flatten/highlight 헬퍼를 **`lib/score-detail.ts`**(server-only, owner_id 포함, nested select 객체/배열 방어)로 추출해 상세와 공용. `timeAgo` 를 `lib/report` 공용화(leaderboard 중복 제거).
+- **보고서 공유 통합** (`components/ShareReportButton`): 게임 직후·이전 기록 상세 **둘 다** Web Share API(`lib/share` `shareGameResult`, URL primary→clipboard 폴백)로 `/share/[scoreId]` 링크 공유 → 수신자는 `/share` 랜딩. 상세의 하이라이트-전용 "보기" 링크를 **항상 노출되는 공유 버튼**으로 대체(라벨만 하이라이트 유무로 "🔥 하이라이트 공유"/"결과 보고서 공유"). 모든 게임이 공유 가능.
+- **메뉴 위계 평탄화 + 순서**: "내 뱃지"·"내 기록" 이모지(🏅)·볼드 제거(다른 메뉴와 동일 위계), 게임종료화면 하단 "내 뱃지" 링크도 평탄화. **비로그인 시 "로그인 / 회원가입"을 메뉴 최상단**으로. 인게임 뱃지 HUD/토스트·결과 뱃지칩은 유지.
+- **dev/preview 영구 설정**: `npm run dev` 가 nvm v22 를 자동 선택(`PATH` prepend)하고 `--hostname 0.0.0.0` 로 바인딩 → 시스템 기본 node 와 무관하게 항상 기동 + **같은 WiFi 폰에서 `http://<맥 LAN IP>:3000` 접속**(next.config `allowedDevOrigins` 192.168.* 등 허용).
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).

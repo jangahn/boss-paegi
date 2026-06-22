@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { HighlightPlayer } from "@/components/HighlightPlayer";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
@@ -14,107 +13,13 @@ import {
   weaponLabel,
 } from "@/lib/report";
 import { matchPersona } from "@/lib/persona";
-import type { GameplayStats } from "@/lib/stats";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
-
-type Score = {
-  id: string;
-  score: number;
-  weapon: string;
-  duration_ms: number;
-  max_combo: number | null;
-  created_at: string;
-  profiles: { display_name: string } | null;
-  dolls: { image_url: string | null } | null;
-  highlight_clip_path: string | null;
-  highlight_status: string | null;
-  highlight_delta: number | null;
-  highlight_window_ms: number | null;
-  highlight_deleted_at: string | null;
-  highlight_expires_at: string | null;
-  /** 플레이 해석 스탯 (score_stats 1:1) — 페르소나 렌더용 */
-  gameplay_stats: GameplayStats | null;
-  /** 이번 판 획득 뱃지 스냅샷 */
-  badge_ids: string[] | null;
-  /** 플레이 당시 전체 상위 N% */
-  percentile: number | null;
-};
-
-const HL_COLS =
-  "highlight_clip_path, highlight_status, highlight_delta, highlight_window_ms, highlight_deleted_at, highlight_expires_at";
-
-/** 삭제/만료 안 됐는지 (clip·card 공통). */
-function highlightLive(s: Score): boolean {
-  if (s.highlight_deleted_at) return false;
-  if (s.highlight_expires_at && new Date(s.highlight_expires_at) <= new Date())
-    return false;
-  return true;
-}
-
-/** attach 됐고 삭제/만료 안 된 클립이면 public CDN URL, 아니면 null. */
-function clipPublicUrl(s: Score): string | null {
-  if (s.highlight_status !== "attached" || !s.highlight_clip_path) return null;
-  if (!highlightLive(s)) return null;
-  return `${PUBLIC_ENV.SUPABASE_URL}/storage/v1/object/public/highlights/${s.highlight_clip_path}`;
-}
-
-/** 급상승 stat — clip(attached) 또는 card 둘 다, 삭제/만료 X. */
-function highlightDelta(s: Score): number | null {
-  if (s.highlight_status !== "attached" && s.highlight_status !== "card") return null;
-  if (!highlightLive(s)) return null;
-  return s.highlight_delta;
-}
-
-/** highlight(score_highlights)·stats(score_stats) 1:1 → score 객체로 flatten 해 기존 helper 재사용. */
-function flattenScore(row: Record<string, unknown>): Score {
-  const rawHl = row.score_highlights;
-  const hl = Array.isArray(rawHl) ? rawHl[0] ?? null : rawHl ?? null;
-  const rawStats = row.score_stats;
-  const stats = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
-  const st = stats as
-    | { gameplay_stats?: GameplayStats; badge_ids?: string[]; percentile?: number }
-    | null;
-  const { score_highlights: _h, score_stats: _s, ...rest } = row;
-  void _h;
-  void _s;
-  return {
-    ...rest,
-    ...((hl as Record<string, unknown>) ?? {}),
-    gameplay_stats: st?.gameplay_stats ?? null,
-    badge_ids: st?.badge_ids ?? null,
-    percentile: st?.percentile ?? null,
-  } as unknown as Score;
-}
-
-async function fetchScore(scoreId: string): Promise<Score | null> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("scores")
-    .select(
-      `id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
-    )
-    .eq("id", scoreId)
-    .single();
-  if (data) return flattenScore(data as Record<string, unknown>);
-  // migration 0003 미적용 fallback (highlight 없이)
-  const { data: legacy } = await admin
-    .from("scores")
-    .select(
-      "id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(image_url)"
-    )
-    .eq("id", scoreId)
-    .single();
-  return legacy
-    ? ({
-        ...legacy,
-        max_combo: null,
-        gameplay_stats: null,
-        badge_ids: null,
-        percentile: null,
-      } as unknown as Score)
-    : null;
-}
+import {
+  fetchScoreDetail,
+  clipPublicUrl,
+  highlightDelta,
+} from "@/lib/score-detail";
 
 export async function generateMetadata({
   params,
@@ -122,7 +27,7 @@ export async function generateMetadata({
   params: Promise<{ scoreId: string }>;
 }): Promise<Metadata> {
   const { scoreId } = await params;
-  const score = await fetchScore(scoreId);
+  const score = await fetchScoreDetail(scoreId);
   if (!score) {
     return { title: SERVICE_NAME };
   }
@@ -156,7 +61,7 @@ export default async function SharePage({
   params: Promise<{ scoreId: string }>;
 }) {
   const { scoreId } = await params;
-  const score = await fetchScore(scoreId);
+  const score = await fetchScoreDetail(scoreId);
   if (!score) notFound();
 
   const name = score.profiles?.display_name ?? "익명";

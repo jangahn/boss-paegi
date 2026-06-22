@@ -220,9 +220,9 @@ export function GameOverModal({
             </button>
             <Link
               href="/badges"
-              className="font-semibold text-amber-300 underline-offset-4 hover:underline"
+              className="underline-offset-4 hover:underline"
             >
-              🏅 내 뱃지
+              내 뱃지
             </Link>
             <Link href="/gallery" className="underline-offset-4 hover:underline">
               갤러리

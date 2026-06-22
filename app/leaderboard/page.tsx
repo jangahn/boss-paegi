@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppNav } from "@/components/AppNav";
+import { timeAgo } from "@/lib/report";
 
 type Period = "daily" | "weekly";
 
@@ -76,28 +77,30 @@ export default function LeaderboardPage() {
           ) : (
             <ol className="space-y-2">
               {rows.map((r, i) => (
-                <li
-                  key={r.id}
-                  className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3"
-                >
-                  <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
-                    {i + 1}
-                  </span>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={r.avatar_url ?? DEFAULT_AVATAR}
-                    alt=""
-                    className="h-9 w-9 shrink-0 rounded-full border border-foreground/10 object-cover"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate font-medium">
-                      {r.display_name ?? "익명"}
+                <li key={r.id}>
+                  <Link
+                    href={`/history/${r.owner_id}`}
+                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3 transition hover:bg-foreground/10"
+                  >
+                    <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
+                      {i + 1}
+                    </span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={r.avatar_url ?? DEFAULT_AVATAR}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded-full border border-foreground/10 object-cover"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate font-medium">
+                        {r.display_name ?? "익명"}
+                      </div>
+                      <div className="text-xs text-zinc-500">{timeAgo(r.created_at)}</div>
                     </div>
-                    <div className="text-xs text-zinc-500">{timeAgo(r.created_at)}</div>
-                  </div>
-                  <div className="text-xl font-extrabold tabular-nums">
-                    {r.score.toLocaleString()}
-                  </div>
+                    <div className="text-xl font-extrabold tabular-nums">
+                      {r.score.toLocaleString()}
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ol>
@@ -156,14 +159,4 @@ function rankColor(i: number) {
   if (i === 1) return "text-zinc-300";
   if (i === 2) return "text-orange-400";
   return "text-zinc-500";
-}
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "방금";
-  if (min < 60) return `${min}분 전`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}시간 전`;
-  return `${Math.floor(hr / 24)}일 전`;
 }

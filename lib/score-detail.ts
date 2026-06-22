@@ -1,0 +1,123 @@
+import "server-only";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { PUBLIC_ENV } from "@/lib/env";
+import type { GameplayStats } from "@/lib/stats";
+
+/**
+ * 한 게임 결과 상세 — `/share/[scoreId]` 와 `/history/[userId]/[scoreId]` 공용.
+ *
+ * scores + 1:1 score_highlights/score_stats + profiles/dolls join 을 flatten 해
+ * 기존 report helper 들이 바로 쓰도록 한다. createAdminClient(서비스 롤) 사용 →
+ * **이 모듈은 server-only** (클라 컴포넌트에서 import 금지).
+ *
+ * `owner_id` 를 항상 포함한다 — 기록 상세에서 URL(userId) 정합 검증(변조 방지)용.
+ */
+export type Score = {
+  id: string;
+  owner_id: string;
+  score: number;
+  weapon: string;
+  duration_ms: number;
+  max_combo: number | null;
+  created_at: string;
+  profiles: { display_name: string } | null;
+  dolls: { image_url: string | null } | null;
+  highlight_clip_path: string | null;
+  highlight_status: string | null;
+  highlight_delta: number | null;
+  highlight_window_ms: number | null;
+  highlight_deleted_at: string | null;
+  highlight_expires_at: string | null;
+  /** 플레이 해석 스탯 (score_stats 1:1) — 페르소나/총타격 렌더용 */
+  gameplay_stats: GameplayStats | null;
+  /** 이번 판 획득 뱃지 스냅샷 */
+  badge_ids: string[] | null;
+  /** 플레이 당시 전체 상위 N% */
+  percentile: number | null;
+};
+
+const HL_COLS =
+  "highlight_clip_path, highlight_status, highlight_delta, highlight_window_ms, highlight_deleted_at, highlight_expires_at";
+
+/** 삭제/만료 안 됐는지 (clip·card 공통). */
+export function highlightLive(s: Score): boolean {
+  if (s.highlight_deleted_at) return false;
+  if (s.highlight_expires_at && new Date(s.highlight_expires_at) <= new Date())
+    return false;
+  return true;
+}
+
+/** attach 됐고 삭제/만료 안 된 클립이면 public CDN URL, 아니면 null. */
+export function clipPublicUrl(s: Score): string | null {
+  if (s.highlight_status !== "attached" || !s.highlight_clip_path) return null;
+  if (!highlightLive(s)) return null;
+  return `${PUBLIC_ENV.SUPABASE_URL}/storage/v1/object/public/highlights/${s.highlight_clip_path}`;
+}
+
+/** 급상승 stat — clip(attached) 또는 card 둘 다, 삭제/만료 X. */
+export function highlightDelta(s: Score): number | null {
+  if (s.highlight_status !== "attached" && s.highlight_status !== "card") return null;
+  if (!highlightLive(s)) return null;
+  return s.highlight_delta;
+}
+
+/** clip·card 무관하게 '살아있는 하이라이트가 있나' — 기록상세의 /share 링크 노출 판정. */
+export function hasLiveHighlight(s: Score): boolean {
+  if (s.highlight_status !== "attached" && s.highlight_status !== "card") return false;
+  return highlightLive(s);
+}
+
+/**
+ * highlight(score_highlights)·stats(score_stats) 1:1 → score 객체로 flatten.
+ * nested select 결과는 객체/배열이 섞여 올 수 있어 방어적으로 1행만 추출한다.
+ */
+function flattenScore(row: Record<string, unknown>): Score {
+  const rawHl = row.score_highlights;
+  const hl = Array.isArray(rawHl) ? rawHl[0] ?? null : rawHl ?? null;
+  const rawStats = row.score_stats;
+  const stats = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
+  const st = stats as
+    | { gameplay_stats?: GameplayStats; badge_ids?: string[]; percentile?: number }
+    | null;
+  const { score_highlights: _h, score_stats: _s, ...rest } = row;
+  void _h;
+  void _s;
+  return {
+    ...rest,
+    ...((hl as Record<string, unknown>) ?? {}),
+    gameplay_stats: st?.gameplay_stats ?? null,
+    badge_ids: st?.badge_ids ?? null,
+    percentile: st?.percentile ?? null,
+  } as unknown as Score;
+}
+
+/** scoreId → 상세 Score (join + 구 스키마 fallback). null = 없음. */
+export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("scores")
+    .select(
+      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
+    )
+    .eq("id", scoreId)
+    .single();
+  if (data) return flattenScore(data as Record<string, unknown>);
+  // 구 스키마(migration 미적용) fallback — highlight/stats 없이.
+  const { data: legacy } = await admin
+    .from("scores")
+    .select(
+      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(image_url)"
+    )
+    .eq("id", scoreId)
+    .single();
+  return legacy
+    ? ({
+        ...legacy,
+        max_combo: null,
+        gameplay_stats: null,
+        badge_ids: null,
+        percentile: null,
+      } as unknown as Score)
+    : null;
+}

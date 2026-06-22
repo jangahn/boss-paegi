@@ -89,10 +89,11 @@ export async function saveCardHighlight(
 
 export async function shareGameResult(
   scoreId: string,
-  score: number
+  score: number,
+  opts?: { text?: string }
 ): Promise<ShareResult> {
   const url = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}`;
-  const text = `부장님 ${score.toLocaleString()}점 패고 옴 🥊`;
+  const text = opts?.text ?? `부장님 ${score.toLocaleString()}점 패고 옴 🥊`;
   const title = "부장님 패기";
 
   if (typeof navigator !== "undefined" && "share" in navigator) {

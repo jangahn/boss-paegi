@@ -106,6 +106,16 @@ export function AccountMenu() {
           role="menu"
           className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 bg-background py-1 shadow-xl"
         >
+          {!isMember && (
+            <Link
+              href="/login"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-foreground/5"
+            >
+              로그인 / 회원가입
+            </Link>
+          )}
           {isMember && profile.genCredits !== null && (
             <div className="border-b border-foreground/10 px-4 py-2.5 text-sm text-zinc-500">
               생성권{" "}
@@ -118,20 +128,18 @@ export function AccountMenu() {
             href="/badges"
             role="menuitem"
             onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-foreground/5"
+            className="block px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5"
           >
-            🏅 내 뱃지
+            내 뱃지
           </Link>
-          {!isMember && (
-            <Link
-              href="/login"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-foreground/5"
-            >
-              로그인 / 회원가입
-            </Link>
-          )}
+          <Link
+            href={`/history/${profile.id}`}
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5"
+          >
+            내 기록
+          </Link>
           <MenuItem
             onClick={() => {
               setEditingNick(true);
