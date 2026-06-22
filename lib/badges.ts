@@ -82,8 +82,9 @@ const FAMILIES: Family[] = [
     key: "time",
     name: "플레이",
     emoji: "⏱️",
-    tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], // 분 단위 — 체크리스트 cur/goal 깔끔하게(ms 아님)
-    value: (s) => Math.floor(s.durationMs / 60000),
+    tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], // 분 단위 (threshold·뱃지 id)
+    // 분수 분 — 진행바가 분 단위로 끊기지 않고 연속 충전. floor 든 아니든 획득 시점(분 도달)은 동일.
+    value: (s) => s.durationMs / 60000,
     label: (t) => `${t}분`,
     desc: (t) => `${t}분 이상 플레이`,
   },
