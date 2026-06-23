@@ -30,6 +30,7 @@ const name = (e: Embed): string | null => {
 export async function getLedger(opts: {
   page?: number;
   actionType?: LedgerActionType | null;
+  targetUserId?: string | null;
 }): Promise<LedgerPage> {
   const page = Math.max(1, opts.page ?? 1);
   const from = (page - 1) * LEDGER_PAGE_SIZE;
@@ -41,6 +42,7 @@ export async function getLedger(opts: {
     .select(LEDGER_SELECT, { count: "exact" })
     .order("created_at", { ascending: false });
   if (opts.actionType) qb = qb.eq("action_type", opts.actionType);
+  if (opts.targetUserId) qb = qb.eq("target_user_id", opts.targetUserId);
 
   const { data, count, error } = await qb.range(from, to);
   if (error) {

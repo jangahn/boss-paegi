@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/admin", label: "대시보드" },
   { href: "/admin/orders", label: "주문" },
+  { href: "/admin/users", label: "회원" },
   { href: "/admin/ledger", label: "처리내역" },
 ];
 

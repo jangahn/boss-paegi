@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
+import Link from "next/link";
 import { getAdminFunnel, getOrderSummary, getStalePending } from "@/lib/admin-data";
 import { StalePendingTable } from "@/components/admin/StalePendingTable";
-import { CreditAdjustForm } from "@/components/admin/CreditAdjustForm";
 
 // 관리자 대시보드는 매출/운영 실시간이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -78,11 +78,14 @@ export default async function AdminPage() {
             <StalePendingTable rows={stale} />
           </section>
 
-        {/* CS 크레딧 조정 (유저 상세 통합 전까지 유지 — PR5 에서 이전) */}
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-zinc-500">CS 크레딧 조정</h2>
-          <CreditAdjustForm />
-        </section>
+        {/* CS 크레딧 조정은 회원 검색 → 유저 상세로 이전됨 */}
+        <p className="text-xs text-zinc-500">
+          CS 크레딧 조정·환불은{" "}
+          <Link href="/admin/users" className="text-sky-600 underline">
+            회원 관리
+          </Link>
+          에서 유저를 찾아 진행하세요.
+        </p>
       </div>
     </main>
   );

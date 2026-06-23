@@ -59,3 +59,31 @@ export type LedgerPage = {
   page: number;
   pageSize: number;
 };
+
+// ── 유저 상세 ──
+export type MemberInfo = {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  genCredits: number;
+  memberSince: string;
+  isAdmin: boolean;
+};
+
+export type GenerationRow = {
+  id: string;
+  status: string;
+  role: string;
+  picked_doll_id: string | null;
+  created_at: string;
+  candidate_count: number;
+};
+
+export type DollRow = {
+  id: string;
+  image_url: string;
+  role: string;
+  created_at: string;
+};
+
+export type Paged<T> = { rows: T[]; total: number; page: number; pageSize: number };
