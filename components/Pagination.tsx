@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PendingLinkLabel } from "@/components/PendingLinkLabel";
 
 /**
  * 공용 페이지네이션 — 맨앞 / 이전 / page·total / 다음 / 맨뒤.
@@ -36,7 +37,7 @@ function Cell({ href, disabled, label }: { href: string; disabled: boolean; labe
   if (disabled) return <span className={`${BASE} ${DISABLED}`}>{label}</span>;
   return (
     <Link href={href} className={`${BASE} ${ENABLED}`}>
-      {label}
+      <PendingLinkLabel>{label}</PendingLinkLabel>
     </Link>
   );
 }

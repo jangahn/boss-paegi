@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
@@ -37,6 +37,7 @@ const ERR_KO: Record<string, string> = {
 
 export function RefundButton({ order }: { order: Order }) {
   const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,8 +69,8 @@ export function RefundButton({ order }: { order: Order }) {
       setError(e instanceof Error ? e.message : "환불 실패");
     } finally {
       setBusy(false);
-      // 성공/실패/수동 모든 결과 후 목록·잔액·라벨·대시보드 경고 재조회(커밋실패 시 '환불 재시도' 라벨 즉시 반영).
-      router.refresh();
+      // 성공/실패/수동 모든 결과 후 목록·잔액·라벨·대시보드 경고 재조회(pending 가시화).
+      startRefresh(() => router.refresh());
     }
   };
 
@@ -139,6 +140,7 @@ export function RefundButton({ order }: { order: Order }) {
                   <span className="text-amber-600"> · 부족분 {result.shortfall}개(유저 사용분, 회수 못함)</span>
                 )}
               </p>
+              {refreshing && <p className="mt-1 text-[11px] text-zinc-400">목록 갱신 중…</p>}
               <div className="mt-3 flex justify-end">
                 <button type="button" onClick={close} className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm">
                   닫기

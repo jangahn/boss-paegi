@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { AdminOrder } from "@/lib/admin-types";
 import { fmtKst, won, shortId } from "@/lib/admin-format";
 import { ModalShell } from "@/components/ModalShell";
@@ -8,14 +9,14 @@ import { Spinner } from "@/components/Spinner";
 
 type ActionKind = "settle" | "cancel";
 
+// rows 를 직접 렌더(로컬 state 없음) — 처리 후 router.refresh 가 서버 재조회로 행 제거 + 대시보드 일관.
+// drift 없음(server = single source). 처리~refresh 사이 잠깐의 잔존은 "갱신 중" 표시로 커버.
 export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
-  const [list, setList] = useState(rows);
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
   const [target, setTarget] = useState<{ order: AdminOrder; kind: ActionKind } | null>(null);
 
-  const done = (orderUuid: string) =>
-    setList((l) => l.filter((o) => o.order_uuid !== orderUuid));
-
-  if (!list.length) {
+  if (!rows.length) {
     return <p className="text-sm text-zinc-400">확인이 필요한 오래된 결제요청이 없어요.</p>;
   }
 
@@ -32,7 +33,7 @@ export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
             </tr>
           </thead>
           <tbody>
-            {list.map((o) => (
+            {rows.map((o) => (
               <tr key={o.order_uuid} className="border-t border-amber-500/10">
                 <td className="px-2 py-1.5 tabular-nums">{fmtKst(o.created_at)}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{won(o.amount)} · {o.credits}개</td>
@@ -67,11 +68,12 @@ export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
           kind={target.kind}
           onClose={() => setTarget(null)}
           onDone={() => {
-            done(target.order.order_uuid);
             setTarget(null);
+            startRefresh(() => router.refresh()); // 서버 재조회 — 처리된 행 제거 + 대시보드 카운트·매출·퍼널·경고 일관
           }}
         />
       )}
+      {refreshing && <p className="mt-2 text-xs text-zinc-400">대시보드 갱신 중…</p>}
     </>
   );
 }
