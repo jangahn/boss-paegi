@@ -30,4 +30,6 @@ export type AdminOrder = {
   paid_at: string | null;
   user_id: string;
   display_name: string | null;
+  // 머니 패스(0023)에서 환불 진행 상태. 목록(search_orders)만 채움 — 대시보드 조회는 생략(undefined).
+  refund_state?: string | null;
 };

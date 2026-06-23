@@ -26,3 +26,7 @@ export const won = (n: number) => `${(n ?? 0).toLocaleString()}원`;
 
 /** 짧은 식별자 표기(uuid 앞 8자리). */
 export const shortId = (id: string) => (id ? id.slice(0, 8) : "—");
+
+/** Next 16 searchParams 값은 string | string[] | undefined — 첫 값만 안전 추출(반복 키 방어). */
+export const firstParam = (v: string | string[] | undefined): string | undefined =>
+  Array.isArray(v) ? v[0] : v;
