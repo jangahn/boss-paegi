@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
@@ -91,6 +91,20 @@ export function GameOverModal({
 
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [nickname, setNickname] = useState<string>("");
+  // 하이라이트 업로드(백그라운드) 진행/완료 표시 + 1회 가드(중복 업로드 차단).
+  const [uploading, setUploading] = useState(false);
+  const [attached, setAttached] = useState(false);
+  const uploadStartedRef = useRef(false);
+
+  // 새 게임으로 다시 열릴 때(컴포넌트는 항상 마운트, open 토글) 공유/업로드 상태 리셋.
+  // (gallery/leaderboard 등과 동일한 open→state sync 패턴.)
+  useEffect(() => {
+    if (!open) return;
+    uploadStartedRef.current = false;
+    setUploading(false);
+    setAttached(false);
+    setShareMsg(null);
+  }, [open]);
 
   // 점수 자동 제출(중복/0점 가드·클램프·trace 는 hook 내부)
   const { scoreId, submitting, submitError, percentile, newBadges, collectedCount } =
@@ -138,18 +152,31 @@ export function GameOverModal({
     if (!scoreId) return;
     const sid = scoreId;
     setShareMsg(null);
-    void (async () => {
-      if (clip) {
-        const r = await uploadHighlightClip(sid, clip);
-        if (r === "failed") {
-          const h = getCardHighlight?.();
-          if (h) await saveCardHighlight(sid, h);
-        }
-      } else {
-        const h = getCardHighlight?.();
-        if (h) await saveCardHighlight(sid, h);
+    // 클립 업로드/카드 저장은 1회만(중복 업로드 차단). 즉시 링크 공유는 매 탭 가능.
+    if (!uploadStartedRef.current) {
+      uploadStartedRef.current = true;
+      const cardH = getCardHighlight?.() ?? null;
+      if (clip || cardH) {
+        setUploading(true);
+        void (async () => {
+          try {
+            let ok = false;
+            if (clip) {
+              const r = await uploadHighlightClip(sid, clip);
+              if (r !== "failed") ok = true;
+              else if (cardH) ok = (await saveCardHighlight(sid, cardH)) !== "failed";
+            } else if (cardH) {
+              ok = (await saveCardHighlight(sid, cardH)) !== "failed";
+            }
+            if (ok) setAttached(true); // 실제 첨부 성공일 때만 '첨부 완료' 표시(실패는 무표시 — 링크 공유는 이미 됨).
+          } catch {
+            // 업로드 실패해도 링크 공유는 이미 됨(불변 원칙) — 조용히 무시.
+          } finally {
+            setUploading(false);
+          }
+        })();
       }
-    })();
+    }
     void shareGameResult(sid, score, {
       text: `${ROLE_META[role].label} ${score.toLocaleString()}점 패고 옴 🥊`,
     }).then((result) => {
@@ -238,6 +265,12 @@ export function GameOverModal({
               홈으로
             </Link>
           </div>
+          {uploading && (
+            <p className="text-center text-xs text-zinc-400">하이라이트 올리는 중…</p>
+          )}
+          {attached && !uploading && (
+            <p className="text-center text-xs text-emerald-500/80">하이라이트 첨부 완료</p>
+          )}
           {shareMsg && (
             <p className="text-center text-xs text-zinc-400">{shareMsg}</p>
           )}
