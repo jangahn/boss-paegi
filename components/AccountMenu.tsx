@@ -43,7 +43,10 @@ export function AccountMenu() {
         const cached = readCachedProfile(uid);
         // prev ?? — 백그라운드 fresh 가 먼저 도착했으면 덮어쓰지 않음.
         if (cached)
-          setProfile((prev) => prev ?? { id: uid, ...cached, genCredits: null });
+          setProfile(
+            (prev) =>
+              prev ?? { id: uid, ...cached, genCredits: null, isAdmin: false }
+          );
       })
       .catch(() => {});
     // 2) 백그라운드 fresh 조회(genCredits 포함) + 캐시 갱신.
@@ -132,6 +135,16 @@ export function AccountMenu() {
               className="block px-4 py-2.5 text-left text-sm font-semibold text-amber-600 transition hover:bg-foreground/5"
             >
               생성권 충전
+            </Link>
+          )}
+          {isMember && profile.isAdmin && (
+            <Link
+              href="/admin"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block border-b border-foreground/10 px-4 py-2.5 text-left text-sm font-semibold text-emerald-600 transition hover:bg-foreground/5"
+            >
+              운영 대시보드
             </Link>
           )}
           <Link

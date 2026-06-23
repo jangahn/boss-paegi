@@ -11,6 +11,8 @@ export type MyProfile = {
   isMember: boolean;
   /** 잔여 생성권. 멤버만, 비멤버/조회실패는 null. */
   genCredits: number | null;
+  /** 관리자 여부(member_accounts.is_admin self-read). 메뉴 노출 제어용 — 접근은 서버 requireAdmin 강제. */
+  isAdmin: boolean;
 };
 
 const NICKNAME_MAX = 12;
@@ -35,14 +37,17 @@ export async function getMyProfile(): Promise<MyProfile | null> {
 
   const isMember = session.user.is_anonymous !== true;
   let genCredits: number | null = null;
+  let isAdmin = false;
   if (isMember) {
-    // member_accounts self-read RLS 로 본인 행만 조회. 실패 시 null(클라가 과하게 막지 않게).
+    // member_accounts self-read RLS 로 본인 행만 조회. 실패 시 기본값(클라가 과하게 막지 않게).
+    // is_admin 미적용(구 DB)/실패 시 false — 메뉴만 숨고 접근은 서버 requireAdmin 이 최종 판정.
     const { data: m } = await sb
       .from("member_accounts")
-      .select("gen_credits")
+      .select("gen_credits, is_admin")
       .eq("user_id", session.user.id)
       .maybeSingle();
     genCredits = (m?.gen_credits as number | undefined) ?? null;
+    isAdmin = (m?.is_admin as boolean | undefined) ?? false;
   }
 
   return {
@@ -51,6 +56,7 @@ export async function getMyProfile(): Promise<MyProfile | null> {
     avatar_url: (data.avatar_url as string | null) ?? null,
     isMember,
     genCredits,
+    isAdmin,
   };
 }
 
