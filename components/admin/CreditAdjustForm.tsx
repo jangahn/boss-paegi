@@ -42,9 +42,16 @@ export function CreditAdjustForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: found.userId, delta: d, reason: reason.trim() }),
       });
-      const out = (await res.json().catch(() => ({}))) as { error?: string; before?: number; after?: number };
+      const out = (await res.json().catch(() => ({}))) as {
+        error?: string; before?: number; after?: number; applied?: number; requested?: number;
+      };
       if (!res.ok) throw new Error(out.error ?? "failed");
-      setMsg(`완료: ${out.before} → ${out.after} 크레딧`);
+      const clamped =
+        out.applied !== undefined && out.requested !== undefined && out.applied !== out.requested;
+      setMsg(
+        `완료: ${out.before} → ${out.after} 크레딧` +
+          (clamped ? ` (요청 ${out.requested}, 실제 ${out.applied} 적용 — 0 클램프)` : "")
+      );
       setFound((f) => (f ? { ...f, genCredits: out.after ?? f.genCredits } : f));
       setDelta(""); setReason("");
     } catch (e) {
