@@ -88,7 +88,7 @@ boss-paegi/
 | `FAL_KEY` | fal.ai API 키. **서버 전용** |
 | `NEXT_PUBLIC_SITE_URL` | 공유 링크 / OG 이미지 / **페이앱 결제 콜백(feedback·return)**용. ⚠️ Vercel prod 에 실제 도메인 필수 (미설정 시 콜백이 localhost → 결제 깨짐) |
 | `PAYAPP_USERID` / `PAYAPP_LINKVAL` | 페이앱(무사업자) 결제 — 판매자 아이디 / 연동VALUE(웹훅 위변조 차단). 미설정 시 결제 비활성(503). **서버 전용** |
-| `PAYAPP_LINKKEY` | 페이앱 연동KEY (취소 API용, 선택). **서버 전용** |
+| `PAYAPP_LINKKEY` | 페이앱 연동KEY — 어드민 자동환불(`paycancel`)용. 미설정 시 환불 자동연동 비활성(503). **서버 전용** |
 | `CRON_SECRET` | 대사 cron(`/api/ops/reconcile`) 보호 시크릿. cron-job.org 가 `x-cron-secret` 헤더로 전달. 미설정 시 reconcile 비활성(503). **서버 전용** |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
@@ -115,13 +115,13 @@ boss-paegi/
 - **흐름**: `/credits`(회원 전용)→`POST /api/payapp/checkout`(pending 주문 선삽입→payrequest→mul_no/payurl)→`payurl` 같은 탭 이동→결제→**웹훅 `POST /api/payapp/feedback`**(public)→`/api/payapp/return`(303)→`/credits/done?order=` 폴링(`/api/payapp/order-status`).
 - **데이터**(migration 0019 `payapp_orders`, service-role 전용): `order_uuid`(PK=var2)·`mul_no`(nullable unique)·status(pending/paid/canceled/failed)·amount/credits snapshot. 같은 user+product 최근 10분 pending 재사용으로 중복 주문 방지.
 - **멱등·보안**: 웹훅은 `linkval`(연동VALUE 비밀)·price·`var1==order.user_id`·mul_no 정합 검증(외부 입력 불신, DB=source of truth). 지급은 RPC `mark_paid_and_grant`(security definer, FOR UPDATE)로 원자·멱등 — 첫 통보만 paid + `gen_credits += credits`(대상=order.user_id). 검증된 이벤트는 모두 텍스트 `"SUCCESS"`(JSON 금지), 실패 시 페이앱 최대 10회 재시도. recvphone 더미+`smsuse=n`(카드/네이버페이라 수신폰 불요).
-- **환불(v1 수동)**: 페이앱 관리자 취소→웹훅 `status='canceled'`(paid_at 유지, **크레딧 자동 회수 없음** — 운영자 수동). `failed` 주문은 운영자가 필요 시 정리, paid/canceled 보존.
+- **환불(자동연동, 0023)**: 어드민 `/admin/orders`·유저상세에서 환불 → `paycancel`로 **페이앱 자동취소 + 크레딧 회수**. **회수량 > 보유 크레딧이면 환불 차단**(페이앱 호출 전 선검사); 페이앱 성공 직후 경쟁상황만 가진 만큼 회수 + 부족분(shortfall) 기록. **정산마감(D+5)/정산후는 자동취소 불가 → "수동 처리 필요" 표시**(paycancelreq 미사용). 페이앱 취소 웹훅(`status='canceled'`)은 멱등(ledger 유니크). `failed` 보존.
 - **설정**(사용자 작업): 페이앱 판매자관리 > 설정 > 연동정보에서 `PAYAPP_USERID`·`PAYAPP_LINKVAL`(+선택 `PAYAPP_LINKKEY`) 확보 → `.env.local`+Vercel, 결제수단 카드·네이버페이 ON, `NEXT_PUBLIC_SITE_URL` prod 도메인 설정. **테스트는 prod 실결제→환불**(샌드박스 없음, 웹훅 공개 HTTPS 필요).
 
 ### 운영 한계·모니터링 (v1 — 전수 엣지케이스 감사 반영)
 실결제 안전을 위해 106개 엣지케이스 감사 → 코드로 막은 것(위변조·IDOR·이중지급·비밀값 저장·SITE_URL 오설정 fail-fast·멱등 지급) 외에 **운영으로 관리하는 한계**:
 - **웹훅 영구 미도달**(페이앱 10회 재시도 소진/서버 장애): 결제됐는데 order 가 `pending` 잔존 가능 → **stale pending 대사 필요**. Sentry 경고 모니터: `payapp.fb_grant_fail`·`payapp.fb_order_not_found`·`payapp.fb_paid_not_granted`(실결제라 임계 1). 주기 점검 쿼리 `status='pending' AND created_at < now()-interval '4h'` → 페이앱 결제내역과 대사 후 수동 `mark_paid_and_grant`.
-- **환불**: 수동(페이앱 관리자→웹훅이 `status='canceled'` 기록). **크레딧 자동 회수 없음** — `gen_credits>=0` 가드상 음수 불가, 운영자가 잔액 확인 후 조정. 정산마감(D+5) 후 취소는 정산금 반환 필요.
+- **환불(자동연동)**: 어드민 환불이 `paycancel`로 페이앱 자동취소 + 크레딧 회수(0023). `refund_state`(in_progress/payapp_done/done)로 단일플라이트(CAS)·고착(>10분)·복구 추적. **페이앱 성공 후 로컬 커밋 실패**(`payapp.refund_commit_fail`, money-critical)는 `payapp_done`으로 남아 대시보드 경고 + '환불 재시도'(paycancel 멱등 재호출→`already_canceled` 확정)로 복구. 정산마감(D+5)/정산후는 수동(paycancelreq 미사용).
 - **동시/다중 결제**: 같은 상품 동시 checkout 은 10분 내 pending 재사용 + 버튼 disable 로 우발 중복 방지. 사용자가 여러 결제창을 모두 결제하면 각각 별도 수금·지급(손실 아님). 미완료 pending 은 누적 가능(대사로 정리).
 - **계정 삭제**: `payapp_orders`·`member_accounts` 가 `profiles` `ON DELETE CASCADE` — 결제 이력 보존이 필요하면 soft-delete/RESTRICT 전환(현재 계정삭제 기능 없음).
 - **확장 시(v2)**: 자동 환불 회수 RPC, stale-pending 대사 cron, preview 환경 DB 격리, bigint 전환, 사업자 전환+토스(수수료/세금계산서).
@@ -134,7 +134,7 @@ boss-paegi/
 - **`/admin`**(대시보드, RSC `force-dynamic`): 매출·주문(오늘=KST 자정 / 7d·30d rolling, 상태별) · 가입·구매 퍼널(방문→플레이→가입→첫생성→첫구매) · **오래된 결제요청(확인 필요)**. CS 조정·환불은 **회원 관리(유저 상세)로 이전**. 정확 수치는 DB(`lib/admin-data` + `get_admin_funnel`/`get_admin_order_summary` RPC), Sentry 아님.
 - **`/admin/orders`**(전체 주문, RSC): 상태 필터 + 주문ID/mul_no 부분검색 + 10건/page. `search_orders` RPC(`order_uuid::text`/`mul_no` prefix·window `total_count`, `lib/admin-orders.ts`).
 - **`/admin/users`**(회원, RSC): 이메일·닉네임 부분검색(`search_members` RPC, ID exact) → 후보 → **유저 상세 `/admin/users/[id]`**: 결제·크레딧(주문 + 조정/환불 이력) · 콘텐츠(AI 생성내역[상태]·보유 캐릭터) · 회원정보 + 플레이내역 링크, 각 섹션 10/page. **CS 크레딧 조정**(범위초과 명시·이중 방어) 통합. `lib/admin-users.ts`.
-- **운영 액션**(돈·감사): stuck 주문 **결제완료 확인 후 지급** · 환불/취소 표시(회수 0까지만) · CS 크레딧 조정(기존 회원만·−100~100·≠0·사유 5~500). 모두 service_role RPC(`admin_settle_stuck_order`/`admin_cancel_order`/`admin_adjust_credits`)가 **row lock→변경→`admin_actions_ledger` 기록**을 한 트랜잭션(멱등·취소 1회·clamp-0).
+- **운영 액션**(돈·감사): stuck **결제완료 확인 후 지급** · 정상결제 **환불(페이앱 자동취소+회수, 부족 시 차단)** · pending 취소 · CS 크레딧 조정(회원만·−100~100·≠0·사유 5~500). service_role RPC(`admin_settle_stuck_order`/`admin_cancel_order`[5-arg + 4-arg wrapper, 무중단]/`admin_adjust_credits`)가 **row lock→변경→`admin_actions_ledger` 기록**을 한 트랜잭션(멱등·취소 1회·화해·payapp_done 시 clamp+shortfall).
 - **오래된 결제요청 대사**: `cron-job.org` → `POST /api/ops/reconcile`(`x-cron-secret`) → mul_no 있는 pending 2h+ 탐지 → Sentry 경고(**"확인 필요"** — 미지급 단정 아님, dedup 6~24h). **자동 지급 없음**(수동).
 
 ## 모니터링 (Sentry)
@@ -347,12 +347,21 @@ v0.20 (2026-06-23, 관리자 대시보드 + 모니터링 고도화):
 - **대사 알림**: `/api/ops/reconcile`(`x-cron-secret`) — mul_no 있는 pending 2h+ "확인 필요"(자동지급 X). cron-job.org 직접 호출.
 - **Sentry**: payapp 스팬(`/api/payapp/*` 전수)·저카디널리티 태그(payapp.status/product·gen_stage·last_action)·`CAPTURE_SKIP`(고볼륨 warn logs-only, 에러쿼터 보호)·결제 critical 즉시/프로브 rate-based(룰=로컬 토큰, **앱 런타임 env 금지**). 알림 dev.jangahn+emfoa23.
 
+v0.21 (2026-06-24, 어드민 전면 개편 + 페이앱 자동환불):
+- **멀티 라우트 어드민**(`app/admin/layout.tsx`+`AdminNav`): `/admin`(대시보드+환불 경고) · `/admin/orders`(전체 주문·상태/검색·10p) · `/admin/users`(부분검색→유저 상세[결제·콘텐츠·회원정보·CS조정], 각 10p) · `/admin/ledger`(처리내역·필터·10p). 공용 `Pagination`(맨앞/맨뒤) + `/history`도 적용. 가입 무료 크레딧 5→2.
+- **페이앱 자동환불(0023)**: 어드민 환불 → `paycancel` 자동취소 + 크레딧 회수. **회수 부족 시 차단**(선검사), 정산마감(D+5)은 "수동 필요", 경쟁상황은 clamp+shortfall. `refund_state`(CAS 단일플라이트·고착·복구). 커밋실패=`payapp.refund_commit_fail`(money-critical)→대시보드 경고+'환불 재시도'(멱등). `admin_cancel_order` 5-arg + 4-arg wrapper(무중단).
+- 읽기 RPC(`search_orders`/`search_members`/`get_user_generations`) + `admin_cancel_order` 모두 `service_role` 전용(revoke/grant). 적대적 리뷰(PR별 워크플로우)로 검증.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
 **⚠️ Migration 0019 적용 필요** (`supabase/migrations/0019_payapp_orders.sql`): `payapp_orders` 테이블 + `mark_paid_and_grant` RPC. 적용 + `PAYAPP_*`/`NEXT_PUBLIC_SITE_URL`(prod) env 설정 전엔 결제 비활성(503).
 
 **⚠️ Migration 0020 적용 필요** (`supabase/migrations/0020_admin_monitoring.sql`): `is_admin`+seed(emfoa23)·`payapp_orders.canceled_at/clawback_credits`·인덱스·`admin_actions_ledger`·`get_admin_funnel`/`get_admin_order_summary`/`admin_settle_stuck_order`/`admin_cancel_order`/`admin_adjust_credits` RPC. **additive(구 코드 무영향)** — 적용 전엔 `/admin` 비활성(requireAdmin 관용 차단). + env `CRON_SECRET`(.env.local+Vercel), cron-job.org 설정, Sentry emfoa23 초대.
+
+**⚠️ Migration 0022 적용 필요** (`supabase/migrations/0022_admin_read_side.sql`): 어드민 read-side — 인덱스 + `payapp_orders.refund_state`(읽기) + `search_members`/`search_orders`/`get_user_generations` RPC(`security invoker` + service_role grant). additive.
+
+**⚠️ Migration 0023 적용 필요** (`supabase/migrations/0023_refund_block.sql`): 머니 패스 — `admin_cancel_order` 5-arg(`p_payapp_done`, 회수부족 조건부 block/clamp+shortfall·화해) + 4-arg wrapper(무중단). + `PAYAPP_LINKKEY` env(자동환불). additive(drop 없음).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
 ai_generations 에 candidate_urls/picked_doll_id 컬럼 + status 에 'picked' 추가. 적용 전엔 복구 기능 비활성(앱은 정상).

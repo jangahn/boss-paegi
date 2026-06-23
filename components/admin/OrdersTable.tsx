@@ -1,7 +1,8 @@
 import type { AdminOrder } from "@/lib/admin-types";
 import { fmtKst, STATUS_COLOR, won, shortId } from "@/lib/admin-format";
+import { RefundButton } from "@/components/admin/RefundButton";
 
-/** 최근 주문 — 조회 전용(presentational, RSC). */
+/** 주문 목록 — paid/payapp_done 행에 환불 액션(RefundButton, client). 그 외 컬럼은 조회 전용. */
 export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
   if (!rows.length) {
     return <p className="text-sm text-zinc-400">주문이 없어요.</p>;
@@ -18,6 +19,7 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
             <th className="px-2 py-1.5">상품</th>
             <th className="px-2 py-1.5">유저</th>
             <th className="px-2 py-1.5">주문번호</th>
+            <th className="px-2 py-1.5">액션</th>
           </tr>
         </thead>
         <tbody>
@@ -34,6 +36,20 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
                 {r.display_name ?? shortId(r.user_id)}
               </td>
               <td className="px-2 py-1.5 font-mono text-zinc-400">{shortId(r.order_uuid)}</td>
+              <td className="px-2 py-1.5">
+                {r.status === "paid" || r.refund_state === "payapp_done" ? (
+                  <RefundButton
+                    order={{
+                      orderUuid: r.order_uuid,
+                      amount: r.amount,
+                      credits: r.credits,
+                      refundState: r.refund_state ?? null,
+                    }}
+                  />
+                ) : (
+                  <span className="text-zinc-300">—</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

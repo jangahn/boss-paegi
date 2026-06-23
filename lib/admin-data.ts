@@ -75,3 +75,59 @@ export async function getStalePending(): Promise<AdminOrder[]> {
   }
   return ((data ?? []) as unknown as RawOrderRow[]).map(mapOrder);
 }
+
+export type RefundWarnings = {
+  commitFail: AdminOrder[]; // refund_state='payapp_done' — 페이앱 환불됨·로컬 미반영(최우선, 재처리 필요)
+  unreconciled: AdminOrder[]; // 페이앱 취소 웹훅 선도착(canceled+paid_at·refund_state null·ledger 없음) → 크레딧 미회수
+  stuckCount: number; // refund_state='in_progress' 가 10분+ (함수 죽음 등 고착 — 확인 필요)
+};
+
+const WARN_SELECT =
+  "order_uuid, status, amount, credits, product_id, mul_no, created_at, paid_at, user_id, refund_state";
+
+/** 환불 운영 경고 — 대시보드 최상단(stale pending 보다 높은 우선순위). */
+export async function getRefundWarnings(): Promise<RefundWarnings> {
+  const admin = createAdminClient();
+  const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const [done, stuck, canceledPaid] = await Promise.all([
+    admin
+      .from("payapp_orders")
+      .select(WARN_SELECT)
+      .eq("refund_state", "payapp_done")
+      .order("updated_at", { ascending: true })
+      .limit(20),
+    admin
+      .from("payapp_orders")
+      .select("order_uuid", { count: "exact", head: true })
+      .eq("refund_state", "in_progress")
+      .lt("updated_at", staleCutoff),
+    // 웹훅 선도착 후보: 결제됐다가(paid_at) canceled 됐고 refund_state 미설정(=route 미경유).
+    admin
+      .from("payapp_orders")
+      .select(WARN_SELECT)
+      .eq("status", "canceled")
+      .not("paid_at", "is", null)
+      .is("refund_state", null)
+      .order("canceled_at", { ascending: true })
+      .limit(20),
+  ]);
+  if (done.error) log.warn("admin.refund_warnings_fail", errInfo(done.error));
+  const toOrder = (r: Omit<AdminOrder, "display_name">) => ({ ...r, display_name: null });
+  const commitFail = ((done.data ?? []) as Array<Omit<AdminOrder, "display_name">>).map(toOrder);
+
+  // 후보 중 이미 cancel_refund ledger 가 있는(=이미 회수된) 건은 제외(중복 회수 방지·노이즈 방지).
+  let unreconciled: AdminOrder[] = [];
+  const candidates = (canceledPaid.data ?? []) as Array<Omit<AdminOrder, "display_name">>;
+  if (candidates.length > 0) {
+    const ids = candidates.map((c) => c.order_uuid);
+    const { data: ledgers } = await admin
+      .from("admin_actions_ledger")
+      .select("order_uuid")
+      .eq("action_type", "cancel_refund")
+      .in("order_uuid", ids);
+    const reconciled = new Set((ledgers ?? []).map((l) => l.order_uuid as string));
+    unreconciled = candidates.filter((c) => !reconciled.has(c.order_uuid)).map(toOrder);
+  }
+
+  return { commitFail, unreconciled, stuckCount: stuck.count ?? 0 };
+}

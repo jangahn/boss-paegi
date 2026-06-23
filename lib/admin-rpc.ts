@@ -12,6 +12,7 @@ const KNOWN_ADMIN_ERRORS = [
   "delta_invalid",
   "order_status_changed",
   "status_changed",
+  "insufficient_credits",
 ];
 
 /** RPC 에러 → 안전한 코드(화이트리스트 매칭, 아니면 action_failed). */
