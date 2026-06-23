@@ -57,20 +57,6 @@ export async function getOrderSummary(): Promise<OrderSummary | null> {
   return data as OrderSummary;
 }
 
-export async function getRecentOrders(limit = 30): Promise<AdminOrder[]> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("payapp_orders")
-    .select(ORDER_SELECT)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) {
-    log.warn("admin.recent_orders_fail", errInfo(error));
-    return [];
-  }
-  return ((data ?? []) as unknown as RawOrderRow[]).map(mapOrder);
-}
-
 /** 오래된 결제요청(확인 필요) — 결제 시도(mul_no)했으나 2시간+ pending. 미지급 단정 아님. */
 export async function getStalePending(): Promise<AdminOrder[]> {
   const admin = createAdminClient();

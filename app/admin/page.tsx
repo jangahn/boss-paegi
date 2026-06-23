@@ -1,15 +1,8 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
-import {
-  getAdminFunnel,
-  getOrderSummary,
-  getRecentOrders,
-  getStalePending,
-} from "@/lib/admin-data";
-import { AppNav } from "@/components/AppNav";
+import { getAdminFunnel, getOrderSummary, getStalePending } from "@/lib/admin-data";
 import { StalePendingTable } from "@/components/admin/StalePendingTable";
 import { CreditAdjustForm } from "@/components/admin/CreditAdjustForm";
-import { OrdersTable } from "@/components/admin/OrdersTable";
 
 // 관리자 대시보드는 매출/운영 실시간이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -24,21 +17,18 @@ export default async function AdminPage() {
   const gate = await requireAdmin();
   if (!gate.ok) redirect("/");
 
-  const [funnel, summary, recent, stale] = await Promise.all([
+  const [funnel, summary, stale] = await Promise.all([
     getAdminFunnel(),
     getOrderSummary(),
-    getRecentOrders(30),
     getStalePending(),
   ]);
 
   const byStatus = summary?.by_status ?? {};
 
   return (
-    <>
-      <AppNav />
-      <main className="flex flex-1 flex-col px-5 py-8">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
-          <h1 className="text-2xl font-bold">운영 대시보드</h1>
+    <main className="flex flex-1 flex-col px-5 py-8">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
+        <h1 className="text-2xl font-bold">운영 대시보드</h1>
 
           {/* 매출·주문 (KST today / rolling 7d·30d) */}
           <section>
@@ -88,20 +78,13 @@ export default async function AdminPage() {
             <StalePendingTable rows={stale} />
           </section>
 
-          {/* CS 크레딧 조정 */}
-          <section>
-            <h2 className="mb-2 text-sm font-bold text-zinc-500">CS 크레딧 조정</h2>
-            <CreditAdjustForm />
-          </section>
-
-          {/* 최근 주문 */}
-          <section>
-            <h2 className="mb-2 text-sm font-bold text-zinc-500">최근 주문 30건</h2>
-            <OrdersTable rows={recent} />
-          </section>
-        </div>
-      </main>
-    </>
+        {/* CS 크레딧 조정 (유저 상세 통합 전까지 유지 — PR5 에서 이전) */}
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">CS 크레딧 조정</h2>
+          <CreditAdjustForm />
+        </section>
+      </div>
+    </main>
   );
 }
 

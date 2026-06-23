@@ -15,7 +15,9 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
             <th className="px-2 py-1.5">상태</th>
             <th className="px-2 py-1.5 text-right">금액</th>
             <th className="px-2 py-1.5 text-right">크레딧</th>
+            <th className="px-2 py-1.5">상품</th>
             <th className="px-2 py-1.5">유저</th>
+            <th className="px-2 py-1.5">주문번호</th>
           </tr>
         </thead>
         <tbody>
@@ -27,9 +29,11 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
               </td>
               <td className="px-2 py-1.5 text-right tabular-nums">{won(r.amount)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{r.credits}</td>
-              <td className="px-2 py-1.5 truncate">
+              <td className="px-2 py-1.5">{r.product_id}</td>
+              <td className="max-w-[8rem] truncate px-2 py-1.5">
                 {r.display_name ?? shortId(r.user_id)}
               </td>
+              <td className="px-2 py-1.5 font-mono text-zinc-400">{shortId(r.order_uuid)}</td>
             </tr>
           ))}
         </tbody>
