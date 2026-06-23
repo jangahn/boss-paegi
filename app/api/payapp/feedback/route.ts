@@ -77,12 +77,18 @@ export async function POST(req: NextRequest) {
         log.error("payapp.fb_grant_fail", { orderUuid: fb.orderUuid, ...errInfo(error) });
         return FAIL(); // 일시 오류 → 재시도 유도
       }
-      log.info("payapp.fb_paid", {
-        orderUuid: fb.orderUuid,
-        granted,
-        userId: order.user_id,
-      });
-      return OK();
+      if (granted === false) {
+        // 결제완료(4) 통보인데 지급 안 됨 — 이미 지급(중복)·취소 선행·금액 불일치 등.
+        // 중복은 정상이지만, '수금됐는데 미지급' 가능성이 섞여 있어 경고로 가시화(Sentry).
+        log.warn("payapp.fb_paid_not_granted", {
+          orderUuid: fb.orderUuid,
+          userId: order.user_id,
+          orderStatus: order.status,
+        });
+      } else {
+        log.info("payapp.fb_paid", { orderUuid: fb.orderUuid, userId: order.user_id });
+      }
+      return OK(); // 멱등 — 중복/이미처리도 SUCCESS(페이앱 재시도 중단)
     }
 
     if (isCancelState(fb.payState)) {

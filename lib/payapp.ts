@@ -93,17 +93,25 @@ export type FeedbackParams = {
   raw: Record<string, string>;
 };
 
-/** 웹훅 form(application/x-www-form-urlencoded) 파싱. raw 에 전체 payload 보존(감사). */
+// raw(감사 jsonb)에 절대 영구저장하면 안 되는 키 — linkval/linkkey 는 웹훅 비밀.
+// (DB 유출 시 위변조 차단 비밀이 새어나가지 않게 — 검증엔 form 에서 직접 읽음.)
+const RAW_DENYLIST = new Set(["linkval", "linkkey"]);
+
+/** 웹훅 form(application/x-www-form-urlencoded) 파싱. raw 는 감사용 — 비밀키는 제외. */
 export function parseFeedback(form: FormData): FeedbackParams {
+  const get = (k: string) => form.get(k)?.toString() ?? "";
   const raw: Record<string, string> = {};
-  for (const [k, v] of form.entries()) raw[k] = typeof v === "string" ? v : "";
+  for (const [k, v] of form.entries()) {
+    if (RAW_DENYLIST.has(k)) continue; // 비밀값은 DB 저장 금지
+    raw[k] = typeof v === "string" ? v : "";
+  }
   return {
-    linkval: raw.linkval ?? "",
-    orderUuid: raw.var2 ?? "",
-    var1: raw.var1 ?? "",
-    price: Number(raw.price) || 0,
-    mulNo: raw.mul_no ?? "",
-    payState: Number(raw.pay_state) || 0,
+    linkval: get("linkval"),
+    orderUuid: get("var2"),
+    var1: get("var1"),
+    price: Number(get("price")) || 0,
+    mulNo: get("mul_no"),
+    payState: Number(get("pay_state")) || 0,
     raw,
   };
 }
