@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
+import { Pagination } from "@/components/Pagination";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDuration, gradeFor, timeAgo, weaponLabel } from "@/lib/report";
 
@@ -129,37 +130,11 @@ export default async function HistoryPage({
             </ol>
           )}
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 text-sm">
-              {page > 1 ? (
-                <Link
-                  href={`/history/${userId}?page=${page - 1}`}
-                  className="rounded-full border border-foreground/15 px-4 py-2 transition hover:bg-foreground/5"
-                >
-                  ← 이전
-                </Link>
-              ) : (
-                <span className="rounded-full border border-foreground/10 px-4 py-2 text-zinc-600">
-                  ← 이전
-                </span>
-              )}
-              <span className="tabular-nums text-zinc-500">
-                {page} / {totalPages}
-              </span>
-              {page < totalPages ? (
-                <Link
-                  href={`/history/${userId}?page=${page + 1}`}
-                  className="rounded-full border border-foreground/15 px-4 py-2 transition hover:bg-foreground/5"
-                >
-                  다음 →
-                </Link>
-              ) : (
-                <span className="rounded-full border border-foreground/10 px-4 py-2 text-zinc-600">
-                  다음 →
-                </span>
-              )}
-            </div>
-          )}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            hrefFor={(p) => `/history/${userId}?page=${p}`}
+          />
         </div>
       </main>
     </>
