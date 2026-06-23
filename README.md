@@ -130,7 +130,7 @@ boss-paegi/
 
 관리자 전용 운영 대시보드 + 결제 대사. 권한은 `member_accounts.is_admin`(service_role 만 쓰기 → 자가부여 불가, 0020). `proxy.ts` 가 `/admin` 로그인 게이트, 페이지·`/api/admin/*` 는 **`requireAdmin()`** 으로 최종 판정 — is_admin 을 **별도·관용 조회**(0020 미적용/비admin 이면 안전 차단, 기존 회원 흐름 무영향).
 
-- **멀티 라우트**(공통 `app/admin/layout.tsx` = `requireAdmin` 1회 + `AppNav`+`AdminNav`): `/admin`(대시보드) · `/admin/orders`(전체 주문) · (후속) `/admin/users`·`/admin/ledger`.
+- **멀티 라우트**(공통 `app/admin/layout.tsx` = `requireAdmin` 1회 + `AppNav`+`AdminNav`): `/admin`(대시보드) · `/admin/orders`(전체 주문) · `/admin/ledger`(처리내역) · (후속) `/admin/users`.
 - **`/admin`**(대시보드, RSC `force-dynamic`): 매출·주문(오늘=KST 자정 / 7d·30d rolling, 상태별) · 가입·구매 퍼널(방문→플레이→가입→첫생성→첫구매) · **오래된 결제요청(확인 필요)** · CS 크레딧 조정(유저 상세 통합 전까지 유지). 정확 수치는 DB(`lib/admin-data` + `get_admin_funnel`/`get_admin_order_summary` RPC), Sentry 아님.
 - **`/admin/orders`**(전체 주문, RSC): 상태 필터 + 주문ID/mul_no 부분검색 + 10건/page. `search_orders` RPC(`order_uuid::text`/`mul_no` prefix·window `total_count`, `lib/admin-orders.ts`).
 - **운영 액션**(돈·감사): stuck 주문 **결제완료 확인 후 지급** · 환불/취소 표시(회수 0까지만) · CS 크레딧 조정(기존 회원만·−100~100·≠0·사유 5~500). 모두 service_role RPC(`admin_settle_stuck_order`/`admin_cancel_order`/`admin_adjust_credits`)가 **row lock→변경→`admin_actions_ledger` 기록**을 한 트랜잭션(멱등·취소 1회·clamp-0).

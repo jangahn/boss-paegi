@@ -33,3 +33,29 @@ export type AdminOrder = {
   // 머니 패스(0023)에서 환불 진행 상태. 목록(search_orders)만 채움 — 대시보드 조회는 생략(undefined).
   refund_state?: string | null;
 };
+
+export type LedgerActionType = "settle_stuck" | "cancel_refund" | "cs_adjust";
+
+export type LedgerRow = {
+  id: string;
+  created_at: string;
+  action_type: string;
+  admin_user_id: string;
+  admin_name: string | null;
+  target_user_id: string;
+  target_name: string | null;
+  order_uuid: string | null;
+  credit_delta: number;
+  order_amount: number | null;
+  before_credits: number;
+  after_credits: number;
+  reason: string;
+  metadata: Record<string, unknown> | null;
+};
+
+export type LedgerPage = {
+  rows: LedgerRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
