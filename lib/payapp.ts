@@ -131,3 +131,72 @@ export function verifyLinkval(linkval: string): boolean {
 export function isCancelState(payState: number): boolean {
   return CANCEL_STATES.has(payState);
 }
+
+// ── 결제 취소(paycancel) — 어드민 환불 자동연동(정산 전/D+5 내). 정산 후는 paycancelreq(미사용·수동). ──
+const SAFE_CANCEL_MEMO_LENGTH = 100; // 페이앱 전송용만 잘라냄(ledger.reason 은 원문 보존).
+
+// 보수적 allowlist — state=0 응답 중 '이미 취소됨'으로 확정 인정할 문구만(소문자 부분일치).
+// ⚠️ 실제 문구는 dev 라이브 paycancel 응답으로 검증·확장 필요. 미스 시 'unknown' 으로 안전 실패(로컬 무변경).
+// '이미/already' 한정자가 있는 명시 문구만 — bare "취소 완료"/"취소된 거래"는 부정문("취소 불가")에도 매칭돼 제외.
+const ALREADY_CANCELED_MARKERS = ["이미 취소", "이미취소", "already cancel", "canceled already", "cancelled already"];
+const SETTLED_MARKERS = ["정산", "d+5", "마감", "기간 경과", "기간경과", "settle"];
+
+/** 취소 API 사용 가능 여부 — USERID/LINKVAL + 취소 전용 LINKKEY 필요. */
+export function payappCancelConfigured(): boolean {
+  return payappConfigured() && !!SERVER_ENV.PAYAPP_LINKKEY;
+}
+
+export type PayCancelResult =
+  | { ok: true; alreadyCanceled: boolean } // state=1(방금 취소) 또는 allowlist(이미 취소됨) → 로컬 반영 안전
+  | { ok: false; kind: "settled" | "unknown" | "unreachable"; error: string };
+
+/**
+ * paycancel 호출 — form-urlencoded POST, 응답은 URL-encoded(state/errorMessage).
+ * 분류: state=1 → ok; state=0 & allowlist → ok(alreadyCanceled); state=0 & 정산문구 → settled;
+ * 그 외 state=0 → unknown(운영 확인); 네트워크/timeout/비200 → unreachable.
+ * 보수적: settled/실패를 '이미 취소'로 오판하지 않음 → 잘못된 로컬 회수 방지.
+ */
+export async function paycancelOrder(args: {
+  mulNo: string;
+  cancelMemo: string;
+}): Promise<PayCancelResult> {
+  const body = new URLSearchParams({
+    cmd: "paycancel",
+    userid: SERVER_ENV.PAYAPP_USERID,
+    linkkey: SERVER_ENV.PAYAPP_LINKKEY,
+    mul_no: args.mulNo,
+    cancelmemo: args.cancelMemo.slice(0, SAFE_CANCEL_MEMO_LENGTH),
+    partcancel: "0", // 전액 취소(v1)
+  });
+
+  try {
+    const res = await fetch(PAYAPP_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      log.warn("payapp.cancel_http_error", { status: res.status, mulNo: args.mulNo });
+      return { ok: false, kind: "unreachable", error: `http_${res.status}` };
+    }
+    const parsed = new URLSearchParams(await res.text());
+    if (parsed.get("state") === "1") return { ok: true, alreadyCanceled: false };
+
+    const errorMessage = parsed.get("errorMessage") ?? "";
+    const msg = errorMessage.toLowerCase();
+    // settled 를 먼저 — '정산 완료된 거래는 취소 완료 처리 불가' 처럼 두 의미가 겹치면 안전 방향(manual)으로.
+    if (SETTLED_MARKERS.some((m) => msg.includes(m.toLowerCase()))) {
+      log.warn("payapp.cancel_settled", { mulNo: args.mulNo, error: errorMessage });
+      return { ok: false, kind: "settled", error: errorMessage || "settled" };
+    }
+    if (ALREADY_CANCELED_MARKERS.some((m) => msg.includes(m.toLowerCase()))) {
+      return { ok: true, alreadyCanceled: true };
+    }
+    log.warn("payapp.cancel_unknown", { mulNo: args.mulNo, error: errorMessage });
+    return { ok: false, kind: "unknown", error: errorMessage || "unknown_cancel_state" };
+  } catch (e) {
+    log.warn("payapp.cancel_exception", { mulNo: args.mulNo, ...errInfo(e) });
+    return { ok: false, kind: "unreachable", error: "request_exception" };
+  }
+}

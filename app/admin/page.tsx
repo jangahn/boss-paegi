@@ -1,8 +1,14 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
 import Link from "next/link";
-import { getAdminFunnel, getOrderSummary, getStalePending } from "@/lib/admin-data";
+import {
+  getAdminFunnel,
+  getOrderSummary,
+  getStalePending,
+  getRefundWarnings,
+} from "@/lib/admin-data";
 import { StalePendingTable } from "@/components/admin/StalePendingTable";
+import { DashboardWarnings } from "@/components/admin/DashboardWarnings";
 
 // 관리자 대시보드는 매출/운영 실시간이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -17,10 +23,11 @@ export default async function AdminPage() {
   const gate = await requireAdmin();
   if (!gate.ok) redirect("/");
 
-  const [funnel, summary, stale] = await Promise.all([
+  const [funnel, summary, stale, refundWarnings] = await Promise.all([
     getAdminFunnel(),
     getOrderSummary(),
     getStalePending(),
+    getRefundWarnings(),
   ]);
 
   const byStatus = summary?.by_status ?? {};
@@ -29,6 +36,12 @@ export default async function AdminPage() {
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
         <h1 className="text-2xl font-bold">운영 대시보드</h1>
+
+        <DashboardWarnings
+          commitFail={refundWarnings.commitFail}
+          unreconciled={refundWarnings.unreconciled}
+          stuckCount={refundWarnings.stuckCount}
+        />
 
           {/* 매출·주문 (KST today / rolling 7d·30d) */}
           <section>
