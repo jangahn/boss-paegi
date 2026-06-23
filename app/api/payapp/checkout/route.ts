@@ -31,6 +31,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_product" }, { status: 400 });
   }
 
+  // 콜백 베이스 URL 검증 — 주문 생성 전에 fail-fast.
+  // SITE_URL 이 오형식이거나 localhost 면 페이앱 웹훅/return 이 외부에서 도달 불가
+  // → "결제는 됐는데 크레딧 미지급" 사고. 그 전에 막는다.
+  let base: string;
+  try {
+    base = new URL(PUBLIC_ENV.SITE_URL).origin;
+  } catch {
+    log.error("payapp.bad_site_url", { siteUrl: PUBLIC_ENV.SITE_URL });
+    return NextResponse.json({ error: "payment_misconfigured" }, { status: 503 });
+  }
+  if (/localhost|127\.0\.0\.1/.test(base)) {
+    log.error("payapp.site_url_unreachable", { base });
+    return NextResponse.json({ error: "payment_misconfigured" }, { status: 503 });
+  }
+
   const admin = createAdminClient();
 
   // 1) 최근 재사용 가능한 pending 주문 있으면 그 payurl 재사용.
@@ -70,8 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "order_create_failed" }, { status: 500 });
   }
 
-  // 3) payrequest.
-  const base = new URL(PUBLIC_ENV.SITE_URL).origin; // scheme://host[:port] (subpath/슬래시 방지)
+  // 3) payrequest. (base 는 위에서 검증됨)
   const result = await createPayRequest({
     product,
     userId: user.id,

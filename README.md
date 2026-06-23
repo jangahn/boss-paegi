@@ -117,6 +117,14 @@ boss-paegi/
 - **환불(v1 수동)**: 페이앱 관리자 취소→웹훅 `status='canceled'`(paid_at 유지, **크레딧 자동 회수 없음** — 운영자 수동). `failed` 주문은 운영자가 필요 시 정리, paid/canceled 보존.
 - **설정**(사용자 작업): 페이앱 판매자관리 > 설정 > 연동정보에서 `PAYAPP_USERID`·`PAYAPP_LINKVAL`(+선택 `PAYAPP_LINKKEY`) 확보 → `.env.local`+Vercel, 결제수단 카드·네이버페이 ON, `NEXT_PUBLIC_SITE_URL` prod 도메인 설정. **테스트는 prod 실결제→환불**(샌드박스 없음, 웹훅 공개 HTTPS 필요).
 
+### 운영 한계·모니터링 (v1 — 전수 엣지케이스 감사 반영)
+실결제 안전을 위해 106개 엣지케이스 감사 → 코드로 막은 것(위변조·IDOR·이중지급·비밀값 저장·SITE_URL 오설정 fail-fast·멱등 지급) 외에 **운영으로 관리하는 한계**:
+- **웹훅 영구 미도달**(페이앱 10회 재시도 소진/서버 장애): 결제됐는데 order 가 `pending` 잔존 가능 → **stale pending 대사 필요**. Sentry 경고 모니터: `payapp.fb_grant_fail`·`payapp.fb_order_not_found`·`payapp.fb_paid_not_granted`(실결제라 임계 1). 주기 점검 쿼리 `status='pending' AND created_at < now()-interval '4h'` → 페이앱 결제내역과 대사 후 수동 `mark_paid_and_grant`.
+- **환불**: 수동(페이앱 관리자→웹훅이 `status='canceled'` 기록). **크레딧 자동 회수 없음** — `gen_credits>=0` 가드상 음수 불가, 운영자가 잔액 확인 후 조정. 정산마감(D+5) 후 취소는 정산금 반환 필요.
+- **동시/다중 결제**: 같은 상품 동시 checkout 은 10분 내 pending 재사용 + 버튼 disable 로 우발 중복 방지. 사용자가 여러 결제창을 모두 결제하면 각각 별도 수금·지급(손실 아님). 미완료 pending 은 누적 가능(대사로 정리).
+- **계정 삭제**: `payapp_orders`·`member_accounts` 가 `profiles` `ON DELETE CASCADE` — 결제 이력 보존이 필요하면 soft-delete/RESTRICT 전환(현재 계정삭제 기능 없음).
+- **확장 시(v2)**: 자동 환불 회수 RPC, stale-pending 대사 cron, preview 환경 DB 격리, bigint 전환, 사업자 전환+토스(수수료/세금계산서).
+
 ## 모니터링 (Sentry)
 
 에러/경고 알림 + **구조화 로그(Logs)** + **트레이싱(성능)** + **세션 리플레이** + **인앱 의견 위젯**. 초반 서비스 품질 향상 위해 유저 행동/피드백을 직접 관찰 — 게임 데이터(캐릭터/플레이/랭킹/닉네임/userKey)는 비민감 취급, **업로드 원본 얼굴만 마스킹**(정책 #1/PIPA).

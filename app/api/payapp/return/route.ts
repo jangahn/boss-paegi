@@ -10,7 +10,13 @@ export const runtime = "nodejs";
  */
 function redirectToDone(req: NextRequest) {
   const order = req.nextUrl.searchParams.get("order") ?? "";
-  const base = new URL(PUBLIC_ENV.SITE_URL).origin;
+  // SITE_URL 오형식이어도 결제 후 복귀가 깨지지 않게 요청 origin 으로 폴백.
+  let base: string;
+  try {
+    base = new URL(PUBLIC_ENV.SITE_URL).origin;
+  } catch {
+    base = req.nextUrl.origin;
+  }
   const dest = order
     ? `${base}/credits/done?order=${encodeURIComponent(order)}`
     : `${base}/credits/done`;
