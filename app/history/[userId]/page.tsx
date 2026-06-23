@@ -85,7 +85,7 @@ export default async function HistoryPage({
             <img
               src={profile.avatar_url ?? DEFAULT_AVATAR}
               alt=""
-              className="h-11 w-11 shrink-0 rounded-full border border-foreground/10 object-cover"
+              className="h-11 w-11 shrink-0 rounded-full border border-foreground/10 bg-foreground/10 object-cover"
             />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">{name}님의 기록</h1>

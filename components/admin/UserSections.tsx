@@ -67,7 +67,7 @@ export function DollsList({ rows }: { rows: DollRow[] }) {
           <img
             src={d.image_url}
             alt=""
-            className="mx-auto mb-1 h-20 w-20 rounded-lg object-cover"
+            className="mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 object-cover"
           />
           <div className="font-medium">{ROLE_LABEL[d.role] ?? d.role}</div>
           <div className="text-zinc-400">{fmtKst(d.created_at)}</div>

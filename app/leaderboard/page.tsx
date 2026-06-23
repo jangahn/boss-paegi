@@ -89,7 +89,7 @@ export default function LeaderboardPage() {
                     <img
                       src={r.avatar_url ?? DEFAULT_AVATAR}
                       alt=""
-                      className="h-9 w-9 shrink-0 rounded-full border border-foreground/10 object-cover"
+                      className="h-9 w-9 shrink-0 rounded-full border border-foreground/10 bg-foreground/10 object-cover"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-medium">

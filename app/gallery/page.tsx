@@ -55,6 +55,8 @@ export default function GalleryPage() {
   useEffect(() => {
     void load();
     void loadPending();
+    // genCredits 는 마운트 시 1회 로드 — 생성은 /generate 에서 일어나고 끝나면 /play 로 이동하므로
+    // 갤러리 재진입=재마운트로 자가보정(별도 실시간 동기화 불요). [품질감사 low: 자가보정 확인됨]
     getMyProfile()
       .then((p) => setCredits(p?.genCredits ?? null))
       .catch(() => {});
