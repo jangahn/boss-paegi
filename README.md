@@ -104,7 +104,7 @@ boss-paegi/
 - **계정 분리**: Supabase 자동 linking 수용 — 동일 **verified 이메일**의 Kakao/Google 은 같은 계정으로 연결될 수 있음. 다른 이메일이면 별개 계정. 멀티연동 UI 없음.
 - **이메일 필수**: 이메일 없는/미검증 OAuth 는 멤버화 차단(`/login?error=email_required`). Kakao 는 Biz 인증 + `account_email` 필수 동의 필요.
 - **테이블 분리**: 공개 프로필은 `profiles`(display_name/avatar_url, public read), 멤버십·생성권은 private `member_accounts`(self-read만, write 는 service-role/`SECURITY DEFINER` RPC). `profiles.avatar_url` 은 컬럼레벨 grant 로 클라 직접 변조 차단 → 변경은 검증된 `/api/avatar`(admin) 경유.
-- **생성권(크레딧)**: 가입 시 5개 지급(`member_accounts.gen_credits`), 생성마다 1개 차감(서버 `consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). 소진 시 `/credits` 에서 **유료 충전**(페이앱 결제, 아래 *결제* 참조) 또는 의견 위젯 요청. `OPS_USER_ID` 는 무제한.
+- **생성권(크레딧)**: 가입 시 2개 지급(`member_accounts.gen_credits`), 생성마다 1개 차감(서버 `consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). 소진 시 `/credits` 에서 **유료 충전**(페이앱 결제, 아래 *결제* 참조) 또는 의견 위젯 요청. `OPS_USER_ID` 는 무제한.
 - **Provider 설정**(Management API `PATCH /config/auth`): Kakao/Google enabled+client_id+secret, `manual linking` 활성(linkIdentity 필수), `site_url`, `uri_allow_list`(prod+localhost `/auth/callback`). provider 측 redirect URI = `https://<ref>.supabase.co/auth/v1/callback`(앱의 `/auth/callback` 아님).
 
 ## 결제 (생성권 충전 — 페이앱)
@@ -170,7 +170,7 @@ npm run typecheck   # tsc --noEmit
 - **동의 다이얼로그**: 생성 직전 3개 체크박스 강제 (본인 또는 사용권 있는 이미지 / 타인 비방 목적 아님 / 캐릭터화 변형 동의).
 - **AI 프롬프트**: 강한 캐릭터화 (3D claymation, caricature, exaggerated chibi) — 실제 얼굴과 닮음 최소화.
 - **API 키**: `FAL_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 는 **서버 전용**. 클라이언트 번들 절대 포함 금지.
-- **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 5개, 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 의견 위젯으로 추가 요청. `OPS_USER_ID` 무제한.
+- **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 2개, 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 의견 위젯으로 추가 요청. `OPS_USER_ID` 무제한.
 
 전체 정책 결정은 [CLAUDE.md](./CLAUDE.md) 참조.
 
@@ -280,7 +280,7 @@ v0.12 (2026-06-20, OAuth 회원 + 생성권 크레딧):
 - **Kakao/Google 로그인 회원제**: 익명 전용 → OAuth 회원 도입. 비회원도 플레이·랭킹 유지, **생성·갤러리는 회원 전용**(`proxy.ts` 게이팅 → `/login`). 별도 가입 페이지 없이 로그인 버튼이 곧 가입.
 - **linkIdentity 마이그레이션**: 익명 상태 첫 OAuth 로그인 시 같은 `user.id` 로 멤버 승격 → 익명 때 만든 dolls/scores 보존. 로그아웃=새 익명 분리. 이미 가입된 OAuth 재로그인은 `identity_already_exists`→`/login?relogin=1`→`signInWithOAuth`(현재 익명 데이터 자동 병합 안 함).
 - **공개/멤버십 분리** (migration 0010): 공개 프로필 `profiles`(+`avatar_url`, public read; 컬럼레벨 grant 로 클라는 `display_name` 만 수정) / private `member_accounts`(`gen_credits`·`member_since`·`email`, self-read만, write 는 service-role/`SECURITY DEFINER` RPC) — 익명 변조·노출 차단. `email`(0014)은 이벤트/연락용 — `auth.users.email` 복제본(콜백서 변경 시 최신화), **public 노출 금지라 여기 비공개 저장**, 추출은 admin/대시보드 전용(클라 프로필·캐시 미반영).
-- **생성권 크레딧**(일일 한도 대체): 가입 시 5개, 생성마다 1개 차감(`consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). 소진 시 우측하단 의견 위젯으로 추가 요청 안내. `OPS_USER_ID` 무제한.
+- **생성권 크레딧**(일일 한도 대체): 가입 시 2개, 생성마다 1개 차감(`consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). 소진 시 우측하단 의견 위젯으로 추가 요청 안내. `OPS_USER_ID` 무제한.
 - **콜백/게이트**: `/auth/callback`(code 교환 + **이메일 필수 게이트**(verified-email linking 안전성) + 멤버 1회성 초기화 — `member_accounts` 신규 insert 시만 OAuth 닉/프사 반영, 재로그인 보존), `lib/auth-server.ts` `requireMember`(401/member_only/member_setup_required), `safeNext`(open redirect 차단).
 - **계정 UI**: `AppNav`/`AccountMenu` 익명(닉네임+로그인) vs 멤버(아바타+드롭다운: 닉네임/프사 변경·로그아웃). `/api/avatar`(서명 업로드 → admin 검증 → `profiles.avatar_url`), 랭킹에 프로필 아바타(없으면 `/avatars/default.png`).
 - 계정 정책: Supabase 자동 linking 수용(동일 verified 이메일 Kakao/Google = 같은 계정), 멀티연동 UI 없음. Provider 키는 앱 env 가 아니라 Supabase Auth config. 익명 dolls→운영계정 이관은 즉시 X — grace period 후 후속 정리(미승격 익명 보호).
@@ -368,5 +368,5 @@ profiles public read (랭킹 닉네임) + daily_gen_limit + scores duration 1시
 ## 비용 (MVP 단계)
 
 - Vercel Hobby / Supabase Free Tier 무료.
-- fal.ai 생성당 ~$0.025-0.05. 생성권 크레딧(가입 5개 + 페이앱 유료 충전)으로 통제. + fal 잔액 hard cap($2).
+- fal.ai 생성당 ~$0.025-0.05. 생성권 크레딧(가입 2개 + 페이앱 유료 충전)으로 통제. + fal 잔액 hard cap($2).
 - **하이라이트 클립 스토리지/egress** (Supabase Free 1GB/5GB egress): **공유 시점만 업로드**(매 게임 X) + 클립 크기 캡(~4s·≤~2MB) + 재생은 Supabase CDN 직접(Vercel egress 0)으로 통제. 바이럴 급증 시 TTL cron(컬럼 설계 완료)·Cloudflare R2(egress 무료) 오프로드·Supabase Pro 가 스케일 경로.

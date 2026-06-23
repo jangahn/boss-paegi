@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       const { data: rows, error: upErr } = await admin
         .from("member_accounts")
         .upsert(
-          { user_id: user.id, gen_credits: 5 },
+          { user_id: user.id, gen_credits: 2 },
           { onConflict: "user_id", ignoreDuplicates: true }
         )
         .select("user_id");
