@@ -1,4 +1,5 @@
 import "server-only";
+import * as Sentry from "@sentry/nextjs";
 import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseFeedback, verifyLinkval, isCancelState } from "@/lib/payapp";
@@ -67,12 +68,16 @@ export async function POST(req: NextRequest) {
   // 3) 이벤트별 — 검증 통과면 모두 SUCCESS. 지급 대상은 DB order.user_id.
   try {
     if (fb.payState === 4) {
-      const { data: granted, error } = await admin.rpc("mark_paid_and_grant", {
-        p_order_uuid: order.order_uuid,
-        p_mul_no: fb.mulNo || null,
-        p_price: fb.price,
-        p_raw: fb.raw,
-      });
+      const { data: granted, error } = await Sentry.startSpan(
+        { name: "payapp.grant", attributes: { orderUuid: fb.orderUuid } },
+        () =>
+          admin.rpc("mark_paid_and_grant", {
+            p_order_uuid: order.order_uuid,
+            p_mul_no: fb.mulNo || null,
+            p_price: fb.price,
+            p_raw: fb.raw,
+          })
+      );
       if (error) {
         log.error("payapp.fb_grant_fail", { orderUuid: fb.orderUuid, ...errInfo(error) });
         return FAIL(); // 일시 오류 → 재시도 유도

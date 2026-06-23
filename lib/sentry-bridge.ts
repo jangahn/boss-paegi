@@ -4,6 +4,16 @@ import type { LogLevel, LogContext } from "./log";
 // 초고빈도 info 는 Sentry Logs 전송에서 제외(볼륨/비용) — /api/generations 폴링마다 찍히는 요약.
 const LOG_SKIP = new Set<string>(["gen.recover_list"]);
 
+// 고볼륨 warn 은 captureMessage(=이슈/에러쿼터) 제외하고 Logs 로만 — 무료 에러쿼터 보호.
+// (결제·가입·돈 관련 critical 은 절대 제외 안 함. 폴링/크롤러성 노이즈만.)
+const CAPTURE_SKIP = new Set<string>([
+  "gen.client_poll_fail",
+  "og.doll_query_fail",
+  "og.score_query_fail",
+  "highlight.clip_play_unsupported",
+  "score.out_of_range",
+]);
+
 /**
  * 구조화 로그(log.ts emit)를 Sentry 로 브릿지 — emit() 한 곳에서만 호출.
  *  - error/warn → captureMessage: event 명으로 fingerprint 그룹핑 → 이벤트당 1 이슈,
@@ -34,6 +44,9 @@ export function emitToSentry(
     Sentry.addBreadcrumb({ category: event, level: "info", data: ctx });
     return;
   }
+
+  // 고볼륨 warn 은 Logs 로만(위에서 전송) — 이슈/에러쿼터 미소모.
+  if (level === "warn" && CAPTURE_SKIP.has(event)) return;
 
   Sentry.captureMessage(event, {
     level: level === "error" ? "error" : "warning",

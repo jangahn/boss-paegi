@@ -47,3 +47,20 @@ export function setSentryGameContext(ctx: {
     gamePhase: ctx.gamePhase,
   });
 }
+
+/**
+ * 생성 퍼널 단계 태그 — consent/upload/crop/role-select/generating/pick/saving/no_credits.
+ * 저카디널리티 태그(집계 가능) + breadcrumb(에러/리플레이 맥락). 이탈 지점 추적용.
+ */
+export function setSentryGenStage(stage: string): void {
+  Sentry.setTag("gen_stage", stage);
+  Sentry.addBreadcrumb({ category: "gen_stage", level: "info", message: stage });
+}
+
+/**
+ * 주요 액션 태그 — purchase/generate/share/signup 등(저카디널리티). 세션·리플레이 검색성↑.
+ */
+export function setSentryLastAction(action: string): void {
+  Sentry.setTag("last_action", action);
+  Sentry.addBreadcrumb({ category: "action", level: "info", message: action });
+}

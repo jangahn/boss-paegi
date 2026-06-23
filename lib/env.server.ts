@@ -11,4 +11,6 @@ export const SERVER_ENV = {
   PAYAPP_LINKVAL: process.env.PAYAPP_LINKVAL ?? "",
   // LINKKEY: v2 취소 API(paycancel/paycancelreq)용 예약 — v1(수동 환불)은 미사용.
   PAYAPP_LINKKEY: process.env.PAYAPP_LINKKEY ?? "",
+  // 대사 cron(cron-job.org → /api/ops/reconcile) 보호 시크릿. 미설정 시 reconcile 비활성(503).
+  CRON_SECRET: process.env.CRON_SECRET ?? "",
 };

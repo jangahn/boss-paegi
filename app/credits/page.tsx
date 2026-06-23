@@ -9,6 +9,7 @@ import {
   type CreditProductId,
 } from "@/lib/credit-products";
 import { log, errInfo } from "@/lib/log";
+import { setSentryLastAction } from "@/lib/sentry-context";
 
 /**
  * 생성권 충전 — 상품 4종(개당 단가 표시). 클릭 시 서버 checkout 으로 결제요청 →
@@ -21,6 +22,7 @@ export default function CreditsPage() {
 
   const buy = async (productId: CreditProductId) => {
     if (pending) return; // 중복 클릭 가드
+    setSentryLastAction("purchase_start");
     setPending(productId);
     setError(null);
     try {
