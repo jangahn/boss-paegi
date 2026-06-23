@@ -124,6 +124,16 @@ export function AccountMenu() {
               </span>
             </div>
           )}
+          {isMember && (
+            <Link
+              href="/credits"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-left text-sm font-semibold text-amber-600 transition hover:bg-foreground/5"
+            >
+              생성권 충전
+            </Link>
+          )}
           <Link
             href="/badges"
             role="menuitem"

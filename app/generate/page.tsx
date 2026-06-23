@@ -98,9 +98,9 @@ function GeneratePageInner() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "failed" }));
         if (err.error === "no_credits") {
-          throw new Error(
-            "무료 생성권을 모두 사용했어요. 화면 우측 아래 '의견' 버튼으로 닉네임과 함께 생성권을 요청해주세요!"
-          );
+          // 진입 후 크레딧 소진(드문 레이스) — 충전 화면으로.
+          router.push("/credits");
+          return;
         }
         if (err.error === "member_only" || err.error === "member_setup_required") {
           // 비회원/멤버화 미완 — 로그인 페이지로.
@@ -190,13 +190,19 @@ function GeneratePageInner() {
           </span>
           <h2 className="text-lg font-bold">생성권을 다 썼어요</h2>
           <p className="text-sm leading-relaxed text-zinc-500">
-            화면 우측 아래 &apos;의견&apos; 버튼으로 닉네임과 함께 생성권을
-            요청해주세요. 확인하고 채워드릴게요!
+            생성권을 충전하면 바로 캐릭터를 만들 수 있어요.
           </p>
           <button
             type="button"
+            onClick={() => router.push("/credits")}
+            className="rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
+          >
+            생성권 충전하기
+          </button>
+          <button
+            type="button"
             onClick={() => router.push("/gallery")}
-            className="rounded-full border border-foreground/15 px-6 py-3 text-sm font-medium transition hover:bg-foreground/5"
+            className="text-sm text-zinc-500 underline"
           >
             갤러리로 돌아가기
           </button>

@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-// 회원 전용 페이지 — 익명/무세션 접근 시 /login 으로. (생성·갤러리)
+// 회원 전용 페이지 — 익명/무세션 접근 시 /login 으로. (생성·갤러리·충전)
+// /credits 는 결제(회원만)라 게이트 → /credits, /credits/done 모두 보호.
 // play/leaderboard/share/doll/홈 은 절대 게이팅하지 않음 (비회원 유지).
-const MEMBER_ONLY_PAGES = ["/generate", "/gallery"];
+const MEMBER_ONLY_PAGES = ["/generate", "/gallery", "/credits"];
 
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
