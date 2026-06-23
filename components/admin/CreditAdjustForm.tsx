@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 
@@ -15,6 +15,7 @@ type Target = { userId: string; displayName: string | null; genCredits: number }
 
 export function CreditAdjustForm({ target }: { target: Target }) {
   const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -67,7 +68,7 @@ export function CreditAdjustForm({ target }: { target: Target }) {
       );
       setDelta("");
       setReason("");
-      router.refresh(); // 페이지 잔액 + 조정 이력 ledger 재조회(단일 소스).
+      startRefresh(() => router.refresh()); // 페이지 잔액 + 조정 이력 ledger 재조회(단일 소스, pending 가시화).
     } catch (e) {
       setError(e instanceof Error ? e.message : "적용 실패");
     } finally {
@@ -108,6 +109,7 @@ export function CreditAdjustForm({ target }: { target: Target }) {
       </div>
       {hint && <p className="text-xs text-amber-600">{hint}</p>}
       {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+      {refreshing && <p className="text-[11px] text-zinc-400">갱신 중…</p>}
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
