@@ -10,6 +10,7 @@ import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
 import { RoleSelectStage } from "@/components/generate/RoleSelectStage";
 import { getMyProfile } from "@/lib/profile";
+import { setSentryGenStage, setSentryLastAction } from "@/lib/sentry-context";
 import { type RoleId } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
 import {
@@ -62,6 +63,11 @@ function GeneratePageInner() {
     setSelectedRole,
   });
 
+  // 생성 퍼널 단계 태그(이탈 추적) — Sentry 저카디널리티 태그 + breadcrumb.
+  useEffect(() => {
+    setSentryGenStage(stage);
+  }, [stage]);
+
   useEffect(() => {
     return () => {
       if (preview) URL.revokeObjectURL(preview);
@@ -88,6 +94,7 @@ function GeneratePageInner() {
   const handleGenerate = async (uploadFile?: File, role: RoleId = selectedRole) => {
     const target = uploadFile ?? file;
     if (!target) return;
+    setSentryLastAction("generate");
     setStage("generating");
     setError(null);
     const form = new FormData();

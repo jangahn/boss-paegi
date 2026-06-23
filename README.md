@@ -89,6 +89,7 @@ boss-paegi/
 | `NEXT_PUBLIC_SITE_URL` | 공유 링크 / OG 이미지 / **페이앱 결제 콜백(feedback·return)**용. ⚠️ Vercel prod 에 실제 도메인 필수 (미설정 시 콜백이 localhost → 결제 깨짐) |
 | `PAYAPP_USERID` / `PAYAPP_LINKVAL` | 페이앱(무사업자) 결제 — 판매자 아이디 / 연동VALUE(웹훅 위변조 차단). 미설정 시 결제 비활성(503). **서버 전용** |
 | `PAYAPP_LINKKEY` | 페이앱 연동KEY (취소 API용, 선택). **서버 전용** |
+| `CRON_SECRET` | 대사 cron(`/api/ops/reconcile`) 보호 시크릿. cron-job.org 가 `x-cron-secret` 헤더로 전달. 미설정 시 reconcile 비활성(503). **서버 전용** |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
 
@@ -124,6 +125,14 @@ boss-paegi/
 - **동시/다중 결제**: 같은 상품 동시 checkout 은 10분 내 pending 재사용 + 버튼 disable 로 우발 중복 방지. 사용자가 여러 결제창을 모두 결제하면 각각 별도 수금·지급(손실 아님). 미완료 pending 은 누적 가능(대사로 정리).
 - **계정 삭제**: `payapp_orders`·`member_accounts` 가 `profiles` `ON DELETE CASCADE` — 결제 이력 보존이 필요하면 soft-delete/RESTRICT 전환(현재 계정삭제 기능 없음).
 - **확장 시(v2)**: 자동 환불 회수 RPC, stale-pending 대사 cron, preview 환경 DB 격리, bigint 전환, 사업자 전환+토스(수수료/세금계산서).
+
+## 관리자 / 운영 (admin)
+
+관리자 전용 운영 대시보드 + 결제 대사. 권한은 `member_accounts.is_admin`(service_role 만 쓰기 → 자가부여 불가, 0020). `proxy.ts` 가 `/admin` 로그인 게이트, 페이지·`/api/admin/*` 는 **`requireAdmin()`** 으로 최종 판정 — is_admin 을 **별도·관용 조회**(0020 미적용/비admin 이면 안전 차단, 기존 회원 흐름 무영향).
+
+- **`/admin`**(RSC, `force-dynamic`): 매출·주문(오늘=KST 자정 / 7d·30d rolling, 상태별) · 가입·구매 퍼널(방문→플레이→가입→첫생성→첫구매) · 최근 주문 · **오래된 결제요청(확인 필요)**. 정확 수치는 DB(`lib/admin-data` + `get_admin_funnel`/`get_admin_order_summary` RPC), Sentry 아님.
+- **운영 액션**(돈·감사): stuck 주문 **결제완료 확인 후 지급** · 환불/취소 표시(회수 0까지만) · CS 크레딧 조정(기존 회원만·−100~100·≠0·사유 5~500). 모두 service_role RPC(`admin_settle_stuck_order`/`admin_cancel_order`/`admin_adjust_credits`)가 **row lock→변경→`admin_actions_ledger` 기록**을 한 트랜잭션(멱등·취소 1회·clamp-0).
+- **오래된 결제요청 대사**: `cron-job.org` → `POST /api/ops/reconcile`(`x-cron-secret`) → mul_no 있는 pending 2h+ 탐지 → Sentry 경고(**"확인 필요"** — 미지급 단정 아님, dedup 6~24h). **자동 지급 없음**(수동).
 
 ## 모니터링 (Sentry)
 
@@ -328,10 +337,19 @@ v0.19 (2026-06-23, 생성권 유료 충전 — 페이앱 무사업자 결제):
 - **복귀/UX**: `skip_cstpage=y`라 페이앱이 returnurl 로 POST → `/api/payapp/return`(303)→`/credits/done?order=` → `/api/payapp/order-status` 폴링(본인 주문만)으로 paid 확인. recvphone 더미+`smsuse=n`. `/generate` no_credits·AccountMenu 가 `/credits` 로 안내, `proxy.ts` 가 `/credits` 회원 게이트.
 - **환불(v1 수동)**: 페이앱 관리자 취소→웹훅 `status='canceled'`(paid_at 유지, **크레딧 자동 회수 없음**, 운영자 수동). 테스트는 prod 실결제→환불(샌드박스 없음·웹훅 공개 HTTPS 필요). 규모 확대 시 여친 명의 간이사업자+토스 전환 경로(별도).
 
+v0.20 (2026-06-23, 관리자 대시보드 + 모니터링 고도화):
+- **권한** `member_accounts.is_admin`(0020, emfoa23 seed). `requireAdmin()` = requireMember + is_admin **별도·관용 조회** → 0020 미적용이어도 기존 회원/결제 흐름 무영향, `/admin` 만 비활성.
+- **/admin**(RSC `force-dynamic`): 매출·주문(KST today/7d/30d·상태별)·가입구매 퍼널·최근주문·오래된 결제요청. 정확 수치는 DB.
+- **운영 액션+감사**(0020 RPC, row lock·멱등·`admin_actions_ledger`): stuck 지급(결제완료 확인 후)·환불표시(회수 clamp-0)·CS 조정(회원만·−100~100·≠0·사유).
+- **대사 알림**: `/api/ops/reconcile`(`x-cron-secret`) — mul_no 있는 pending 2h+ "확인 필요"(자동지급 X). cron-job.org 직접 호출.
+- **Sentry**: payapp 스팬(`/api/payapp/*` 전수)·저카디널리티 태그(payapp.status/product·gen_stage·last_action)·`CAPTURE_SKIP`(고볼륨 warn logs-only, 에러쿼터 보호)·결제 critical 즉시/프로브 rate-based(룰=로컬 토큰, **앱 런타임 env 금지**). 알림 dev.jangahn+emfoa23.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
 **⚠️ Migration 0019 적용 필요** (`supabase/migrations/0019_payapp_orders.sql`): `payapp_orders` 테이블 + `mark_paid_and_grant` RPC. 적용 + `PAYAPP_*`/`NEXT_PUBLIC_SITE_URL`(prod) env 설정 전엔 결제 비활성(503).
+
+**⚠️ Migration 0020 적용 필요** (`supabase/migrations/0020_admin_monitoring.sql`): `is_admin`+seed(emfoa23)·`payapp_orders.canceled_at/clawback_credits`·인덱스·`admin_actions_ledger`·`get_admin_funnel`/`get_admin_order_summary`/`admin_settle_stuck_order`/`admin_cancel_order`/`admin_adjust_credits` RPC. **additive(구 코드 무영향)** — 적용 전엔 `/admin` 비활성(requireAdmin 관용 차단). + env `CRON_SECRET`(.env.local+Vercel), cron-job.org 설정, Sentry emfoa23 초대.
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
 ai_generations 에 candidate_urls/picked_doll_id 컬럼 + status 에 'picked' 추가. 적용 전엔 복구 기능 비활성(앱은 정상).

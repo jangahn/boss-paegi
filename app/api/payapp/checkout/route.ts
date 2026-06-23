@@ -1,4 +1,5 @@
 import "server-only";
+import * as Sentry from "@sentry/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
@@ -85,14 +86,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "order_create_failed" }, { status: 500 });
   }
 
-  // 3) payrequest. (base 는 위에서 검증됨)
-  const result = await createPayRequest({
-    product,
-    userId: user.id,
-    orderUuid,
-    feedbackUrl: `${base}/api/payapp/feedback`,
-    returnUrl: `${base}/api/payapp/return?order=${orderUuid}`,
-  });
+  // 3) payrequest. (base 는 위에서 검증됨) — 저볼륨이라 전수 트레이싱, 태그는 저카디널리티(product)만.
+  Sentry.setTag("payapp.product", product.productId);
+  const result = await Sentry.startSpan(
+    {
+      name: "payapp.payrequest",
+      attributes: { product: product.productId, amount: product.price },
+    },
+    () =>
+      createPayRequest({
+        product,
+        userId: user.id,
+        orderUuid,
+        feedbackUrl: `${base}/api/payapp/feedback`,
+        returnUrl: `${base}/api/payapp/return?order=${orderUuid}`,
+      })
+  );
 
   if (!result.ok) {
     await admin

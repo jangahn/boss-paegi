@@ -10,7 +10,11 @@ export type MemberRow = {
   member_since: string;
 };
 
-export type MemberGateError = "unauthorized" | "member_only" | "member_setup_required";
+export type MemberGateError =
+  | "unauthorized"
+  | "member_only"
+  | "member_setup_required"
+  | "not_admin";
 
 export type RequireMemberResult =
   | { ok: true; user: User; member: MemberRow }
@@ -43,7 +47,27 @@ export async function requireMember(): Promise<RequireMemberResult> {
   return { ok: true, user, member: member as MemberRow };
 }
 
-/** requireMember 실패 결과 → JSON 응답. */
+/**
+ * 관리자 전용 게이트 — requireMember 통과 + member_accounts.is_admin(0020).
+ * is_admin 은 **별도·관용 조회**: 0020 컬럼 미적용/조회 실패 시 안전하게 비-admin(기존 회원 흐름 무영향).
+ * (is_admin 은 service_role 전용 컬럼 → 자가부여 불가.)
+ */
+export async function requireAdmin(): Promise<RequireMemberResult> {
+  const r = await requireMember();
+  if (!r.ok) return r;
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("member_accounts")
+    .select("is_admin")
+    .eq("user_id", r.user.id)
+    .maybeSingle();
+  if (error || !(data as { is_admin?: boolean } | null)?.is_admin) {
+    return { ok: false, status: 403, error: "not_admin" };
+  }
+  return r;
+}
+
+/** requireMember/requireAdmin 실패 결과 → JSON 응답. */
 export function memberGateResponse(
   r: Extract<RequireMemberResult, { ok: false }>
 ): NextResponse {
