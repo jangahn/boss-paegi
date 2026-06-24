@@ -22,6 +22,7 @@
     "react-dom": "19.2.4",
     "react-easy-crop": "^5.5.7",
     "sharp": "^0.34.5",
+    "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
