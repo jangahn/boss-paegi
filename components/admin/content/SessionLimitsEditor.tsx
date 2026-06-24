@@ -63,6 +63,17 @@ export function SessionLimitsEditor({
     }
   };
 
+  const totalSec = Number(playSec);
+  const mmss =
+    Number.isFinite(totalSec) && totalSec > 0
+      ? [
+          Math.floor(totalSec / 60) ? `${Math.floor(totalSec / 60)}분` : "",
+          totalSec % 60 ? `${totalSec % 60}초` : "",
+        ]
+          .filter(Boolean)
+          .join(" ") || "0초"
+      : "—";
+
   return (
     <div className="mt-5 flex flex-col gap-4">
       {(source === "default" || invalid) && (
@@ -75,7 +86,8 @@ export function SessionLimitsEditor({
 
       <label className="flex flex-col gap-1">
         <span className="text-sm font-semibold text-zinc-500">
-          최대 플레이 시간(초) <span className="text-zinc-400">· 5 ~ {maxPlaySeconds}</span>
+          최대 플레이 시간(초){" "}
+          <span className="text-zinc-400">· 5 ~ {maxPlaySeconds} · 지금 {mmss}</span>
         </span>
         <input
           type="number"
@@ -86,7 +98,7 @@ export function SessionLimitsEditor({
           onChange={(e) => setPlaySec(e.target.value)}
           className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
         />
-        <span className="text-[11px] text-zinc-400">예: 90 = 90초 후 자동 종료</span>
+        <span className="text-[11px] text-zinc-400">= {mmss} 후 자동 종료 (예: 90초 = 1분 30초)</span>
       </label>
 
       <label className="flex flex-col gap-1">
