@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
-import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
+import { asRole } from "@/lib/roles";
+import { getRoleConfig } from "@/lib/config/getters";
+import { roleFrom } from "@/lib/config/domains/roles";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -77,11 +79,12 @@ export default async function OgImage({
 
   const name = s?.profiles?.display_name ?? "익명";
   const role = asRole(s?.dolls?.role);
-  const rlabel = ROLE_META[role].label;
+  const cfg = await getRoleConfig();
+  const rlabel = roleFrom(role, cfg).label;
   const score = (s?.score ?? 0).toLocaleString();
   const dollSrc = await dollDataUri(s?.dolls?.image_url ?? null);
   const grade = gradeFor(s?.score ?? 0);
-  const reaction = s ? bossReaction(s.score, s.id, role) : "";
+  const reaction = s ? bossReaction(s.score, s.id, role, cfg) : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";
 
   return new ImageResponse(
@@ -269,7 +272,7 @@ export default async function OgImage({
               {SERVICE_NAME}
             </div>
             <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
-              {getRoleContent(role).ctaSafe}
+              {roleFrom(role, cfg).ctaSafe}
             </div>
           </div>
         </div>

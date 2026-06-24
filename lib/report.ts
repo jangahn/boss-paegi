@@ -1,5 +1,6 @@
 import { resolveWeapon } from "@/lib/weapons";
-import { getRoleContent, type RoleId } from "@/lib/roles";
+import type { RoleId } from "@/lib/roles";
+import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 /**
  * 게임 결과 → "스트레스 해소 결과 보고서" 데이터.
@@ -59,33 +60,43 @@ export function gradeFor(score: number): ReportGrade {
  * 피격자 의견 (보고서) — 맞는 캐릭터(롤) 입장. 롤별 콘텐츠는 lib/roles 레지스트리.
  * index 0→9, 점수가 오를수록 굴복/항복 톤. scoreId 시드 결정적(SSR/CSR 일치).
  */
-export function bossReaction(score: number, seed: string, role: RoleId = "boss"): string {
-  const lines = getRoleContent(role).reactions[scoreTier(score)];
+export function bossReaction(
+  score: number,
+  seed: string,
+  role: RoleId = "boss",
+  cfg?: RoleConfig
+): string {
+  const lines = roleFrom(role, cfg).reactions[scoreTier(score)];
   return lines[hashSeed(seed) % lines.length];
 }
 
-/** OG 설명 — 단계별 후킹 강도 상승. 롤별 완성형(조사 포함)은 lib/roles 레지스트리. */
-export function ogDescription(score: number, seed: string, role: RoleId = "boss"): string {
-  const lines = getRoleContent(role).ogLines[scoreTier(score)];
+/** OG 설명 — 단계별 후킹 강도 상승. 롤별 완성형(조사 포함)은 role_content 설정. */
+export function ogDescription(
+  score: number,
+  seed: string,
+  role: RoleId = "boss",
+  cfg?: RoleConfig
+): string {
+  const lines = roleFrom(role, cfg).ogLines[scoreTier(score)];
   return lines[hashSeed(seed) % lines.length];
 }
 
 /**
  * 인사기록카드 (공유된 캐릭터 페이지) 특이사항/직급/소속 — id 시드 결정적.
- * 롤별 콘텐츠는 lib/roles 레지스트리.
+ * 롤별 콘텐츠는 role_content 설정(cfg 미지정 시 코드 기본값).
  */
-export function dollTrait(seed: string, role: RoleId = "boss"): string {
-  const a = getRoleContent(role).traits;
+export function dollTrait(seed: string, role: RoleId = "boss", cfg?: RoleConfig): string {
+  const a = roleFrom(role, cfg).traits;
   return a[hashSeed(seed) % a.length];
 }
 
-export function dollRank(seed: string, role: RoleId = "boss"): string {
-  const a = getRoleContent(role).ranks;
+export function dollRank(seed: string, role: RoleId = "boss", cfg?: RoleConfig): string {
+  const a = roleFrom(role, cfg).ranks;
   return a[hashSeed(seed + "rank") % a.length];
 }
 
-export function dollDepartment(seed: string, role: RoleId = "boss"): string {
-  const a = getRoleContent(role).departments;
+export function dollDepartment(seed: string, role: RoleId = "boss", cfg?: RoleConfig): string {
+  const a = roleFrom(role, cfg).departments;
   return a[hashSeed(seed + "dept") % a.length];
 }
 

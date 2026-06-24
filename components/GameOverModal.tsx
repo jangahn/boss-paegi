@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
 import { bossReaction, gradeFor, reportNo } from "@/lib/report";
-import { ROLE_META, type RoleId } from "@/lib/roles";
+import { type RoleId } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
 import { evaluateBadges } from "@/lib/badges";
@@ -44,6 +46,8 @@ export function GameOverModal({
   bgVisits,
 }: Props) {
   const router = useRouter();
+  const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
+  const roleLabel = roleFrom(role, roleCfg).label;
   const score = useGameStore((s) => s.score);
   const maxCombo = useGameStore((s) => s.maxCombo);
   const hitCount = useGameStore((s) => s.hitCount);
@@ -143,7 +147,7 @@ export function GameOverModal({
   const durationMs = endedAt && startedAt ? endedAt - startedAt : 0;
   const grade = gradeFor(score);
   const mainWeapon = topWeapon(weaponCounts) ?? weapon;
-  const reaction = bossReaction(score, scoreId ?? String(score), role);
+  const reaction = bossReaction(score, scoreId ?? String(score), role, roleCfg);
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
 
   // gesture 안에서 URL 즉시 공유(친구는 보통 수 초+ 뒤 열어 그때면 attach 완료).
@@ -178,7 +182,7 @@ export function GameOverModal({
       }
     }
     void shareGameResult(sid, score, {
-      text: `${ROLE_META[role].label} ${score.toLocaleString()}점 패고 옴 🥊`,
+      text: `${roleLabel} ${score.toLocaleString()}점 패고 옴 🥊`,
     }).then((result) => {
       if (result === "shared") setShareMsg("공유했어요!");
       else if (result === "copied") setShareMsg("링크 복사됨");
@@ -203,7 +207,7 @@ export function GameOverModal({
           reaction={reaction}
           nickname={nickname}
           dollImageUrl={dollImageUrl}
-          roleLabel={ROLE_META[role].label}
+          roleLabel={roleLabel}
           persona={persona}
           percentile={percentile}
           badges={earnedBadges}

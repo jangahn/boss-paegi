@@ -5,6 +5,11 @@ import {
   MARKETING_COPY_DEFAULT,
   type MarketingCopy,
 } from "./domains/marketing";
+import {
+  roleConfigSchema,
+  ROLE_CONFIG_DEFAULT,
+  type RoleConfig,
+} from "./domains/roles";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -12,4 +17,11 @@ export function getMarketingCopy(): Promise<MarketingCopy> {
 }
 export function getMarketingCopyWithMeta() {
   return getSettingWithMeta("marketing_copy", marketingCopySchema, MARKETING_COPY_DEFAULT);
+}
+
+export function getRoleConfig(): Promise<RoleConfig> {
+  return getSetting("role_content", roleConfigSchema, ROLE_CONFIG_DEFAULT);
+}
+export function getRoleConfigWithMeta() {
+  return getSettingWithMeta("role_content", roleConfigSchema, ROLE_CONFIG_DEFAULT);
 }

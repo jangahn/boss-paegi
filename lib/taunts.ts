@@ -1,5 +1,6 @@
 import { scoreTier, TIER_COUNT } from "@/lib/report";
-import { getRoleContent, type RoleId } from "@/lib/roles";
+import type { RoleId } from "@/lib/roles";
+import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 /**
  * 캐릭터 시비 멘트. 게임 진행 중 주기적으로 말풍선으로 노출 — 패고 싶게 만드는 게 목적.
@@ -18,16 +19,21 @@ export const HIT_REACTIONS: readonly string[] = [
   "커헉!",
 ] as const;
 
-/** 하위호환 — 부장 전체 풀 (점수/롤 모름 호출용) */
-export const TAUNTS: readonly string[] = getRoleContent("boss").taunts.flat();
+/** 하위호환 — 부장 전체 풀 (점수/롤 모름 호출용, 코드 기본값) */
+export const TAUNTS: readonly string[] = roleFrom("boss").taunts.flat();
 
 /**
  * 점수대(10단계) + 롤에 맞는 시비 멘트 랜덤 선택.
- * 해당 단계 풀 + 직전 멘트 제외. score 미지정 시 0단계, role 미지정 시 boss.
+ * 해당 단계 풀 + 직전 멘트 제외. score 미지정 시 0단계, role 미지정 시 boss. cfg 미지정 시 코드 기본값.
  */
-export function randomTaunt(exclude?: string, score = 0, role: RoleId = "boss"): string {
+export function randomTaunt(
+  exclude?: string,
+  score = 0,
+  role: RoleId = "boss",
+  cfg?: RoleConfig
+): string {
   const tier = Math.min(TIER_COUNT - 1, scoreTier(score));
-  const pool = getRoleContent(role).taunts[tier];
+  const pool = roleFrom(role, cfg).taunts[tier];
   let candidate = pool[Math.floor(Math.random() * pool.length)];
   if (exclude && candidate === exclude && pool.length > 1) {
     candidate = pool[Math.floor(Math.random() * pool.length)];
