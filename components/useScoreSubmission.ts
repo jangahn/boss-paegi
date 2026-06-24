@@ -23,6 +23,8 @@ export function useScoreSubmission(opts: {
   gameplayStats: GameplayStats | null;
   /** 종료 사유 — 강제종료 분석용(scores.end_reason). 기본 normal. */
   endReason?: "normal" | "time_limit" | "score_limit";
+  /** 텔레메트리 세션 링크(scores.telemetry_session_id, additive). 없으면 미전송. */
+  telemetrySessionId?: string | null;
 }): {
   scoreId: string | null;
   submitting: boolean;
@@ -44,6 +46,7 @@ export function useScoreSubmission(opts: {
     maxCombo,
     gameplayStats,
     endReason = "normal",
+    telemetrySessionId = null,
   } = opts;
   const [scoreId, setScoreId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -86,6 +89,7 @@ export function useScoreSubmission(opts: {
             maxCombo,
             gameplayStats,
             endReason,
+            telemetrySessionId,
           }),
         })
           .then(async (r) => {

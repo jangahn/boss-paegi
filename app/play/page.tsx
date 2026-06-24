@@ -410,6 +410,7 @@ function PlayInner() {
         getCardHighlight={getTimelineHighlight}
         bgVisits={Array.from(bgVisitsRef.current)}
         endReason={endReason}
+        telemetrySessionId={telemetry.getSessionId()}
       />
     </div>
   );
