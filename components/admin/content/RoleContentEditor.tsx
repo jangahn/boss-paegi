@@ -3,22 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
-import { ROLE_IDS, defaultSafeHook, type RoleId } from "@/lib/roles";
-import { SurfaceDiagram } from "@/components/admin/content/diagram/SurfaceDiagram";
+import { ROLE_IDS, josaEul, josaEun, josaEuro, type RoleId } from "@/lib/roles";
+import {
+  RoleSurfaceDiagram,
+  ROLE_FIELD_SURFACE,
+} from "@/components/admin/content/diagram/SurfaceDiagram";
 import type { RoleConfig, RoleFull } from "@/lib/config/domains/roles";
 
-const TIERED = [
-  { key: "reactions", label: "피격 반응 (게임오버·공유 보고서)" },
-  { key: "taunts", label: "시비 멘트 (플레이 중 말풍선)" },
-] as const;
-const ARRAYS = [
-  { key: "traits", label: "인사기록 특이사항" },
-  { key: "ranks", label: "인사기록 직급" },
-  { key: "departments", label: "인사기록 소속" },
-] as const;
-const STRINGS = [
-  { key: "label", label: "호칭 (예: 부장님) — 을/를·은/는·갤러리 칩은 자동 파생" },
-] as const;
+// 섹션 순서 = 실제 카드 위→아래(캐릭터 공유 카드 본문: 직급·소속·특이사항) +
+// 점수 공유 카드·게임 종료 화면의 피격 반응. 카드에 안 나오는 시비 멘트(플레이 말풍선)는 맨 밑.
+// 라벨 용어는 마케팅 카피 페이지(캐릭터 공유 카드/점수 공유 카드/게임 종료 화면/플레이 화면)와 일치.
+type ArraySec = { kind: "array"; key: "ranks" | "departments" | "traits"; label: string };
+type TieredSec = { kind: "tiered"; key: "reactions" | "taunts"; label: string };
+type Section = ArraySec | TieredSec;
+
+const SECTIONS: Section[] = [
+  { kind: "array", key: "ranks", label: "직급 (캐릭터 공유 카드)" },
+  { kind: "array", key: "departments", label: "소속 (캐릭터 공유 카드)" },
+  { kind: "array", key: "traits", label: "특이사항 (캐릭터 공유 카드)" },
+  { kind: "tiered", key: "reactions", label: "피격 반응 (점수 공유 카드·게임 종료 화면)" },
+  { kind: "tiered", key: "taunts", label: "시비 멘트 (플레이 화면 말풍선)" },
+];
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -29,6 +34,17 @@ const ERR_KO: Record<string, string> = {
 function band(i: number): string {
   if (i >= 9) return "90,000+";
   return `${(i * 10000).toLocaleString()}~${((i + 1) * 10000 - 1).toLocaleString()}`;
+}
+
+// 호칭 파생 조사형 미리보기 — 입력한 호칭으로 을/를·은/는·(으)로가 자동 파생됨을 즉시 확인.
+function josaPreview(label: string): string {
+  if (!label) return "—";
+  return [
+    label,
+    `${label}${josaEul(label)}`,
+    `${label}${josaEun(label)}`,
+    `${label}${josaEuro(label)}`,
+  ].join(" · ");
 }
 
 // 제출 전 정리 — 배열 항목 trim + 빈 줄 제거, 문자열 trim.
@@ -66,8 +82,10 @@ export function RoleContentEditor({
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
 
   const r = form[role];
+  const surfs = focused ? ROLE_FIELD_SURFACE[focused] ?? [] : [];
   const patch = (next: Partial<RoleFull>) =>
     setForm((f) => ({ ...f, [role]: { ...f[role], ...next } }));
   const setTier = (kind: "reactions" | "taunts", i: number, text: string) => {
@@ -104,6 +122,10 @@ export function RoleContentEditor({
     }
   };
 
+  // 공통 textarea/input 스타일
+  const inputCls =
+    "w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40";
+
   return (
     <div className="mt-5 flex flex-col gap-5">
       {(source === "default" || invalid) && (
@@ -130,67 +152,83 @@ export function RoleContentEditor({
         ))}
       </div>
 
-      {/* 문자열 필드 + josa 미리보기 */}
-      <fieldset className="flex flex-col gap-3">
-        <legend className="text-sm font-semibold text-zinc-500">호칭·조사</legend>
-        {STRINGS.map((f) => (
-          <label key={f.key} className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{f.label}</span>
-            <input
-              value={r[f.key]}
-              onChange={(e) => patch({ [f.key]: e.target.value } as Partial<RoleFull>)}
-              className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
-            />
-          </label>
-        ))}
+      {/* 포커스한 항목이 들어가는 화면 미리보기 — 스크롤 시 비침 방지 불투명 밴드 */}
+      <div className="sticky top-14 z-20 -mx-1 border-b border-foreground/10 bg-background px-1 pb-2 pt-2">
+        {surfs.length > 0 ? (
+          <div className="flex flex-wrap justify-center gap-2">
+            {surfs.map((s, i) => (
+              <div key={`${s.surface}-${i}`} className="min-w-[200px] flex-1">
+                <RoleSurfaceDiagram surface={s.surface} active={s.region} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-4 text-center text-[11px] text-zinc-400">
+            아래 입력칸을 선택하면 그 내용이 들어가는 화면이 여기 표시돼요.
+          </p>
+        )}
+      </div>
+
+      {/* 호칭 (상단 별도 블록) — 조사·갤러리 칩은 호칭에서 자동 파생 */}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-semibold text-zinc-500">호칭</legend>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-500">
+            호칭 (예: 부장님) — 을/를·은/는·(으)로는 자동 파생
+          </span>
+          <input
+            value={r.label}
+            onFocus={() => setFocused("label")}
+            onChange={(e) => patch({ label: e.target.value })}
+            className={inputCls}
+          />
+        </label>
         <p className="rounded-lg bg-foreground/5 p-2 text-xs text-zinc-500">
-          미리보기 · 공유후킹: <b>{r.label ? defaultSafeHook(r.label) : "—"}</b>
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <SurfaceDiagram surface="doll" />
-          <SurfaceDiagram surface="share" />
-        </div>
-        <p className="text-[11px] text-zinc-400">
-          이 롤의 호칭·피격 반응·인사기록은 위 화면(인사기록 카드·결과 보고서)에 들어가요.
+          파생 · <b>{josaPreview(r.label)}</b>
         </p>
       </fieldset>
 
-      {/* tiered (10단계) */}
-      {TIERED.map((t) => (
-        <fieldset key={t.key} className="flex flex-col gap-2">
-          <legend className="text-sm font-semibold text-zinc-500">{t.label}</legend>
-          {r[t.key].map((lines, i) => (
-            <label key={i} className="flex flex-col gap-0.5">
-              <span className="text-[11px] text-zinc-400">
-                {i}단계 · {band(i)}점
-              </span>
-              <textarea
-                value={lines.join("\n")}
-                onChange={(e) => setTier(t.key, i, e.target.value)}
-                rows={Math.max(2, lines.length)}
-                placeholder="한 줄에 하나씩"
-                className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
-              />
-            </label>
-          ))}
-        </fieldset>
-      ))}
+      {/* 본문/플레이 섹션 — 순서 = 카드 위→아래, 시비 멘트는 맨 밑 */}
+      {SECTIONS.map((sec) =>
+        sec.kind === "array" ? (
+          <label key={sec.key} className="flex flex-col gap-1">
+            <span className="text-sm font-semibold text-zinc-500">{sec.label}</span>
+            <textarea
+              value={r[sec.key].join("\n")}
+              onFocus={() => setFocused(sec.key)}
+              onChange={(e) =>
+                patch({ [sec.key]: e.target.value.split("\n") } as Partial<RoleFull>)
+              }
+              rows={Math.max(3, r[sec.key].length)}
+              placeholder="한 줄에 하나씩"
+              className={inputCls}
+            />
+          </label>
+        ) : (
+          <fieldset key={sec.key} className="flex flex-col gap-2">
+            <legend className="text-sm font-semibold text-zinc-500">{sec.label}</legend>
+            {r[sec.key].map((lines, i) => (
+              <label key={i} className="flex flex-col gap-0.5">
+                <span className="text-[11px] text-zinc-400">
+                  {i}단계 · {band(i)}점
+                </span>
+                <textarea
+                  value={lines.join("\n")}
+                  onFocus={() => setFocused(sec.key)}
+                  onChange={(e) => setTier(sec.key, i, e.target.value)}
+                  rows={Math.max(2, lines.length)}
+                  placeholder="한 줄에 하나씩"
+                  className={inputCls}
+                />
+              </label>
+            ))}
+          </fieldset>
+        )
+      )}
 
-      {/* 배열 필드 */}
-      {ARRAYS.map((f) => (
-        <label key={f.key} className="flex flex-col gap-1">
-          <span className="text-sm font-semibold text-zinc-500">{f.label}</span>
-          <textarea
-            value={r[f.key].join("\n")}
-            onChange={(e) => patch({ [f.key]: e.target.value.split("\n") } as Partial<RoleFull>)}
-            rows={Math.max(3, r[f.key].length)}
-            placeholder="한 줄에 하나씩"
-            className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
-          />
-        </label>
-      ))}
-
-      {msg && <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-400"}`}>{msg.text}</p>}
+      {msg && (
+        <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-400"}`}>{msg.text}</p>
+      )}
 
       <button
         type="button"

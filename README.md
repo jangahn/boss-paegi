@@ -407,6 +407,12 @@ v0.31 (2026-06-25, 마케팅 카피 페이지 정밀 다듬기 + 롤 OG desc 정
 - **무중단**: 발행된 `marketing_copy`(reportTitle)·`role_content`(ogLines) 잔여 키는 Zod `z.object` strip → 신 스키마로 valid(추가 마이그레이션 불필요). `scoreOgDesc` 는 `.default()` 로 발행행 자동 충전.
 - 검증: golden(scoreOgDesc 토큰 치환·발행행 strip·boss 기본값 회귀) · typecheck/build 0 · 점수 og:desc 는 롤 ogLines→단일값으로 **의도된 변경**.
 
+v0.32 (2026-06-25, 롤 대사 에디터 본문 중심 미리보기; 마이그레이션 없음):
+- **롤 에디터를 마케팅 에디터와 같은 인터랙션으로**: 상단 sticky 도식 밴드 + 필드 포커스 시 해당 화면 영역 하이라이트. 단 마케팅은 CTA가 주역이지만 롤은 **본문(직급/소속/특이사항/피격 반응)이 주역** → 본문을 edit-tone, 후킹/CTA는 "마케팅 카피에서 관리" 축약 ctx 로 무게중심 반전.
+- **섹션 순서 = 실제 카드 위→아래**: 호칭(상단 별도, 파생 조사형 한 줄 미리보기) → 직급 → 소속 → 특이사항 → 피격 반응 → 시비 멘트(플레이 말풍선이라 맨 밑). 무의미해진 `defaultSafeHook` "공유후킹" 미리보기 줄 제거.
+- **미리보기 4면**(캐릭터 공유 카드·점수 공유 카드·게임 종료 화면·플레이 화면, `RoleSurfaceDiagram`/`ROLE_FIELD_SURFACE`) — 피격 반응은 점수 공유+게임 종료 2면 동시 하이라이트. 용어는 마케팅 페이지와 일치.
+- `role_content` 스키마·저장 경로 불변(순수 에디터 UI). 마케팅 `SurfaceDiagram`/`FIELD_SURFACE` 불변(저수준 렌더만 공유 추출). typecheck/build 0.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 

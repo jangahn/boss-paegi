@@ -103,21 +103,23 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
   },
 };
 
-export function SurfaceDiagram({
-  surface,
+// 저수준 렌더 — title + regions(순서=실제 렌더 순서) + active 하이라이트. 마케팅·롤 공용.
+function Diagram({
+  title,
+  regions,
   active,
 }: {
-  surface: SurfaceKey;
+  title: string;
+  regions: Region[];
   active?: string;
 }) {
-  const s = SURFACES[surface];
   return (
     <div className="rounded-2xl border border-foreground/15 bg-foreground/[0.03] p-3">
       <div className="mb-2 text-center text-[11px] font-semibold text-zinc-500">
-        {s.title}
+        {title}
       </div>
       <div className="mx-auto flex max-w-[220px] flex-col gap-1.5">
-        {s.regions.map((r, i) => {
+        {regions.map((r, i) => {
           const isActive = !!r.id && r.id === active;
           const base =
             r.tone === "ctx"
@@ -139,6 +141,16 @@ export function SurfaceDiagram({
       </div>
     </div>
   );
+}
+
+export function SurfaceDiagram({
+  surface,
+  active,
+}: {
+  surface: SurfaceKey;
+  active?: string;
+}) {
+  return <Diagram {...SURFACES[surface]} active={active} />;
 }
 
 /**
@@ -186,4 +198,76 @@ export const FIELD_SURFACE: Record<
   // 게임오버
   gameoverShareBtn: [{ surface: "gameover", region: "gameoverShareBtn" }],
   gameoverRetryBtn: [{ surface: "gameover", region: "gameoverRetryBtn" }],
+};
+
+/* ── 롤 대사 에디터 전용 ──────────────────────────────────────────
+ * 마케팅과 같은 화면이지만 본문(직급/소속/특이사항/피격반응/말풍선)이 주역 →
+ * 본문 영역을 edit-tone(하이라이트 대상), CTA·동적값은 축약 ctx 로 무게중심 반전.
+ * 마케팅 surfaces 와 키가 겹쳐도 별도 맵(타입 분리)이라 충돌 없음. */
+export type RoleSurfaceKey = "doll" | "share" | "gameover" | "play";
+
+const ROLE_SURFACES: Record<RoleSurfaceKey, { title: string; regions: Region[] }> = {
+  doll: {
+    title: "캐릭터 공유 카드",
+    regions: [
+      { label: "인사기록카드 (제목·고정)", tone: "ctx" },
+      { label: "증명사진", tone: "ctx" },
+      { id: "label", label: "성명 (호칭)", tone: "edit" },
+      { id: "ranks", label: "직급", tone: "edit" },
+      { id: "departments", label: "소속", tone: "edit" },
+      { label: "제작자·등록일 (자동)", tone: "ctx" },
+      { id: "traits", label: "특이사항", tone: "edit" },
+      { label: "후킹·CTA (마케팅 카피에서 관리)", tone: "ctx" },
+    ],
+  },
+  share: {
+    title: "점수 공유 카드",
+    regions: [
+      { label: "점수·등급·정산표 (자동)", tone: "ctx" },
+      { id: "reactions", label: "피격 반응", tone: "edit" },
+      { label: "후킹·CTA (마케팅 카피에서 관리)", tone: "ctx" },
+    ],
+  },
+  gameover: {
+    title: "게임 종료 화면",
+    regions: [
+      { label: "점수·뱃지·정산표 (자동)", tone: "ctx" },
+      { id: "reactions", label: "피격 반응", tone: "edit" },
+      { label: "공유·다시 버튼 (마케팅 카피에서 관리)", tone: "ctx" },
+    ],
+  },
+  play: {
+    title: "플레이 화면",
+    regions: [
+      { label: "캐릭터 (이미지)", tone: "ctx" },
+      { id: "taunts", label: "시비 멘트 (말풍선)", tone: "edit" },
+      { label: "점수 HUD·무기 (자동)", tone: "ctx" },
+    ],
+  },
+};
+
+export function RoleSurfaceDiagram({
+  surface,
+  active,
+}: {
+  surface: RoleSurfaceKey;
+  active?: string;
+}) {
+  return <Diagram {...ROLE_SURFACES[surface]} active={active} />;
+}
+
+/** 롤 필드 key → 그 값이 들어가는 화면(들)·영역. 피격 반응은 점수공유+게임종료 1:다. */
+export const ROLE_FIELD_SURFACE: Record<
+  string,
+  ReadonlyArray<{ surface: RoleSurfaceKey; region: string }>
+> = {
+  label: [{ surface: "doll", region: "label" }],
+  ranks: [{ surface: "doll", region: "ranks" }],
+  departments: [{ surface: "doll", region: "departments" }],
+  traits: [{ surface: "doll", region: "traits" }],
+  reactions: [
+    { surface: "share", region: "reactions" },
+    { surface: "gameover", region: "reactions" },
+  ],
+  taunts: [{ surface: "play", region: "taunts" }],
 };
