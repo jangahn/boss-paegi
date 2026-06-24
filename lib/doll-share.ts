@@ -1,7 +1,8 @@
 "use client";
 
 import { SERVICE_NAME } from "@/lib/policy";
-import { getRoleContent, type RoleId } from "@/lib/roles";
+import type { RoleId } from "@/lib/roles";
+import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 /**
  * 갤러리 커스텀 인형의 저장/공유.
@@ -56,10 +57,11 @@ export type ShareResult = "shared" | "copied" | "failed";
 export async function shareDoll(
   imageUrl: string,
   dollId: string,
-  role: RoleId = "boss"
+  role: RoleId = "boss",
+  cfg?: RoleConfig
 ): Promise<ShareResult> {
   const pageUrl = `${location.origin}/doll/${dollId}`;
-  const c = getRoleContent(role);
+  const c = roleFrom(role, cfg);
   const text = `내가 만든 ${c.targetObj} 소개합니다. ${c.ctaSafe}`;
 
   try {

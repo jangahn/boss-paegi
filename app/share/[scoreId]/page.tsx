@@ -20,7 +20,9 @@ import {
   clipPublicUrl,
   highlightDelta,
 } from "@/lib/score-detail";
-import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
+import { asRole } from "@/lib/roles";
+import { getRoleConfig } from "@/lib/config/getters";
+import { roleFrom } from "@/lib/config/domains/roles";
 
 export async function generateMetadata({
   params,
@@ -35,7 +37,12 @@ export async function generateMetadata({
   const name = score.profiles?.display_name ?? "익명";
   const grade = gradeFor(score.score);
   const title = `[결재완료] ${name} — ${score.score.toLocaleString()}점 (${grade.label})`;
-  const description = ogDescription(score.score, score.id, asRole(score.dolls?.role));
+  const description = ogDescription(
+    score.score,
+    score.id,
+    asRole(score.dolls?.role),
+    await getRoleConfig()
+  );
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   return {
     title,
@@ -67,9 +74,10 @@ export default async function SharePage({
 
   const name = score.profiles?.display_name ?? "익명";
   const role = asRole(score.dolls?.role);
-  const rlabel = ROLE_META[role].label;
+  const cfg = await getRoleConfig();
+  const rlabel = roleFrom(role, cfg).label;
   const grade = gradeFor(score.score);
-  const reaction = bossReaction(score.score, score.id, role);
+  const reaction = bossReaction(score.score, score.id, role, cfg);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = clipPublicUrl(score);
   const posterUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
@@ -181,9 +189,7 @@ export default async function SharePage({
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
           <p className="text-sm text-zinc-400">
-            {persona
-              ? "당신의 패기 유형은 무엇일까요?"
-              : getRoleContent(role).ctaSafe}
+            {persona ? "당신의 패기 유형은 무엇일까요?" : roleFrom(role, cfg).ctaSafe}
           </p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link

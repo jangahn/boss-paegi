@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { randomTaunt } from "@/lib/taunts";
+import { useRoleConfig } from "@/components/RoleContentProvider";
 import type { RoleId } from "@/lib/roles";
 
 const TAUNT_INITIAL_DELAY_MS = 1500;
@@ -15,6 +16,7 @@ const TAUNT_INTERVAL_MS = 5500;
  */
 export function useTaunts(over: boolean, role: RoleId = "boss"): string | null {
   const [taunt, setTaunt] = useState<string | null>(null);
+  const roleCfg = useRoleConfig(); // 마케터 편집 시비멘트(라이브). 프로바이더 값=레이아웃에서 고정 → deps 안전.
 
   useEffect(() => {
     if (over) {
@@ -26,7 +28,7 @@ export function useTaunts(over: boolean, role: RoleId = "boss"): string | null {
 
     const show = () => {
       // 현재 점수대 + 롤에 맞는 톤의 시비 멘트 (초반 무시 → 후반 굴복)
-      const t = randomTaunt(lastTaunt, useGameStore.getState().score, role);
+      const t = randomTaunt(lastTaunt, useGameStore.getState().score, role, roleCfg);
       lastTaunt = t;
       setTaunt(t);
       hideTimer = setTimeout(() => setTaunt(null), TAUNT_VISIBLE_MS);
@@ -41,7 +43,7 @@ export function useTaunts(over: boolean, role: RoleId = "boss"): string | null {
       setTaunt(null);
     };
     // role 포함 — 롤 로딩/변경 후 멘트가 boss 로 고정되지 않게.
-  }, [over, role]);
+  }, [over, role, roleCfg]);
 
   return taunt;
 }

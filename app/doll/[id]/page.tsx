@@ -5,7 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
-import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
+import { asRole } from "@/lib/roles";
+import { getRoleConfig } from "@/lib/config/getters";
+import { roleFrom } from "@/lib/config/domains/roles";
 
 type DollRow = {
   id: string;
@@ -35,8 +37,10 @@ export async function generateMetadata({
   if (!doll) return { title: SERVICE_NAME };
   const name = doll.profiles?.display_name ?? "익명";
   const role = asRole(doll.role);
-  const title = `[인사기록] ${name}님의 ${ROLE_META[role].label}`;
-  const description = `특이사항: ${dollTrait(doll.id, role)} — ${getRoleContent(role).ctaSafe}`;
+  const cfg = await getRoleConfig();
+  const rc = roleFrom(role, cfg);
+  const title = `[인사기록] ${name}님의 ${rc.label}`;
+  const description = `특이사항: ${dollTrait(doll.id, role, cfg)} — ${rc.ctaSafe}`;
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/doll/${id}/opengraph-image`;
   return {
     title,
@@ -68,8 +72,10 @@ export default async function DollPage({
 
   const name = doll.profiles?.display_name ?? "익명";
   const role = asRole(doll.role);
-  const rlabel = ROLE_META[role].label;
-  const trait = dollTrait(doll.id, role);
+  const cfg = await getRoleConfig();
+  const rc = roleFrom(role, cfg);
+  const rlabel = rc.label;
+  const trait = dollTrait(doll.id, role, cfg);
   const joined = new Date(doll.created_at);
 
   return (
@@ -102,8 +108,8 @@ export default async function DollPage({
 
             <dl className="flex-1 space-y-2 text-sm">
               <CardRow label="성명">{rlabel}</CardRow>
-              <CardRow label="직급">{dollRank(doll.id, role)}</CardRow>
-              <CardRow label="소속">{dollDepartment(doll.id, role)}</CardRow>
+              <CardRow label="직급">{dollRank(doll.id, role, cfg)}</CardRow>
+              <CardRow label="소속">{dollDepartment(doll.id, role, cfg)}</CardRow>
               <CardRow label="제작자">{name}</CardRow>
               <CardRow label="등록일">
                 {joined.getFullYear()}.
@@ -127,7 +133,7 @@ export default async function DollPage({
 
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-zinc-400">{getRoleContent(role).ctaSafe}</p>
+          <p className="text-sm text-zinc-400">{rc.ctaSafe}</p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"

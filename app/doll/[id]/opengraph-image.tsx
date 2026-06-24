@@ -2,7 +2,9 @@ import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
-import { asRole, ROLE_META, getRoleContent } from "@/lib/roles";
+import { asRole } from "@/lib/roles";
+import { getRoleConfig } from "@/lib/config/getters";
+import { roleFrom } from "@/lib/config/domains/roles";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -51,8 +53,9 @@ export default async function OgImage({
 
   const name = d?.profiles?.display_name ?? "익명";
   const role = asRole(d?.role);
-  const rlabel = ROLE_META[role].label;
-  const trait = d ? dollTrait(d.id, role) : "";
+  const cfg = await getRoleConfig();
+  const rlabel = roleFrom(role, cfg).label;
+  const trait = d ? dollTrait(d.id, role, cfg) : "";
   const docNo = d ? reportNo(d.id, d.created_at) : "";
   const dollSrc = d ? await dollDataUri(d.image_url) : null;
 
@@ -165,10 +168,10 @@ export default async function OgImage({
               </div>
               {/* 직급/소속 분리 — 합치면 최장값(전설의 꼰대 부장 · 스트레스 유발 1팀)이 영역 초과 */}
               <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
-                직급: {d ? dollRank(d.id, role) : ""}
+                직급: {d ? dollRank(d.id, role, cfg) : ""}
               </div>
               <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
-                소속: {d ? dollDepartment(d.id, role) : ""}
+                소속: {d ? dollDepartment(d.id, role, cfg) : ""}
               </div>
               <div style={{ display: "flex", fontSize: 30, color: "#52525b", whiteSpace: "nowrap" }}>
                 제작자: {name}
@@ -219,7 +222,7 @@ export default async function OgImage({
               {SERVICE_NAME}
             </div>
             <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
-              {getRoleContent(role).ctaSafe}
+              {roleFrom(role, cfg).ctaSafe}
             </div>
           </div>
         </div>

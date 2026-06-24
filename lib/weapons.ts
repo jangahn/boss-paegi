@@ -1,4 +1,5 @@
-import { getRoleContent, type RoleId } from "@/lib/roles";
+import type { RoleId } from "@/lib/roles";
+import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 export type WeaponKey =
   | "fist"
@@ -200,8 +201,12 @@ export function resolveWeapon(key?: string | null): Weapon {
  * ("부장님을")를 해당 롤의 목적격(targetObj, 예 "거래처를")으로 치환. 대상 명사가 없는
  * 힌트("무기를 잡고…" 등)는 그대로. WEAPONS.hint 를 깨지 않고 함수로 감싼다.
  */
-export function weaponHint(key: string | null | undefined, role: RoleId = "boss"): string {
+export function weaponHint(
+  key: string | null | undefined,
+  role: RoleId = "boss",
+  cfg?: RoleConfig
+): string {
   const hint = resolveWeapon(key).hint;
   if (role === "boss") return hint;
-  return hint.replace(getRoleContent("boss").targetObj, getRoleContent(role).targetObj);
+  return hint.replace(roleFrom("boss", cfg).targetObj, roleFrom(role, cfg).targetObj);
 }

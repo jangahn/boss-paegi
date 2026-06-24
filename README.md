@@ -145,6 +145,7 @@ boss-paegi/
 - **쓰기**: `POST /api/admin/config`(requireAdmin → 도메인 Zod 검증 → **`admin_update_app_setting`** RPC: key allowlist·version CAS·감사 insert 를 한 트랜잭션·security definer 하드닝). 낙관적 version 충돌=409. revert=같은 RPC 로 old_value 재발행.
 - 도메인 에디터는 PR 별로 등록(레지스트리 `lib/config/registry`). 미등록 도메인은 `/admin/content` 에서 "준비 중".
 - **`marketing_copy`(PR2)**: 홈 화면·가입 배너 문구. 클라 소비처가 많아 **루트 레이아웃(server)이 `getMarketingCopy()`로 읽어 `MarketingCopyProvider`(client 컨텍스트)로 1회 주입**(클라 fetch 없음·코드 기본값 폴백). 편집=`/admin/content/marketing_copy`. (정적/ISR 라우트 유지 — `unstable_cache` 60s.)
+- **`role_content`(PR3)**: 5롤(부장/임원/팀장/거래처/동료) × 시비 멘트·피격 반응·OG 후킹·인사기록(특이사항/직급/소속)·호칭·`ctaSafe`. **점수 10단계는 코드 고정**(`score_config`), 마케터는 칸 안 문구만(Zod `length(10)`·tier당 ≥1). `lib/config/domains/roles.ts`(순수, lib/roles 와 무순환) + `roleFrom(role, cfg?)`(미지정 시 코드 기본값 폴백). 서버 OG/doll=`getRoleConfig()`, 클라 시비멘트/반응=`RoleContentProvider`(라이브, 스냅샷 아님). 편집=`/admin/content/role_content`(5롤 탭). 공개 API 미노출(서버/프로바이더 전용). (gallery 칩·롤선택 라벨은 코드 기본값 유지 — 후속.)
 
 ## 모니터링 (Sentry)
 
@@ -372,6 +373,9 @@ v0.23 (2026-06-24, 마케터 콘텐츠/설정 콘솔 — substrate; 6-PR 초기 
 
 v0.24 (2026-06-24, 마케터 콘솔 PR2 — 마케팅 카피 도메인; 마이그레이션 없음):
 - **`marketing_copy` 도메인**: 홈 화면(태그라인·CTA·고지)·가입 배너 문구를 `/admin/content/marketing_copy` 에서 편집. `lib/config/domains/marketing.ts`(schema+코드 기본값) + `getMarketingCopy()` getter + 레지스트리 등록. **루트 레이아웃 async 주입 → `MarketingCopyProvider`(client 컨텍스트)** → 홈(`app/page.tsx`)·`SignupBanner` 가 read-or-default. 정적/ISR 라우트 유지(빌드 확인). 적대적 리뷰 실 결함 0(카피 12개 verbatim·하이드레이션 정합·async 레이아웃 무영향).
+
+v0.25 (2026-06-24, 마케터 콘솔 PR3 — 롤 tiered 콘텐츠; 마이그레이션 없음):
+- **`role_content` 도메인**: 5롤 × 시비멘트/반응/OG/인사기록/호칭/ctaSafe 를 `/admin/content/role_content` 에서 편집(5롤 탭, 점수 10단계 칸). `lib/config/domains/roles.ts`(schema `length(10)`·tier당 ≥1·5롤 + 코드 기본값=현 콘텐츠 byte-identical) + `roleFrom(role, cfg?)` 폴백. 소비자=선택적 cfg 주입(`report`/`taunts`/`weapons`/`doll-share`): 서버 OG·doll=`getRoleConfig()`, 클라 시비멘트·반응·라벨=`RoleContentProvider`(라이브). 적대적 리뷰 실 결함 0(카피 byte-identical·10-tier 가드+폴백·무순환·하이드레이션). gallery 칩·롤선택 라벨은 후속.
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
