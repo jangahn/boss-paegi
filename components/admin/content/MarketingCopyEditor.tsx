@@ -41,6 +41,9 @@ const SECTIONS: Section[] = [
       { k: "nonmemberSub", label: "비회원 설명", max: 200, multiline: true },
       { k: "memberEmptyTitle", label: "회원·0캐릭터 제목", max: 80 },
       { k: "memberEmptySub", label: "회원·0캐릭터 설명", max: 200, multiline: true },
+      { k: "nonmemberCta", label: "비회원 버튼", max: 30 },
+      { k: "memberEmptyCta", label: "0캐릭터 회원 버튼", max: 30 },
+      { k: "memberHeaderCta", label: "회원 갤러리 헤더 버튼", max: 30 },
     ],
   },
   {
@@ -60,6 +63,8 @@ const SECTIONS: Section[] = [
       { k: "scoreOgTitle", label: "점수공유 — 공유 OG 제목", max: 80 },
       { k: "gameoverShareBtn", label: "게임오버 — 공유 버튼", max: 30 },
       { k: "gameoverRetryBtn", label: "게임오버 — 다시 버튼", max: 20 },
+      { k: "reportTitle", label: "보고서 제목 (게임오버·공유·OG 공통)", max: 40 },
+      { k: "scoreRankLink", label: "점수공유 — 랭킹 보기 링크", max: 40 },
     ],
   },
 ];

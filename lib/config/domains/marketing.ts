@@ -32,6 +32,10 @@ export const marketingCopySchema = z.object({
     nonmemberSub: desc,
     memberEmptyTitle: title,
     memberEmptySub: desc,
+    // 갤러리 진입 버튼 라벨(href 는 코드 고정 라우팅). 이미 발행된 행엔 없을 수 있어 .default().
+    nonmemberCta: button.default("가입하고 만들기"),
+    memberEmptyCta: button.default("캐릭터 만들기"),
+    memberHeaderCta: button.default("+ 새로 만들기"),
   }),
   // 공유/CTA 문구 — {호칭}(조사 자동) + 값 토큰(코드 합성). 수치·이름은 토큰 위치에 코드가 채움.
   share: z.object({
@@ -51,6 +55,9 @@ export const marketingCopySchema = z.object({
     // 게임오버
     gameoverShareBtn: tpl(30),
     gameoverRetryBtn: tpl(20),
+    // 보고서 구조 라벨. 이미 발행된 행엔 없을 수 있어 .default().
+    reportTitle: tpl(40).default("스트레스 해소 결과 보고서"),
+    scoreRankLink: tpl(40).default("이 점수, 랭킹 몇 등인지 보기"),
   }),
 });
 
@@ -70,6 +77,9 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     nonmemberSub: "내 사진으로 나만의 캐릭터를 만들고 공유·롤 변경까지!",
     memberEmptyTitle: "나만의 캐릭터를 만들어보세요",
     memberEmptySub: "기본부장님 말고, 내 사진으로 만든 캐릭터로 플레이!",
+    nonmemberCta: "가입하고 만들기",
+    memberEmptyCta: "캐릭터 만들기",
+    memberHeaderCta: "+ 새로 만들기",
   },
   share: {
     dollHook: "당신의 {호칭은} 무사하십니까?",
@@ -85,6 +95,8 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     scoreOgTitle: "[결재완료] {제작자} — {점수}점 ({등급})",
     gameoverShareBtn: "보고서 공유하기",
     gameoverRetryBtn: "다시 패기",
+    reportTitle: "스트레스 해소 결과 보고서",
+    scoreRankLink: "이 점수, 랭킹 몇 등인지 보기",
   },
 };
 

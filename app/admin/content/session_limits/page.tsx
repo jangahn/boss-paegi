@@ -11,9 +11,14 @@ export default async function SessionLimitsPage() {
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto w-full max-w-2xl">
-        <Link href="/admin/content" className="text-xs text-zinc-500 hover:text-foreground">
-          ← 콘텐츠
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/admin/content" className="text-xs text-zinc-500 hover:text-foreground">
+            ← 콘텐츠
+          </Link>
+          <Link href="/admin/content/history/session_limits" className="text-xs text-zinc-500 hover:text-foreground">
+            변경 내역 →
+          </Link>
+        </div>
         <h1 className="mt-2 text-2xl font-bold">세션 한도 (강제 종료)</h1>
         <p className="mt-1 text-sm text-zinc-500">
           한 판이 이 시간/점수에 도달하면 자동으로 종료되고 결과 화면으로 넘어가요. 기본값은 사실상 무제한이라,

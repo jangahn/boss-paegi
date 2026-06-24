@@ -13,7 +13,10 @@ export function SignupBanner({ state }: { state: ViewerState }) {
     state === "nonmember"
       ? { title: banner.nonmemberTitle, sub: banner.nonmemberSub }
       : { title: banner.memberEmptyTitle, sub: banner.memberEmptySub };
-  const cta = ctaFor(state);
+  const cta = {
+    label: state === "nonmember" ? banner.nonmemberCta : banner.memberEmptyCta,
+    href: ctaFor(state).href,
+  };
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">

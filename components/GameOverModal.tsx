@@ -222,6 +222,7 @@ export function GameOverModal({
           nickname={nickname}
           dollImageUrl={dollImageUrl}
           roleLabel={roleLabel}
+          reportTitle={mk.share.reportTitle}
           persona={persona}
           percentile={percentile}
           badges={earnedBadges}

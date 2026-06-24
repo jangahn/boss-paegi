@@ -21,6 +21,7 @@ export function ScoreReport({
   nickname,
   dollImageUrl,
   roleLabel = "부장님",
+  reportTitle = "스트레스 해소 결과 보고서",
   persona,
   percentile,
   badges,
@@ -42,6 +43,8 @@ export function ScoreReport({
   dollImageUrl?: string;
   /** 맞는 캐릭터 호칭 (alt 등) — 기본 "부장님" */
   roleLabel?: string;
+  /** 보고서 제목 — 마케팅 카피(reportTitle) 주입. 기본 현행 문구. */
+  reportTitle?: string;
   persona?: Persona;
   /** 전체 상위 N% — 서버 응답 전 null */
   percentile?: number | null;
@@ -62,7 +65,7 @@ export function ScoreReport({
       <div className="border-b-2 border-zinc-800 pb-3 text-center">
         <p className="text-[10px] tracking-[0.3em] text-zinc-500">{docNo}</p>
         <h2 className="mt-1 text-xl font-extrabold tracking-tight">
-          스트레스 해소 결과 보고서
+          {reportTitle}
         </h2>
       </div>
 

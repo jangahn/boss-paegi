@@ -10,10 +10,12 @@ import { SignupBanner } from "@/components/gallery/SignupBanner";
 import { PendingGrid } from "@/components/gallery/PendingGrid";
 import { DollCard, type Doll } from "@/components/gallery/DollCard";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
+import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import type { RoleId } from "@/lib/roles";
 import type { PendingGeneration } from "@/lib/generation";
 
 export default function GalleryPage() {
+  const mk = useMarketingCopy();
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [dolls, setDolls] = useState<Doll[]>([]);
   const [pending, setPending] = useState<PendingGeneration[]>([]);
@@ -136,7 +138,7 @@ export default function GalleryPage() {
                   href={ctaFor(state).href}
                   className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
                 >
-                  + 새로 만들기
+                  {mk.signupBanner.memberHeaderCta}
                 </Link>
               </div>
 

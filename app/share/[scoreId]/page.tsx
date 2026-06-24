@@ -118,7 +118,7 @@ export default async function SharePage({
               {reportNo(score.id, score.created_at)}
             </p>
             <h1 className="mt-1 text-xl font-extrabold tracking-tight">
-              스트레스 해소 결과 보고서
+              {mk.share.reportTitle}
             </h1>
           </div>
 
@@ -219,7 +219,7 @@ export default async function SharePage({
               href="/leaderboard"
               className="pt-1 text-sm text-zinc-500 underline-offset-4 hover:underline"
             >
-              이 점수, 랭킹 몇 등인지 보기 →
+              {mk.share.scoreRankLink} →
             </Link>
           </div>
         </div>

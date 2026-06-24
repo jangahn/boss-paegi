@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MenuItem } from "@/components/gallery/MenuItem";
 import { HookToast } from "@/components/gallery/HookToast";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
+import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { ROLE_META, asRole } from "@/lib/roles";
 
 const DEFAULT_BOSS_SRC = "/sprites/boss-default.png";
@@ -27,7 +28,11 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const hasMenu = state !== "member"; // 캐릭터 보유 회원에겐 후킹 불필요 → play 전용
-  const cta = ctaFor(state);
+  const banner = useMarketingCopy().signupBanner;
+  const cta = {
+    label: state === "nonmember" ? banner.nonmemberCta : banner.memberEmptyCta,
+    href: ctaFor(state).href,
+  };
 
   const hook = (msg: string) => {
     setMenuOpen(false);
