@@ -78,9 +78,9 @@ export default function CreditsPage() {
                   className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
                 >
                   <div>
-                    <p className="text-base font-bold">생성권 {p.credits}개</p>
+                    <p className="text-base font-bold">{p.goodname}</p>
                     <p className="text-xs text-zinc-500">
-                      개당 {perUnitPrice(p).toLocaleString()}원
+                      생성권 {p.credits}개 · 개당 {perUnitPrice(p).toLocaleString()}원
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
