@@ -7,12 +7,14 @@ import { RoleContentProvider } from "@/components/RoleContentProvider";
 import { ScoreConfigProvider } from "@/components/ScoreConfigProvider";
 import { SessionLimitsProvider } from "@/components/SessionLimitsProvider";
 import { CreditProductsProvider } from "@/components/CreditProductsProvider";
+import { BadgeCatalogProvider } from "@/components/BadgeCatalogProvider";
 import {
   getMarketingCopy,
   getRoleConfig,
   getScoreConfig,
   getSessionLimits,
   getGrowthLevers,
+  getBadgeCatalog,
 } from "@/lib/config/getters";
 import { activeCreditProducts } from "@/lib/config/domains/growth";
 
@@ -46,13 +48,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // 마케팅 카피 + 롤 콘텐츠 + 점수 등급을 서버에서 1회 읽어 클라 컨텍스트로 주입(클라 fetch 불필요·코드 기본값 폴백).
-  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers] =
+  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog] =
     await Promise.all([
       getMarketingCopy(),
       getRoleConfig(),
       getScoreConfig(),
       getSessionLimits(),
       getGrowthLevers(),
+      getBadgeCatalog(),
     ]);
   return (
     <html lang="ko" className="h-full antialiased">
@@ -63,7 +66,9 @@ export default async function RootLayout({
             <ScoreConfigProvider value={scoreConfig}>
               <SessionLimitsProvider value={sessionLimits}>
                 <CreditProductsProvider value={activeCreditProducts(growthLevers)}>
-                  {children}
+                  <BadgeCatalogProvider value={badgeCatalog}>
+                    {children}
+                  </BadgeCatalogProvider>
                 </CreditProductsProvider>
               </SessionLimitsProvider>
             </ScoreConfigProvider>

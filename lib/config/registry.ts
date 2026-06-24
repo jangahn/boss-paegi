@@ -5,6 +5,7 @@ import { rolesEntry } from "./domains/roles";
 import { scoreEntry } from "./domains/score";
 import { sessionEntry } from "./domains/session";
 import { growthEntry } from "./domains/growth";
+import { badgeEntry } from "./domains/badges";
 
 /**
  * 도메인 설정 레지스트리 — 각 도메인 PR 에서 항목을 등록한다.
@@ -24,13 +25,14 @@ export type DomainEntry<T> = {
 
 // 도메인 항목은 각 PR 에서 등록(아래 주석 순서).
 //   PR2: marketing_copy ✅ · PR3: role_content ✅ · PR4: score_config(등급) ✅
-//   PR5: session_limits ✅ · PR6: growth_levers ✅ · PR7: badge_catalog · 후속: score step(play_sessions)
+//   PR5: session_limits ✅ · PR6: growth_levers ✅ · PR7: badge_catalog ✅ · 후속: score step(play_sessions)
 export const REGISTRY: Partial<Record<DomainKey, DomainEntry<unknown>>> = {
   marketing_copy: marketingEntry as DomainEntry<unknown>,
   role_content: rolesEntry as DomainEntry<unknown>,
   score_config: scoreEntry as DomainEntry<unknown>,
   session_limits: sessionEntry as DomainEntry<unknown>,
   growth_levers: growthEntry as DomainEntry<unknown>,
+  badge_catalog: badgeEntry as DomainEntry<unknown>,
 };
 
 export function getEntry(key: DomainKey): DomainEntry<unknown> | undefined {

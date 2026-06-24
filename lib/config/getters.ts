@@ -25,6 +25,11 @@ import {
   GROWTH_LEVERS_DEFAULT,
   type GrowthLevers,
 } from "./domains/growth";
+import {
+  badgeCatalogSchema,
+  BADGE_CATALOG_DEFAULT,
+  type BadgeCatalog,
+} from "./domains/badges";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -60,4 +65,11 @@ export function getGrowthLevers(): Promise<GrowthLevers> {
 }
 export function getGrowthLeversWithMeta() {
   return getSettingWithMeta("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
+}
+
+export function getBadgeCatalog(): Promise<BadgeCatalog> {
+  return getSetting("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
+}
+export function getBadgeCatalogWithMeta() {
+  return getSettingWithMeta("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
 }

@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { buildGameplayStats } from "@/lib/stats";
-import { BADGE_DEFS, badgeById, badgeValue } from "@/lib/badges";
+import {
+  activeBadges,
+  badgeBySlug,
+  familyValue,
+  familyEmoji,
+} from "@/lib/config/domains/badges";
+import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
 
@@ -35,9 +41,11 @@ export function useBadgeChallenge({
 }): { slots: ChallengeSlot[]; toasts: EarnToast[] } {
   const [slots, setSlots] = useState<ChallengeSlot[]>([]);
   const [toasts, setToasts] = useState<EarnToast[]>([]);
+  const catalog = useBadgeCatalog(); // 마케터 편집 카탈로그(라이브). 프로바이더 값=레이아웃 고정.
 
   useEffect(() => {
     if (!recording) return;
+    const defs = activeBadges(catalog); // 활성 뱃지만 도전 후보
     let cancelled = false;
     let loaded = false; // owned 로드 전엔 earn 감지 안 함(오탐 방지)
 
@@ -79,11 +87,11 @@ export function useBadgeChallenge({
       const now = performance.now();
 
       // 1) 신규 획득 감지 → 보유 추가 + "「라벨」 획득!" 토스트 + ✅ 핀(1.2s)
-      for (const d of BADGE_DEFS) {
-        if (!owned.has(d.id) && badgeValue(d, stats, score) >= d.threshold) {
-          owned.add(d.id);
+      for (const d of defs) {
+        if (!owned.has(d.slug) && familyValue(d.familyKey, stats, score) >= d.threshold) {
+          owned.add(d.slug);
           pushToast(`「${d.label}」 획득!`);
-          earnedAt.set(d.id, now);
+          earnedAt.set(d.slug, now);
           timers.push(setTimeout(recompute, EARNED_HOLD_MS + 50)); // 히트 없어도 핀 제거
         }
       }
@@ -96,17 +104,17 @@ export function useBadgeChallenge({
       // 3) 나머지 = 패밀리별 "다음 미획득 티어"(최고 진행도) 1개씩 → 그 중 top by ratio.
       //    패밀리당 1칩으로 다양성 확보(맵 티어 3개로 도배되는 것 방지). 핀된 패밀리는 제외.
       const pinnedFamilies = new Set(
-        pinned.map((id) => badgeById(id)?.familyKey)
+        pinned.map((id) => badgeBySlug(catalog, id)?.familyKey)
       );
       const bestPerFamily = new Map<
         string,
         { id: string; r: number; t: number }
       >();
-      for (const d of BADGE_DEFS) {
-        if (owned.has(d.id) || pinnedFamilies.has(d.familyKey)) continue;
-        const r = badgeValue(d, stats, score) / d.threshold;
+      for (const d of defs) {
+        if (owned.has(d.slug) || pinnedFamilies.has(d.familyKey)) continue;
+        const r = familyValue(d.familyKey, stats, score) / d.threshold;
         const cur = bestPerFamily.get(d.familyKey);
-        if (!cur || r > cur.r) bestPerFamily.set(d.familyKey, { id: d.id, r, t: d.threshold });
+        if (!cur || r > cur.r) bestPerFamily.set(d.familyKey, { id: d.slug, r, t: d.threshold });
       }
       const top = [...bestPerFamily.values()]
         .sort((a, b) => b.r - a.r || a.t - b.t)
@@ -116,11 +124,11 @@ export function useBadgeChallenge({
 
       // 4) 표시 데이터 — 시그니처(슬롯 id·floor%·✅) 변동 시에만 setState
       const data: ChallengeSlot[] = ids.map((id) => {
-        const d = badgeById(id)!;
-        const cur = badgeValue(d, stats, score);
+        const d = badgeBySlug(catalog, id)!;
+        const cur = familyValue(d.familyKey, stats, score);
         return {
           id,
-          emoji: d.emoji,
+          emoji: familyEmoji(catalog, d.familyKey),
           label: d.label,
           cur: Math.min(cur, d.threshold),
           goal: d.threshold,
@@ -159,7 +167,7 @@ export function useBadgeChallenge({
       unsub();
       timers.forEach(clearTimeout);
     };
-  }, [recording, getBgVisits]);
+  }, [recording, getBgVisits, catalog]);
 
   return { slots, toasts };
 }
