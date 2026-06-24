@@ -21,7 +21,7 @@ import {
   highlightDelta,
 } from "@/lib/score-detail";
 import { asRole } from "@/lib/roles";
-import { getRoleConfig } from "@/lib/config/getters";
+import { getRoleConfig, getScoreConfig } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 
 export async function generateMetadata({
@@ -35,7 +35,7 @@ export async function generateMetadata({
     return { title: SERVICE_NAME };
   }
   const name = score.profiles?.display_name ?? "익명";
-  const grade = gradeFor(score.score);
+  const grade = gradeFor(score.score, (await getScoreConfig()).grades);
   const title = `[결재완료] ${name} — ${score.score.toLocaleString()}점 (${grade.label})`;
   const description = ogDescription(
     score.score,
@@ -74,9 +74,9 @@ export default async function SharePage({
 
   const name = score.profiles?.display_name ?? "익명";
   const role = asRole(score.dolls?.role);
-  const cfg = await getRoleConfig();
+  const [cfg, scoreCfg] = await Promise.all([getRoleConfig(), getScoreConfig()]);
   const rlabel = roleFrom(role, cfg).label;
-  const grade = gradeFor(score.score);
+  const grade = gradeFor(score.score, scoreCfg.grades);
   const reaction = bossReaction(score.score, score.id, role, cfg);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = clipPublicUrl(score);

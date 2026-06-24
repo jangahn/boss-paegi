@@ -8,6 +8,7 @@ import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/s
 import { bossReaction, gradeFor, reportNo } from "@/lib/report";
 import { type RoleId } from "@/lib/roles";
 import { useRoleConfig } from "@/components/RoleContentProvider";
+import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
@@ -48,6 +49,8 @@ export function GameOverModal({
   const router = useRouter();
   const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
   const roleLabel = roleFrom(role, roleCfg).label;
+  const scoreGrades = useScoreConfig().grades; // 마케터 편집 등급 라벨/코멘트
+
   const score = useGameStore((s) => s.score);
   const maxCombo = useGameStore((s) => s.maxCombo);
   const hitCount = useGameStore((s) => s.hitCount);
@@ -145,7 +148,7 @@ export function GameOverModal({
   if (!open) return null;
 
   const durationMs = endedAt && startedAt ? endedAt - startedAt : 0;
-  const grade = gradeFor(score);
+  const grade = gradeFor(score, scoreGrades);
   const mainWeapon = topWeapon(weaponCounts) ?? weapon;
   const reaction = bossReaction(score, scoreId ?? String(score), role, roleCfg);
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
