@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
     gameplayStats?: GameplayStats;
     /** 종료 사유 — 강제종료 분석용. normal|time_limit|score_limit 만 허용. */
     endReason?: string;
+    /** 텔레메트리 세션 링크(scores.telemetry_session_id, additive·분석용). */
+    telemetrySessionId?: string | null;
   } | null;
 
   if (
@@ -81,6 +83,13 @@ export async function POST(req: NextRequest) {
       ? body.endReason
       : "normal";
 
+  // 텔레메트리 세션 링크 — UUID 만 허용(분석용 additive). 무효/없음이면 null.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const telemetrySessionId =
+    typeof body.telemetrySessionId === "string" && UUID_RE.test(body.telemetrySessionId)
+      ? body.telemetrySessionId
+      : null;
+
   const baseRow = {
     owner_id: user.id,
     doll_id: body.dollId ?? null,
@@ -91,18 +100,45 @@ export async function POST(req: NextRequest) {
 
   let { data, error } = await supabase
     .from("scores")
-    .insert({ ...baseRow, max_combo: maxCombo, end_reason: endReason })
+    .insert({ ...baseRow, max_combo: maxCombo, end_reason: endReason, telemetry_session_id: telemetrySessionId })
     .select("id")
     .single();
 
-  // 컬럼 미적용 환경(0003 max_combo / 0026 end_reason) fallback — 점수 저장은 항상 성공해야.
-  if (error && (error.message.includes("max_combo") || error.message.includes("end_reason"))) {
+  // 컬럼 미적용 환경(0003 max_combo / 0026 end_reason / 0027 telemetry_session_id) fallback — 점수 저장은 항상 성공해야.
+  if (
+    error &&
+    (error.message.includes("max_combo") ||
+      error.message.includes("end_reason") ||
+      error.message.includes("telemetry_session_id"))
+  ) {
     log.warn("score.optional_col_missing", { userId: user.id, ...errInfo(error) });
     ({ data, error } = await supabase
       .from("scores")
       .insert(baseRow)
       .select("id")
       .single());
+  }
+
+  // 동일 telemetry_session_id 중복 제출(부분 unique 충돌) — 본인 score 면 graceful 반환, 타인이면 409.
+  if (error && (error as { code?: string }).code === "23505" && telemetrySessionId) {
+    const admin = createAdminClient();
+    const { data: existing } = await admin
+      .from("scores")
+      .select("id, owner_id")
+      .eq("telemetry_session_id", telemetrySessionId)
+      .maybeSingle();
+    if (existing && existing.owner_id === user.id) {
+      log.info("score.telemetry_dup_graceful", { userId: user.id, scoreId: existing.id });
+      return NextResponse.json({
+        scoreId: existing.id,
+        personaId: null,
+        percentile: null,
+        newBadges: [],
+        collectedCount: 0,
+        duplicate: true,
+      });
+    }
+    return NextResponse.json({ error: "telemetry_session_conflict" }, { status: 409 });
   }
 
   if (error || !data) {

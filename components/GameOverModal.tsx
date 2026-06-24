@@ -38,6 +38,8 @@ type Props = {
   bgVisits?: string[];
   /** 종료 사유 — 강제종료(시간/점수) 분석용. 기본 normal. */
   endReason?: "normal" | "time_limit" | "score_limit";
+  /** 텔레메트리 세션 id — 점수↔세션 링크(scores.telemetry_session_id). */
+  telemetrySessionId?: string | null;
 };
 
 export function GameOverModal({
@@ -51,6 +53,7 @@ export function GameOverModal({
   getCardHighlight,
   bgVisits,
   endReason = "normal",
+  telemetrySessionId = null,
 }: Props) {
   const router = useRouter();
   const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
@@ -133,6 +136,7 @@ export function GameOverModal({
       maxCombo,
       gameplayStats,
       endReason,
+      telemetrySessionId,
     });
 
   useEffect(() => {

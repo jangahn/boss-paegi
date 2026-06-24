@@ -24,6 +24,8 @@ export type TelemetryApi = {
   onUltFire: (score: number) => void;
   /** 정상/강제 종료 — end_reason 동결 + 최종 flush. */
   endSession: (reason: string) => void;
+  /** 현재(또는 직전 종료된) 세션 id — 점수 제출 시 scores.telemetry_session_id 링크용. */
+  getSessionId: () => string | null;
 };
 
 /**
@@ -33,6 +35,7 @@ export type TelemetryApi = {
 export function useTelemetry(): TelemetryApi {
   const colRef = useRef<TelemetryCollector | null>(null);
   const txRef = useRef<TelemetryTransport | null>(null);
+  const lastSessionIdRef = useRef<string | null>(null); // 종료 후에도 유지(점수 링크용)
   const pointers = useRef<Set<number>>(new Set());
 
   useEffect(() => {
@@ -103,7 +106,9 @@ export function useTelemetry(): TelemetryApi {
         });
         colRef.current = c;
         txRef.current = new TelemetryTransport(c);
+        lastSessionIdRef.current = sessionId;
       },
+      getSessionId: () => lastSessionIdRef.current,
       onWeaponSelect: (from, to) => colRef.current?.onWeaponSelect(from, to),
       onMapSelect: (from, to) => colRef.current?.onMapSelect(from, to),
       onUltFire: (score) => colRef.current?.onUltFire(score),
