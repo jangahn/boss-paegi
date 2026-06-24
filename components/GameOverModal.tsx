@@ -14,6 +14,8 @@ import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
 import { evaluateBadges } from "@/lib/config/domains/badges";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
+import { useMarketingCopy } from "@/components/MarketingCopyProvider";
+import { resolveCopy } from "@/lib/config/template";
 import { getMyProfile } from "@/lib/profile";
 import type { HighlightClip } from "@/lib/highlight";
 import { useScoreSubmission } from "./useScoreSubmission";
@@ -54,6 +56,7 @@ export function GameOverModal({
   const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
   const roleLabel = roleFrom(role, roleCfg).label;
   const scoreGrades = useScoreConfig().grades; // 마케터 편집 등급 라벨/코멘트
+  const mk = useMarketingCopy(); // 마케터 편집 공유/CTA 문구
 
   const score = useGameStore((s) => s.score);
   const maxCombo = useGameStore((s) => s.maxCombo);
@@ -191,7 +194,9 @@ export function GameOverModal({
       }
     }
     void shareGameResult(sid, score, {
-      text: `${roleLabel} ${score.toLocaleString()}점 패고 옴 🥊`,
+      text: resolveCopy(mk.share.scoreShareText, roleLabel, {
+        점수: score.toLocaleString(),
+      }),
     }).then((result) => {
       if (result === "shared") setShareMsg("공유했어요!");
       else if (result === "copied") setShareMsg("링크 복사됨");
@@ -251,13 +256,13 @@ export function GameOverModal({
             disabled={!scoreId}
             className="rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-40"
           >
-            {clipUrl ? "🔥 하이라이트 공유하기" : "보고서 공유하기"}
+            {clipUrl ? "🔥 하이라이트 공유하기" : mk.share.gameoverShareBtn}
           </button>
           <button
             onClick={onRestart}
             className="rounded-full border border-white/25 py-3 font-medium text-white transition hover:bg-white/10"
           >
-            다시 패기
+            {mk.share.gameoverRetryBtn}
           </button>
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-1 text-sm text-zinc-300">
             <button

@@ -36,13 +36,46 @@ export function josaEuro(word: string): string {
   return jong === 0 || jong === 8 ? "로" : "으로";
 }
 
-/** 표시 메타 — label(호칭/단일 표시), chip(갤러리 칩 짧은 라벨). */
-export const ROLE_META: Record<RoleId, { label: string; chip: string }> = {
-  boss: { label: "부장님", chip: "부장" },
-  exec: { label: "임원", chip: "임원" },
-  teamlead: { label: "팀장님", chip: "팀장" },
-  client: { label: "거래처", chip: "거래처" },
-  coworker: { label: "직장동료", chip: "동료" },
+/** 종성(받침) 있으면 true. 한글 음절이 아니면 false. */
+function hasJong(word: string): boolean {
+  const code = word.charCodeAt(word.length - 1);
+  if (Number.isNaN(code) || code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+/** 목적격 조사 "을/를" — 받침 있으면 "을", 없으면 "를". */
+export function josaEul(word: string): string {
+  return hasJong(word) ? "을" : "를";
+}
+
+/** 주제격 조사 "은/는" — 받침 있으면 "은", 없으면 "는". */
+export function josaEun(word: string): string {
+  return hasJong(word) ? "은" : "는";
+}
+
+/** 목적격 완성형: 호칭 + 을/를. 예 "부장님을" / "거래처를" / "동료를". */
+export function roleObj(label: string): string {
+  return `${label}${josaEul(label)}`;
+}
+
+/**
+ * "당신의 OO은/는 무사하십니까?" 기본 공유 후킹. P2에서 마케팅 카피 템플릿의
+ * 기본값 원천으로 쓰이며, 마케터가 콘솔에서 다른 문구로 교체 가능.
+ */
+export function defaultSafeHook(label: string): string {
+  return `당신의 ${label}${josaEun(label)} 무사하십니까?`;
+}
+
+/**
+ * 표시 메타 — label(호칭/단일 표시) 하나로 통일. 갤러리 칩도 label 을 그대로 쓴다(별도 칩 없음).
+ * 을/를·은/는·으로/로 조사는 josaEul/josaEun/josaEuro 로 파생.
+ */
+export const ROLE_META: Record<RoleId, { label: string }> = {
+  boss: { label: "부장님" },
+  exec: { label: "임원" },
+  teamlead: { label: "팀장님" },
+  client: { label: "거래처" },
+  coworker: { label: "동료" },
 };
 
 const CONTENT: Record<RoleId, RoleContent> = {

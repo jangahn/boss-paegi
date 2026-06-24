@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { ModalShell } from "@/components/ModalShell";
+import { moveItem } from "@/lib/reorder";
 import type { GrowthLevers, GrowthProduct } from "@/lib/config/domains/growth";
 
 const ERR_KO: Record<string, string> = {
@@ -58,6 +59,7 @@ export function GrowthLeversEditor({
       { productId: "", goodname: "", price: "1000", credits: "1", active: true },
     ]);
   const removeP = (i: number) => setProducts((ps) => ps.filter((_, pi) => pi !== i));
+  const moveP = (i: number, dir: -1 | 1) => setProducts((ps) => moveItem(ps, i, dir));
 
   const publish = async () => {
     if (busy) return;
@@ -137,13 +139,39 @@ export function GrowthLeversEditor({
                 />
                 판매 활성
               </label>
-              <button
-                type="button"
-                onClick={() => removeP(i)}
-                className="text-xs text-red-400 hover:underline"
-              >
-                삭제
-              </button>
+              <div className="flex items-center gap-1.5">
+                <span className="mr-1 text-[11px] text-zinc-400">
+                  개당 ₩
+                  {Number(p.credits) > 0
+                    ? Math.round(Number(p.price) / Number(p.credits)).toLocaleString()
+                    : "—"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => moveP(i, -1)}
+                  disabled={i === 0}
+                  aria-label="위로"
+                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveP(i, 1)}
+                  disabled={i === products.length - 1}
+                  aria-label="아래로"
+                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30"
+                >
+                  ▼
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeP(i)}
+                  className="text-xs text-red-400 hover:underline"
+                >
+                  삭제
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <input

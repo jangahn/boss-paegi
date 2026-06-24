@@ -31,10 +31,4 @@ export type RoleContent = {
   ranks: readonly string[];
   /** 인사기록 소속. */
   departments: readonly string[];
-  /** 호칭 명사 (조사 없는 라벨용): "부장님" / "임원" / "팀장님" / "거래처" / "직장동료". */
-  noun: string;
-  /** 목적격 명사 (무기 힌트·CTA 조사 완성용): "부장님을" / "거래처를" / "임원을" …. */
-  targetObj: string;
-  /** "당신의 {X}은/는 무사하십니까?" 완성형 (받침 조사 정확). */
-  ctaSafe: string;
 };

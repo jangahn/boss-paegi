@@ -40,10 +40,8 @@ export default function Home() {
           <h1 className="text-5xl font-extrabold tracking-tight">
             {SERVICE_NAME}
           </h1>
-          <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-            {home.taglineLine1}
-            <br />
-            {home.taglineLine2}
+          <p className="whitespace-pre-line text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+            {home.tagline}
           </p>
 
           <div className="mt-4 flex w-full flex-col gap-3">
@@ -65,22 +63,20 @@ export default function Home() {
                   href="/gallery"
                   className="font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
                 >
-                  {home.galleryLink}
+                  내 부장님 갤러리 →
                 </Link>
               )}
               <Link
                 href="/leaderboard"
                 className="font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
               >
-                {home.leaderboardLink}
+                오늘의 랭킹 →
               </Link>
             </div>
           </div>
 
-          <p className="mt-8 text-xs leading-relaxed text-zinc-500">
-            {home.disclaimerLine1}
-            <br />
-            {home.disclaimerLine2}
+          <p className="mt-8 whitespace-pre-line text-xs leading-relaxed text-zinc-500">
+            {home.disclaimer}
           </p>
         </div>
       </main>

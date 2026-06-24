@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
-import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { ROLE_IDS, defaultSafeHook, type RoleId } from "@/lib/roles";
+import { SurfaceDiagram } from "@/components/admin/content/diagram/SurfaceDiagram";
 import type { RoleConfig, RoleFull } from "@/lib/config/domains/roles";
 
 const TIERED = [
@@ -17,11 +18,7 @@ const ARRAYS = [
   { key: "departments", label: "인사기록 소속" },
 ] as const;
 const STRINGS = [
-  { key: "label", label: "성명/호칭 (예: 부장님)" },
-  { key: "chip", label: "갤러리 칩 (짧게, 예: 부장)" },
-  { key: "noun", label: "호칭 명사 (조사 없이)" },
-  { key: "targetObj", label: "목적격 (조사 포함, 예: 부장님을)" },
-  { key: "ctaSafe", label: "'당신의 OO은 무사하십니까?' 완성형" },
+  { key: "label", label: "호칭 (예: 부장님) — 을/를·은/는·갤러리 칩은 자동 파생" },
 ] as const;
 
 const ERR_KO: Record<string, string> = {
@@ -48,11 +45,7 @@ function clean(cfg: RoleConfig): RoleConfig {
       traits: cleanArr(v.traits),
       ranks: cleanArr(v.ranks),
       departments: cleanArr(v.departments),
-      noun: v.noun.trim(),
-      targetObj: v.targetObj.trim(),
-      ctaSafe: v.ctaSafe.trim(),
       label: v.label.trim(),
-      chip: v.chip.trim(),
     };
   }
   return out;
@@ -134,7 +127,7 @@ export function RoleContentEditor({
               rid === role ? "bg-foreground text-background" : "bg-foreground/5 text-zinc-500"
             }`}
           >
-            {form[rid].chip || rid}
+            {form[rid].label || rid}
           </button>
         ))}
       </div>
@@ -153,7 +146,14 @@ export function RoleContentEditor({
           </label>
         ))}
         <p className="rounded-lg bg-foreground/5 p-2 text-xs text-zinc-500">
-          미리보기 · CTA: <b>{r.ctaSafe || "—"}</b> · OG예: {r.ogLines[3]?.[0] ?? "—"}
+          미리보기 · 공유후킹: <b>{r.label ? defaultSafeHook(r.label) : "—"}</b> · OG예: {r.ogLines[3]?.[0] ?? "—"}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <SurfaceDiagram surface="doll" />
+          <SurfaceDiagram surface="share" />
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          이 롤의 호칭·피격 반응·인사기록은 위 화면(인사기록 카드·결과 보고서)에 들어가요.
         </p>
       </fieldset>
 

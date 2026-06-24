@@ -82,7 +82,4 @@ export const teamlead: RoleContent = {
     "마이크로매니징본부",
     "아젠다미정회의실",
   ],
-  noun: "팀장님",
-  targetObj: "팀장을",
-  ctaSafe: "당신의 팀장님은 무사하십니까?",
 };

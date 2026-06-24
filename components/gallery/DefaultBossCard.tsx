@@ -8,7 +8,7 @@ import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
 import { ROLE_META, asRole } from "@/lib/roles";
 
 const DEFAULT_BOSS_SRC = "/sprites/boss-default.png";
-const BOSS_CHIP = ROLE_META[asRole("boss")].chip; // "부장"
+const BOSS_CHIP = ROLE_META[asRole("boss")].label; // "부장님"
 
 // 후킹 토스트 문구 — 공유/롤 변경 시도 시. 실제 액션 대신 가입/생성 유도.
 const SHARE_HOOK = "나만의 캐릭터를 만들면 공유할 수 있어요!";

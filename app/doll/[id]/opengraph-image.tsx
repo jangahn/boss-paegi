@@ -3,8 +3,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
 import { asRole } from "@/lib/roles";
-import { getRoleConfig } from "@/lib/config/getters";
+import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
+import { resolveCopy } from "@/lib/config/template";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -54,6 +55,7 @@ export default async function OgImage({
   const name = d?.profiles?.display_name ?? "익명";
   const role = asRole(d?.role);
   const cfg = await getRoleConfig();
+  const mk = await getMarketingCopy();
   const rlabel = roleFrom(role, cfg).label;
   const trait = d ? dollTrait(d.id, role, cfg) : "";
   const docNo = d ? reportNo(d.id, d.created_at) : "";
@@ -222,7 +224,7 @@ export default async function OgImage({
               {SERVICE_NAME}
             </div>
             <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
-              {roleFrom(role, cfg).ctaSafe}
+              {resolveCopy(mk.share.dollHook, rlabel)}
             </div>
           </div>
         </div>

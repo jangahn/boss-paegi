@@ -82,7 +82,4 @@ export const exec: RoleContent = {
     "대외협력실",
     "감사실 패싱팀",
   ],
-  noun: "임원",
-  targetObj: "임원을",
-  ctaSafe: "당신의 임원은 무사하십니까?",
 };

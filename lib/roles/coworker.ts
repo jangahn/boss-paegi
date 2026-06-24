@@ -82,7 +82,4 @@ export const coworker: RoleContent = {
     "생색마케팅본부",
     "퇴근전떠넘김파트",
   ],
-  noun: "직장동료",
-  targetObj: "직장동료를",
-  ctaSafe: "당신의 직장동료는 무사하십니까?",
 };

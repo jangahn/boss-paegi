@@ -6,8 +6,9 @@ import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
 import { asRole } from "@/lib/roles";
-import { getRoleConfig } from "@/lib/config/getters";
+import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
+import { resolveCopy } from "@/lib/config/template";
 
 type DollRow = {
   id: string;
@@ -39,8 +40,11 @@ export async function generateMetadata({
   const role = asRole(doll.role);
   const cfg = await getRoleConfig();
   const rc = roleFrom(role, cfg);
-  const title = `[인사기록] ${name}님의 ${rc.label}`;
-  const description = `특이사항: ${dollTrait(doll.id, role, cfg)} — ${rc.ctaSafe}`;
+  const mk = await getMarketingCopy();
+  const title = resolveCopy(mk.share.dollOgTitle, rc.label, { 제작자: name });
+  const description = resolveCopy(mk.share.dollOgDesc, rc.label, {
+    특이사항: dollTrait(doll.id, role, cfg),
+  });
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/doll/${id}/opengraph-image`;
   return {
     title,
@@ -74,6 +78,7 @@ export default async function DollPage({
   const role = asRole(doll.role);
   const cfg = await getRoleConfig();
   const rc = roleFrom(role, cfg);
+  const mk = await getMarketingCopy();
   const rlabel = rc.label;
   const trait = dollTrait(doll.id, role, cfg);
   const joined = new Date(doll.created_at);
@@ -133,19 +138,19 @@ export default async function DollPage({
 
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-zinc-400">{rc.ctaSafe}</p>
+          <p className="text-sm text-zinc-400">{resolveCopy(mk.share.dollHook, rlabel)}</p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"
               className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
             >
-              나도 우리 {rlabel} 만들기
+              {resolveCopy(mk.share.dollCtaMake, rlabel)}
             </Link>
             <Link
               href="/play"
               className="rounded-full border border-foreground/15 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
             >
-              기본 부장님으로 바로 풀기
+              {mk.share.dollCtaDefault}
             </Link>
           </div>
         </div>

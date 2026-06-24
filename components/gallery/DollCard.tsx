@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { MenuItem } from "@/components/gallery/MenuItem";
 import { shareDoll } from "@/lib/doll-share";
+import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { ROLE_IDS, ROLE_META, asRole, josaEuro, type RoleId } from "@/lib/roles";
 
 export type Doll = {
@@ -27,6 +28,7 @@ export function DollCard({
   onRoleChange: (id: string, role: RoleId) => void;
 }) {
   const role = asRole(doll.role);
+  const mk = useMarketingCopy();
   const [imgLoaded, setImgLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [roleMenu, setRoleMenu] = useState(false);
@@ -49,7 +51,7 @@ export function DollCard({
     if (sharing) return;
     setSharing(true);
     try {
-      const result = await shareDoll(doll.image_url, doll.id, role);
+      const result = await shareDoll(doll.image_url, doll.id, role, undefined, mk);
       if (result === "copied") flash("링크 복사됨");
       else if (result === "failed") flash("공유 실패");
     } finally {
@@ -76,7 +78,7 @@ export function DollCard({
         return;
       }
       onRoleChange(doll.id, next);
-      flash(`${ROLE_META[next].chip}${josaEuro(ROLE_META[next].chip)} 변경`);
+      flash(`${ROLE_META[next].label}${josaEuro(ROLE_META[next].label)} 변경`);
     } catch {
       flash("롤 변경 실패");
     } finally {
@@ -137,7 +139,7 @@ export function DollCard({
 
       {/* 롤 칩 (좌상단 — ⋯ 버튼/공유 스피너와 안 겹치게) */}
       <span className="pointer-events-none absolute left-2 top-2 z-20 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm">
-        {ROLE_META[role].chip}
+        {ROLE_META[role].label}
       </span>
 
       {/* ⋯ 옵션 버튼 — 공유/롤 변경/삭제 메뉴 */}
@@ -170,7 +172,7 @@ export function DollCard({
             {roleMenu ? (
               ROLE_IDS.map((rid) => (
                 <MenuItem key={rid} onClick={() => void handleRole(rid)}>
-                  {ROLE_META[rid].chip}
+                  {ROLE_META[rid].label}
                   {rid === role ? " ✓" : ""}
                 </MenuItem>
               ))

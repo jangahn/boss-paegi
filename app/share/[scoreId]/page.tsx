@@ -21,8 +21,9 @@ import {
   highlightDelta,
 } from "@/lib/score-detail";
 import { asRole } from "@/lib/roles";
-import { getRoleConfig, getScoreConfig, getBadgeCatalog } from "@/lib/config/getters";
+import { getRoleConfig, getScoreConfig, getBadgeCatalog, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
+import { resolveCopy } from "@/lib/config/template";
 
 export async function generateMetadata({
   params,
@@ -35,14 +36,19 @@ export async function generateMetadata({
     return { title: SERVICE_NAME };
   }
   const name = score.profiles?.display_name ?? "익명";
-  const grade = gradeFor(score.score, (await getScoreConfig()).grades);
-  const title = `[결재완료] ${name} — ${score.score.toLocaleString()}점 (${grade.label})`;
-  const description = ogDescription(
-    score.score,
-    score.id,
-    asRole(score.dolls?.role),
-    await getRoleConfig()
-  );
+  const role = asRole(score.dolls?.role);
+  const [cfg, scoreCfg, mk] = await Promise.all([
+    getRoleConfig(),
+    getScoreConfig(),
+    getMarketingCopy(),
+  ]);
+  const grade = gradeFor(score.score, scoreCfg.grades);
+  const title = resolveCopy(mk.share.scoreOgTitle, roleFrom(role, cfg).label, {
+    제작자: name,
+    점수: score.score.toLocaleString(),
+    등급: grade.label,
+  });
+  const description = ogDescription(score.score, score.id, role, cfg);
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   return {
     title,
@@ -74,10 +80,11 @@ export default async function SharePage({
 
   const name = score.profiles?.display_name ?? "익명";
   const role = asRole(score.dolls?.role);
-  const [cfg, scoreCfg, badgeCatalog] = await Promise.all([
+  const [cfg, scoreCfg, badgeCatalog, mk] = await Promise.all([
     getRoleConfig(),
     getScoreConfig(),
     getBadgeCatalog(),
+    getMarketingCopy(),
   ]);
   const rlabel = roleFrom(role, cfg).label;
   const grade = gradeFor(score.score, scoreCfg.grades);
@@ -193,20 +200,20 @@ export default async function SharePage({
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
           <p className="text-sm text-zinc-400">
-            {persona ? "당신의 패기 유형은 무엇일까요?" : roleFrom(role, cfg).ctaSafe}
+            {persona ? mk.share.scoreHook : resolveCopy(mk.share.dollHook, rlabel)}
           </p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"
               className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
             >
-              우리 {rlabel}도 패러 가기
+              {resolveCopy(mk.share.scoreCtaPlay, rlabel)}
             </Link>
             <Link
               href="/play"
               className="rounded-full border border-foreground/15 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
             >
-              {persona ? "나도 패기 유형 받아보기" : "기본 부장님으로 바로 풀기"}
+              {persona ? mk.share.scoreCtaPersona : mk.share.dollCtaDefault}
             </Link>
             <Link
               href="/leaderboard"

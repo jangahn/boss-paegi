@@ -83,7 +83,4 @@ export const client: RoleContent = {
     "계약외요청과",
     "구두합의기획팀",
   ],
-  noun: "거래처",
-  targetObj: "거래처를",
-  ctaSafe: "당신의 거래처는 무사하십니까?",
 };

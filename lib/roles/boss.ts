@@ -77,7 +77,4 @@ export const boss: RoleContent = {
     "주말 출근 장려과",
     "라떼 전파 연구소",
   ],
-  noun: "부장님",
-  targetObj: "부장님을",
-  ctaSafe: "당신의 부장님은 무사하십니까?",
 };

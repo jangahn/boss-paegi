@@ -1,4 +1,4 @@
-import type { RoleId } from "@/lib/roles";
+import { roleObj, type RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 export type WeaponKey =
@@ -208,5 +208,5 @@ export function weaponHint(
 ): string {
   const hint = resolveWeapon(key).hint;
   if (role === "boss") return hint;
-  return hint.replace(roleFrom("boss", cfg).targetObj, roleFrom(role, cfg).targetObj);
+  return hint.replace(roleObj(roleFrom("boss", cfg).label), roleObj(roleFrom(role, cfg).label));
 }

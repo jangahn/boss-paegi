@@ -3,6 +3,8 @@
 import { SERVICE_NAME } from "@/lib/policy";
 import type { RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
+import { MARKETING_COPY_DEFAULT, type MarketingCopy } from "@/lib/config/domains/marketing";
+import { resolveCopy } from "@/lib/config/template";
 
 /**
  * 갤러리 커스텀 인형의 저장/공유.
@@ -58,11 +60,12 @@ export async function shareDoll(
   imageUrl: string,
   dollId: string,
   role: RoleId = "boss",
-  cfg?: RoleConfig
+  cfg?: RoleConfig,
+  copy?: MarketingCopy
 ): Promise<ShareResult> {
   const pageUrl = `${location.origin}/doll/${dollId}`;
   const c = roleFrom(role, cfg);
-  const text = `내가 만든 ${c.targetObj} 소개합니다. ${c.ctaSafe}`;
+  const text = resolveCopy((copy ?? MARKETING_COPY_DEFAULT).share.dollShareText, c.label);
 
   try {
     const composed = await composeWatermark(await fetchBlob(imageUrl));

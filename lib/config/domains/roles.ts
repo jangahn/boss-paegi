@@ -21,11 +21,7 @@ const roleFullSchema = z.object({
   traits: z.array(z.string().trim().min(1).max(60)).min(1),
   ranks: z.array(z.string().trim().min(1).max(40)).min(1),
   departments: z.array(z.string().trim().min(1).max(40)).min(1),
-  noun: z.string().trim().min(1).max(20),
-  targetObj: z.string().trim().min(1).max(20),
-  ctaSafe: z.string().trim().min(1).max(60),
   label: z.string().trim().min(1).max(20),
-  chip: z.string().trim().min(1).max(10),
 });
 
 // 5롤 고정(엔지니어 전용) — 키 정확히 boss/exec/teamlead/client/coworker.
@@ -40,8 +36,9 @@ export const roleConfigSchema = z.object({
 export type RoleFull = z.infer<typeof roleFullSchema>;
 export type RoleConfig = z.infer<typeof roleConfigSchema>;
 
-// 기존 RoleContent(readonly tuple) + ROLE_META(label/chip) → 편집 가능한 mutable RoleFull 로 복제.
-function toFull(rc: RoleContent, label: string, chip: string): RoleFull {
+// 기존 RoleContent(readonly tuple) + ROLE_META(label) → 편집 가능한 mutable RoleFull 로 복제.
+// 호칭은 label 1개로 통일 — 목적격/조사/칩은 josaEul·josaEun·josaEuro 로 파생(데이터 중복 제거).
+function toFull(rc: RoleContent, label: string): RoleFull {
   return {
     reactions: rc.reactions.map((t) => [...t]),
     taunts: rc.taunts.map((t) => [...t]),
@@ -49,20 +46,16 @@ function toFull(rc: RoleContent, label: string, chip: string): RoleFull {
     traits: [...rc.traits],
     ranks: [...rc.ranks],
     departments: [...rc.departments],
-    noun: rc.noun,
-    targetObj: rc.targetObj,
-    ctaSafe: rc.ctaSafe,
     label,
-    chip,
   };
 }
 
 export const ROLE_CONFIG_DEFAULT: RoleConfig = {
-  boss: toFull(boss, ROLE_META.boss.label, ROLE_META.boss.chip),
-  exec: toFull(exec, ROLE_META.exec.label, ROLE_META.exec.chip),
-  teamlead: toFull(teamlead, ROLE_META.teamlead.label, ROLE_META.teamlead.chip),
-  client: toFull(client, ROLE_META.client.label, ROLE_META.client.chip),
-  coworker: toFull(coworker, ROLE_META.coworker.label, ROLE_META.coworker.chip),
+  boss: toFull(boss, ROLE_META.boss.label),
+  exec: toFull(exec, ROLE_META.exec.label),
+  teamlead: toFull(teamlead, ROLE_META.teamlead.label),
+  client: toFull(client, ROLE_META.client.label),
+  coworker: toFull(coworker, ROLE_META.coworker.label),
 };
 
 /** cfg 에서 한 롤의 전체 콘텐츠. cfg 미지정 시 코드 기본값(미배선 소비자 안전 폴백). */
