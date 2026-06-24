@@ -58,6 +58,20 @@ export default function ContentHome() {
             );
           })}
         </div>
+
+        {/* 법무 문서 — config 도메인이 아닌 전용 메커니즘(버전·시행일·발행) */}
+        <h2 className="mt-8 text-sm font-semibold text-zinc-500">법무 문서</h2>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href="/admin/content/legal"
+            className="rounded-2xl border border-foreground/10 p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
+          >
+            <span className="font-semibold">이용약관 · 개인정보처리방침</span>
+            <p className="mt-1 text-xs text-zinc-500">
+              버전·시행일 관리, 예약 발행, 개정 이력 공개. /terms · /privacy 에 반영
+            </p>
+          </Link>
+        </div>
       </div>
     </main>
   );

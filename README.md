@@ -151,6 +151,7 @@ boss-paegi/
 - **`session_limits`(PR5)**: 강제 종료 한도(최대 플레이 초·최대 점수). Zod 상한=제출 clamp 상수(`MAX_DURATION_MS`/`MAX_SCORE_HARD`), 기본값=hard cap(사실상 무제한 → 마케터가 낮춰야 동작). 게임 시작 시 `SessionLimitsProvider` 값을 ref 로 **동결**, 0.5s 폴링 → 한도 도달 시 배너→`FORCE_END_GRACE_MS`(4s, 궁극기 마무리)→**1회 종료**(one-shot guard·grace 타이머 정리). `scores.end_reason`(0026) 기록. 편집=`/admin/content/session_limits`.
 - **`growth_levers`(PR6, 머니 패스)**: 가입 기념 생성권(0~50, 신규 가입 1회 멱등) + 충전 상품(productId 불변·price 1,000~100,000원·credits·`active`). **체크아웃은 서버에서 active 상품 재조회로 price/credits 결정**(클라 조작·비활성 차단), 기존 주문은 amount/credits 스냅샷이라 무관. `/credits` 표시는 `CreditProductsProvider`(active만). 가입 grant=`getGrowthLevers().signupBonusCredits`(callback `ignoreDuplicates` 멱등). 편집=`/admin/content/growth_levers`(발행 확인·productId 중복 거부). 공개 API 미노출.
 - **`badge_catalog`(PR7)**: 카테고리(7종 고정) 이름·이모지 + 뱃지 임계값·개수·라벨·`active`. **달성값 계산은 코드**(`FAMILY_VALUE` familyKey→fn), slug **불변 동결**(threshold 파싱 중단)→임계값 바꿔도 `user_badges` 고아 없음. 인증 grant(`/api/score`)=`getBadgeCatalog`→`evaluateBadges`(active만), 컬렉션/챌린지/strip=카탈로그 주입(`BadgeCatalogProvider`/prop). 삭제=`active=false`(획득 보존, 하드삭제 없음). `lib/badges.ts`→`lib/config/domains/badges.ts` 단일 소스. 편집=`/admin/content/badge_catalog`.
+- **법무 문서(이용약관·개인정보처리방침, v0.33)**: config 도메인이 **아닌 전용 테이블**(`legal_documents`, 0029) — 버전·시행일·예약 발행·과거본 공개가 필요해 분리. 섹션 배열(제목+본문) plain text. 편집=`/admin/content/legal`, 공개=`/terms`·`/privacy`(`lib/legal` 서버 getter가 service_role 로 발행본만 투영). 상세는 진행 상황 v0.33.
 
 ## 모니터링 (Sentry)
 
@@ -426,6 +427,13 @@ v0.32 (2026-06-25, 롤 대사 에디터 본문 중심 미리보기; 마이그레
 - **미리보기 4면**(캐릭터 공유 카드·점수 공유 카드·게임 종료 화면·플레이 화면, `RoleSurfaceDiagram`/`ROLE_FIELD_SURFACE`) — 피격 반응은 점수 공유+게임 종료 2면 동시 하이라이트. 용어는 마케팅 페이지와 일치.
 - `role_content` 스키마·저장 경로 불변(순수 에디터 UI). 마케팅 `SurfaceDiagram`/`FIELD_SURFACE` 불변(저수준 렌더만 공유 추출). typecheck/build 0.
 
+v0.33 (2026-06-25, 어드민 법무 문서(이용약관·개인정보처리방침) 관리 + 공개 페이지; Migration 0029):
+- **전용 메커니즘**(config 콘솔과 분리): `legal_documents`(버전 행·시행일·draft/published) + `legal_documents_audit`. 2종 고정(privacy·terms), 섹션 배열(제목+본문) **plain text** 렌더(markdown/HTML 파서·`dangerouslySetInnerHTML` 금지 — 주입 차단).
+- **예약 발행**: 미래 시행일 가능, 공개 페이지는 **KST 기준 `effective_date<=오늘` 최신본**을 자동 노출(cron 불필요, `force-dynamic`). 예정본은 "○일 시행 예정 — 미리보기" 사전 고지, 시행일별 개정 이력 공개(`?v=` **published 만**).
+- **발행본 + 편집 초안 분리**: 문서당 초안 1개(부분 유니크), 발행=append-only 새 버전. RPC 하드닝(advisory lock·KST·미래 예약본 1개·무변경 차단·내부 admin 재검증·security definer). 전수조사 초안(방침 15섹션·약관 16조, 확정 정책[14세+·수동탈퇴·마케팅X·법정환불·탈퇴까지보유] 반영)을 draft로 시드(운영자 정보·시행일 placeholder → 운영자가 채워 발행).
+- 어드민 `/admin/content/legal`(섹션 ▲▼·공개 개정사유/내부 메모 분리·미리보기·발행 무변경 비활성). 공개 `/terms`·`/privacy`(홈 푸터 링크). 신규 전용 → 기존 기능 영향 0.
+- 검증: 시드 2건·발행 RPC 6분기(즉시/무변경/예약/예약중복/과거/비admin) 롤백 테스트·RLS anon 차단·typecheck/build 0.
+
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
 
@@ -442,6 +450,8 @@ v0.32 (2026-06-25, 롤 대사 에디터 본문 중심 미리보기; 마이그레
 **⚠️ Migration 0025 적용 필요** (`supabase/migrations/0025_app_settings.sql`): 마케터 설정 substrate — `app_settings`(도메인 key→jsonb)+`app_settings_audit`(전용 감사)+`admin_update_app_setting`(key allowlist·version CAS·감사 한 txn·security definer). **server-only**(anon/auth revoke). additive·무중단(소비자는 코드 기본값과 공존).
 
 **⚠️ Migration 0026 적용 필요** (`supabase/migrations/0026_scores_end_reason.sql`): `scores.end_reason`(강제종료 사유 분석용). additive·무중단(컬럼 없으면 /api/score fallback insert).
+
+**⚠️ Migration 0029 적용 완료** (`supabase/migrations/0029_legal_documents.sql`): 법무 문서 — `legal_documents`+`legal_documents_audit`+`legal_sections_valid`/`admin_save_legal_draft`/`admin_publish_legal` RPC(security definer·내부 admin 검증·advisory lock). server-only(anon/auth revoke, service_role grant). Management API 적용 완료. additive(신규, 기존 무영향).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
 ai_generations 에 candidate_urls/picked_doll_id 컬럼 + status 에 'picked' 추가. 적용 전엔 복구 기능 비활성(앱은 정상).

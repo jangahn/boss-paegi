@@ -78,6 +78,15 @@ export default function Home() {
           <p className="mt-8 whitespace-pre-line text-xs leading-relaxed text-zinc-500">
             {home.disclaimer}
           </p>
+          <nav className="mt-3 flex justify-center gap-3 text-[11px] text-zinc-500">
+            <Link href="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
+              이용약관
+            </Link>
+            <span aria-hidden>·</span>
+            <Link href="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
+              개인정보처리방침
+            </Link>
+          </nav>
         </div>
       </main>
     </>
