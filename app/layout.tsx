@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SessionBootstrap } from "@/components/SessionBootstrap";
+import { MarketingCopyProvider } from "@/components/MarketingCopyProvider";
+import { getMarketingCopy } from "@/lib/config/getters";
 
 export const metadata: Metadata = {
   title: `${SERVICE_NAME} — 직장인 스트레스 해소 게임`,
@@ -27,16 +29,20 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // 마케팅 카피를 서버에서 1회 읽어 클라 컨텍스트로 주입(클라 fetch 불필요·코드 기본값 폴백).
+  const marketingCopy = await getMarketingCopy();
   return (
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <SessionBootstrap />
-        {children}
+        <MarketingCopyProvider value={marketingCopy}>
+          {children}
+        </MarketingCopyProvider>
       </body>
     </html>
   );
