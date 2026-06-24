@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PUBLIC_ENV } from "@/lib/env";
-import { getCreditProduct } from "@/lib/credit-products";
+import { getGrowthLevers } from "@/lib/config/getters";
+import { activeCreditProducts } from "@/lib/config/domains/growth";
 import { createPayRequest, payappConfigured } from "@/lib/payapp";
 import { log, errInfo } from "@/lib/log";
 
@@ -27,7 +28,11 @@ export async function POST(req: NextRequest) {
   const { user } = gate;
 
   const body = (await req.json().catch(() => null)) as { productId?: string } | null;
-  const product = body?.productId ? getCreditProduct(body.productId) : null;
+  // 가격/개수/상품명은 서버 config 의 **active 상품**으로만 결정(클라 조작·비활성 상품 차단).
+  const growth = await getGrowthLevers();
+  const product = body?.productId
+    ? activeCreditProducts(growth).find((p) => p.productId === body.productId) ?? null
+    : null;
   if (!product) {
     return NextResponse.json({ error: "invalid_product" }, { status: 400 });
   }

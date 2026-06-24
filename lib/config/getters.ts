@@ -20,6 +20,11 @@ import {
   SESSION_LIMITS_DEFAULT,
   type SessionLimits,
 } from "./domains/session";
+import {
+  growthLeversSchema,
+  GROWTH_LEVERS_DEFAULT,
+  type GrowthLevers,
+} from "./domains/growth";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -48,4 +53,11 @@ export function getSessionLimits(): Promise<SessionLimits> {
 }
 export function getSessionLimitsWithMeta() {
   return getSettingWithMeta("session_limits", sessionLimitsSchema, SESSION_LIMITS_DEFAULT);
+}
+
+export function getGrowthLevers(): Promise<GrowthLevers> {
+  return getSetting("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
+}
+export function getGrowthLeversWithMeta() {
+  return getSettingWithMeta("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
 }

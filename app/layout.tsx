@@ -6,12 +6,15 @@ import { MarketingCopyProvider } from "@/components/MarketingCopyProvider";
 import { RoleContentProvider } from "@/components/RoleContentProvider";
 import { ScoreConfigProvider } from "@/components/ScoreConfigProvider";
 import { SessionLimitsProvider } from "@/components/SessionLimitsProvider";
+import { CreditProductsProvider } from "@/components/CreditProductsProvider";
 import {
   getMarketingCopy,
   getRoleConfig,
   getScoreConfig,
   getSessionLimits,
+  getGrowthLevers,
 } from "@/lib/config/getters";
+import { activeCreditProducts } from "@/lib/config/domains/growth";
 
 export const metadata: Metadata = {
   title: `${SERVICE_NAME} — 직장인 스트레스 해소 게임`,
@@ -43,12 +46,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // 마케팅 카피 + 롤 콘텐츠 + 점수 등급을 서버에서 1회 읽어 클라 컨텍스트로 주입(클라 fetch 불필요·코드 기본값 폴백).
-  const [marketingCopy, roleConfig, scoreConfig, sessionLimits] = await Promise.all([
-    getMarketingCopy(),
-    getRoleConfig(),
-    getScoreConfig(),
-    getSessionLimits(),
-  ]);
+  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers] =
+    await Promise.all([
+      getMarketingCopy(),
+      getRoleConfig(),
+      getScoreConfig(),
+      getSessionLimits(),
+      getGrowthLevers(),
+    ]);
   return (
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
@@ -57,7 +62,9 @@ export default async function RootLayout({
           <RoleContentProvider value={roleConfig}>
             <ScoreConfigProvider value={scoreConfig}>
               <SessionLimitsProvider value={sessionLimits}>
-                {children}
+                <CreditProductsProvider value={activeCreditProducts(growthLevers)}>
+                  {children}
+                </CreditProductsProvider>
               </SessionLimitsProvider>
             </ScoreConfigProvider>
           </RoleContentProvider>
