@@ -21,6 +21,8 @@ export function useScoreSubmission(opts: {
   maxCombo: number;
   /** 플레이 해석 리포트용 상세 스탯 (best-effort 저장) */
   gameplayStats: GameplayStats | null;
+  /** 종료 사유 — 강제종료 분석용(scores.end_reason). 기본 normal. */
+  endReason?: "normal" | "time_limit" | "score_limit";
 }): {
   scoreId: string | null;
   submitting: boolean;
@@ -32,8 +34,17 @@ export function useScoreSubmission(opts: {
   /** 누적 수집 뱃지 수 */
   collectedCount: number;
 } {
-  const { open, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats } =
-    opts;
+  const {
+    open,
+    score,
+    endedAt,
+    startedAt,
+    weapon,
+    dollId,
+    maxCombo,
+    gameplayStats,
+    endReason = "normal",
+  } = opts;
   const [scoreId, setScoreId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -74,6 +85,7 @@ export function useScoreSubmission(opts: {
             dollId,
             maxCombo,
             gameplayStats,
+            endReason,
           }),
         })
           .then(async (r) => {
@@ -96,7 +108,7 @@ export function useScoreSubmission(opts: {
           .finally(() => setSubmitting(false))
     );
     // gameplayStats 는 제출 1회 가드(scoreId/submitting) 안에서만 쓰이므로 identity 변동 무해.
-  }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats]);
+  }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats, endReason]);
 
   return { scoreId, submitting, submitError, percentile, newBadges, collectedCount };
 }

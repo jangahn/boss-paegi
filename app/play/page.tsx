@@ -11,6 +11,8 @@ import { UltimateButton } from "@/components/UltimateButton";
 import { BgSwitcher } from "@/components/play/BgSwitcher";
 import { BadgeChallenge } from "@/components/play/BadgeChallenge";
 import { topWeapon, useGameStore } from "@/store/gameStore";
+import { useSessionLimits } from "@/components/SessionLimitsProvider";
+import { FORCE_END_GRACE_MS } from "@/lib/score-limits";
 import { setSentryGameContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
@@ -60,6 +62,16 @@ function PlayInner() {
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
+  // 강제 종료 — 마케터 한도(시간/점수) 도달 시. 한도는 게임 시작 시점 값으로 동결(ref).
+  const sessionLimits = useSessionLimits();
+  const limitsRef = useRef(sessionLimits);
+  const forceEndRef = useRef(false); // one-shot: 한도 트리거 1회만
+  const endingRef = useRef(false); // handleEnd 1회만(중복 제출/모달 방지)
+  const graceTimerRef = useRef<number | null>(null); // grace setTimeout id — 재시작/언마운트 시 정리
+  const [forcedBanner, setForcedBanner] = useState<string | null>(null);
+  const [endReason, setEndReason] = useState<"normal" | "time_limit" | "score_limit">(
+    "normal"
+  );
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
   // 게임 생성(비동기) 중 바뀐 무기/배경을 생성 완료 시점에 재적용하기 위한 미러
   const weaponRef = useRef(weapon);
@@ -229,34 +241,92 @@ function PlayInner() {
     };
   }, []);
 
-  const handleEnd = async () => {
-    // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
-    gameRef.current?.stopUltimate();
-    const s = useGameStore.getState();
-    // 게임 세션 종료 요약 — Logs/Discover 에서 weapon·점수대·플레이타임 분석.
-    log.info("game.end", {
-      dollId: dollId ?? "default",
-      bg: bgKey,
-      score: s.score,
-      maxCombo: s.maxCombo,
-      hitCount: s.hitCount,
-      mainWeapon: topWeapon(s.weaponCounts),
-      weaponCounts: s.weaponCounts,
-      durationMs: s.startedAt ? Math.round(performance.now() - s.startedAt) : 0,
-    });
-    setSentryGameContext({ dollId, weapon: weapon.key, bg: bgKey, gamePhase: "over" });
-    end();
-    if (s.score <= 0) {
-      router.push("/");
-      return;
-    }
-    // 진행 중 녹화가 있으면 마감해서 마지막 클라이맥스 클립이 버려지지 않게 한 뒤 모달 오픈.
-    await finalizeHighlight();
-    setOver(true);
-  };
+  const handleEnd = useCallback(
+    async (reason: "normal" | "time_limit" | "score_limit" = "normal") => {
+      if (endingRef.current) return; // 강제종료 grace 중 수동 종료 등 중복 차단(one-shot)
+      endingRef.current = true;
+      setEndReason(reason);
+      // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
+      gameRef.current?.stopUltimate();
+      const s = useGameStore.getState();
+      // 게임 세션 종료 요약 — Logs/Discover 에서 weapon·점수대·플레이타임 분석.
+      log.info("game.end", {
+        dollId: dollId ?? "default",
+        bg: bgKeyRef.current,
+        score: s.score,
+        maxCombo: s.maxCombo,
+        hitCount: s.hitCount,
+        mainWeapon: topWeapon(s.weaponCounts),
+        weaponCounts: s.weaponCounts,
+        durationMs: s.startedAt ? Math.round(performance.now() - s.startedAt) : 0,
+        endReason: reason,
+      });
+      setSentryGameContext({
+        dollId,
+        weapon: weaponRef.current.key,
+        bg: bgKeyRef.current,
+        gamePhase: "over",
+      });
+      end();
+      if (s.score <= 0) {
+        router.push("/");
+        return;
+      }
+      // 진행 중 녹화가 있으면 마감해서 마지막 클라이맥스 클립이 버려지지 않게 한 뒤 모달 오픈.
+      await finalizeHighlight();
+      setOver(true);
+    },
+    [dollId, end, finalizeHighlight, router]
+  );
+
+  // 최신 handleEnd 를 ref 로 — 폴링 인터벌이 handleEnd 재생성에 재구독되지 않게(인터벌 리셋 방지).
+  const handleEndRef = useRef(handleEnd);
+  useEffect(() => {
+    handleEndRef.current = handleEnd;
+  }, [handleEnd]);
+
+  // 강제 종료 폴링 — gameReady·!over 동안 0.5s 마다 한도 체크. 도달 시 배너 → grace 후 1회 종료.
+  useEffect(() => {
+    if (!gameReady || over) return;
+    const limits = limitsRef.current;
+    const id = window.setInterval(() => {
+      if (forceEndRef.current) return;
+      const s = useGameStore.getState();
+      if (!s.isPlaying || !s.startedAt) return;
+      const elapsed = (performance.now() - s.startedAt) / 1000;
+      const reason =
+        s.score >= limits.maxScore
+          ? "score_limit"
+          : elapsed >= limits.maxPlaySeconds
+            ? "time_limit"
+            : null;
+      if (reason) {
+        forceEndRef.current = true;
+        setForcedBanner(reason === "time_limit" ? "시간 종료!" : "최고 점수 달성!");
+        // grace — 진행 중 궁극기 마무리 여유. 이후 1회 종료(final 소폭 초과는 hard cap 내라 제출 OK).
+        // 타이머 id 보관 → grace 중 수동종료+재시작 시 새 판을 강제종료하는 orphan timeout 방지.
+        graceTimerRef.current = window.setTimeout(
+          () => void handleEndRef.current(reason),
+          FORCE_END_GRACE_MS
+        );
+      }
+    }, 500);
+    return () => {
+      window.clearInterval(id);
+      if (graceTimerRef.current) window.clearTimeout(graceTimerRef.current);
+    };
+  }, [gameReady, over]);
 
   const handleRestart = () => {
     setOver(false);
+    setForcedBanner(null);
+    setEndReason("normal");
+    forceEndRef.current = false;
+    endingRef.current = false;
+    if (graceTimerRef.current) {
+      window.clearTimeout(graceTimerRef.current); // orphan grace timeout 차단(D1)
+      graceTimerRef.current = null;
+    }
     bgVisitsRef.current = new Set([bgKeyRef.current]); // 새 세션 — 현재 배경만
     start();
   };
@@ -289,11 +359,20 @@ function PlayInner() {
         </div>
       )}
       <button
-        onClick={handleEnd}
+        onClick={() => void handleEnd()}
         className="pointer-events-auto absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:right-4 sm:top-4 sm:px-4 sm:py-2 sm:text-sm"
       >
         그만 패기
       </button>
+      {/* 강제 종료 배너 — 한도 도달 시 grace 동안 노출 후 결과 모달로 전환 */}
+      {forcedBanner && !over && (
+        <div className="pointer-events-none absolute inset-x-0 top-1/3 z-30 flex justify-center">
+          <div className="animate-milestone rounded-2xl bg-black/80 px-6 py-4 text-center shadow-2xl backdrop-blur">
+            <p className="text-2xl font-extrabold text-amber-400">{forcedBanner}</p>
+            <p className="mt-1 text-xs text-white/80">결과를 정리하고 있어요…</p>
+          </div>
+        </div>
+      )}
       {/* 무기 조작 안내 — picker 바로 위. 반투명 캡슐로 배경 무관 가독 */}
       <div className="pointer-events-none absolute bottom-[5.75rem] left-1/2 z-10 -translate-x-1/2 sm:bottom-28">
         <span className="whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm sm:text-sm">
@@ -318,6 +397,7 @@ function PlayInner() {
         highlightClip={bestClip}
         getCardHighlight={getTimelineHighlight}
         bgVisits={Array.from(bgVisitsRef.current)}
+        endReason={endReason}
       />
     </div>
   );

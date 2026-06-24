@@ -33,6 +33,8 @@ type Props = {
   getCardHighlight?: () => { delta: number; windowMs: number } | null;
   /** 플레이 중 들른 배경 key 목록 (해석 리포트용 — store 밖이라 page 가 전달) */
   bgVisits?: string[];
+  /** 종료 사유 — 강제종료(시간/점수) 분석용. 기본 normal. */
+  endReason?: "normal" | "time_limit" | "score_limit";
 };
 
 export function GameOverModal({
@@ -45,6 +47,7 @@ export function GameOverModal({
   highlightClip,
   getCardHighlight,
   bgVisits,
+  endReason = "normal",
 }: Props) {
   const router = useRouter();
   const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
@@ -124,6 +127,7 @@ export function GameOverModal({
       dollId,
       maxCombo,
       gameplayStats,
+      endReason,
     });
 
   useEffect(() => {

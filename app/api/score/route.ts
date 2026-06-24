@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
     maxCombo?: number;
     /** 플레이 해석 리포트용 상세 스탯 (bgVisits 포함). 검증·저장은 best-effort. */
     gameplayStats?: GameplayStats;
+    /** 종료 사유 — 강제종료 분석용. normal|time_limit|score_limit 만 허용. */
+    endReason?: string;
   } | null;
 
   if (
@@ -72,6 +74,12 @@ export async function POST(req: NextRequest) {
       ? Math.min(Math.max(0, Math.round(body.maxCombo)), 99999)
       : 0;
 
+  // 종료 사유 — allowlist 만(그 외 normal). 0026 미적용 환경 fallback 위해 별도 보관.
+  const endReason =
+    body.endReason === "time_limit" || body.endReason === "score_limit"
+      ? body.endReason
+      : "normal";
+
   const baseRow = {
     owner_id: user.id,
     doll_id: body.dollId ?? null,
@@ -82,13 +90,13 @@ export async function POST(req: NextRequest) {
 
   let { data, error } = await supabase
     .from("scores")
-    .insert({ ...baseRow, max_combo: maxCombo })
+    .insert({ ...baseRow, max_combo: maxCombo, end_reason: endReason })
     .select("id")
     .single();
 
-  // migration 0003 (max_combo 컬럼) 미적용 환경 fallback — 점수 저장은 항상 성공해야
-  if (error && error.message.includes("max_combo")) {
-    log.warn("score.maxcombo_col_missing", { userId: user.id });
+  // 컬럼 미적용 환경(0003 max_combo / 0026 end_reason) fallback — 점수 저장은 항상 성공해야.
+  if (error && (error.message.includes("max_combo") || error.message.includes("end_reason"))) {
+    log.warn("score.optional_col_missing", { userId: user.id, ...errInfo(error) });
     ({ data, error } = await supabase
       .from("scores")
       .insert(baseRow)
