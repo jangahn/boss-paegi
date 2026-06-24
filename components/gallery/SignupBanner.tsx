@@ -2,26 +2,17 @@
 
 import Link from "next/link";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
+import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 
-// 상태별 후킹 배너 — nonmember=가입 유도(생성권 2개), member-empty=첫 캐릭터 만들기 유도.
-// member(캐릭터 보유)는 배너 없음(null).
-const COPY: Record<
-  Exclude<ViewerState, "member">,
-  { title: string; sub: string }
-> = {
-  nonmember: {
-    title: "가입하면 가입기념 생성권 2개를 드려요",
-    sub: "내 사진으로 나만의 캐릭터를 만들고 공유·롤 변경까지!",
-  },
-  "member-empty": {
-    title: "나만의 캐릭터를 만들어보세요",
-    sub: "기본부장님 말고, 내 사진으로 만든 캐릭터로 플레이!",
-  },
-};
-
+// 상태별 후킹 배너 — nonmember=가입 유도(생성권 N개), member-empty=첫 캐릭터 만들기 유도.
+// member(캐릭터 보유)는 배너 없음(null). 문구는 마케터 편집(marketing_copy.signupBanner).
 export function SignupBanner({ state }: { state: ViewerState }) {
+  const banner = useMarketingCopy().signupBanner;
   if (state === "member") return null;
-  const copy = COPY[state];
+  const copy =
+    state === "nonmember"
+      ? { title: banner.nonmemberTitle, sub: banner.nonmemberSub }
+      : { title: banner.memberEmptyTitle, sub: banner.memberEmptySub };
   const cta = ctaFor(state);
 
   return (
