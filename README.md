@@ -63,7 +63,8 @@ boss-paegi/
 │   ├── log.ts              #   구조화 JSON 로깅 (console + Sentry 브릿지 / 토큰 스크럽)
 │   ├── sentry-bridge.ts    #   로그 이벤트 → Sentry (error/warn=issue, info=breadcrumb)
 │   ├── share.ts            #   Web Share / OG helper
-│   └── score-detail.ts     #   한 게임 상세 fetch (share·history 공용, server-only)
+│   ├── score-detail.ts     #   한 게임 상세 fetch (share·history 공용, server-only)
+│   └── telemetry/          #   게임플레이 텔레메트리 (collector/transport/validate/budget — 5초 버킷 이벤트, 클라/서버 공용)
 ├── components/             # React UI
 ├── store/                  # Zustand stores
 ├── supabase/migrations/    # SQL 마이그레이션
@@ -170,6 +171,16 @@ boss-paegi/
   - **Uptime**: `boss-paegi.vercel.app` 5분 간격(무료 1개 한도) → 다운 시 이메일.
   - **Dashboard `boss-paegi 운영 개요`**: 에러 추이·event 태그별 Top·생성 p95·Web Vitals(p75)·점수 제출·무기 분포.
   - 추가 권장(미설정): `falbal.hard_cap_hit`·`auth.anon_sign_in_fail`·`gen.done_update_fail` 즉시 알림은 필요 시 UI 에서.
+
+## 게임플레이 텔레메트리 (수집)
+
+무기/맵/콤보·궁극/입력·이탈 등 게임플레이 패턴을 **세션당 1행 jsonb**로 수집 — Sentry breadcrumb(쿼리 불가)와 별개의 **조회 가능한** 분석 데이터. 무료플랜 안전(행 폭발 없음). 신뢰=분석 등급(점수 보상 권위 아님).
+
+- **캡처**(`lib/telemetry/`, `app/play/useTelemetry.ts`): 핵심 이벤트(무기/맵 `select_attempt`·`switch`·궁극·종료) 즉시 + 타격은 5초 버킷 집계(render loop 밖, 60fps 보호 — 부하 시 드롭). 10초 flush(`fetch keepalive`) + 이탈 시 `navigator.sendBeacon`. delta-only(미전송분만).
+- **수신**(`app/api/telemetry`): **공개 라우트**(익명 포착 — `requireMember` 안 씀). parse → member 판별(`member_accounts` 기준, 서버 결정) → deep validation(key allowlist·clamp·이벤트 cap) → `ingest_telemetry_delta` RPC(원자: budget+row lock·seq 멱등·clamp). 회원=풀 timeline, **비회원/익명=요약만(timeline null)**.
+- **저장**(`supabase/migrations/0027_play_telemetry.sql`): `telemetry_sessions`(세션 1행) · `telemetry_rollups`(대시보드 사전집계 — 후속) · `telemetry_budget`(운영 degrade 상태). `scores.telemetry_session_id`(점수 링크 — 후속). 전부 **server-only**(anon/authenticated revoke + service_role grant), 쓰기는 ingest RPC(security definer)로만.
+- **용량 가드**: 30MB 운영 target budget(Supabase 500MB 한계 아님). **env kill-switch·자동 샘플링 없음** → budget DB row 기준 자동 degrade(full/summary/off). 30일 prune·롤업·대시보드는 후속 PR.
+- **프라이버시**: 익명 id = 세션 한정 ephemeral(`crypto.randomUUID`, 쿠키 지속·재방문 추적 없음), PII 미수집, coarse `device_class`만(핑거프린팅 아님). 개인정보 고지/정책은 후속(어드민 연동).
 
 ## npm scripts
 

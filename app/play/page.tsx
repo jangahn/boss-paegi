@@ -25,6 +25,7 @@ import { useTaunts } from "./useTaunts";
 import { useHighlightRecorder } from "./useHighlightRecorder";
 import { useScoreTimeline } from "./useScoreTimeline";
 import { useBadgeChallenge } from "./useBadgeChallenge";
+import { useTelemetry } from "./useTelemetry";
 
 function PlayInner() {
   const router = useRouter();
@@ -82,6 +83,8 @@ function PlayInner() {
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
   const consumeUlt = useGameStore((s) => s.consumeUlt);
+  const telemetry = useTelemetry();
+  const telemetryStartedRef = useRef(false); // StrictMode 더블 effect 가드(세션 1회만)
 
   // 초기 배경 확정 — 마운트 후 1회. SSR/첫 렌더는 결정적("office" or 유효 ?bg=)이라 hydration 일치하고,
   // 실제 초기 배경은 여기서 정한다: 유효한 bg 파라미터면 그 배경, 없거나 무효면 client random.
@@ -101,6 +104,10 @@ function PlayInner() {
   // 게임 세션 시작 — 스토어 리셋 + 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 event/replay 에 부착).
   useEffect(() => {
     start();
+    if (!telemetryStartedRef.current) {
+      telemetryStartedRef.current = true;
+      telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
+    }
     log.info("game.start", {
       dollId: dollId ?? "default",
       weapon: weaponRef.current.key,
@@ -112,7 +119,7 @@ function PlayInner() {
       bg: bgKeyRef.current,
       gamePhase: "playing",
     });
-  }, [start, dollId]);
+  }, [start, dollId, telemetry]);
 
   // Pixi 게임 인스턴스 생성/해제 (인형·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
   useGameInit({
@@ -172,11 +179,13 @@ function PlayInner() {
       combo: s.combo,
     });
     gameRef.current?.triggerUltimate();
+    telemetry.onUltFire(s.score);
     consumeUlt();
   };
 
   // 무기 전환 — 로그 + Sentry 게임 컨텍스트 갱신(이후 event/replay 에 현재 무기 부착).
   const handleWeapon = (w: Weapon) => {
+    telemetry.onWeaponSelect(weapon.key, w.key);
     if (w.key !== weapon.key) {
       log.info("game.weapon_switch", {
         from: weapon.key,
@@ -189,6 +198,7 @@ function PlayInner() {
   };
 
   const handleBg = (key: string) => {
+    telemetry.onMapSelect(bgKey, key);
     if (key !== bgKey) {
       userChangedBgRef.current = true; // 이후 핫스왑이 ?bg= 를 URL 에 동기화
       bgVisitsRef.current.add(key);
@@ -268,6 +278,7 @@ function PlayInner() {
         gamePhase: "over",
       });
       end();
+      telemetry.endSession(reason);
       if (s.score <= 0) {
         router.push("/");
         return;
@@ -276,7 +287,7 @@ function PlayInner() {
       await finalizeHighlight();
       setOver(true);
     },
-    [dollId, end, finalizeHighlight, router]
+    [dollId, end, finalizeHighlight, router, telemetry]
   );
 
   // 최신 handleEnd 를 ref 로 — 폴링 인터벌이 handleEnd 재생성에 재구독되지 않게(인터벌 리셋 방지).
@@ -329,6 +340,7 @@ function PlayInner() {
     }
     bgVisitsRef.current = new Set([bgKeyRef.current]); // 새 세션 — 현재 배경만
     start();
+    telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
   };
 
   return (
