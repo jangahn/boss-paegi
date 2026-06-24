@@ -46,17 +46,17 @@ export const marketingCopySchema = z.object({
     dollShareText: tpl(160),
     dollOgTitle: tpl(80),
     dollOgDesc: tpl(160),
-    // 점수 공유(share). scoreOgDesc 는 롤 OG 후킹(롤 콘텐츠)에서 제어 → 여기 없음.
+    // 점수 공유(share)
     scoreHook: tpl(60),
     scoreCtaPlay: tpl(40),
     scoreCtaPersona: tpl(40),
     scoreShareText: tpl(60),
     scoreOgTitle: tpl(80),
+    // 점수 공유 OG 설명 — 롤 무관 단일 값(구 롤 ogLines 대체). 발행된 행엔 없을 수 있어 .default().
+    scoreOgDesc: tpl(160).default("{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?"),
     // 게임오버
     gameoverShareBtn: tpl(30),
     gameoverRetryBtn: tpl(20),
-    // 보고서 구조 라벨. 이미 발행된 행엔 없을 수 있어 .default().
-    reportTitle: tpl(40).default("스트레스 해소 결과 보고서"),
     scoreRankLink: tpl(40).default("이 점수, 랭킹 몇 등인지 보기"),
   }),
 });
@@ -93,9 +93,9 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     scoreCtaPersona: "기본 부장님으로 바로 풀기",
     scoreShareText: "{호칭} {점수}점 패고 옴 🥊",
     scoreOgTitle: "[결재완료] {제작자} — {점수}점 ({등급})",
+    scoreOgDesc: "{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?",
     gameoverShareBtn: "보고서 공유하기",
     gameoverRetryBtn: "다시 패기",
-    reportTitle: "스트레스 해소 결과 보고서",
     scoreRankLink: "이 점수, 랭킹 몇 등인지 보기",
   },
 };

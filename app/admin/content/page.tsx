@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const DOMAINS: { key: DomainKey; label: string; desc: string }[] = [
   { key: "marketing_copy", label: "마케팅 카피", desc: "홈·갤러리·가입 배너·CTA 문구" },
-  { key: "role_content", label: "롤 대사", desc: "시비 멘트·반응·공유 문구·인사기록" },
+  { key: "role_content", label: "롤 대사", desc: "시비 멘트·반응·인사기록·호칭" },
   { key: "score_config", label: "점수 설정", desc: "점수 구간(밴드 간격)·등급 라벨" },
   { key: "badge_catalog", label: "뱃지", desc: "카테고리·임계값·라벨" },
   { key: "session_limits", label: "세션 한도", desc: "최대 플레이 시간·점수(강제 종료)" },

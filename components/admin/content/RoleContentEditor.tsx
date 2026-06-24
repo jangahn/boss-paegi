@@ -10,7 +10,6 @@ import type { RoleConfig, RoleFull } from "@/lib/config/domains/roles";
 const TIERED = [
   { key: "reactions", label: "피격 반응 (게임오버·공유 보고서)" },
   { key: "taunts", label: "시비 멘트 (플레이 중 말풍선)" },
-  { key: "ogLines", label: "공유 OG 후킹 문구 (조사 포함 완성형)" },
 ] as const;
 const ARRAYS = [
   { key: "traits", label: "인사기록 특이사항" },
@@ -41,7 +40,6 @@ function clean(cfg: RoleConfig): RoleConfig {
     out[r] = {
       reactions: v.reactions.map(cleanArr),
       taunts: v.taunts.map(cleanArr),
-      ogLines: v.ogLines.map(cleanArr),
       traits: cleanArr(v.traits),
       ranks: cleanArr(v.ranks),
       departments: cleanArr(v.departments),
@@ -72,7 +70,7 @@ export function RoleContentEditor({
   const r = form[role];
   const patch = (next: Partial<RoleFull>) =>
     setForm((f) => ({ ...f, [role]: { ...f[role], ...next } }));
-  const setTier = (kind: "reactions" | "taunts" | "ogLines", i: number, text: string) => {
+  const setTier = (kind: "reactions" | "taunts", i: number, text: string) => {
     const arr = r[kind].map((t, ti) => (ti === i ? text.split("\n") : t));
     patch({ [kind]: arr } as Partial<RoleFull>);
   };
@@ -146,7 +144,7 @@ export function RoleContentEditor({
           </label>
         ))}
         <p className="rounded-lg bg-foreground/5 p-2 text-xs text-zinc-500">
-          미리보기 · 공유후킹: <b>{r.label ? defaultSafeHook(r.label) : "—"}</b> · OG예: {r.ogLines[3]?.[0] ?? "—"}
+          미리보기 · 공유후킹: <b>{r.label ? defaultSafeHook(r.label) : "—"}</b>
         </p>
         <div className="grid grid-cols-2 gap-2">
           <SurfaceDiagram surface="doll" />

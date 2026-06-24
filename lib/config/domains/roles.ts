@@ -9,7 +9,7 @@ import { client } from "@/lib/roles/client";
 import { coworker } from "@/lib/roles/coworker";
 
 // 롤 tiered 콘텐츠 도메인 — 순수 모듈(client 프로바이더 default + server getter 공용, lib/roles 와 무순환).
-// 점수 10단계 결합 가드: reactions/taunts/ogLines 는 **정확히 10 tier**(.length(10)), tier 당 ≥1 줄.
+// 점수 10단계 결합 가드: reactions/taunts 는 **정확히 10 tier**(.length(10)), tier 당 ≥1 줄.
 // tier 개수(10)·매핑은 코드 고정(score_config) — 마케터는 내용만.
 const tier = z.array(z.string().trim().min(1).max(120)).min(1);
 const tiered = z.array(tier).length(10);
@@ -17,7 +17,6 @@ const tiered = z.array(tier).length(10);
 const roleFullSchema = z.object({
   reactions: tiered,
   taunts: tiered,
-  ogLines: tiered,
   traits: z.array(z.string().trim().min(1).max(60)).min(1),
   ranks: z.array(z.string().trim().min(1).max(40)).min(1),
   departments: z.array(z.string().trim().min(1).max(40)).min(1),
@@ -42,7 +41,6 @@ function toFull(rc: RoleContent, label: string): RoleFull {
   return {
     reactions: rc.reactions.map((t) => [...t]),
     taunts: rc.taunts.map((t) => [...t]),
-    ogLines: rc.ogLines.map((t) => [...t]),
     traits: [...rc.traits],
     ranks: [...rc.ranks],
     departments: [...rc.departments],

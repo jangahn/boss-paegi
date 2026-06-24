@@ -8,7 +8,6 @@ import {
   bossReaction,
   formatDuration,
   gradeFor,
-  ogDescription,
   reportNo,
   weaponLabel,
 } from "@/lib/report";
@@ -48,7 +47,11 @@ export async function generateMetadata({
     점수: score.score.toLocaleString(),
     등급: grade.label,
   });
-  const description = ogDescription(score.score, score.id, role, cfg);
+  const description = resolveCopy(mk.share.scoreOgDesc, roleFrom(role, cfg).label, {
+    점수: score.score.toLocaleString(),
+    상위: score.percentile ?? "",
+    등급: grade.label,
+  });
   const ogUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   return {
     title,
@@ -118,7 +121,7 @@ export default async function SharePage({
               {reportNo(score.id, score.created_at)}
             </p>
             <h1 className="mt-1 text-xl font-extrabold tracking-tight">
-              {mk.share.reportTitle}
+              스트레스 해소 결과 보고서
             </h1>
           </div>
 

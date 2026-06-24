@@ -71,17 +71,6 @@ export function bossReaction(
   return lines[hashSeed(seed) % lines.length];
 }
 
-/** OG 설명 — 단계별 후킹 강도 상승. 롤별 완성형(조사 포함)은 role_content 설정. */
-export function ogDescription(
-  score: number,
-  seed: string,
-  role: RoleId = "boss",
-  cfg?: RoleConfig
-): string {
-  const lines = roleFrom(role, cfg).ogLines[scoreTier(score)];
-  return lines[hashSeed(seed) % lines.length];
-}
-
 /**
  * 인사기록카드 (공유된 캐릭터 페이지) 특이사항/직급/소속 — id 시드 결정적.
  * 롤별 콘텐츠는 role_content 설정(cfg 미지정 시 코드 기본값).

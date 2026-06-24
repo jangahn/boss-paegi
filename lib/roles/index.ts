@@ -94,7 +94,7 @@ export function getRoleContent(role: RoleId): RoleContent {
 if (process.env.NODE_ENV !== "production") {
   for (const [id, c] of Object.entries(CONTENT)) {
     const bad: string[] = [];
-    (["reactions", "taunts", "ogLines"] as const).forEach((k) =>
+    (["reactions", "taunts"] as const).forEach((k) =>
       c[k].forEach((t, i) => {
         if (t.length < 1) bad.push(`${k}[${i}] 빈 tier`);
       })

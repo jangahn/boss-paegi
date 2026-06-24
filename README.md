@@ -144,8 +144,8 @@ boss-paegi/
 - **읽기**(`lib/config`): async 서버 getter(value-only) + 진단용 `*WithMeta`(`source: db|default`). **검증 실패/DB불가 → 코드 기본값 폴백 + Sentry, 핫패스 throw 금지**. `unstable_cache`+`revalidateTag(tag,'max')`(SWR)+60s backstop.
 - **쓰기**: `POST /api/admin/config`(requireAdmin → 도메인 Zod 검증 → **`admin_update_app_setting`** RPC: key allowlist·version CAS·감사 insert 를 한 트랜잭션·security definer 하드닝). 낙관적 version 충돌=409. revert=같은 RPC 로 old_value 재발행.
 - 도메인 에디터는 PR 별로 등록(레지스트리 `lib/config/registry`). 미등록 도메인은 `/admin/content` 에서 "준비 중".
-- **`marketing_copy`(PR2)**: 홈 화면·가입 배너 문구. 클라 소비처가 많아 **루트 레이아웃(server)이 `getMarketingCopy()`로 읽어 `MarketingCopyProvider`(client 컨텍스트)로 1회 주입**(클라 fetch 없음·코드 기본값 폴백). 편집=`/admin/content/marketing_copy`. (정적/ISR 라우트 유지 — `unstable_cache` 60s.)
-- **`role_content`(PR3)**: 5롤(부장/임원/팀장/거래처/동료) × 시비 멘트·피격 반응·OG 후킹·인사기록(특이사항/직급/소속)·호칭·`ctaSafe`. **점수 10단계는 코드 고정**(`score_config`), 마케터는 칸 안 문구만(Zod `length(10)`·tier당 ≥1). `lib/config/domains/roles.ts`(순수, lib/roles 와 무순환) + `roleFrom(role, cfg?)`(미지정 시 코드 기본값 폴백). 서버 OG/doll=`getRoleConfig()`, 클라 시비멘트/반응=`RoleContentProvider`(라이브, 스냅샷 아님). 편집=`/admin/content/role_content`(5롤 탭). 공개 API 미노출(서버/프로바이더 전용). (gallery 칩·롤선택 라벨은 코드 기본값 유지 — 후속.)
+- **`marketing_copy`(PR2)**: 홈·가입/갤러리 배너·캐릭터/점수 **공유 카드**·**공유 미리보기(OG)**(title/desc/웹공유)·게임오버 CTA 문구(`resolveCopy` 로 `{호칭}`+값 토큰 합성). 보고서 제목·인사기록 카드 제목은 **코드 고정(비제어)**. 콘솔 그룹/도식은 실제 화면 순서·용어(`{대상} 공유 카드`/`{대상} 공유 미리보기 (OG)`)와 일치. 클라 소비처가 많아 **루트 레이아웃(server)이 `getMarketingCopy()`로 읽어 `MarketingCopyProvider`(client 컨텍스트)로 1회 주입**(클라 fetch 없음·코드 기본값 폴백). 편집=`/admin/content/marketing_copy`. (정적/ISR 라우트 유지 — `unstable_cache` 60s.)
+- **`role_content`(PR3)**: 5롤(부장/임원/팀장/거래처/동료) × 시비 멘트·피격 반응·인사기록(특이사항/직급/소속)·호칭. (점수 공유 OG 설명은 v0.31 부터 롤 무관 단일 `marketing_copy.scoreOgDesc` 로 이관.) **점수 10단계는 코드 고정**(`score_config`), 마케터는 칸 안 문구만(Zod `length(10)`·tier당 ≥1). `lib/config/domains/roles.ts`(순수, lib/roles 와 무순환) + `roleFrom(role, cfg?)`(미지정 시 코드 기본값 폴백). 서버 OG/doll=`getRoleConfig()`, 클라 시비멘트/반응=`RoleContentProvider`(라이브, 스냅샷 아님). 편집=`/admin/content/role_content`(5롤 탭). 공개 API 미노출(서버/프로바이더 전용). (gallery 칩·롤선택 라벨은 코드 기본값 유지 — 후속.)
 - **`score_config`(PR4)**: 점수 10단계 등급 라벨/한 줄 평(=&apos;패기 유형&apos;). **tier 매핑·간격(step)은 코드 고정**, 라벨 텍스트만 라이브 편집(Zod `length(10)`). `gradeFor(score, grades?)` + `ScoreConfigProvider`(클라)/`getScoreConfig()`(서버 share·history). 편집=`/admin/content/score_config`. step 조절·과거결과 동결은 후속.
 - **`session_limits`(PR5)**: 강제 종료 한도(최대 플레이 초·최대 점수). Zod 상한=제출 clamp 상수(`MAX_DURATION_MS`/`MAX_SCORE_HARD`), 기본값=hard cap(사실상 무제한 → 마케터가 낮춰야 동작). 게임 시작 시 `SessionLimitsProvider` 값을 ref 로 **동결**, 0.5s 폴링 → 한도 도달 시 배너→`FORCE_END_GRACE_MS`(4s, 궁극기 마무리)→**1회 종료**(one-shot guard·grace 타이머 정리). `scores.end_reason`(0026) 기록. 편집=`/admin/content/session_limits`.
 - **`growth_levers`(PR6, 머니 패스)**: 가입 기념 생성권(0~50, 신규 가입 1회 멱등) + 충전 상품(productId 불변·price 1,000~100,000원·credits·`active`). **체크아웃은 서버에서 active 상품 재조회로 price/credits 결정**(클라 조작·비활성 차단), 기존 주문은 amount/credits 스냅샷이라 무관. `/credits` 표시는 `CreditProductsProvider`(active만). 가입 grant=`getGrowthLevers().signupBonusCredits`(callback `ignoreDuplicates` 멱등). 편집=`/admin/content/growth_levers`(발행 확인·productId 중복 거부). 공개 API 미노출.
@@ -399,6 +399,13 @@ v0.30 (2026-06-24, 콘텐츠 콘솔 개편 — 가시화·CTA 흡수·롤 호칭
 - **콘텐츠 탭 가시화**: 도식형 주석 레이아웃(`SurfaceDiagram`, 5표면) + 필드 포커스 시 영역 하이라이트 + `{호칭}` 필드 **5롤 치환 라이브 미리보기** + OG 캐시(발행 후 이미지·제목 최대 1h 지연) 안내.
 - **뱃지 자유 편집**: slug 편집 잠금 해제 + **하드삭제**(획득 영향도 `user_badges`/`score_stats` 카운트 경고 모달) + family 내 **▲▼ 순서변경**. **성장레버**: 상품 **개당 단가** 표시 + **▲▼ 순서변경**. (표시=배열 순서 → 재정렬만으로 반영.)
 - 검증: boss 골든 바이트 동일 · typecheck/lint/build 0 · `app_settings` 0행 전제(스키마 변경 SQL 무필요).
+
+v0.31 (2026-06-25, 마케팅 카피 페이지 정밀 다듬기 + 롤 OG desc 정리; 마이그레이션 없음):
+- **마케팅 콘솔 IA 일치**: 그룹/도식을 실제 UI 순서·용어로 통일 — `{대상} 공유 카드`/`{대상} 공유 미리보기 (OG)` 일괄 패턴(캐릭터·점수). 웹 공유 텍스트는 공유 후 노출이라 **OG 그룹**으로 이동, OG 영역 순서=이미지(+푸터 후킹)→제목→설명→웹공유. 갤러리 헤더 버튼 라벨 "모든 방문자"(전 상태 노출 반영).
+- **보고서 제목 코드 고정**: `reportTitle` config 제거 → "스트레스 해소 결과 보고서" 코드 고정(캐릭터 카드 "인사기록카드"와 결 맞춤). "공통" 그룹 삭제.
+- **롤 ogLines 제거 → 마케팅 단일 `scoreOgDesc`**: 점수 공유 OG 설명을 롤별 10단계(`ogLines`)에서 **롤 무관 단일 값**(토큰 지원 `{호칭}`+`{점수}`/`{상위}`/`{등급}`)으로. share og:description=`resolveCopy(scoreOgDesc, …)`. 롤 에디터에서 OG 후킹 칸 제거.
+- **무중단**: 발행된 `marketing_copy`(reportTitle)·`role_content`(ogLines) 잔여 키는 Zod `z.object` strip → 신 스키마로 valid(추가 마이그레이션 불필요). `scoreOgDesc` 는 `.default()` 로 발행행 자동 충전.
+- 검증: golden(scoreOgDesc 토큰 치환·발행행 strip·boss 기본값 회귀) · typecheck/build 0 · 점수 og:desc 는 롤 ogLines→단일값으로 **의도된 변경**.
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).

@@ -23,8 +23,6 @@ export type RoleContent = {
   reactions: TieredLines;
   /** 시비 멘트 (플레이 중 말풍선). 10단계 × 여러 줄. */
   taunts: TieredLines;
-  /** 공유 OG 후킹 문구. 10단계 × 보통 1줄. **조사 포함 완성형**. */
-  ogLines: TieredLines;
   /** 인사기록 특이사항. */
   traits: readonly string[];
   /** 인사기록 직급. */

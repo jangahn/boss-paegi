@@ -56,7 +56,7 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    label: "갤러리 — 헤더 버튼 (캐릭터 보유 회원)",
+    label: "갤러리 — 헤더 버튼 (모든 방문자)",
     fields: [
       { sec: "signupBanner", k: "memberHeaderCta", label: "새로 만들기 버튼", max: 30 },
     ],
@@ -67,7 +67,6 @@ const GROUPS: Group[] = [
       { sec: "share", k: "dollHook", label: "후킹 문구", max: 80 },
       { sec: "share", k: "dollCtaMake", label: "만들기 버튼", max: 30 },
       { sec: "share", k: "dollCtaDefault", label: "기본 캐릭터 버튼", max: 40 },
-      { sec: "share", k: "dollShareText", label: "웹 공유 텍스트", max: 160, multiline: true },
     ],
   },
   {
@@ -75,21 +74,25 @@ const GROUPS: Group[] = [
     fields: [
       { sec: "share", k: "dollOgTitle", label: "OG 제목", max: 80 },
       { sec: "share", k: "dollOgDesc", label: "OG 설명", max: 160, multiline: true },
+      { sec: "share", k: "dollShareText", label: "웹 공유 텍스트", max: 160, multiline: true },
     ],
   },
   {
-    label: "점수 결과 보고서 공유",
+    label: "점수 공유 카드",
     fields: [
       { sec: "share", k: "scoreHook", label: "후킹 문구", max: 60 },
       { sec: "share", k: "scoreCtaPlay", label: "패러 가기 버튼", max: 40 },
       { sec: "share", k: "scoreCtaPersona", label: "두 번째 버튼", max: 40 },
       { sec: "share", k: "scoreRankLink", label: "랭킹 보기 링크", max: 40 },
-      { sec: "share", k: "scoreShareText", label: "웹 공유 텍스트", max: 60 },
     ],
   },
   {
     label: "점수 공유 미리보기 (OG)",
-    fields: [{ sec: "share", k: "scoreOgTitle", label: "OG 제목 (메타)", max: 80 }],
+    fields: [
+      { sec: "share", k: "scoreOgTitle", label: "OG 제목 (메타)", max: 80 },
+      { sec: "share", k: "scoreOgDesc", label: "OG 설명", max: 160, multiline: true },
+      { sec: "share", k: "scoreShareText", label: "웹 공유 텍스트", max: 60, multiline: true },
+    ],
   },
   {
     label: "게임 종료 화면",
@@ -97,10 +100,6 @@ const GROUPS: Group[] = [
       { sec: "share", k: "gameoverShareBtn", label: "공유 버튼", max: 30 },
       { sec: "share", k: "gameoverRetryBtn", label: "다시 버튼", max: 20 },
     ],
-  },
-  {
-    label: "공통 (여러 화면에 함께 적용)",
-    fields: [{ sec: "share", k: "reportTitle", label: "보고서 제목", max: 40 }],
   },
 ];
 

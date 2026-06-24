@@ -133,7 +133,7 @@ export default async function OgImage({
               {docNo}
             </div>
             <div style={{ display: "flex", fontSize: 52, fontWeight: 900, marginTop: 6 }}>
-              {mk.share.reportTitle}
+              스트레스 해소 결과 보고서
             </div>
           </div>
 
