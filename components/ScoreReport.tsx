@@ -1,4 +1,5 @@
 import { formatDuration, weaponLabel } from "@/lib/report";
+import type { BadgeCatalog } from "@/lib/config/domains/badges";
 import type { Persona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
@@ -25,6 +26,7 @@ export function ScoreReport({
   badges,
   newBadges,
   collectedCount,
+  badgeCatalog,
   submitting,
   submitError,
 }: {
@@ -49,6 +51,8 @@ export function ScoreReport({
   newBadges?: string[];
   /** 누적 수집 수 (서버) */
   collectedCount?: number;
+  /** 뱃지 카탈로그(라벨·이모지·압축) — 부모 주입(클라 useBadgeCatalog). */
+  badgeCatalog: BadgeCatalog;
   submitting: boolean;
   submitError: string | null;
 }) {
@@ -138,6 +142,7 @@ export function ScoreReport({
       {badges && badges.length > 0 && (
         <BadgeStrip
           badgeIds={badges}
+          catalog={badgeCatalog}
           newIds={newBadges}
           collected={collectedCount}
         />

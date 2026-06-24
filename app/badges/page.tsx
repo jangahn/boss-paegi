@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
 import { AppNav } from "@/components/AppNav";
-import { BADGE_FAMILIES, BADGE_TOTAL, type BadgeDef } from "@/lib/badges";
+import {
+  familyGroups,
+  activeBadges,
+  type CatalogBadge,
+} from "@/lib/config/domains/badges";
+import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 
 /**
  * 뱃지 수집 페이지 — 프로필 메뉴("내 뱃지")에서 진입. 익명/회원 공통(self-RLS).
@@ -12,6 +17,9 @@ import { BADGE_FAMILIES, BADGE_TOTAL, type BadgeDef } from "@/lib/badges";
  */
 export default function BadgesPage() {
   const [owned, setOwned] = useState<Set<string> | null>(null);
+  const catalog = useBadgeCatalog();
+  const families = familyGroups(catalog);
+  const total = activeBadges(catalog).length;
 
   useEffect(() => {
     let cancelled = false;
@@ -33,8 +41,8 @@ export default function BadgesPage() {
   }, []);
 
   const collected = owned
-    ? BADGE_FAMILIES.reduce(
-        (n, f) => n + f.defs.filter((d) => owned.has(d.id)).length,
+    ? families.reduce(
+        (n, f) => n + f.badges.filter((d) => owned.has(d.slug)).length,
         0
       )
     : 0;
@@ -51,7 +59,7 @@ export default function BadgesPage() {
                 <span className="text-lg font-extrabold text-foreground tabular-nums">
                   {collected}
                 </span>{" "}
-                / {BADGE_TOTAL} 수집
+                / {total} 수집
               </p>
             )}
           </div>
@@ -59,7 +67,7 @@ export default function BadgesPage() {
           {owned === null ? (
             <BadgeSkeleton />
           ) : (
-            BADGE_FAMILIES.map((f) => (
+            families.map((f) => (
               <FamilySection key={f.key} family={f} owned={owned} />
             ))
           )}
@@ -73,24 +81,24 @@ function FamilySection({
   family,
   owned,
 }: {
-  family: { key: string; name: string; emoji: string; defs: BadgeDef[] };
+  family: { key: string; name: string; emoji: string; badges: CatalogBadge[] };
   owned: Set<string>;
 }) {
-  const got = family.defs.filter((d) => owned.has(d.id)).length;
+  const got = family.badges.filter((d) => owned.has(d.slug)).length;
   return (
     <section>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-lg">{family.emoji}</span>
         <h2 className="text-sm font-bold">{family.name}</h2>
         <span className="text-xs text-zinc-500 tabular-nums">
-          {got}/{family.defs.length}
+          {got}/{family.badges.length}
         </span>
       </div>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-        {family.defs.map((d) =>
-          owned.has(d.id) ? (
+        {family.badges.map((d) =>
+          owned.has(d.slug) ? (
             <div
-              key={d.id}
+              key={d.slug}
               title={d.desc}
               className="flex flex-col items-center gap-1 rounded-xl border border-foreground/10 bg-foreground/5 p-2 text-center"
             >
@@ -101,7 +109,7 @@ function FamilySection({
             </div>
           ) : (
             <div
-              key={d.id}
+              key={d.slug}
               className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-foreground/15 p-2 text-center"
             >
               <span className="text-xl opacity-40">🔒</span>

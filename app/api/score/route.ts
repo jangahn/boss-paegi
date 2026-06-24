@@ -12,7 +12,8 @@ import {
   type GameplayStats,
 } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
-import { evaluateBadges, KNOWN_BADGE_IDS } from "@/lib/badges";
+import { getBadgeCatalog } from "@/lib/config/getters";
+import { evaluateBadges, knownSlugs } from "@/lib/config/domains/badges";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -148,7 +149,8 @@ export async function POST(req: NextRequest) {
       });
       if (validateGameplayStats(canonical, body.score)) {
         personaId = matchPersona(canonical).id;
-        const earned = evaluateBadges(canonical, body.score);
+        const catalog = await getBadgeCatalog(); // 인증 grant — 서버 config(active 임계값)로만 판정
+        const earned = evaluateBadges(canonical, body.score, catalog);
         const admin = createAdminClient();
 
         // 백분위 (전체 플레이 기준) — best-effort
@@ -201,7 +203,7 @@ export async function POST(req: NextRequest) {
           .from("user_badges")
           .select("badge_id", { count: "exact", head: true })
           .eq("owner_id", user.id)
-          .in("badge_id", [...KNOWN_BADGE_IDS]);
+          .in("badge_id", [...knownSlugs(catalog)]);
         collectedCount = count ?? 0;
       } else {
         log.warn("score_stats.validation_fail", {

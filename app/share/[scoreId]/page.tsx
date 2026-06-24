@@ -21,7 +21,7 @@ import {
   highlightDelta,
 } from "@/lib/score-detail";
 import { asRole } from "@/lib/roles";
-import { getRoleConfig, getScoreConfig } from "@/lib/config/getters";
+import { getRoleConfig, getScoreConfig, getBadgeCatalog } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 
 export async function generateMetadata({
@@ -74,7 +74,11 @@ export default async function SharePage({
 
   const name = score.profiles?.display_name ?? "익명";
   const role = asRole(score.dolls?.role);
-  const [cfg, scoreCfg] = await Promise.all([getRoleConfig(), getScoreConfig()]);
+  const [cfg, scoreCfg, badgeCatalog] = await Promise.all([
+    getRoleConfig(),
+    getScoreConfig(),
+    getBadgeCatalog(),
+  ]);
   const rlabel = roleFrom(role, cfg).label;
   const grade = gradeFor(score.score, scoreCfg.grades);
   const reaction = bossReaction(score.score, score.id, role, cfg);
@@ -182,7 +186,7 @@ export default async function SharePage({
           </div>
 
           {score.badge_ids && score.badge_ids.length > 0 && (
-            <BadgeStrip badgeIds={score.badge_ids} />
+            <BadgeStrip badgeIds={score.badge_ids} catalog={badgeCatalog} />
           )}
         </div>
 

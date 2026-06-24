@@ -12,7 +12,8 @@ import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
-import { evaluateBadges } from "@/lib/badges";
+import { evaluateBadges } from "@/lib/config/domains/badges";
+import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { getMyProfile } from "@/lib/profile";
 import type { HighlightClip } from "@/lib/highlight";
 import { useScoreSubmission } from "./useScoreSubmission";
@@ -93,10 +94,11 @@ export function GameOverModal({
     ]
   );
   const persona = useMemo(() => matchPersona(gameplayStats), [gameplayStats]);
-  // 이번 판 달성 뱃지 — 클라 즉시(서버 응답이 NEW/수집수를 채움)
+  const badgeCatalog = useBadgeCatalog();
+  // 이번 판 달성 뱃지 — 클라 즉시(서버 응답이 NEW/수집수를 채움). 표시용(서버가 인증 grant).
   const earnedBadges = useMemo(
-    () => evaluateBadges(gameplayStats, score),
-    [gameplayStats, score]
+    () => evaluateBadges(gameplayStats, score, badgeCatalog),
+    [gameplayStats, score, badgeCatalog]
   );
 
   const [shareMsg, setShareMsg] = useState<string | null>(null);
@@ -220,6 +222,7 @@ export function GameOverModal({
           badges={earnedBadges}
           newBadges={newBadges}
           collectedCount={collectedCount}
+          badgeCatalog={badgeCatalog}
           submitting={submitting}
           submitError={submitError}
         />

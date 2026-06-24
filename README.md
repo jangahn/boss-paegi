@@ -149,6 +149,7 @@ boss-paegi/
 - **`score_config`(PR4)**: 점수 10단계 등급 라벨/한 줄 평(=&apos;패기 유형&apos;). **tier 매핑·간격(step)은 코드 고정**, 라벨 텍스트만 라이브 편집(Zod `length(10)`). `gradeFor(score, grades?)` + `ScoreConfigProvider`(클라)/`getScoreConfig()`(서버 share·history). 편집=`/admin/content/score_config`. step 조절·과거결과 동결은 후속.
 - **`session_limits`(PR5)**: 강제 종료 한도(최대 플레이 초·최대 점수). Zod 상한=제출 clamp 상수(`MAX_DURATION_MS`/`MAX_SCORE_HARD`), 기본값=hard cap(사실상 무제한 → 마케터가 낮춰야 동작). 게임 시작 시 `SessionLimitsProvider` 값을 ref 로 **동결**, 0.5s 폴링 → 한도 도달 시 배너→`FORCE_END_GRACE_MS`(4s, 궁극기 마무리)→**1회 종료**(one-shot guard·grace 타이머 정리). `scores.end_reason`(0026) 기록. 편집=`/admin/content/session_limits`.
 - **`growth_levers`(PR6, 머니 패스)**: 가입 기념 생성권(0~50, 신규 가입 1회 멱등) + 충전 상품(productId 불변·price 1,000~100,000원·credits·`active`). **체크아웃은 서버에서 active 상품 재조회로 price/credits 결정**(클라 조작·비활성 차단), 기존 주문은 amount/credits 스냅샷이라 무관. `/credits` 표시는 `CreditProductsProvider`(active만). 가입 grant=`getGrowthLevers().signupBonusCredits`(callback `ignoreDuplicates` 멱등). 편집=`/admin/content/growth_levers`(발행 확인·productId 중복 거부). 공개 API 미노출.
+- **`badge_catalog`(PR7)**: 카테고리(7종 고정) 이름·이모지 + 뱃지 임계값·개수·라벨·`active`. **달성값 계산은 코드**(`FAMILY_VALUE` familyKey→fn), slug **불변 동결**(threshold 파싱 중단)→임계값 바꿔도 `user_badges` 고아 없음. 인증 grant(`/api/score`)=`getBadgeCatalog`→`evaluateBadges`(active만), 컬렉션/챌린지/strip=카탈로그 주입(`BadgeCatalogProvider`/prop). 삭제=`active=false`(획득 보존, 하드삭제 없음). `lib/badges.ts`→`lib/config/domains/badges.ts` 단일 소스. 편집=`/admin/content/badge_catalog`.
 
 ## 모니터링 (Sentry)
 
@@ -388,6 +389,9 @@ v0.27 (2026-06-24, 마케터 콘솔 PR5 — 세션 한도 + 강제 종료):
 
 v0.28 (2026-06-24, 마케터 콘솔 PR6 — 성장 레버(가입 생성권·가격); 마이그레이션 없음):
 - **`growth_levers` 도메인(머니 패스)**: 가입 기념 생성권 개수 + 충전 상품(개수·가격)을 `/admin/content/growth_levers` 에서 편집(발행 확인 단계). 체크아웃(`/api/payapp/checkout`)이 **서버 config 의 active 상품 재조회로 price/credits 결정**(클라 조작·비활성 구매 차단), 기존 주문 스냅샷 무관. 가입 grant=config 값(callback `ignoreDuplicates` 멱등). price 1,000(페이앱 floor)~100,000원·productId 불변/중복거부. `/credits`=`CreditProductsProvider`(active만). 적대적 리뷰 실 결함 0(머니 불변 전부 hold).
+
+v0.29 (2026-06-24, 마케터 콘솔 PR7 — 뱃지 카탈로그; 마이그레이션 없음):
+- **`badge_catalog` 도메인**: 카테고리(7종)·뱃지 임계값/개수/라벨/활성을 `/admin/content/badge_catalog` 에서 편집. 달성값 계산은 코드(`FAMILY_VALUE`), slug 불변 동결→임계값 변경해도 `user_badges` 고아 없음. 인증 grant(`/api/score`)·컬렉션·챌린지·strip 전부 카탈로그 구동(서버 getBadgeCatalog / 클라 `BadgeCatalogProvider`/prop). active=false 만(하드삭제 없음·획득 보존). `lib/badges.ts` 삭제→`lib/config/domains/badges.ts` 단일 소스. 적대적 리뷰: grant **byte-identical**(무회귀)·소비자 완비·trust-boundary 하드닝(families 유니크·int).
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).

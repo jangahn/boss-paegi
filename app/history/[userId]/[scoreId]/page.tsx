@@ -5,7 +5,7 @@ import { AppNav } from "@/components/AppNav";
 import { fetchScoreDetail, hasLiveHighlight } from "@/lib/score-detail";
 import { asRole, ROLE_META } from "@/lib/roles";
 import { formatDuration, gradeFor, reportNo, weaponLabel } from "@/lib/report";
-import { getScoreConfig } from "@/lib/config/getters";
+import { getScoreConfig, getBadgeCatalog } from "@/lib/config/getters";
 import { matchPersona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
@@ -41,7 +41,8 @@ export default async function HistoryDetailPage({
 
   const name = score.profiles?.display_name ?? "익명";
   const rlabel = ROLE_META[asRole(score.dolls?.role)].label;
-  const grade = gradeFor(score.score, (await getScoreConfig()).grades);
+  const [scoreCfg, badgeCatalog] = await Promise.all([getScoreConfig(), getBadgeCatalog()]);
+  const grade = gradeFor(score.score, scoreCfg.grades);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const hitCount = score.gameplay_stats?.hitCount ?? null;
   const hasHighlight = hasLiveHighlight(score);
@@ -133,7 +134,7 @@ export default async function HistoryDetailPage({
             </dl>
 
             {score.badge_ids && score.badge_ids.length > 0 && (
-              <BadgeStrip badgeIds={score.badge_ids} />
+              <BadgeStrip badgeIds={score.badge_ids} catalog={badgeCatalog} />
             )}
           </div>
 
