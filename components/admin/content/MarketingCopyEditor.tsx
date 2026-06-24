@@ -138,7 +138,8 @@ export function MarketingCopyEditor({
         💡 일반 문구는 발행 후 바로 반영돼요. <b>공유 미리보기(OG) 이미지·제목은 최대 1시간</b> 늦게 바뀔 수 있어요(캐시). ·
         토큰: <code>{"{호칭}"}</code>=롤 호칭(조사 자동), <code>{"{제작자}/{점수}/{등급}/{특이사항}"}</code>=자동 입력.
       </p>
-      <div className="sticky top-2 z-10">
+      {/* 스크롤 시 아래 필드가 비치지 않게 불투명 배경 밴드 + 하단 구분선 */}
+      <div className="sticky top-0 z-20 -mx-1 border-b border-foreground/10 bg-background px-1 pb-2 pt-2">
         <SurfaceDiagram surface={surf?.surface ?? "home"} active={surf?.region} />
       </div>
 
