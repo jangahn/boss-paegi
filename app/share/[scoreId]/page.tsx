@@ -200,7 +200,7 @@ export default async function SharePage({
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
           <p className="text-sm text-zinc-400">
-            {persona ? mk.share.scoreHook : resolveCopy(mk.share.dollHook, rlabel)}
+            {resolveCopy(mk.share.scoreHook, rlabel)}
           </p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
@@ -213,7 +213,7 @@ export default async function SharePage({
               href="/play"
               className="rounded-full border border-foreground/15 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
             >
-              {persona ? mk.share.scoreCtaPersona : mk.share.dollCtaDefault}
+              {resolveCopy(mk.share.scoreCtaPersona, rlabel)}
             </Link>
             <Link
               href="/leaderboard"

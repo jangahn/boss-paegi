@@ -53,9 +53,9 @@ const SECTIONS: Section[] = [
       { k: "dollShareText", label: "인사기록 — 웹 공유 텍스트", max: 160, multiline: true },
       { k: "dollOgTitle", label: "인사기록 — 공유 OG 제목", max: 80 },
       { k: "dollOgDesc", label: "인사기록 — 공유 OG 설명", max: 160, multiline: true },
-      { k: "scoreHook", label: "점수공유 — 후킹(페르소나 보유 시)", max: 60 },
-      { k: "scoreCtaPlay", label: "점수공유 — 패러 가기 버튼", max: 40 },
-      { k: "scoreCtaPersona", label: "점수공유 — 페르소나 받기 버튼", max: 40 },
+      { k: "scoreHook", label: "점수공유 — 후킹 문구 (항상 표시)", max: 60 },
+      { k: "scoreCtaPlay", label: "점수공유 — 패러 가기 버튼 (→만들기)", max: 40 },
+      { k: "scoreCtaPersona", label: "점수공유 — 두 번째 버튼 (항상 표시, →플레이)", max: 40 },
       { k: "scoreShareText", label: "점수공유 — 웹 공유 텍스트", max: 60 },
       { k: "scoreOgTitle", label: "점수공유 — 공유 OG 제목", max: 80 },
       { k: "gameoverShareBtn", label: "게임오버 — 공유 버튼", max: 30 },
@@ -139,7 +139,7 @@ export function MarketingCopyEditor({
         토큰: <code>{"{호칭}"}</code>=롤 호칭(조사 자동), <code>{"{제작자}/{점수}/{등급}/{특이사항}"}</code>=자동 입력.
       </p>
       {/* 스크롤 시 아래 필드가 비치지 않게 불투명 배경 밴드 + 하단 구분선 */}
-      <div className="sticky top-0 z-20 -mx-1 border-b border-foreground/10 bg-background px-1 pb-2 pt-2">
+      <div className="sticky top-14 z-20 -mx-1 border-b border-foreground/10 bg-background px-1 pb-2 pt-2">
         <SurfaceDiagram surface={surf?.surface ?? "home"} active={surf?.region} />
       </div>
 

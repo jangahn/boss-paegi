@@ -47,9 +47,9 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
     regions: [
       { id: "scoreOgTitle", label: "공유 미리보기 제목 (OG)", tone: "edit" },
       { label: "보고서 본문(점수·등급·피격자 의견) — 롤/등급 콘텐츠", tone: "ctx" },
-      { id: "scoreHook", label: "후킹(패기유형 보유 시)", tone: "edit" },
+      { id: "scoreHook", label: "후킹 문구", tone: "edit" },
       { id: "scoreCtaPlay", label: "패러 가기 버튼", tone: "edit" },
-      { id: "scoreCtaPersona", label: "페르소나 받기 버튼", tone: "edit" },
+      { id: "scoreCtaPersona", label: "두 번째 버튼(→플레이)", tone: "edit" },
       { id: "scoreShareText", label: "웹 공유 텍스트", tone: "edit" },
     ],
   },
