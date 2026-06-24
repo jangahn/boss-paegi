@@ -10,6 +10,11 @@ import {
   ROLE_CONFIG_DEFAULT,
   type RoleConfig,
 } from "./domains/roles";
+import {
+  scoreConfigSchema,
+  SCORE_CONFIG_DEFAULT,
+  type ScoreConfig,
+} from "./domains/score";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -24,4 +29,11 @@ export function getRoleConfig(): Promise<RoleConfig> {
 }
 export function getRoleConfigWithMeta() {
   return getSettingWithMeta("role_content", roleConfigSchema, ROLE_CONFIG_DEFAULT);
+}
+
+export function getScoreConfig(): Promise<ScoreConfig> {
+  return getSetting("score_config", scoreConfigSchema, SCORE_CONFIG_DEFAULT);
+}
+export function getScoreConfigWithMeta() {
+  return getSettingWithMeta("score_config", scoreConfigSchema, SCORE_CONFIG_DEFAULT);
 }

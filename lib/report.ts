@@ -39,7 +39,7 @@ export type ReportGrade = {
  * 판정 등급 — 패는 사람의 경지 10단계 (직장 탈출 서사).
  * index 0(0~9999) → 9(90000+). 최상위 = 전설의 퇴사자.
  */
-const PLAYER_GRADES: ReportGrade[] = [
+export const PLAYER_GRADES: ReportGrade[] = [
   { label: "무급 인턴", comment: "이제 막 손을 풀었습니다" }, // 0
   { label: "패기의 신입", comment: "스트레스를 알아갑니다" }, // 1
   { label: "열혈 사원", comment: "손맛이 제법입니다" }, // 2
@@ -52,8 +52,9 @@ const PLAYER_GRADES: ReportGrade[] = [
   { label: "전설의 퇴사자", comment: "사직서와 함께 전설로 남았습니다" }, // 9
 ];
 
-export function gradeFor(score: number): ReportGrade {
-  return PLAYER_GRADES[scoreTier(score)];
+/** 등급 — grades 미지정 시 코드 기본값(score_config 미시드 폴백). tier 매핑(scoreTier)은 코드 고정. */
+export function gradeFor(score: number, grades: ReportGrade[] = PLAYER_GRADES): ReportGrade {
+  return grades[scoreTier(score)];
 }
 
 /**

@@ -5,6 +5,7 @@ import { AppNav } from "@/components/AppNav";
 import { Pagination } from "@/components/Pagination";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDuration, gradeFor, timeAgo, weaponLabel } from "@/lib/report";
+import { getScoreConfig } from "@/lib/config/getters";
 
 const DEFAULT_AVATAR = "/avatars/default.png";
 const PAGE_SIZE = 10;
@@ -72,6 +73,7 @@ export default async function HistoryPage({
 
   const page = Math.max(1, Number(sp.page) || 1);
   const { rows, total } = await fetchGames(userId, page);
+  const scoreGrades = (await getScoreConfig()).grades;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const name = profile.display_name ?? "익명";
 
@@ -108,7 +110,7 @@ export default async function HistoryPage({
                     className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3 transition hover:bg-foreground/10"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold">{gradeFor(g.score).label}</div>
+                      <div className="font-semibold">{gradeFor(g.score, scoreGrades).label}</div>
                       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-zinc-500">
                         <span>{weaponLabel(g.weapon)}</span>
                         {g.max_combo !== null && g.max_combo > 0 && (

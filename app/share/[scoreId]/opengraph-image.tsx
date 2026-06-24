@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 import { asRole } from "@/lib/roles";
-import { getRoleConfig } from "@/lib/config/getters";
+import { getRoleConfig, getScoreConfig } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { log, errInfo } from "@/lib/log";
 
@@ -79,11 +79,11 @@ export default async function OgImage({
 
   const name = s?.profiles?.display_name ?? "익명";
   const role = asRole(s?.dolls?.role);
-  const cfg = await getRoleConfig();
+  const [cfg, scoreCfg] = await Promise.all([getRoleConfig(), getScoreConfig()]);
   const rlabel = roleFrom(role, cfg).label;
   const score = (s?.score ?? 0).toLocaleString();
   const dollSrc = await dollDataUri(s?.dolls?.image_url ?? null);
-  const grade = gradeFor(s?.score ?? 0);
+  const grade = gradeFor(s?.score ?? 0, scoreCfg.grades);
   const reaction = s ? bossReaction(s.score, s.id, role, cfg) : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";
 

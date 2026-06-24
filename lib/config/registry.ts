@@ -2,6 +2,7 @@ import type { ZodType } from "zod";
 import type { DomainKey, PublicSurface } from "./keys";
 import { marketingEntry } from "./domains/marketing";
 import { rolesEntry } from "./domains/roles";
+import { scoreEntry } from "./domains/score";
 
 /**
  * 도메인 설정 레지스트리 — 각 도메인 PR 에서 항목을 등록한다.
@@ -20,11 +21,12 @@ export type DomainEntry<T> = {
 };
 
 // 도메인 항목은 각 PR 에서 등록(아래 주석 순서).
-//   PR2: marketing_copy ✅ · PR3: role_content ✅ · PR4: score_config, badge_catalog
-//   PR5: session_limits · PR6: growth_levers
+//   PR2: marketing_copy ✅ · PR3: role_content ✅ · PR4: score_config(등급) ✅
+//   PR5: session_limits + score step + play_sessions · badge_catalog · PR6: growth_levers
 export const REGISTRY: Partial<Record<DomainKey, DomainEntry<unknown>>> = {
   marketing_copy: marketingEntry as DomainEntry<unknown>,
   role_content: rolesEntry as DomainEntry<unknown>,
+  score_config: scoreEntry as DomainEntry<unknown>,
 };
 
 export function getEntry(key: DomainKey): DomainEntry<unknown> | undefined {
