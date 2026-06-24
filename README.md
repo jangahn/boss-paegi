@@ -38,7 +38,7 @@ boss-paegi/
 │   ├── login/              #   Kakao/Google 로그인 (가입 = 첫 로그인)
 │   ├── generate/           #   인형 생성 플로우 (회원 전용)
 │   ├── play/               #   게임 화면 (PixiJS 마운트)
-│   ├── gallery/            #   내 인형 갤러리 (회원 전용)
+│   ├── gallery/            #   인형 갤러리 (비회원 열람 가능 — 기본부장님 노출 + 가입 후킹 / 생성은 회원 전용)
 │   ├── credits/            #   생성권 충전 (회원 전용, 페이앱 결제) + done(결제 후 폴링)
 │   ├── leaderboard/        #   랭킹 (프로필 아바타 표시 → 행 클릭 시 기록 페이지)
 │   ├── history/[userId]/   #   지난 게임 기록 목록·상세 (본인/타인 공용, 공개)
@@ -97,7 +97,7 @@ boss-paegi/
 
 ## 회원 / 인증 (OAuth)
 
-익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹은 자유, **생성·갤러리는 회원 전용**(`proxy.ts` 가 `/generate`·`/gallery` 를 익명 시 `/login` 으로 리다이렉트).
+익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹·**갤러리 열람**은 자유, **캐릭터 생성·충전·관리자는 회원 전용**(`proxy.ts` 가 `/generate`·`/credits`·`/admin` 을 익명 시 `/login` 으로 리다이렉트). 갤러리는 비회원에게 **기본부장님**만 노출(맨 앞 '기본' 뱃지) — 공유/롤 변경/새 캐릭터 시도 시 후킹 토스트·배너로 가입(가입기념 생성권 2개) 유도. 가입(`/login?next=/generate`) 후 곧장 생성으로.
 
 - **로그인 = 가입**: 별도 가입 페이지 없음 — `/login` 버튼뿐. DB 에 계정 없으면 그 로그인이 곧 가입.
 - **마이그레이션(linkIdentity)**: 익명 상태에서 첫 OAuth 로그인 시 같은 `user.id` 로 멤버 승격 → 익명 때 만든 dolls/scores 보존. 로그아웃하면 새 익명 세션으로 분리. 이미 가입된 OAuth 로 재로그인(`identity_already_exists`)은 `/login?relogin=1` → `signInWithOAuth`(현재 익명 데이터는 자동 병합 안 함).
@@ -351,6 +351,12 @@ v0.21 (2026-06-24, 어드민 전면 개편 + 페이앱 자동환불):
 - **멀티 라우트 어드민**(`app/admin/layout.tsx`+`AdminNav`): `/admin`(대시보드+환불 경고) · `/admin/orders`(전체 주문·상태/검색·10p) · `/admin/users`(부분검색→유저 상세[결제·콘텐츠·회원정보·CS조정], 각 10p) · `/admin/ledger`(처리내역·필터·10p). 공용 `Pagination`(맨앞/맨뒤) + `/history`도 적용. 가입 무료 크레딧 5→2.
 - **페이앱 자동환불(0023)**: 어드민 환불 → `paycancel` 자동취소 + 크레딧 회수. **회수 부족 시 차단**(선검사), 정산마감(D+5)은 "수동 필요", 경쟁상황은 clamp+shortfall. `refund_state`(CAS 단일플라이트·고착·복구). 커밋실패=`payapp.refund_commit_fail`(money-critical)→대시보드 경고+'환불 재시도'(멱등). `admin_cancel_order` 5-arg + 4-arg wrapper(무중단).
 - 읽기 RPC(`search_orders`/`search_members`/`get_user_generations`) + `admin_cancel_order` 모두 `service_role` 전용(revoke/grant). 적대적 리뷰(PR별 워크플로우)로 검증.
+
+v0.22 (2026-06-24, 갤러리 비회원 개방 + 기본부장님 후킹 — 가입 전환; 마이그레이션 없음):
+- **갤러리 비회원 개방**(`proxy.ts` 에서 `/gallery` 게이트 제거 — 생성/충전/관리자는 회원 전용 유지): 비회원도 갤러리 진입 가능. 3-state 뷰어(`getMyProfile().isMember`+`dolls.length`) — 비회원 / 회원·0캐릭터 / 회원·有캐릭터.
+- **기본부장님 카드 상시 노출**(맨 앞 '기본' 뱃지, `components/gallery/DefaultBossCard.tsx`): 이미지 클릭=기본부장님 플레이(`/play`). 비회원·0캐릭터에겐 ⋯ 메뉴([공유, 롤 변경], 삭제 없음)가 후킹 토스트+CTA(`HookToast`)로 가입/생성 유도. 캐릭터 보유 회원에겐 play 전용(메뉴 없음). DB row 가 아니라 실 공유/PATCH/DELETE 는 호출 안 함.
+- **상태별 가입 후킹**: 비회원=배너 "가입하면 생성권 2개"(→`/login?next=/generate`), 회원·0캐릭터="첫 캐릭터 만들기"(→`/generate`). 토스트·배너·헤더버튼 공용 헬퍼(`lib/gallery-cta.ts`).
+- 비회원은 생성권·진행중 생성(`/api/generations`) 모두 미요청. 갤러리 472줄 → `components/gallery/` 모듈 분리(DollCard/PendingGrid 동작 보존 이동).
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).
