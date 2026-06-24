@@ -15,6 +15,9 @@ export const MAX_SCORE_HARD = 5_000_000;
 /** 콤보 배율 상한 — 무한 증가 시 점수가 서버 한도를 뚫는 것 방지 (4× = 콤보 30) */
 export const MAX_COMBO_MULTIPLIER = 4;
 
+/** 강제 종료 grace — 한도 도달 후 진행 중 궁극기 마무리 여유. final 이 소폭 초과해도 hard cap 내라 제출 OK(보강#4). */
+export const FORCE_END_GRACE_MS = 4000;
+
 /** durationMs 에 대한 서버 허용 최대 점수 */
 export function scoreCeiling(durationMs: number): number {
   return Math.min(

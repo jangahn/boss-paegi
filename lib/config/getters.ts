@@ -15,6 +15,11 @@ import {
   SCORE_CONFIG_DEFAULT,
   type ScoreConfig,
 } from "./domains/score";
+import {
+  sessionLimitsSchema,
+  SESSION_LIMITS_DEFAULT,
+  type SessionLimits,
+} from "./domains/session";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -36,4 +41,11 @@ export function getScoreConfig(): Promise<ScoreConfig> {
 }
 export function getScoreConfigWithMeta() {
   return getSettingWithMeta("score_config", scoreConfigSchema, SCORE_CONFIG_DEFAULT);
+}
+
+export function getSessionLimits(): Promise<SessionLimits> {
+  return getSetting("session_limits", sessionLimitsSchema, SESSION_LIMITS_DEFAULT);
+}
+export function getSessionLimitsWithMeta() {
+  return getSettingWithMeta("session_limits", sessionLimitsSchema, SESSION_LIMITS_DEFAULT);
 }
