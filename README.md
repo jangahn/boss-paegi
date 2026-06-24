@@ -179,7 +179,8 @@ boss-paegi/
 - **캡처**(`lib/telemetry/`, `app/play/useTelemetry.ts`): 핵심 이벤트(무기/맵 `select_attempt`·`switch`·궁극·종료) 즉시 + 타격은 5초 버킷 집계(render loop 밖, 60fps 보호 — 부하 시 드롭). 10초 flush(`fetch keepalive`) + 이탈 시 `navigator.sendBeacon`. delta-only(미전송분만).
 - **수신**(`app/api/telemetry`): **공개 라우트**(익명 포착 — `requireMember` 안 씀). parse → member 판별(`member_accounts` 기준, 서버 결정) → deep validation(key allowlist·clamp·이벤트 cap) → `ingest_telemetry_delta` RPC(원자: budget+row lock·seq 멱등·clamp). 회원=풀 timeline, **비회원/익명=요약만(timeline null)**.
 - **저장**(`supabase/migrations/0027_play_telemetry.sql`): `telemetry_sessions`(세션 1행) · `telemetry_rollups`(대시보드 사전집계 — 후속) · `telemetry_budget`(운영 degrade 상태). `scores.telemetry_session_id`(점수 링크 — 후속). 전부 **server-only**(anon/authenticated revoke + service_role grant), 쓰기는 ingest RPC(security definer)로만.
-- **용량 가드**: 30MB 운영 target budget(Supabase 500MB 한계 아님). **env kill-switch·자동 샘플링 없음** → budget DB row 기준 자동 degrade(full/summary/off). 30일 prune·롤업·대시보드는 후속 PR.
+- **용량 가드**: 30MB 운영 target budget(Supabase 500MB 한계 아님). **env kill-switch·자동 샘플링 없음** → budget DB row 기준 자동 degrade(full/summary/off).
+- **유지보수**(`app/api/ops/telemetry-maintain`, `x-cron-secret`=`CRON_SECRET`, cron-job.org **일1회 등록 필요**): `telemetry_rollup_days(3)`(KST·최근3일 delete-재계산, 익명+회원 summary 집계) → 성공 시 `telemetry_prune()`(30일 timeline NULL·target 초과 시 우선순위 삭제) → `telemetry_budget_refresh()`(`pg_total_relation_size` 기준 degrade). 어드민 대시보드(밸런스 추이·이탈 펀널·코호트·세션 인스펙터)는 후속(PR3).
 - **프라이버시**: 익명 id = 세션 한정 ephemeral(`crypto.randomUUID`, 쿠키 지속·재방문 추적 없음), PII 미수집, coarse `device_class`만(핑거프린팅 아님). 개인정보 고지/정책은 후속(어드민 연동).
 
 ## npm scripts
