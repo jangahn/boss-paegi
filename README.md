@@ -134,7 +134,7 @@ boss-paegi/
 - **`/admin`**(대시보드, RSC `force-dynamic`): 매출·주문(오늘=KST 자정 / 7d·30d rolling, 상태별) · 가입·구매 퍼널(방문→플레이→가입→첫생성→첫구매) · **오래된 결제요청(확인 필요)**. CS 조정·환불은 **회원 관리(유저 상세)로 이전**. 정확 수치는 DB(`lib/admin-data` + `get_admin_funnel`/`get_admin_order_summary` RPC), Sentry 아님.
 - **`/admin/orders`**(전체 주문, RSC): 상태 필터 + 주문ID/mul_no 부분검색 + 10건/page. `search_orders` RPC(`order_uuid::text`/`mul_no` prefix·window `total_count`, `lib/admin-orders.ts`).
 - **`/admin/users`**(회원, RSC): 이메일·닉네임 부분검색(`search_members` RPC, ID exact) → 후보 → **유저 상세 `/admin/users/[id]`**: 결제·크레딧(주문 + 조정/환불 이력) · 콘텐츠(AI 생성내역[상태]·보유 캐릭터) · 회원정보 + 플레이내역 링크, 각 섹션 10/page. **CS 크레딧 조정**(범위초과 명시·이중 방어) 통합. `lib/admin-users.ts`.
-- **운영 액션**(돈·감사): stuck **결제완료 확인 후 지급** · 정상결제 **환불(페이앱 자동취소+회수, 부족 시 차단)** · pending 취소 · CS 크레딧 조정(회원만·−100~100·≠0·사유 5~500). service_role RPC(`admin_settle_stuck_order`/`admin_cancel_order`[5-arg + 4-arg wrapper, 무중단]/`admin_adjust_credits`)가 **row lock→변경→`admin_actions_ledger` 기록**을 한 트랜잭션(멱등·취소 1회·화해·payapp_done 시 clamp+shortfall).
+- **운영 액션**(돈·감사): stuck **결제완료 확인 후 지급**(페이앱은 단건 상태조회 API 없음 → 콘솔 수동확인 후 지급) · 정상결제 **환불**(paid 전용·페이앱 자동취소+회수, 부족 시 차단) · **pending 취소**(`/api/admin/cancel` → `paycancel` 페이앱 실취소 연동, pending 이라 회수 없음; LINKKEY 없으면 로컬 표시만) · CS 크레딧 조정(회원만·−100~100·≠0·사유 5~500). service_role RPC(`admin_settle_stuck_order`/`admin_cancel_order`[5-arg + 4-arg wrapper, 무중단]/`admin_adjust_credits`)가 **row lock→변경→`admin_actions_ledger` 기록**을 한 트랜잭션(멱등·취소 1회·화해·payapp_done 시 clamp+shortfall).
 - **오래된 결제요청 대사**: `cron-job.org` → `POST /api/ops/reconcile`(`x-cron-secret`) → mul_no 있는 pending 2h+ 탐지 → Sentry 경고(**"확인 필요"** — 미지급 단정 아님, dedup 6~24h). **자동 지급 없음**(수동).
 
 ## 모니터링 (Sentry)
@@ -362,6 +362,8 @@ v0.21 (2026-06-24, 어드민 전면 개편 + 페이앱 자동환불):
 **⚠️ Migration 0022 적용 필요** (`supabase/migrations/0022_admin_read_side.sql`): 어드민 read-side — 인덱스 + `payapp_orders.refund_state`(읽기) + `search_members`/`search_orders`/`get_user_generations` RPC(`security invoker` + service_role grant). additive.
 
 **⚠️ Migration 0023 적용 필요** (`supabase/migrations/0023_refund_block.sql`): 머니 패스 — `admin_cancel_order` 5-arg(`p_payapp_done`, 회수부족 조건부 block/clamp+shortfall·화해) + 4-arg wrapper(무중단). + `PAYAPP_LINKKEY` env(자동환불). additive(drop 없음).
+
+**⚠️ Migration 0024 적용 필요** (`supabase/migrations/0024_cancel_payapp_done_clawback.sql`): `admin_cancel_order` 회수 조건 `(p_clawback OR p_payapp_done)` — pending 취소가 TOCTOU 로 paid 가 된 순간에도 페이앱 환불(payapp_done) 시 크레딧 무조건 회수(머니 손실 차단). additive(create or replace).
 
 **⚠️ Migration 0005 적용 필요** (`supabase/migrations/0005_generation_recovery.sql`):
 ai_generations 에 candidate_urls/picked_doll_id 컬럼 + status 에 'picked' 추가. 적용 전엔 복구 기능 비활성(앱은 정상).

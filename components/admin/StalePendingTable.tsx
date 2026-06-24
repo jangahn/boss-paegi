@@ -52,7 +52,7 @@ export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
                       onClick={() => setTarget({ order: o, kind: "cancel" })}
                       className="rounded-md border border-foreground/20 px-2 py-1 text-[11px]"
                     >
-                      환불 표시
+                      주문 취소
                     </button>
                   </div>
                 </td>
@@ -78,6 +78,19 @@ export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
   );
 }
 
+const ERR_KO: Record<string, string> = {
+  not_settleable: "지급할 수 없는 상태의 주문이에요(pending+mul_no 만 가능).",
+  not_cancelable: "취소할 수 없는 상태의 주문이에요.",
+  use_refund: "이미 결제된 주문 — 주문/회원 상세의 '환불'로 처리하세요.",
+  member_not_found: "회원 정보를 찾지 못했어요.",
+  order_not_found: "주문을 찾지 못했어요.",
+  reason_invalid: "사유는 5~500자여야 해요.",
+  already_canceled: "이미 취소된 주문이에요.",
+  order_status_changed: "주문 상태가 방금 변경됐어요(예: 결제 완료). 새로고침 후 다시 확인하세요.",
+  action_failed: "처리에 실패했어요. 잠시 후 다시 시도하세요.",
+  insufficient_credits: "회수할 크레딧이 부족해요.",
+};
+
 function ActionModal({
   order,
   kind,
@@ -90,7 +103,6 @@ function ActionModal({
   onDone: () => void;
 }) {
   const [reason, setReason] = useState("");
-  const [clawback, setClawback] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,20 +112,23 @@ function ActionModal({
     setError(null);
     try {
       const url = kind === "settle" ? "/api/admin/settle" : "/api/admin/cancel";
-      const body =
-        kind === "settle"
-          ? { orderUuid: order.order_uuid, reason: reason.trim() }
-          : { orderUuid: order.order_uuid, clawback, reason: reason.trim() };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ orderUuid: order.order_uuid, reason: reason.trim() }),
       });
-      if (!res.ok) {
-        const e = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(e.error ?? "failed");
+      const out = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        manual?: boolean;
+      };
+      if (res.ok && !out.manual) {
+        onDone();
+        return;
       }
-      onDone();
+      // 실패/수동(페이앱 정산후·미상태·연결실패 등) → 메시지 표시, 모달 유지.
+      setError(out.message ?? ERR_KO[out.error ?? ""] ?? out.error ?? "처리 실패");
+      setBusy(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "처리 실패");
       setBusy(false);
@@ -123,23 +138,16 @@ function ActionModal({
   return (
     <ModalShell onClose={onClose}>
       <h2 className="text-lg font-bold">
-        {kind === "settle" ? "결제완료 확인 후 지급" : "환불/취소 표시"}
+        {kind === "settle" ? "결제완료 확인 후 지급" : "주문 취소 (페이앱 연동)"}
       </h2>
       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
         {kind === "settle"
-          ? "페이앱 관리자에서 결제완료 상태를 확인한 뒤 지급하세요. 크레딧을 실제로 지급하며 감사 로그에 기록됩니다."
-          : "주문을 취소 상태로 기록합니다. 페이앱 실환불은 별도로 진행하세요. 감사 로그에 기록됩니다."}
+          ? "페이앱은 단건 결제상태 조회 API가 없어요. 페이앱 콘솔 거래내역에서 결제완료를 직접 확인한 뒤 지급하세요 — 크레딧을 실제 지급하며 감사 로그에 기록됩니다."
+          : "페이앱에서 결제를 취소합니다(결제됐으면 환불, 미승인 요청이면 요청 취소) + 주문을 취소 처리해요. pending 이라 회수할 크레딧은 없어요. 감사 로그 기록. (LINKKEY 미설정 시 로컬 표시만.)"}
       </p>
       <p className="mt-2 text-xs text-zinc-400">
         {won(order.amount)} · {order.credits}개 · {fmtKst(order.created_at)}
       </p>
-
-      {kind === "cancel" && (
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={clawback} onChange={(e) => setClawback(e.target.checked)} />
-          크레딧 회수(잔액까지만, 0 미만 불가)
-        </label>
-      )}
 
       <textarea
         value={reason}
@@ -152,7 +160,7 @@ function ActionModal({
 
       <div className="mt-4 flex gap-2">
         <button type="button" onClick={onClose} className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm">
-          취소
+          닫기
         </button>
         <button
           type="button"
@@ -161,7 +169,7 @@ function ActionModal({
           className="flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background disabled:opacity-40"
         >
           {busy && <Spinner className="h-4 w-4" />}
-          {kind === "settle" ? "지급" : "취소 표시"}
+          {kind === "settle" ? "지급" : "주문 취소"}
         </button>
       </div>
     </ModalShell>
