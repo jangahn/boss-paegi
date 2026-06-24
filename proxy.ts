@@ -1,11 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-// 회원 전용 페이지 — 익명/무세션 접근 시 /login 으로. (생성·갤러리·충전·관리자)
+// 회원 전용 페이지 — 익명/무세션 접근 시 /login 으로. (생성·충전·관리자)
 // /credits 는 결제(회원만), /admin 은 관리자 — 둘 다 로그인 게이트.
 // (/admin 의 is_admin 최종 판정은 서버 RSC/라우트의 requireAdmin — 미들웨어는 DB read 회피.)
-// play/leaderboard/share/doll/홈 은 절대 게이팅하지 않음 (비회원 유지).
-const MEMBER_ONLY_PAGES = ["/generate", "/gallery", "/credits", "/admin"];
+// play/leaderboard/share/doll/홈/갤러리 는 게이팅하지 않음 (비회원 유지).
+// /gallery 는 비회원도 열람 가능(기본부장님 노출+가입 후킹) — 단 캐릭터 생성(/generate)은 회원 전용.
+const MEMBER_ONLY_PAGES = ["/generate", "/credits", "/admin"];
 
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
