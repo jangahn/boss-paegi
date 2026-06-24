@@ -19,59 +19,94 @@ const SAMPLE = {
   상위: "3",
 };
 
-type Section = { key: keyof MarketingCopy; label: string; fields: Field[] };
-type Field = { k: string; label: string; max: number; multiline?: boolean };
+// 화면(표면) 단위 그룹. 그룹 안 필드 순서 = 실제 화면 렌더 순서. sec = 저장 도메인 내 위치.
+type Field = {
+  sec: keyof MarketingCopy;
+  k: string;
+  label: string;
+  max: number;
+  multiline?: boolean;
+};
+type Group = { label: string; fields: Field[] };
 
-const SECTIONS: Section[] = [
+const GROUPS: Group[] = [
   {
-    key: "home",
     label: "홈 화면",
     fields: [
-      { k: "tagline", label: "태그라인 (줄바꿈=여러 줄)", max: 120, multiline: true },
-      { k: "primaryCta", label: "주 버튼(만들기)", max: 30 },
-      { k: "secondaryCta", label: "보조 버튼(바로 시작)", max: 30 },
-      { k: "disclaimer", label: "고지 (줄바꿈=여러 줄)", max: 240, multiline: true },
+      { sec: "home", k: "tagline", label: "태그라인 (개행=여러 줄)", max: 120, multiline: true },
+      { sec: "home", k: "primaryCta", label: "주 버튼", max: 30 },
+      { sec: "home", k: "secondaryCta", label: "보조 버튼", max: 30 },
+      { sec: "home", k: "disclaimer", label: "고지 (개행=여러 줄)", max: 240, multiline: true },
     ],
   },
   {
-    key: "signupBanner",
-    label: "가입 배너 (갤러리)",
+    label: "갤러리 — 비회원 배너",
     fields: [
-      { k: "nonmemberTitle", label: "비회원 제목", max: 80 },
-      { k: "nonmemberSub", label: "비회원 설명", max: 200, multiline: true },
-      { k: "memberEmptyTitle", label: "회원·0캐릭터 제목", max: 80 },
-      { k: "memberEmptySub", label: "회원·0캐릭터 설명", max: 200, multiline: true },
-      { k: "nonmemberCta", label: "비회원 버튼", max: 30 },
-      { k: "memberEmptyCta", label: "0캐릭터 회원 버튼", max: 30 },
-      { k: "memberHeaderCta", label: "회원 갤러리 헤더 버튼", max: 30 },
+      { sec: "signupBanner", k: "nonmemberTitle", label: "제목", max: 80 },
+      { sec: "signupBanner", k: "nonmemberSub", label: "설명", max: 200, multiline: true },
+      { sec: "signupBanner", k: "nonmemberCta", label: "버튼", max: 30 },
     ],
   },
   {
-    key: "share",
-    label: "공유·CTA 문구  ({호칭}=롤 호칭·조사 자동 / {제작자}{점수}{등급}{특이사항}=자동 입력)",
+    label: "갤러리 — 회원·첫 캐릭터 전 배너",
     fields: [
-      { k: "dollHook", label: "인사기록 — 후킹 문구", max: 80 },
-      { k: "dollCtaMake", label: "인사기록 — 만들기 버튼", max: 30 },
-      { k: "dollCtaDefault", label: "인사기록 — 기본 캐릭터 버튼", max: 40 },
-      { k: "dollShareText", label: "인사기록 — 웹 공유 텍스트", max: 160, multiline: true },
-      { k: "dollOgTitle", label: "인사기록 — 공유 OG 제목", max: 80 },
-      { k: "dollOgDesc", label: "인사기록 — 공유 OG 설명", max: 160, multiline: true },
-      { k: "scoreHook", label: "점수공유 — 후킹 문구 (항상 표시)", max: 60 },
-      { k: "scoreCtaPlay", label: "점수공유 — 패러 가기 버튼 (→만들기)", max: 40 },
-      { k: "scoreCtaPersona", label: "점수공유 — 두 번째 버튼 (항상 표시, →플레이)", max: 40 },
-      { k: "scoreShareText", label: "점수공유 — 웹 공유 텍스트", max: 60 },
-      { k: "scoreOgTitle", label: "점수공유 — 공유 OG 제목", max: 80 },
-      { k: "gameoverShareBtn", label: "게임오버 — 공유 버튼", max: 30 },
-      { k: "gameoverRetryBtn", label: "게임오버 — 다시 버튼", max: 20 },
-      { k: "reportTitle", label: "보고서 제목 (게임오버·공유·OG 공통)", max: 40 },
-      { k: "scoreRankLink", label: "점수공유 — 랭킹 보기 링크", max: 40 },
+      { sec: "signupBanner", k: "memberEmptyTitle", label: "제목", max: 80 },
+      { sec: "signupBanner", k: "memberEmptySub", label: "설명", max: 200, multiline: true },
+      { sec: "signupBanner", k: "memberEmptyCta", label: "버튼", max: 30 },
     ],
+  },
+  {
+    label: "갤러리 — 헤더 버튼 (캐릭터 보유 회원)",
+    fields: [
+      { sec: "signupBanner", k: "memberHeaderCta", label: "새로 만들기 버튼", max: 30 },
+    ],
+  },
+  {
+    label: "캐릭터 공유 카드",
+    fields: [
+      { sec: "share", k: "dollHook", label: "후킹 문구", max: 80 },
+      { sec: "share", k: "dollCtaMake", label: "만들기 버튼", max: 30 },
+      { sec: "share", k: "dollCtaDefault", label: "기본 캐릭터 버튼", max: 40 },
+      { sec: "share", k: "dollShareText", label: "웹 공유 텍스트", max: 160, multiline: true },
+    ],
+  },
+  {
+    label: "캐릭터 공유 미리보기 (OG)",
+    fields: [
+      { sec: "share", k: "dollOgTitle", label: "OG 제목", max: 80 },
+      { sec: "share", k: "dollOgDesc", label: "OG 설명", max: 160, multiline: true },
+    ],
+  },
+  {
+    label: "점수 결과 보고서 공유",
+    fields: [
+      { sec: "share", k: "scoreHook", label: "후킹 문구", max: 60 },
+      { sec: "share", k: "scoreCtaPlay", label: "패러 가기 버튼", max: 40 },
+      { sec: "share", k: "scoreCtaPersona", label: "두 번째 버튼", max: 40 },
+      { sec: "share", k: "scoreRankLink", label: "랭킹 보기 링크", max: 40 },
+      { sec: "share", k: "scoreShareText", label: "웹 공유 텍스트", max: 60 },
+    ],
+  },
+  {
+    label: "점수 공유 미리보기 (OG)",
+    fields: [{ sec: "share", k: "scoreOgTitle", label: "OG 제목 (메타)", max: 80 }],
+  },
+  {
+    label: "게임 종료 화면",
+    fields: [
+      { sec: "share", k: "gameoverShareBtn", label: "공유 버튼", max: 30 },
+      { sec: "share", k: "gameoverRetryBtn", label: "다시 버튼", max: 20 },
+    ],
+  },
+  {
+    label: "공통 (여러 화면에 함께 적용)",
+    fields: [{ sec: "share", k: "reportTitle", label: "보고서 제목", max: 40 }],
   },
 ];
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
-  validation_failed: "입력값이 형식에 맞지 않아요(길이 등). 빨간 칸을 확인하세요.",
+  validation_failed: "입력값이 형식에 맞지 않아요(길이·토큰 등). 빨간 칸을 확인하세요.",
   domain_not_ready: "아직 편집할 수 없는 영역이에요.",
   update_failed: "저장에 실패했어요. 잠시 후 다시 시도하세요.",
 };
@@ -94,7 +129,7 @@ export function MarketingCopyEditor({
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const roleCfg = useRoleConfig();
-  const surf = focused ? FIELD_SURFACE[focused] : null;
+  const surfs = focused ? FIELD_SURFACE[focused] ?? [] : [];
 
   const setField = (section: keyof MarketingCopy, k: string, v: string) => {
     setForm((f) => ({ ...f, [section]: { ...f[section], [k]: v } }));
@@ -140,19 +175,32 @@ export function MarketingCopyEditor({
       )}
 
       <p className="rounded-lg bg-foreground/5 p-2 text-[11px] leading-relaxed text-zinc-500">
-        💡 일반 문구는 발행 후 바로 반영돼요. <b>공유 미리보기(OG) 이미지·제목은 최대 1시간</b> 늦게 바뀔 수 있어요(캐시). ·
+        💡 일반 문구는 발행 후 바로, <b>공유 미리보기(OG) 이미지·제목은 최대 1시간</b> 뒤 반영(캐시). ·
         토큰: <code>{"{호칭}"}</code>=롤 호칭(조사 자동), <code>{"{제작자}/{점수}/{등급}/{특이사항}"}</code>=자동 입력.
       </p>
-      {/* 스크롤 시 아래 필드가 비치지 않게 불투명 배경 밴드 + 하단 구분선 */}
+
+      {/* 포커스한 필드가 실제 들어가는 화면(들) 미리보기 — 스크롤 시 비침 방지 불투명 밴드 */}
       <div className="sticky top-14 z-20 -mx-1 border-b border-foreground/10 bg-background px-1 pb-2 pt-2">
-        <SurfaceDiagram surface={surf?.surface ?? "home"} active={surf?.region} />
+        {surfs.length > 0 ? (
+          <div className="flex flex-wrap justify-center gap-2">
+            {surfs.map((s, i) => (
+              <div key={`${s.surface}-${i}`} className="min-w-[200px] flex-1">
+                <SurfaceDiagram surface={s.surface} active={s.region} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-4 text-center text-[11px] text-zinc-400">
+            아래 입력칸을 선택하면 그 문구가 들어가는 화면이 여기 표시돼요.
+          </p>
+        )}
       </div>
 
-      {SECTIONS.map((sec) => (
-        <fieldset key={String(sec.key)} className="flex flex-col gap-3">
-          <legend className="text-sm font-semibold text-zinc-500">{sec.label}</legend>
-          {sec.fields.map((fld) => {
-            const val = (form[sec.key] as Record<string, string>)[fld.k] ?? "";
+      {GROUPS.map((g) => (
+        <fieldset key={g.label} className="flex flex-col gap-3">
+          <legend className="text-sm font-semibold text-zinc-500">{g.label}</legend>
+          {g.fields.map((fld) => {
+            const val = (form[fld.sec] as Record<string, string>)[fld.k] ?? "";
             return (
               <label key={fld.k} className="flex flex-col gap-1">
                 <span className="text-xs text-zinc-500">
@@ -163,7 +211,7 @@ export function MarketingCopyEditor({
                     value={val}
                     maxLength={fld.max}
                     onFocus={() => setFocused(fld.k)}
-                    onChange={(e) => setField(sec.key, fld.k, e.target.value)}
+                    onChange={(e) => setField(fld.sec, fld.k, e.target.value)}
                     className="h-16 w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
                   />
                 ) : (
@@ -171,7 +219,7 @@ export function MarketingCopyEditor({
                     value={val}
                     maxLength={fld.max}
                     onFocus={() => setFocused(fld.k)}
-                    onChange={(e) => setField(sec.key, fld.k, e.target.value)}
+                    onChange={(e) => setField(fld.sec, fld.k, e.target.value)}
                     className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
                   />
                 )}

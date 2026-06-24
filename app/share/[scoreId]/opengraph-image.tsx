@@ -277,7 +277,7 @@ export default async function OgImage({
               {SERVICE_NAME}
             </div>
             <div style={{ display: "flex", fontSize: 24, color: "#71717a" }}>
-              {resolveCopy(mk.share.dollHook, rlabel)}
+              {resolveCopy(mk.share.scoreHook, rlabel)}
             </div>
           </div>
         </div>

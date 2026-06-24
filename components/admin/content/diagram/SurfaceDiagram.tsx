@@ -2,12 +2,21 @@
 
 /**
  * 도식형 주석 레이아웃 — 실제 화면 대신 박스+라벨로 표면 구조를 그린다(UI 변경에 안 깨짐).
- * 에디터 필드에 포커스하면 active 영역이 하이라이트되어 "이 문구가 어디에 들어가는지" 보여준다.
- * 편집 가능한 영역은 id 를 가지며 마케팅 필드의 region.id 와 매칭.
+ * 영역 순서 = 실제 화면 렌더 순서. 에디터 필드 포커스 시 해당 영역이 하이라이트되고,
+ * 한 값이 여러 화면에 쓰이면(예: 보고서 제목) 관련 화면 도식이 동시에 뜬다(FIELD_SURFACE 1:다).
  */
 
 export type Region = { id?: string; label: string; tone?: "edit" | "ctx" };
-export type SurfaceKey = "home" | "gallery" | "doll" | "share" | "gameover";
+export type SurfaceKey =
+  | "home"
+  | "galNonmember"
+  | "galMemberEmpty"
+  | "galHeader"
+  | "doll"
+  | "dollOg"
+  | "share"
+  | "shareOg"
+  | "gameover";
 
 const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
   home: {
@@ -21,23 +30,32 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
       { id: "disclaimer", label: "고지", tone: "edit" },
     ],
   },
-  gallery: {
-    title: "갤러리 가입 배너",
+  galNonmember: {
+    title: "갤러리 — 비회원 배너",
     regions: [
-      { id: "nonmemberTitle", label: "비회원 제목", tone: "edit" },
-      { id: "nonmemberSub", label: "비회원 설명", tone: "edit" },
-      { id: "memberEmptyTitle", label: "회원·0캐릭터 제목", tone: "edit" },
-      { id: "memberEmptySub", label: "회원·0캐릭터 설명", tone: "edit" },
-      { id: "nonmemberCta", label: "비회원 버튼", tone: "edit" },
-      { id: "memberEmptyCta", label: "0캐릭터 버튼", tone: "edit" },
-      { id: "memberHeaderCta", label: "회원 헤더 버튼", tone: "edit" },
+      { id: "nonmemberTitle", label: "제목", tone: "edit" },
+      { id: "nonmemberSub", label: "설명", tone: "edit" },
+      { id: "nonmemberCta", label: "버튼", tone: "edit" },
+    ],
+  },
+  galMemberEmpty: {
+    title: "갤러리 — 회원·첫 캐릭터 전 배너",
+    regions: [
+      { id: "memberEmptyTitle", label: "제목", tone: "edit" },
+      { id: "memberEmptySub", label: "설명", tone: "edit" },
+      { id: "memberEmptyCta", label: "버튼", tone: "edit" },
+    ],
+  },
+  galHeader: {
+    title: "갤러리 — 헤더 (캐릭터 보유 회원)",
+    regions: [
+      { label: "내 캐릭터들 (제목)", tone: "ctx" },
+      { id: "memberHeaderCta", label: "새로 만들기 버튼", tone: "edit" },
     ],
   },
   doll: {
-    title: "인사기록 카드 (캐릭터 공유)",
+    title: "캐릭터 공유 카드",
     regions: [
-      { id: "dollOgTitle", label: "공유 미리보기 제목 (OG)", tone: "edit" },
-      { id: "dollOgDesc", label: "공유 미리보기 설명 (OG)", tone: "edit" },
       { label: "인사기록(성명·직급·소속·특이사항) — 롤 콘텐츠", tone: "ctx" },
       { id: "dollHook", label: "후킹 문구", tone: "edit" },
       { id: "dollCtaMake", label: "만들기 버튼", tone: "edit" },
@@ -45,23 +63,40 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
       { id: "dollShareText", label: "웹 공유 텍스트", tone: "edit" },
     ],
   },
-  share: {
-    title: "점수 결과 보고서 (공유)",
+  dollOg: {
+    title: "캐릭터 공유 미리보기 (OG)",
     regions: [
-      { id: "scoreOgTitle", label: "공유 미리보기 제목 (OG)", tone: "edit" },
+      { id: "dollOgTitle", label: "OG 제목", tone: "edit" },
+      { id: "dollOgDesc", label: "OG 설명", tone: "edit" },
+      { id: "dollHook", label: "하단 푸터 (후킹)", tone: "edit" },
+    ],
+  },
+  share: {
+    title: "점수 결과 보고서 (공유 페이지)",
+    regions: [
       { id: "reportTitle", label: "보고서 제목", tone: "edit" },
       { label: "보고서 본문(점수·등급·피격자 의견) — 롤/등급 콘텐츠", tone: "ctx" },
       { id: "scoreHook", label: "후킹 문구", tone: "edit" },
       { id: "scoreCtaPlay", label: "패러 가기 버튼", tone: "edit" },
-      { id: "scoreCtaPersona", label: "두 번째 버튼(→플레이)", tone: "edit" },
+      { id: "scoreCtaPersona", label: "두 번째 버튼", tone: "edit" },
       { id: "scoreRankLink", label: "랭킹 보기 링크", tone: "edit" },
       { id: "scoreShareText", label: "웹 공유 텍스트", tone: "edit" },
+    ],
+  },
+  shareOg: {
+    title: "점수 공유 미리보기 (OG)",
+    regions: [
+      { id: "scoreOgTitle", label: "공유 미리보기 제목 (메타)", tone: "edit" },
+      { id: "reportTitle", label: "이미지 큰 제목", tone: "edit" },
+      { label: "보고서 본문 — 롤/등급 콘텐츠", tone: "ctx" },
+      { id: "scoreHook", label: "하단 푸터 (후킹)", tone: "edit" },
     ],
   },
   gameover: {
     title: "게임 종료 화면",
     regions: [
-      { label: "결과 보고서(점수·뱃지·피격자 의견) — 롤/등급 콘텐츠", tone: "ctx" },
+      { id: "reportTitle", label: "보고서 제목", tone: "edit" },
+      { label: "보고서 본문(점수·뱃지·피격자 의견) — 롤/등급 콘텐츠", tone: "ctx" },
       { id: "gameoverShareBtn", label: "공유 버튼", tone: "edit" },
       { id: "gameoverRetryBtn", label: "다시 버튼", tone: "edit" },
     ],
@@ -106,32 +141,54 @@ export function SurfaceDiagram({
   );
 }
 
-/** 마케팅 필드 key → (표면, 영역 id) 매핑. 포커스 시 해당 표면 도식의 영역 하이라이트. */
-export const FIELD_SURFACE: Record<string, { surface: SurfaceKey; region: string }> = {
-  tagline: { surface: "home", region: "tagline" },
-  primaryCta: { surface: "home", region: "primaryCta" },
-  secondaryCta: { surface: "home", region: "secondaryCta" },
-  disclaimer: { surface: "home", region: "disclaimer" },
-  nonmemberTitle: { surface: "gallery", region: "nonmemberTitle" },
-  nonmemberSub: { surface: "gallery", region: "nonmemberSub" },
-  memberEmptyTitle: { surface: "gallery", region: "memberEmptyTitle" },
-  memberEmptySub: { surface: "gallery", region: "memberEmptySub" },
-  nonmemberCta: { surface: "gallery", region: "nonmemberCta" },
-  memberEmptyCta: { surface: "gallery", region: "memberEmptyCta" },
-  memberHeaderCta: { surface: "gallery", region: "memberHeaderCta" },
-  reportTitle: { surface: "share", region: "reportTitle" },
-  scoreRankLink: { surface: "share", region: "scoreRankLink" },
-  dollHook: { surface: "doll", region: "dollHook" },
-  dollCtaMake: { surface: "doll", region: "dollCtaMake" },
-  dollCtaDefault: { surface: "doll", region: "dollCtaDefault" },
-  dollShareText: { surface: "doll", region: "dollShareText" },
-  dollOgTitle: { surface: "doll", region: "dollOgTitle" },
-  dollOgDesc: { surface: "doll", region: "dollOgDesc" },
-  scoreHook: { surface: "share", region: "scoreHook" },
-  scoreCtaPlay: { surface: "share", region: "scoreCtaPlay" },
-  scoreCtaPersona: { surface: "share", region: "scoreCtaPersona" },
-  scoreShareText: { surface: "share", region: "scoreShareText" },
-  scoreOgTitle: { surface: "share", region: "scoreOgTitle" },
-  gameoverShareBtn: { surface: "gameover", region: "gameoverShareBtn" },
-  gameoverRetryBtn: { surface: "gameover", region: "gameoverRetryBtn" },
+/**
+ * 마케팅 필드 key → 이 값이 실제 나타나는 화면(들)·영역. 1:다 — 한 값이 여러 화면에 쓰이면
+ * 포커스 시 해당 화면 도식이 모두 떠서 각 영역이 하이라이트된다.
+ */
+export const FIELD_SURFACE: Record<
+  string,
+  ReadonlyArray<{ surface: SurfaceKey; region: string }>
+> = {
+  // 홈
+  tagline: [{ surface: "home", region: "tagline" }],
+  primaryCta: [{ surface: "home", region: "primaryCta" }],
+  secondaryCta: [{ surface: "home", region: "secondaryCta" }],
+  disclaimer: [{ surface: "home", region: "disclaimer" }],
+  // 갤러리 (3화면)
+  nonmemberTitle: [{ surface: "galNonmember", region: "nonmemberTitle" }],
+  nonmemberSub: [{ surface: "galNonmember", region: "nonmemberSub" }],
+  nonmemberCta: [{ surface: "galNonmember", region: "nonmemberCta" }],
+  memberEmptyTitle: [{ surface: "galMemberEmpty", region: "memberEmptyTitle" }],
+  memberEmptySub: [{ surface: "galMemberEmpty", region: "memberEmptySub" }],
+  memberEmptyCta: [{ surface: "galMemberEmpty", region: "memberEmptyCta" }],
+  memberHeaderCta: [{ surface: "galHeader", region: "memberHeaderCta" }],
+  // 캐릭터 공유 — 후킹은 카드 + OG 푸터(같은 도메인) 양쪽.
+  dollHook: [
+    { surface: "doll", region: "dollHook" },
+    { surface: "dollOg", region: "dollHook" },
+  ],
+  dollCtaMake: [{ surface: "doll", region: "dollCtaMake" }],
+  dollCtaDefault: [{ surface: "doll", region: "dollCtaDefault" }],
+  dollShareText: [{ surface: "doll", region: "dollShareText" }],
+  dollOgTitle: [{ surface: "dollOg", region: "dollOgTitle" }],
+  dollOgDesc: [{ surface: "dollOg", region: "dollOgDesc" }],
+  // 점수 공유 — 후킹은 페이지 + OG 푸터(같은 도메인) 양쪽.
+  scoreHook: [
+    { surface: "share", region: "scoreHook" },
+    { surface: "shareOg", region: "scoreHook" },
+  ],
+  scoreCtaPlay: [{ surface: "share", region: "scoreCtaPlay" }],
+  scoreCtaPersona: [{ surface: "share", region: "scoreCtaPersona" }],
+  scoreRankLink: [{ surface: "share", region: "scoreRankLink" }],
+  scoreShareText: [{ surface: "share", region: "scoreShareText" }],
+  scoreOgTitle: [{ surface: "shareOg", region: "scoreOgTitle" }],
+  // 게임오버
+  gameoverShareBtn: [{ surface: "gameover", region: "gameoverShareBtn" }],
+  gameoverRetryBtn: [{ surface: "gameover", region: "gameoverRetryBtn" }],
+  // 공통 — 보고서 제목: 게임오버 + 공유 페이지 + 공유 OG 동시.
+  reportTitle: [
+    { surface: "gameover", region: "reportTitle" },
+    { surface: "share", region: "reportTitle" },
+    { surface: "shareOg", region: "reportTitle" },
+  ],
 };
