@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
+import { getGrowthLevers } from "@/lib/config/getters";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -66,10 +67,12 @@ export async function GET(request: NextRequest) {
   // 4) 멤버 1회성 초기화 — member_accounts 신규 insert 일 때만 프로필 덮어씀(재로그인 보존).
   if (!user.is_anonymous) {
     try {
+      // 가입기념 생성권 = 마케터 설정(growth_levers). ignoreDuplicates → 신규 insert 1회만(재지급 금지·멱등).
+      const signupCredits = (await getGrowthLevers()).signupBonusCredits;
       const { data: rows, error: upErr } = await admin
         .from("member_accounts")
         .upsert(
-          { user_id: user.id, gen_credits: 2 },
+          { user_id: user.id, gen_credits: signupCredits },
           { onConflict: "user_id", ignoreDuplicates: true }
         )
         .select("user_id");

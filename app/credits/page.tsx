@@ -3,11 +3,8 @@
 import { useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
-import {
-  CREDIT_PRODUCT_LIST,
-  perUnitPrice,
-  type CreditProductId,
-} from "@/lib/credit-products";
+import { perUnitPrice } from "@/lib/credit-products";
+import { useCreditProducts } from "@/components/CreditProductsProvider";
 import { log, errInfo } from "@/lib/log";
 import { setSentryLastAction } from "@/lib/sentry-context";
 
@@ -17,10 +14,11 @@ import { setSentryLastAction } from "@/lib/sentry-context";
  * (회원 게이트는 proxy.ts 가 처리 — 비회원은 /login 으로.)
  */
 export default function CreditsPage() {
-  const [pending, setPending] = useState<CreditProductId | null>(null);
+  const products = useCreditProducts();
+  const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const buy = async (productId: CreditProductId) => {
+  const buy = async (productId: string) => {
     if (pending) return; // 중복 클릭 가드
     setSentryLastAction("purchase_start");
     setPending(productId);
@@ -69,14 +67,14 @@ export default function CreditsPage() {
           </div>
 
           <div className="flex flex-col gap-3">
-            {CREDIT_PRODUCT_LIST.map((p) => {
+            {products.map((p) => {
               const isPending = pending === p.productId;
               return (
                 <button
                   key={p.productId}
                   type="button"
                   disabled={!!pending}
-                  onClick={() => void buy(p.productId as CreditProductId)}
+                  onClick={() => void buy(p.productId)}
                   className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
                 >
                   <div>
