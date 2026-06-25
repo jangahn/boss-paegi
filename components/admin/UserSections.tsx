@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { GenerationRow, DollRow } from "@/lib/admin-types";
 import { fmtKst, shortId } from "@/lib/admin-format";
 import { asRole } from "@/lib/roles";
@@ -52,23 +53,48 @@ export function GenerationsTable({ rows, cfg }: { rows: GenerationRow[]; cfg: Ro
   );
 }
 
-/** 현재 보유 캐릭터(dolls) — 썸네일 그리드. (하드삭제라 삭제분은 미추적.) */
+/**
+ * 보유 캐릭터(dolls) — 썸네일 그리드. 미삭제는 클릭→/doll(새 탭), takedown 삭제분은
+ * "삭제됨" 칩 + 클릭→신고 어드민(해당 doll 필터). (탈퇴=하드삭제는 목록서 사라짐.)
+ */
 export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
   if (!rows.length) return <p className="text-sm text-zinc-400">캐릭터가 없어요.</p>;
   return (
     <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {rows.map((d) => (
-        <li key={d.id} className="rounded-xl border border-foreground/10 p-2 text-center text-[11px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={d.image_url}
-            alt=""
-            className="mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 object-cover"
-          />
-          <div className="font-medium">{roleFrom(asRole(d.role), cfg).label}</div>
-          <div className="text-zinc-400">{fmtKst(d.created_at)}</div>
-        </li>
-      ))}
+      {rows.map((d) => {
+        const deleted = !!d.deleted_at;
+        const href = deleted ? `/admin/moderation?dollId=${d.id}` : `/doll/${d.id}`;
+        return (
+          <li key={d.id}>
+            <Link
+              href={href}
+              {...(deleted ? {} : { target: "_blank", rel: "noreferrer" })}
+              className="relative block rounded-xl border border-foreground/10 p-2 text-center text-[11px] transition hover:bg-foreground/5"
+              title={deleted ? "신고 삭제됨 — 신고 어드민에서 보기" : "doll 페이지 열기"}
+            >
+              {deleted && (
+                <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-red-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                  삭제됨
+                </span>
+              )}
+              {deleted ? (
+                <div className="mx-auto mb-1 flex h-20 w-20 items-center justify-center rounded-lg bg-foreground/10 text-2xl opacity-60">
+                  🗑️
+                </div>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={d.image_url}
+                  alt=""
+                  className="mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 object-cover"
+                />
+              )}
+              <div className="font-medium">{roleFrom(asRole(d.role), cfg).label}</div>
+              <div className="text-zinc-400">{fmtKst(d.created_at)}</div>
+            </Link>
+          </li>
+        );
+      })}
     </ul>
   );
 }
