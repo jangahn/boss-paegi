@@ -55,6 +55,8 @@ export class TelemetryCollector {
   private idleOpen = false;
   private ended = false;
   private endedMs = 0; // 종료 시점 경과(ms) — duration 동결(hidden_timeout 지연 무관)
+  // 렉 진단 perf(게임 ticker 표본 — 종료 시 setPerf 로 주입)
+  private perf = { dpr: 0, refreshHz: 0, avgFrameMs: 0, p95FrameMs: 0 };
 
   constructor(opts: { sessionId: string; deviceClass: string; startMap: string; startWeapon: string }) {
     this.sessionId = opts.sessionId;
@@ -156,6 +158,11 @@ export class TelemetryCollector {
     if (v > this.sessionMaxTouch) this.sessionMaxTouch = v; // 세션 totals 용 — 리셋 안 함
   }
 
+  /** 게임 종료 시 ticker 프레임타임 통계 주입(렉 진단). */
+  setPerf(p: { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number }): void {
+    this.perf = p;
+  }
+
   onWeaponSelect(from: string, to: string): void {
     this.push("weapon_select_attempt", { from, to });
     const wm = (this.weaponMeta[to] ??= { attempts: 0, switches: 0 });
@@ -235,6 +242,10 @@ export class TelemetryCollector {
         apm: durMin > 0 ? Math.round(s.hitCount / durMin) : 0,
         tapShare: totalHits > 0 ? tapHits / totalHits : 0,
         maxTouch: this.sessionMaxTouch, // 세션 전체 최대(버킷 리셋과 무관) — 종료 후에도 보존
+        dpr: this.perf.dpr,
+        refreshHz: this.perf.refreshHz,
+        avgFrameMs: this.perf.avgFrameMs,
+        p95FrameMs: this.perf.p95FrameMs,
       },
       weaponSummary,
       mapSummary: this.mapAgg,

@@ -95,6 +95,75 @@ function buildRecorder(
   return null;
 }
 
+/**
+ * 클립 1프레임을 디코드해 "확실히 검정"인지 판정(fail-open).
+ * preserveDrawingBuffer 미설정 등으로 captureStream 이 검은 프레임을 잡으면 blob 은 non-empty 라
+ * size 체크를 통과 → 검은 영상이 채택/공유되던 문제 방어. **디코드/seek 실패는 false(=정상 채택 유지)**
+ * 로 폴백해 정상 영상이 분석 실패로 카드로 떨어지지 않게 한다(confident black 만 reject).
+ */
+function isConfidentBlack(blob: Blob): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined") return resolve(false);
+    let settled = false;
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement("video");
+    const finish = (v: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* */
+      }
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(false), 1500); // 타임아웃 → fail-open
+    video.muted = true;
+    video.preload = "auto";
+    video.onloadeddata = () => {
+      try {
+        video.currentTime = Math.min(0.1, (video.duration || 1) / 2);
+      } catch {
+        clearTimeout(timer);
+        finish(false);
+      }
+    };
+    video.onseeked = () => {
+      clearTimeout(timer);
+      try {
+        const w = 32;
+        const h = 32;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const c = canvas.getContext("2d", { willReadFrequently: true });
+        if (!c) return finish(false);
+        c.drawImage(video, 0, 0, w, h);
+        const data = c.getImageData(0, 0, w, h).data;
+        const n = w * h;
+        let sum = 0;
+        let sumSq = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          sum += lum;
+          sumSq += lum * lum;
+        }
+        const mean = sum / n;
+        const variance = sumSq / n - mean * mean;
+        // confident black: 매우 어둡고(평균휘도<8/255) 거의 균일(분산<10)일 때만 reject
+        finish(mean < 8 && variance < 10);
+      } catch {
+        finish(false);
+      }
+    };
+    video.onerror = () => {
+      clearTimeout(timer);
+      finish(false); // 디코드 실패 → fail-open(정상 채택 유지)
+    };
+    video.src = url;
+  });
+}
+
 /** onstop 미발화(iOS) 대비 — requestData 후 stop, 600ms 안에 안 끝나면 수집 청크로 조립. */
 function finishRecording(mr: MediaRecorder, chunks: Blob[]): Promise<Blob> {
   return new Promise((resolve) => {
@@ -145,23 +214,28 @@ export function useHighlightRecorder(opts: {
   const cancelledRef = useRef(false);
 
   const consider = useCallback(
-    (blob: Blob, sel: MimeSel, startScore: number, startedAt: number) => {
+    async (blob: Blob, sel: MimeSel, startScore: number, startedAt: number) => {
       const delta = Math.max(0, useGameStore.getState().score - startScore);
       const windowMs = Math.round(performance.now() - startedAt);
       if (blob.size === 0) {
         log.warn("highlight.empty_blob", {});
         return;
       }
-      if (!bestRef.current || delta > bestRef.current.delta) {
-        bestRef.current = { blob, mime: sel.mime, ext: sel.ext, delta, windowMs };
-        setBestClip(bestRef.current);
-        log.info("highlight.record_success", {
-          delta,
-          windowMs,
-          sizeBytes: blob.size,
-          audio: sel.audio,
-        });
+      // 새 best 후보일 때만 검정 검사(불필요한 디코드 회피)
+      if (bestRef.current && delta <= bestRef.current.delta) return;
+      // 검은 프레임이면 채택 거부 → 카드 폴백(fail-open: 분석 실패 시 정상 채택 유지)
+      if (await isConfidentBlack(blob)) {
+        log.warn("highlight.black_frame", { sizeBytes: blob.size, mime: sel.mime });
+        return;
       }
+      bestRef.current = { blob, mime: sel.mime, ext: sel.ext, delta, windowMs };
+      setBestClip(bestRef.current);
+      log.info("highlight.record_success", {
+        delta,
+        windowMs,
+        sizeBytes: blob.size,
+        audio: sel.audio,
+      });
     },
     []
   );
@@ -221,7 +295,7 @@ export function useHighlightRecorder(opts: {
       if (activeMrRef.current === mr) activeMrRef.current = null;
       // canvas video track 만 stop — audio track(recordDest)은 재사용하므로 stop 금지(다음 녹화 무음 방지)
       videoStream.getVideoTracks().forEach((t) => t.stop());
-      consider(blob, sel, startScore, startedAt);
+      await consider(blob, sel, startScore, startedAt);
     })();
     activeFinishRef.current = finish;
   }, [gameRef, consider]);
