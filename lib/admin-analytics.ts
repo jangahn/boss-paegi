@@ -502,8 +502,8 @@ export async function getDevicePerf(days: number): Promise<DevicePerf> {
     })
     .sort((a, b) => b.sessions - a.sessions);
 
-  // 가장 느린 세션 top-N (쿼리에서 p95 desc 정렬됨)
-  const worst: WorstPerfSession[] = rows.slice(0, 12).map((r) => ({
+  // 가장 느린 세션 top-5 (쿼리에서 p95 desc 정렬됨)
+  const worst: WorstPerfSession[] = rows.slice(0, 5).map((r) => ({
     id: r.id,
     deviceClass: r.device_class,
     dpr: Number(r.dpr) || 0,

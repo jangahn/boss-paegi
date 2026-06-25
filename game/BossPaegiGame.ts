@@ -51,17 +51,21 @@ export async function createGame(
   // (모바일 주소창 수축, 회전 등) → renderer 와 layout 좌표계가 어긋나
   // 입력 hit-test 가 통째로 빗나감. ResizeObserver 에서 직접 resize 한다.
   const app = new Application();
-  // DPR 캡(≤2): 고DPI/레티나/4K PC 에서 backbuffer 픽셀이 DPR² 로 폭증해 GPU fill-rate 가
-  //   매 프레임 한계 → 렉. 2 로 캡해 선명도는 유지하되 fill-rate 완화.
+  // 렌더 fill-rate 완화(모바일 고DPI 3x 가 30fps 강락되던 문제). backbuffer 픽셀이 DPR² 로 늘어
+  //   GPU fill-rate 한계 → 렉. 일관 단일 캡(분기 없음):
+  //   ① DPR 캡 1.75(2→1.75, 픽셀 −23%) ② antialias off(DPR 높아 계단 거의 안 보임) ③ high-performance.
+  //   선명도/하이라이트 영상 약간 ↓ 감수. 모바일 ~45fps 목표 — /admin/analytics 로 측정 후 부족 시 1.5 로.
+  //   데스크탑은 fill-rate 여유라 무영향(약간 덜 선명할 뿐).
   // preserveDrawingBuffer: WebGL 캡처(하이라이트 captureStream)가 합성 후 비워진 버퍼를 잡아
-  //   Whale/Mac·iOS 에서 검은 프레임이 되는 문제 방지 — 캡처 정상화(전 기기, GlContextSystem 옵션).
-  const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+  //   Whale/Mac·iOS 에서 검은 프레임이 되는 문제 방지(전 기기). perf 비용 있으나 녹화 위해 유지.
+  const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 1.75) : 1;
   await app.init({
     background: 0x111418,
-    antialias: true,
+    antialias: false,
     resolution: dpr,
     autoDensity: true,
     preserveDrawingBuffer: true,
+    powerPreference: "high-performance",
   });
 
   if (isCancelled?.()) {

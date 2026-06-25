@@ -26,6 +26,30 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
         “렉”으로 집계. 프레임타임 낮을수록 좋음(16.7ms=60fps · 33.3ms=30fps).
       </p>
 
+      <details className="rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+        <summary className="cursor-pointer font-semibold text-zinc-400">📖 지표 설명</summary>
+        <dl className="mt-1.5 space-y-1">
+          <div>
+            <b>프레임타임(ms)</b> = 화면 1번 그리는 데 걸린 시간. <b>낮을수록 부드러움</b> · 16.7ms=60fps · 33.3ms=30fps.
+          </div>
+          <div>
+            <b>중앙 avg</b> = 세션들의 평균 프레임타임 중앙값 — 그 디바이스의 “보통” 부드러움.
+          </div>
+          <div>
+            <b>중앙 p95</b> = 세션들의 p95(느린 5% 프레임) 중앙값 — <b>끊김·튐 체감</b>(평균은 괜찮아도 p95 높으면 가끔 끊김).
+          </div>
+          <div>
+            <b>추정 fps</b> = 1000 ÷ 중앙 avg — 초당 프레임 수(60=부드러움, 30=끊김).
+          </div>
+          <div>
+            <b>렉 세션</b> = p95 &gt; {LAG_P95_MS}ms(30fps 미달 스파이크)인 세션 비율 — 높을수록 그 디바이스가 자주 끊김.
+          </div>
+          <div className="text-zinc-400">
+            가장 느린 세션 줄: <b>dpr</b>=화면 픽셀밀도(3=고밀도 폰) · <b>hz</b>=화면 주사율 · 끝의 <b>s</b>=플레이 시간.
+          </div>
+        </dl>
+      </details>
+
       {/* 디바이스별 */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
