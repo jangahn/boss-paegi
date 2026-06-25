@@ -6,7 +6,7 @@ import { updateSession } from "@/lib/supabase/middleware";
 // (/admin 의 is_admin 최종 판정은 서버 RSC/라우트의 requireAdmin — 미들웨어는 DB read 회피.)
 // play/leaderboard/share/doll/홈/갤러리 는 게이팅하지 않음 (비회원 유지).
 // /gallery 는 비회원도 열람 가능(기본부장님 노출+가입 후킹) — 단 캐릭터 생성(/generate)은 회원 전용.
-const MEMBER_ONLY_PAGES = ["/generate", "/credits", "/admin"];
+const MEMBER_ONLY_PAGES = ["/generate", "/credits", "/admin", "/account"];
 
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);

@@ -14,7 +14,6 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { signOut } from "@/lib/auth-oauth";
 import { ModalShell } from "@/components/ModalShell";
-import { AvatarEditor } from "@/components/AvatarEditor";
 import { Spinner } from "@/components/Spinner";
 
 const DEFAULT_AVATAR = "/avatars/default.png";
@@ -29,8 +28,6 @@ export function AccountMenu() {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [open, setOpen] = useState(false);
   const [editingNick, setEditingNick] = useState(false);
-  const [editingAvatar, setEditingAvatar] = useState(false);
-  const [withdrawing, setWithdrawing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -164,44 +161,36 @@ export function AccountMenu() {
           >
             내 기록
           </Link>
-          <MenuItem
-            onClick={() => {
-              setEditingNick(true);
-              setOpen(false);
-            }}
-          >
-            닉네임 변경
-          </MenuItem>
-          {isMember && (
+          {!isMember && (
             <MenuItem
               onClick={() => {
-                setEditingAvatar(true);
+                setEditingNick(true);
                 setOpen(false);
               }}
             >
-              프로필 사진 변경
+              닉네임 변경
             </MenuItem>
           )}
           {isMember && (
-            <MenuItem onClick={() => void signOut()} className="text-red-500">
-              로그아웃
-            </MenuItem>
+            <Link
+              href="/account"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5"
+            >
+              마이페이지
+            </Link>
           )}
           {isMember && (
             <MenuItem
-              onClick={() => {
-                setWithdrawing(true);
-                setOpen(false);
-              }}
+              onClick={() => void signOut()}
               className="border-t border-foreground/10 text-red-500"
             >
-              계정 삭제
+              로그아웃
             </MenuItem>
           )}
         </div>
       )}
-
-      {withdrawing && <WithdrawModal onClose={() => setWithdrawing(false)} />}
 
       {editingNick && (
         <NicknameEditor
@@ -218,100 +207,7 @@ export function AccountMenu() {
           }}
         />
       )}
-      {editingAvatar && (
-        <AvatarEditor
-          current={avatar}
-          hasCustomAvatar={profile.avatar_url !== null}
-          onClose={() => setEditingAvatar(false)}
-          onSaved={(url) => {
-            setProfile((p) => {
-              if (!p) return p;
-              const next = { ...p, avatar_url: url };
-              writeCachedProfile(p.id, next);
-              return next;
-            });
-            setEditingAvatar(false);
-          }}
-        />
-      )}
     </div>
-  );
-}
-
-// 셀프 탈퇴 — 2-step 확인(고지 + 동의 체크). 성공 시 signOut(세션 종료·캐시/Sentry 정리·홈).
-function WithdrawModal({ onClose }: { onClose: () => void }) {
-  const [ack, setAck] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async () => {
-    if (busy || !ack) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/account/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      if (res.ok) {
-        await signOut(); // 세션 종료 + clearProfileCache + Sentry.setUser(null) + 홈
-        return;
-      }
-      const out = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(
-        out.error === "payment_pending"
-          ? "진행 중인 결제가 있어요. 잠시 후 다시 시도해 주세요."
-          : "탈퇴 처리에 실패했어요. 잠시 후 다시 시도해 주세요."
-      );
-    } catch {
-      setError("네트워크 오류 — 다시 시도해 주세요.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <ModalShell onClose={onClose}>
-      <h2 className="text-lg font-bold text-red-500">계정 삭제(탈퇴)</h2>
-      <div className="mt-2 space-y-1.5 text-sm text-zinc-500">
-        <p>
-          탈퇴하면 프로필과 업로드한 캐릭터 이미지는 삭제 또는 익명화되며,{" "}
-          <b className="text-foreground">되돌릴 수 없습니다.</b>
-        </p>
-        <p>· 남은 생성권은 사용할 수 없으며 복구되지 않을 수 있습니다.</p>
-        <p>· 결제 기록은 관련 법령에 따라 일정 기간 보존될 수 있습니다.</p>
-        <p>· 탈퇴 후 같은 계정으로 다시 로그인할 수 없습니다.</p>
-      </div>
-      <label className="mt-3 flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={ack}
-          onChange={(e) => setAck(e.target.checked)}
-          className="mt-0.5"
-        />
-        <span>위 내용을 이해했으며 되돌릴 수 없음에 동의합니다.</span>
-      </label>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-      <div className="mt-4 flex gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
-        >
-          취소
-        </button>
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={busy || !ack}
-          className="flex flex-1 items-center justify-center gap-2 rounded-full bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
-        >
-          {busy && <Spinner className="h-4 w-4" />}
-          탈퇴하기
-        </button>
-      </div>
-    </ModalShell>
   );
 }
 

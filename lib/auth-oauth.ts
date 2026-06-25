@@ -9,10 +9,11 @@ import { log, errInfo } from "@/lib/log";
 export type OAuthProvider = "kakao" | "google";
 
 /**
- * OAuth 로그인/가입 시작.
- * - 현재 익명 세션이면 `linkIdentity` → 같은 user.id 로 멤버 승격(dolls/scores 보존).
- * - 세션 없음 / 재로그인(forceSignIn)이면 `signInWithOAuth` → 기존(또는 신규) 계정 로그인.
- * 둘 다 `/auth/callback?next=` 로 복귀.
+ * OAuth 로그인/회원가입 시작 — **항상 `signInWithOAuth`(계정 선택 1회)**.
+ * linkIdentity 제거(익명+기록 있을 때 이미 가입된 계정이면 2회 선택되던 문제 해결).
+ * 익명 세션이면 가입 시 데이터 이전을 위해 anon id 를 서명 쿠키로 기록(`/api/auth/prepare-signup`).
+ * 신규/기존 판별·동의·마이그는 `/auth/callback`→`/signup`→onboard 에서 처리.
+ * (opts.forceSignIn 은 더 이상 분기에 쓰이지 않음 — 항상 sign-in.)
  */
 export async function startOAuth(
   provider: OAuthProvider,
@@ -20,63 +21,19 @@ export async function startOAuth(
 ): Promise<void> {
   const sb = createClient();
   const next = safeNext(opts?.next);
-  // p=provider 를 함께 실어 보냄 — identity_already_exists 바운스 시 콜백이 어느 provider 로
-  // 자동 재로그인할지 알 수 있게 (next 처럼 redirectTo 쿼리는 에러 redirect 에도 보존됨).
   const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&p=${provider}`;
 
-  // 익명 분기 결정: 보존할 데이터(점수)가 있을 때만 linkIdentity(같은 user.id 보존).
-  // 점수 없는 새 익명 = 재로그인 케이스 → signInWithOAuth 로 OAuth round-trip 1회 → 계정 선택 1회.
-  // (구글 재로그인이 linkIdentity 실패→auto signInWithOAuth 로 2회 선택되던 버그 해결.)
-  let useLink = false;
-  let isAnonymous = false;
-  let scoreCount = 0;
-  let countFailed = false;
-
-  if (!opts?.forceSignIn) {
+  // 익명이면 prepare-signup — 서버가 현재 익명 user.id 를 HMAC 서명 쿠키로 기록(신규 가입 시 데이터 이전용).
+  try {
     const { data } = await sb.auth.getUser();
-    const user = data.user;
-    isAnonymous = user?.is_anonymous === true;
-    if (isAnonymous && user) {
-      const { count, error } = await sb
-        .from("scores")
-        .select("id", { count: "exact", head: true })
-        .eq("owner_id", user.id);
-      if (error) {
-        // 조회 실패 → 데이터 유실 방지 우선(linkIdentity). 최악 2회 선택이지만 점수 보존 기회 유지.
-        countFailed = true;
-        useLink = true;
-      } else {
-        scoreCount = count ?? 0;
-        useLink = scoreCount > 0; // 점수 있으면 보존, 없으면 깔끔히 signInWithOAuth
-      }
+    if (data.user?.is_anonymous) {
+      await fetch("/api/auth/prepare-signup", { method: "POST" });
     }
+  } catch (e) {
+    log.warn("auth.prepare_signup_fail", { ...errInfo(e) });
   }
 
-  const method = useLink ? "linkIdentity" : "signInWithOAuth";
-  log.info("auth.oauth_start_decision", {
-    provider,
-    isAnonymous,
-    scoreCount,
-    countFailed,
-    method,
-  });
-
-  if (useLink) {
-    const { error } = await sb.auth.linkIdentity({
-      provider,
-      options: { redirectTo },
-    });
-    if (error) {
-      log.warn("auth.link_identity_start_fail", { provider, ...errInfo(error) });
-      throw error;
-    }
-    return;
-  }
-
-  const { error } = await sb.auth.signInWithOAuth({
-    provider,
-    options: { redirectTo },
-  });
+  const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo } });
   if (error) {
     log.warn("auth.oauth_start_fail", { provider, ...errInfo(error) });
     throw error;

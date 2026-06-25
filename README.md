@@ -443,7 +443,16 @@ v0.34 (2026-06-25, 법무 이행 공백 핵심 3 — 계정 탈퇴·결제기록
 - 문서: 시드 draft 최소 갱신(탈퇴 처리·결제 5년·14세 미만 불가·크레딧 소멸). **후속 과제(미구현·문서 미약속)**: 신고/모더레이션·보유기간 자동삭제 cron·운영자 강제삭제·별도 감사 테이블·자동환불·법정대리인 동의 플로우.
 - 검증: 마이그 롤백 테스트(soft-delete·FK RESTRICT·pending 차단·탈퇴자 무지급·멱등)·typecheck/build 0.
 
+v0.35 (2026-06-25, 로그인/회원가입 분리 + OAuth 단일 프롬프트 + 마이페이지·회원탈퇴 재배치; Migration 0031):
+- **로그인/회원가입 분리**: 로그인은 14세 안 묻고 바로. OAuth 콜백이 신규 계정 판별 → `/signup` 동의(만14세+이용약관+개인정보처리방침 체크) → `/api/account/onboard` 가 member 생성(동의 `terms/privacy_agreed_at`·version 기록). 로그인 age 체크·생성 ConsentDialog age-14 제거(레거시 회원은 생성/결제 `age_required` backstop만).
+- **OAuth 단일 프롬프트**: `linkIdentity` 제거 → 항상 `signInWithOAuth`(계정 선택 1회, 익명+기록일 때 이미 가입계정이면 2회 선택되던 문제 해결). 익명 데이터 보존은 **신규 가입 시에만 명시적 마이그**(`reassign_anon_data`: scores·user_badges·telemetry owner_id). 익명 id는 `prepare-signup`의 **HMAC 서명 쿠키**(위조 차단)로 추적, **모든 종료 경로에서 clear**(/signup 정상 경로만 유지). onboard 멱등(중복 크레딧 0)·이상 데이터 시 스킵·익명 정리 best-effort·new==세션 검증.
+- **마이페이지 `/account`**(member-only): 닉네임·프사·**회원탈퇴**("계정 삭제"→"회원탈퇴", 하단 작게·2단계[고지 체크 + "회원탈퇴" 직접 입력]). 드롭다운은 충전·대시보드·뱃지·기록 유지 + "마이페이지" 링크.
+- `safeNext` 강화(`/auth/*`·`/api/*`·`/signup` 제외 — open-redirect/loop 차단). 미사용 익명 정리 cron은 후속.
+- 검증: `reassign` 롤백 테스트(scores·badges·telemetry 이전·멱등)·typecheck/lint/build 0.
+
 **⚠️ Migration 0030 적용 필요** (`supabase/migrations/0030_withdrawal_age.sql`): `profiles.deleted_at`·`member_accounts.age_confirmed_at` 컬럼 + `payapp_orders.user_id` FK CASCADE→RESTRICT(동적 제약명) + `admin_soft_delete_account` RPC + `mark_paid_and_grant` 탈퇴자 가드(재정의). additive·결제 정상경로 불변.
+
+**⚠️ Migration 0031 적용 필요** (`supabase/migrations/0031_signup_migrate.sql`): `member_accounts` 동의 컬럼(`terms_agreed_at`·`privacy_agreed_at`·`terms_version`·`privacy_version`) + `reassign_anon_data` RPC(scores·user_badges·telemetry owner_id 재-own, conflict-safe). server-only. Management API 적용 완료. additive.
 
 **마이그레이션 적용**: 0006~0011 은 Supabase **management API query 엔드포인트**로 직접 적용 완료
 (`POST /v1/projects/<ref>/database/query`, `SUPABASE_ACCESS_TOKEN`). 이후 마이그레이션도 동일 방식 — `.sql` 은 `supabase/migrations/` 에 보존(추적용).

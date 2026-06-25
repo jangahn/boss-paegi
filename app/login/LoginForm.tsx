@@ -61,7 +61,6 @@ export function LoginForm() {
 
   const [busy, setBusy] = useState<OAuthProvider | null>(auto);
   const [err, setErr] = useState<string | null>(null);
-  const [ageOk, setAgeOk] = useState(false); // 만14세 이상 확인(회원전환 전 게이트·고지)
   const [autoFailed, setAutoFailed] = useState(false);
   const autoStarted = useRef(false);
 
@@ -123,23 +122,11 @@ export function LoginForm() {
           </p>
         )}
 
-        <label className="flex w-full items-start gap-2 text-left text-sm text-zinc-600 dark:text-zinc-400">
-          <input
-            type="checkbox"
-            checked={ageOk}
-            onChange={(e) => setAgeOk(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span>
-            본인은 <b className="text-foreground">만 14세 이상</b>입니다. (만 14세 미만은 이용할 수 없습니다.)
-          </span>
-        </label>
-
-        <div className="mt-1 flex w-full flex-col gap-3">
+        <div className="mt-2 flex w-full flex-col gap-3">
           <button
             type="button"
             onClick={() => void onLogin("kakao")}
-            disabled={!!busy || !ageOk}
+            disabled={!!busy}
             className="flex items-center justify-center gap-2 rounded-xl bg-[#FEE500] py-4 text-base font-semibold text-[#191600] transition hover:opacity-90 disabled:opacity-50"
           >
             {busy === "kakao" ? <Spinner className="h-5 w-5" /> : <KakaoIcon />}
@@ -148,7 +135,7 @@ export function LoginForm() {
           <button
             type="button"
             onClick={() => void onLogin("google")}
-            disabled={!!busy || !ageOk}
+            disabled={!!busy}
             className="flex items-center justify-center gap-2 rounded-xl border border-foreground/20 bg-white py-4 text-base font-semibold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
           >
             {busy === "google" ? <Spinner className="h-5 w-5" /> : <GoogleIcon />}
@@ -159,8 +146,8 @@ export function LoginForm() {
         {err && <p className="text-sm text-red-400">{err}</p>}
 
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-          이미 가입된 계정으로 로그인하면 현재 비회원 상태에서 만든 기록은
-          이전되지 않을 수 있어요.
+          새 계정으로 가입하면 현재 비회원 기록(점수 등)이 이전됩니다. 기존 계정으로
+          로그인하면 비회원 기록은 이전되지 않습니다.
         </p>
         <Link
           href="/"

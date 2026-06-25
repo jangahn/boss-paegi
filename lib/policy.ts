@@ -11,10 +11,6 @@ export const CONSENT_ITEMS = [
     id: "characterization",
     label: "이미지가 캐릭터로 변형되어 게임에 등장하는 것에 동의합니다.",
   },
-  {
-    id: "age-14",
-    label: "본인은 만 14세 이상입니다. (만 14세 미만은 서비스를 이용할 수 없습니다.)",
-  },
 ] as const;
 
 export const POLICY_NOTICE = {

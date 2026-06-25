@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
-import { getGrowthLevers } from "@/lib/config/getters";
+import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -23,38 +23,37 @@ export async function GET(request: NextRequest) {
   const provider = rawP === "kakao" || rawP === "google" ? rawP : null; // allowlist
 
   const redirect = (path: string) => NextResponse.redirect(new URL(path, request.url));
+  // 마이그 쿠키 clear 한 redirect — 신규→/signup 정상 경로를 제외한 **모든 종료 경로**에 사용.
+  const redirectClear = (path: string) => {
+    const res = redirect(path);
+    res.cookies.set(MIGRATE_COOKIE, "", { maxAge: 0, path: "/" });
+    return res;
+  };
 
-  // 1) linkIdentity 가 "이미 연결된 식별자" 로 실패 → 기존 계정으로 자동 재로그인.
-  //    거부 화면 없이 /login?auto=<provider> 로 보내 signInWithOAuth 를 즉시 재개.
-  //    (signInWithOAuth 는 로그인이라 identity_already_exists 를 안 냄 → 루프 없음)
+  // (이전 linkIdentity 잔존 — 이제 항상 signInWithOAuth 라 거의 안 옴. 와도 재로그인 안내.)
   if (errorCode === "identity_already_exists") {
-    // 점수 있는 익명이 기존 계정 로그인 시도한 드문 케이스(조건부 linkIdentity 의 fallback).
-    // 점수 없는 재로그인은 이제 signInWithOAuth 로 직행하므로 여기 거의 안 옴 — 빈도 관측용.
     log.info("auth.relogin_bounce", { provider, reason: "identity_already_exists" });
     return provider
-      ? redirect(`/login?auto=${provider}&next=${encodeURIComponent(next)}`)
-      : redirect(`/login?error=oauth&next=${encodeURIComponent(next)}`);
+      ? redirectClear(`/login?auto=${provider}&next=${encodeURIComponent(next)}`)
+      : redirectClear(`/login?error=oauth&next=${encodeURIComponent(next)}`);
   }
   if (!code) {
     if (errorCode) log.warn("auth.callback_provider_error", { errorCode });
-    return redirect("/login?error=oauth");
+    return redirectClear("/login?error=oauth");
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.user) {
     log.warn("auth.callback_exchange_fail", { ...errInfo(error) });
-    return redirect("/login?error=exchange");
+    return redirectClear("/login?error=exchange");
   }
-  // linkIdentity 는 OAuth 데이터를 user_metadata 에 머지하지 않음 → identities[].identity_data 에만 있음.
-  // admin 으로 identities 포함된 권위 user 를 조회해야 닉/프사/이메일을 제대로 읽는다.
   const admin = createAdminClient();
   const { data: full } = await admin.auth.admin.getUserById(data.user.id);
   const user = full?.user ?? data.user;
   const profile = extractOAuthProfile(user);
 
-  // 2.5) 탈퇴(soft-delete) 계정 재로그인 차단 — 어떤 upsert(프로필/멤버/이메일/아바타)보다 먼저.
-  //      deleted 계정의 display_name/avatar/email 이 복구되면 안 됨(0030).
+  // 탈퇴(soft-delete) 계정 재로그인 차단 — 어떤 upsert 보다 먼저(0030).
   if (!user.is_anonymous) {
     const { data: delChk } = await admin
       .from("profiles")
@@ -64,11 +63,11 @@ export async function GET(request: NextRequest) {
     if ((delChk as { deleted_at?: string | null } | null)?.deleted_at) {
       log.info("auth.deleted_account_blocked", { userId: user.id });
       await supabase.auth.signOut();
-      return redirect("/login?error=account_deleted");
+      return redirectClear("/login?error=account_deleted");
     }
   }
 
-  // 3) 이메일 필수 — 없거나 미검증이면 멤버화하지 않고 세션 종료 후 안내.
+  // 이메일 필수 게이트.
   if (!user.is_anonymous && (!profile.email || !profile.emailVerified)) {
     log.warn("auth.callback_email_required", {
       userId: user.id,
@@ -76,54 +75,40 @@ export async function GET(request: NextRequest) {
       verified: profile.emailVerified,
     });
     await supabase.auth.signOut();
-    return redirect("/login?error=email_required");
+    return redirectClear("/login?error=email_required");
   }
 
-  // 4) 멤버 1회성 초기화 — member_accounts 신규 insert 일 때만 프로필 덮어씀(재로그인 보존).
-  if (!user.is_anonymous) {
-    try {
-      // 가입기념 생성권 = 마케터 설정(growth_levers). ignoreDuplicates → 신규 insert 1회만(재지급 금지·멱등).
-      const signupCredits = (await getGrowthLevers()).signupBonusCredits;
-      const { data: rows, error: upErr } = await admin
-        .from("member_accounts")
-        .upsert(
-          { user_id: user.id, gen_credits: signupCredits },
-          { onConflict: "user_id", ignoreDuplicates: true }
-        )
-        .select("user_id");
-      if (upErr) throw upErr;
+  // 익명 콜백(드묾) — 멤버 아님. 그대로.
+  if (user.is_anonymous) return redirectClear(next);
 
-      const isNewMember = (rows?.length ?? 0) > 0;
-      if (isNewMember) {
-        const patch: Record<string, string> = {};
-        if (profile.displayName) patch.display_name = profile.displayName;
-        if (profile.avatarUrl) patch.avatar_url = profile.avatarUrl;
-        if (Object.keys(patch).length > 0) {
-          await admin.from("profiles").update(patch).eq("id", user.id);
-        }
-        log.info("auth.member_created", { userId: user.id });
-      }
+  // 신규/기존 분기 — member_accounts 선조회. **자동 생성하지 않음.**
+  const { data: member } = await admin
+    .from("member_accounts")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-      // 이메일 최신화(이벤트/연락용) — 실제로 바뀐 경우에만 update(0011 audit version 불필요 증가 방지).
-      // 매 로그인마다 호출되지만 변경 없으면 no-op. profile.email 은 위 이메일 게이트 통과값.
+  if (!member) {
+    // 신규 → 동의 화면(/signup). 마이그 쿠키 **유지**(가입 완료 시 onboard 가 익명 데이터 이전).
+    log.info("auth.signup_redirect", { userId: user.id });
+    return redirect(`/signup?next=${encodeURIComponent(next)}`);
+  }
+
+  // 기존 회원 로그인 — 이메일 동기화만(자동 초기화/프로필 덮어쓰기 제거). 마이그 쿠키 clear.
+  try {
+    if (profile.email) {
       const { data: cur } = await admin
         .from("member_accounts")
         .select("email")
         .eq("user_id", user.id)
         .maybeSingle();
-      if (profile.email && cur && cur.email !== profile.email) {
-        await admin
-          .from("member_accounts")
-          .update({ email: profile.email })
-          .eq("user_id", user.id);
-        log.info("auth.member_email_synced", { userId: user.id, isNew: isNewMember });
+      if (cur && cur.email !== profile.email) {
+        await admin.from("member_accounts").update({ email: profile.email }).eq("user_id", user.id);
+        log.info("auth.member_email_synced", { userId: user.id });
       }
-    } catch (e) {
-      // 멤버 row 생성 실패 → permanent user 지만 멤버 상태 없음.
-      // requireMember 가 member_setup_required 로 처리하므로 치명적이진 않으나 추적.
-      log.error("auth.member_init_fail", { userId: user.id, ...errInfo(e) });
     }
+  } catch (e) {
+    log.warn("auth.email_sync_fail", { userId: user.id, ...errInfo(e) });
   }
-
-  return redirect(next);
+  return redirectClear(next);
 }
