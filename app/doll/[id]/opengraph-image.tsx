@@ -7,6 +7,7 @@ import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { log, errInfo } from "@/lib/log";
+import { PUBLIC_ENV } from "@/lib/env";
 
 export const runtime = "nodejs";
 // 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
@@ -36,9 +37,8 @@ export default async function OgImage({
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("dolls")
-    .select("id, image_url, created_at, role, profiles(display_name)")
+    .select("id, image_url, created_at, role, deleted_at, profiles(display_name)")
     .eq("id", id)
-    .is("deleted_at", null) // takedown(0034): 삭제된 인형 OG 는 기본 카드로 fallback.
     .single();
   // 조회 실패해도 기본 카드로 fallback — 단 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
   if (error) log.warn("og.doll_query_fail", { dollId: id, ...errInfo(error) });
@@ -49,6 +49,7 @@ export default async function OgImage({
         image_url: string;
         created_at: string;
         role: string | null;
+        deleted_at: string | null;
         profiles: { display_name: string } | null;
       }
     | null;
@@ -60,7 +61,13 @@ export default async function OgImage({
   const rlabel = roleFrom(role, cfg).label;
   const trait = d ? dollTrait(d.id, role, cfg) : "";
   const docNo = d ? reportNo(d.id, d.created_at) : "";
-  const dollSrc = d ? await dollDataUri(d.image_url) : null;
+  // takedown(0034): 삭제면 기본 부장님 sprite(😠 대신) — invisible takedown.
+  const dollImg = d
+    ? d.deleted_at
+      ? `${PUBLIC_ENV.SITE_URL}/sprites/boss-default.png`
+      : d.image_url
+    : null;
+  const dollSrc = dollImg ? await dollDataUri(dollImg) : null;
 
   return new ImageResponse(
     (
