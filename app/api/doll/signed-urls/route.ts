@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOLLS_BUCKET, dollPath } from "@/lib/storage-path";
+import { DOLL_THUMB_PX } from "@/lib/storage";
 import { rateLimit } from "@/lib/rate-limit";
 import { log, errInfo } from "@/lib/log";
 
@@ -26,7 +27,9 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     ids?: unknown;
     ttl?: unknown;
+    thumb?: unknown;
   } | null;
+  const thumb = body?.thumb === true; // 작은 표시용 384px 변환(갤러리·게임종료 등)
   const rawIds = Array.isArray(body?.ids) ? (body!.ids as unknown[]) : [];
   const ids = [
     ...new Set(
@@ -64,12 +67,24 @@ export async function POST(req: NextRequest) {
   }
   const paths = [...new Set(pathById.values())];
   if (paths.length) {
-    const { data: signed } = await admin.storage
-      .from(DOLLS_BUCKET)
-      .createSignedUrls(paths, ttl);
     const byPath = new Map<string, string>();
-    for (const s of signed ?? []) {
-      if (s.signedUrl && s.path) byPath.set(s.path, s.signedUrl);
+    if (thumb) {
+      // 변환 썸네일은 batch createSignedUrls 미지원 → per-image createSignedUrl(transform) 병렬.
+      await Promise.all(
+        paths.map(async (p) => {
+          const { data } = await admin.storage
+            .from(DOLLS_BUCKET)
+            .createSignedUrl(p, ttl, { transform: { width: DOLL_THUMB_PX } });
+          if (data?.signedUrl) byPath.set(p, data.signedUrl);
+        })
+      );
+    } else {
+      const { data: signed } = await admin.storage
+        .from(DOLLS_BUCKET)
+        .createSignedUrls(paths, ttl);
+      for (const s of signed ?? []) {
+        if (s.signedUrl && s.path) byPath.set(s.path, s.signedUrl);
+      }
     }
     for (const [id, p] of pathById) urls[id] = byPath.get(p) ?? null;
   }

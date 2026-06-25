@@ -67,7 +67,7 @@ export default async function HistoryDetailPage({
     ? mk.share.historyShareBtnHighlight
     : mk.share.historyShareBtn;
   const shareClipUrl = await clipSignedUrl(score);
-  const dollImg = await signedDollUrl(score.dolls?.image_url); // private 버킷 서명
+  const dollImg = await signedDollUrl(score.dolls?.image_url, 600, { thumb: true }); // 384px 썸네일
 
   return (
     <>

@@ -92,7 +92,7 @@ export async function getModerationQueue(
   for (const r of result.rows as ModerationRow[]) {
     rows.push({
       ...r,
-      image_url: r.artifacts_purged_at ? null : await signedDollUrl(r.image_url),
+      image_url: r.artifacts_purged_at ? null : await signedDollUrl(r.image_url, 600, { thumb: true }),
     });
   }
   return { rows, total: result.total ?? 0, page, pageSize: REPORT_PAGE_SIZE };

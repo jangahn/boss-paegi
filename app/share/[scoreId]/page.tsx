@@ -100,7 +100,7 @@ export default async function SharePage({
   const reaction = bossReaction(score.score, score.id, role, cfg);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = await clipSignedUrl(score);
-  const dollImg = await signedDollUrl(score.dolls?.image_url); // private 버킷 서명(삭제/없음=null→기본보스)
+  const dollImg = await signedDollUrl(score.dolls?.image_url, 600, { thumb: true }); // 384px 썸네일(삭제/없음=null→기본보스)
   const posterUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   const hlDelta = highlightDelta(score); // clip 있으면 clip delta, card-only 면 card delta (만료/삭제 X)
 

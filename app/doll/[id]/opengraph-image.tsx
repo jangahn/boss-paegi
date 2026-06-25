@@ -66,7 +66,7 @@ export default async function OgImage({
   const dollImg = d
     ? d.deleted_at
       ? `${PUBLIC_ENV.SITE_URL}/sprites/boss-default.png`
-      : await signedDollUrl(d.image_url, 60) // private 버킷 서명(OG 내부 fetch용 단명 60s)
+      : await signedDollUrl(d.image_url, 60, { thumb: true }) // 384px 썸네일(OG는 server fetch라 png ~432KB, Satori 안전)
     : null;
   const dollSrc = dollImg ? await dollDataUri(dollImg) : null;
 

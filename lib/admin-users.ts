@@ -197,7 +197,7 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
       ...d,
       image_url: d.artifacts_purged_at
         ? d.image_url
-        : (await signedDollUrl(d.image_url)) ?? d.image_url,
+        : (await signedDollUrl(d.image_url, 600, { thumb: true })) ?? d.image_url,
     });
   }
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
