@@ -68,6 +68,16 @@ export type MemberInfo = {
   genCredits: number;
   memberSince: string;
   isAdmin: boolean;
+  /** 탈퇴(soft-delete) 시각. null=활성. 있으면 어드민 재활성 대상(0037). */
+  deletedAt: string | null;
+};
+
+/** 탈퇴자 원본 이메일 검색 결과(스크럽돼 search_members 가 못 찾는 계정). */
+export type WithdrawnMatch = {
+  userId: string;
+  originalEmail: string | null;
+  deletedAt: string;
+  lastSignInAt: string | null;
 };
 
 export type GenerationRow = {

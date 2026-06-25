@@ -207,18 +207,18 @@ function WithdrawSection() {
           <h3 className="text-sm font-bold text-red-500">회원탈퇴</h3>
           <div className="mt-2 space-y-1 text-xs text-zinc-500">
             <p>
-              탈퇴하면 프로필 정보와 생성한 캐릭터 이미지는 삭제 또는 익명화되며{" "}
-              <b className="text-foreground">되돌릴 수 없습니다.</b>{" "}
+              탈퇴하면 프로필 정보와 생성한 캐릭터 이미지·하이라이트는 삭제 또는 익명화되며,{" "}
+              <b className="text-foreground">삭제된 데이터(캐릭터·하이라이트·생성권)는 되돌릴 수 없습니다.</b>{" "}
               (업로드한 원본 사진은 생성 직후 이미 폐기되어 보관하지 않습니다.)
             </p>
-            <p>· 남은 생성권은 사용할 수 없으며 복구되지 않을 수 있습니다.</p>
+            <p>· 남은 생성권은 사용할 수 없으며 복구되지 않습니다.</p>
             <p>· 점수·랭킹 등 개인을 식별할 수 없는 기록은 운영을 위해 익명 형태로 남을 수 있습니다.</p>
             <p>· (결제 이용 시) 결제 기록은 관련 법령에 따라 일정 기간 보존될 수 있습니다.</p>
-            <p>· 탈퇴 후 같은 계정으로 다시 로그인할 수 없습니다.</p>
+            <p>· 탈퇴 후 재이용은 제한되며, 재이용을 원하면 고객센터로 문의해 주세요(계정만 복구되고 위 데이터는 복구되지 않습니다).</p>
           </div>
           <label className="mt-3 flex items-start gap-2 text-xs">
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
-            <span>위 내용을 이해했으며 되돌릴 수 없음에 동의합니다.</span>
+            <span>위 내용을 이해했으며 삭제된 데이터는 되돌릴 수 없음에 동의합니다.</span>
           </label>
           <p className="mt-3 text-xs text-zinc-500">
             확인을 위해 <b className="text-foreground">회원탈퇴</b>를 입력하세요.
