@@ -50,11 +50,20 @@ export function useTelemetry(): TelemetryApi {
       void txRef.current?.flush(null);
     }, FLUSH_INTERVAL_MS);
 
-    const down = (e: PointerEvent) => pointers.current.add(e.pointerId);
+    // 동시터치 피크는 항상 pointer 가 추가되는 순간 발생 — down 에서 즉시 측정해야
+    // 1초 미만 짧은 동시탭도 놓치지 않는다(tick 샘플링만으론 aliasing). Set 이라 중복 add 무해.
+    const down = (e: PointerEvent) => {
+      pointers.current.add(e.pointerId);
+      colRef.current?.setMaxTouch(pointers.current.size);
+    };
     const up = (e: PointerEvent) => pointers.current.delete(e.pointerId);
+    // 포인터 누락(release/cancel 미수신) 시 stale 누적으로 과대측정되지 않게 전부 비운다.
+    const clearPointers = () => pointers.current.clear();
     window.addEventListener("pointerdown", down);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
+    window.addEventListener("lostpointercapture", up);
+    window.addEventListener("blur", clearPointers);
 
     let hiddenTimer: number | null = null;
     const finalize = (reason: string) => {
@@ -69,6 +78,7 @@ export function useTelemetry(): TelemetryApi {
     };
     const onVis = () => {
       if (document.visibilityState === "hidden") {
+        clearPointers(); // 백그라운드 전환 시 release 이벤트가 안 와 stale 남는 것 방지
         void txRef.current?.flush(null);
         hiddenTimer = window.setTimeout(() => finalize("hidden_timeout"), HIDDEN_TIMEOUT_MS);
       } else if (hiddenTimer) {
@@ -86,6 +96,8 @@ export function useTelemetry(): TelemetryApi {
       window.removeEventListener("pointerdown", down);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
+      window.removeEventListener("lostpointercapture", up);
+      window.removeEventListener("blur", clearPointers);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", onHide);
       if (hiddenTimer) window.clearTimeout(hiddenTimer);
@@ -98,6 +110,7 @@ export function useTelemetry(): TelemetryApi {
         const sessionId =
           typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : null;
         if (!sessionId) return; // 구형 환경 — 계측 생략(게임 무영향)
+        pointers.current.clear(); // 새 세션 — 이전 세션 잔여 포인터 제거
         const c = new TelemetryCollector({
           sessionId,
           deviceClass: detectDeviceClass(),

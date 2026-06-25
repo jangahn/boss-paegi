@@ -1,5 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { WEAPONS } from "@/lib/weapons";
+import { WEAPON_KEYS, MAP_KEYS } from "@/lib/telemetry/budget";
 import { log, errInfo } from "@/lib/log";
 
 /**
@@ -117,4 +119,303 @@ export async function getSessionDetail(id: string) {
     return null;
   }
   return data;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 세션 단위 분석(편중/효율/맵고착) — telemetry_rollups 가 아니라 telemetry_sessions
+ * 를 윈도우 직접 조회(getMemberActivity 와 동일 패턴). 세션 단위 facts(단일무기율·메인무기·
+ * score/sec)는 per-dim 롤업 모양에 안 맞아 여기서 JS 집계. 익명+회원 공통(summary 는 둘 다 저장).
+ * 표본/truncation 메타를 항상 동봉해 어드민이 "전체 통계 vs 표본"을 오해하지 않게 한다.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+const SESSION_FETCH_LIMIT = 5000;
+const TAP_KEYS = new Set<string>(WEAPONS.filter((w) => w.category === "tap").map((w) => w.key));
+const KNOWN_WEAPONS = new Set<string>(WEAPON_KEYS);
+const KNOWN_MAPS = new Set<string>(MAP_KEYS);
+/** 메인무기 동률 시 3순위 tie-break — 고정 무기 순서 */
+const WEAPON_ORDER: readonly string[] = WEAPON_KEYS;
+const COMPLETED_END_REASONS = new Set(["normal", "time_limit", "score_limit"]);
+/** throughput 유효 최소 플레이 시간(짧은 세션 점수/초 노이즈 제거) */
+const MIN_VALID_DURATION_MS = 3000;
+
+type DimSummary = Record<string, { hits?: number; score?: number; attempts?: number; switches?: number } | undefined>;
+type SessionShapeRow = {
+  id: string;
+  end_reason: string | null;
+  score: number | null;
+  duration_ms: number | null;
+  distinct_weapons: number | null;
+  distinct_maps: number | null;
+  weapon_summary: DimSummary | null;
+  map_summary: DimSummary | null;
+  start_map: string | null;
+};
+
+/** 표본/절단 메타 — 모든 세션단위 집계 반환에 공통 동봉 */
+export type SampleMeta = { sampleSize: number; isTruncated: boolean; limit: number };
+
+function emptyMeta(): SampleMeta {
+  return { sampleSize: 0, isTruncated: false, limit: SESSION_FETCH_LIMIT };
+}
+
+/** 윈도우 내 세션 shape 조회 — 필요 컬럼만(timeline 제외), limit+1 로 절단 판정. */
+async function fetchSessionsWindow(
+  days: number
+): Promise<{ rows: SessionShapeRow[]; meta: SampleMeta }> {
+  const admin = createAdminClient();
+  const cutoffIso = new Date(Date.now() - days * 86400 * 1000).toISOString();
+  const { data, error } = await admin
+    .from("telemetry_sessions")
+    .select(
+      "id,end_reason,score,duration_ms,distinct_weapons,distinct_maps,weapon_summary,map_summary,start_map"
+    )
+    .gte("started_at", cutoffIso)
+    .order("started_at", { ascending: false })
+    .limit(SESSION_FETCH_LIMIT + 1); // +1 로 5000 초과 여부(절단) 판정
+  if (error || !data) {
+    if (error) log.warn("analytics.sessions_window_fail", errInfo(error));
+    return { rows: [], meta: emptyMeta() };
+  }
+  const isTruncated = data.length > SESSION_FETCH_LIMIT;
+  const rows = (isTruncated ? data.slice(0, SESSION_FETCH_LIMIT) : data) as SessionShapeRow[];
+  return { rows, meta: { sampleSize: rows.length, isTruncated, limit: SESSION_FETCH_LIMIT } };
+}
+
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+function pushTo(map: Map<string, number[]>, key: string, val: number): void {
+  const arr = map.get(key);
+  if (arr) arr.push(val);
+  else map.set(key, [val]);
+}
+
+/** summary 에서 hits>0 인 무기/맵 hit 맵 추출(숫자화). */
+function hitsOf(sum: DimSummary | null): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (sum && typeof sum === "object") {
+    for (const [k, v] of Object.entries(sum)) {
+      const h = Number(v?.hits) || 0;
+      if (h > 0) out[k] = h;
+    }
+  }
+  return out;
+}
+
+/** distinct 무기수 — summary(hits>0 key) 우선, 없으면 컬럼 fallback. */
+function distinctWeaponsOf(row: SessionShapeRow): number {
+  const fromSummary = Object.keys(hitsOf(row.weapon_summary)).length;
+  return fromSummary > 0 ? fromSummary : Math.max(0, Number(row.distinct_weapons) || 0);
+}
+
+/** 메인무기 — hits desc → score desc → 고정 WEAPON_ORDER. unknown key 는 그대로 반환(상위에서 묶음). */
+function mainWeaponOf(sum: DimSummary | null): string | null {
+  if (!sum || typeof sum !== "object") return null;
+  let best: string | null = null;
+  let bh = -1;
+  let bs = -1;
+  let bo = Number.POSITIVE_INFINITY;
+  for (const [k, v] of Object.entries(sum)) {
+    const h = Number(v?.hits) || 0;
+    if (h <= 0) continue;
+    const sc = Number(v?.score) || 0;
+    const idx = WEAPON_ORDER.indexOf(k);
+    const o = idx < 0 ? Number.POSITIVE_INFINITY : idx;
+    if (h > bh || (h === bh && (sc > bs || (sc === bs && o < bo)))) {
+      best = k;
+      bh = h;
+      bs = sc;
+      bo = o;
+    }
+  }
+  return best;
+}
+
+/** unknown 무기 key 는 'unknown' 으로 묶음(throw 금지). */
+function weaponLabel(k: string): string {
+  return KNOWN_WEAPONS.has(k) ? k : "unknown";
+}
+
+/** 단일 hit 분포의 Herfindahl(Σshare²). 빈 분포는 null. */
+function herfindahl(hits: Record<string, number>): number | null {
+  const total = Object.values(hits).reduce((a, b) => a + b, 0);
+  if (total <= 0) return null;
+  let h = 0;
+  for (const v of Object.values(hits)) {
+    const sh = v / total;
+    h += sh * sh;
+  }
+  return h;
+}
+
+export type WeaponConcentration = SampleMeta & {
+  /** 무기를 1개 이상 쓴 세션 수(편중 분모) */
+  weaponSessions: number;
+  /** 단일무기 세션 비율(0~1) */
+  singleWeaponPct: number;
+  avgDistinctWeapons: number;
+  /** 메인무기별 세션 수(unknown 묶음) — 표본수=값 */
+  mainWeaponDist: Record<string, number>;
+  /** tap 카테고리 hit 비중(known 무기 기준) */
+  tapCategoryShare: number;
+  /** known 무기 hit / 전체 hit (unknown 커버리지) */
+  knownHitCoverage: number;
+  /** 세션 평균 집중도(주력) — 세션별 HHI 평균 */
+  avgSessionConcentration: number | null;
+  /** 전체 타격분포 집중도(보조) */
+  aggregateHitConcentration: number | null;
+};
+
+export async function getWeaponConcentration(days: number): Promise<WeaponConcentration> {
+  const { rows, meta } = await fetchSessionsWindow(days);
+  let weaponSessions = 0;
+  let singleWeapon = 0;
+  let distinctSum = 0;
+  const mainWeaponDist: Record<string, number> = {};
+  const aggHits: Record<string, number> = {};
+  const sessionHHIs: number[] = [];
+  let tapHits = 0;
+  let knownHits = 0;
+  let allHits = 0;
+
+  for (const row of rows) {
+    const hits = hitsOf(row.weapon_summary);
+    const dw = distinctWeaponsOf(row);
+    if (dw < 1) continue; // 타격 무기 없는 세션 제외
+    weaponSessions += 1;
+    distinctSum += dw;
+    if (dw === 1) singleWeapon += 1;
+    const main = mainWeaponOf(row.weapon_summary);
+    if (main) mainWeaponDist[weaponLabel(main)] = (mainWeaponDist[weaponLabel(main)] ?? 0) + 1;
+    const hhi = herfindahl(hits);
+    if (hhi !== null) sessionHHIs.push(hhi);
+    for (const [k, h] of Object.entries(hits)) {
+      allHits += h;
+      aggHits[weaponLabel(k)] = (aggHits[weaponLabel(k)] ?? 0) + h;
+      if (KNOWN_WEAPONS.has(k)) {
+        knownHits += h;
+        if (TAP_KEYS.has(k)) tapHits += h;
+      }
+    }
+  }
+
+  // aggregateHitConcentration 은 known 무기 분포 기준(unknown 묶음 제외해 무기 간 비교 일관)
+  const knownAgg: Record<string, number> = {};
+  for (const [k, h] of Object.entries(aggHits)) if (k !== "unknown") knownAgg[k] = h;
+
+  return {
+    ...meta,
+    weaponSessions,
+    singleWeaponPct: weaponSessions > 0 ? singleWeapon / weaponSessions : 0,
+    avgDistinctWeapons: weaponSessions > 0 ? distinctSum / weaponSessions : 0,
+    mainWeaponDist,
+    tapCategoryShare: knownHits > 0 ? tapHits / knownHits : 0,
+    knownHitCoverage: allHits > 0 ? knownHits / allHits : 1,
+    avgSessionConcentration:
+      sessionHHIs.length > 0 ? sessionHHIs.reduce((a, b) => a + b, 0) / sessionHHIs.length : null,
+    aggregateHitConcentration: herfindahl(knownAgg),
+  };
+}
+
+export type WeaponThroughputRow = {
+  weapon: string;
+  allN: number;
+  pureN: number;
+  /** 메인무기 기준 점수/초 중앙값(근사) */
+  medianAll: number | null;
+  /** 단일무기(pure) 세션 점수/초 중앙값 */
+  medianPure: number | null;
+};
+export type WeaponThroughput = SampleMeta & {
+  totalSessions: number;
+  /** throughput 계산에 쓰인 세션(완료·유효 duration) */
+  eligibleSessions: number;
+  excludedSessions: number;
+  rows: WeaponThroughputRow[];
+};
+
+export async function getWeaponThroughput(days: number): Promise<WeaponThroughput> {
+  const { rows, meta } = await fetchSessionsWindow(days);
+  const all = new Map<string, number[]>();
+  const pure = new Map<string, number[]>();
+  let eligible = 0;
+
+  for (const row of rows) {
+    const reason = row.end_reason ?? "";
+    const dur = Number(row.duration_ms) || 0;
+    const score = Number(row.score) || 0;
+    // 완료 세션 + 유효 duration 만 — 부분세션(abandon/reload/hidden_timeout)·초단기 제외
+    if (!COMPLETED_END_REASONS.has(reason) || dur <= MIN_VALID_DURATION_MS) continue;
+    const main = mainWeaponOf(row.weapon_summary);
+    if (!main) continue;
+    eligible += 1;
+    const key = weaponLabel(main);
+    const sps = score / (dur / 1000);
+    pushTo(all, key, sps);
+    if (distinctWeaponsOf(row) === 1) pushTo(pure, key, sps);
+  }
+
+  const keys = new Set<string>([...all.keys(), ...pure.keys()]);
+  const out: WeaponThroughputRow[] = [];
+  for (const k of keys) {
+    const a = all.get(k) ?? [];
+    const p = pure.get(k) ?? [];
+    out.push({ weapon: k, allN: a.length, pureN: p.length, medianAll: median(a), medianPure: median(p) });
+  }
+  out.sort((x, y) => (y.medianPure ?? y.medianAll ?? 0) - (x.medianPure ?? x.medianAll ?? 0));
+
+  return {
+    ...meta,
+    totalSessions: rows.length,
+    eligibleSessions: eligible,
+    excludedSessions: rows.length - eligible,
+    rows: out,
+  };
+}
+
+export type MapStickiness = SampleMeta & {
+  /** 맵 데이터가 있는 세션 수(분모) */
+  validMapSessions: number;
+  singleMapPct: number;
+  avgDistinctMaps: number;
+  /** 세션당 맵 전환 이벤트 수 */
+  mapSwitchRate: number;
+  /** 시작맵별 세션 수(unknown 묶음) */
+  startMapDist: Record<string, number>;
+};
+
+export async function getMapStickiness(days: number): Promise<MapStickiness> {
+  const { rows, meta } = await fetchSessionsWindow(days);
+  let valid = 0;
+  let singleMap = 0;
+  let distinctSum = 0;
+  let switchSum = 0;
+  const startMapDist: Record<string, number> = {};
+
+  for (const row of rows) {
+    if (!row.start_map) continue; // 맵 데이터 없는 세션 제외
+    valid += 1;
+    const dm = Math.max(0, Number(row.distinct_maps) || 0);
+    distinctSum += dm;
+    if (dm === 1) singleMap += 1;
+    const startKey = KNOWN_MAPS.has(row.start_map) ? row.start_map : "unknown";
+    startMapDist[startKey] = (startMapDist[startKey] ?? 0) + 1;
+    const ms = row.map_summary;
+    if (ms && typeof ms === "object") {
+      for (const v of Object.values(ms)) switchSum += Number(v?.switches) || 0;
+    }
+  }
+
+  return {
+    ...meta,
+    validMapSessions: valid,
+    singleMapPct: valid > 0 ? singleMap / valid : 0,
+    avgDistinctMaps: valid > 0 ? distinctSum / valid : 0,
+    mapSwitchRate: valid > 0 ? switchSum / valid : 0,
+    startMapDist,
+  };
 }
