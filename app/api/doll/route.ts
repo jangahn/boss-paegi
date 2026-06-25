@@ -135,14 +135,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const publicUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-
+  // private 버킷 — image_url 에 **경로** 저장(읽을 때 signedDollUrl 로 서명). getPublicUrl 미사용.
   const { data: doll, error: insertError } = await admin
     .from("dolls")
     .insert({
       id: dollId,
       owner_id: user.id,
-      image_url: publicUrl,
+      image_url: path,
       style_meta: body.styleMeta ?? {},
       role: dollRole,
     })
