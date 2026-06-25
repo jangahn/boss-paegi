@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PUBLIC_ENV } from "@/lib/env";
+import { signedHighlightUrl } from "@/lib/storage";
 import type { GameplayStats } from "@/lib/stats";
 
 /**
@@ -48,11 +48,11 @@ export function highlightLive(s: Score): boolean {
   return true;
 }
 
-/** attach 됐고 삭제/만료 안 된 클립이면 public CDN URL, 아니면 null. */
-export function clipPublicUrl(s: Score): string | null {
+/** attach 됐고 삭제/만료 안 된 클립이면 **signed URL**(private 버킷), 아니면 null. (async) */
+export async function clipSignedUrl(s: Score): Promise<string | null> {
   if (s.highlight_status !== "attached" || !s.highlight_clip_path) return null;
   if (!highlightLive(s)) return null;
-  return `${PUBLIC_ENV.SUPABASE_URL}/storage/v1/object/public/highlights/${s.highlight_clip_path}`;
+  return signedHighlightUrl(s.highlight_clip_path);
 }
 
 /** 급상승 stat — clip(attached) 또는 card 둘 다, 삭제/만료 X. */

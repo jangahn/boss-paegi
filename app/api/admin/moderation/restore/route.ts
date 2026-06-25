@@ -9,11 +9,9 @@ import { log, errInfo } from "@/lib/log";
 export const runtime = "nodejs";
 
 /**
- * doll takedown (Phase 2 — **가역**). private 버킷이라 RPC 의 soft-delete(deleted_at) 만으로
- *   신규 signed URL 발급이 중단(=앱 표면에서 invisible). storage 객체는 **물리삭제하지 않음**
- *   → 오삭제 복구(restore) 가능. 영구 제거는 별도 permanent-delete 라우트.
- * ⚠️ 이미 발급된 signed URL 은 TTL(doll 10분/clip 15분) 동안 생존 — "즉시 차단" 아님(신규 발급 중단).
- * 멱등: 이미 삭제된 doll 도 ok(already_deleted).
+ * doll 복구 (Phase 2) — takedown 의 가역 되돌리기. RPC 가 deleted_at=null + **이 doll 의 takedown 이
+ *   숨긴 하이라이트만** 되살림(만료 등 다른 숨김 불간섭). 영구삭제(artifacts_purged_at)된 건 객체가
+ *   없어 복구 불가(RPC already_purged → 400). 신고는 actioned 유지(복구는 새 결정).
  */
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
@@ -32,26 +30,24 @@ export async function POST(req: NextRequest) {
   const dollId = body.dollId;
   const admin = createAdminClient();
 
-  // DB 상태 변경(멱등): soft-delete + 하이라이트 cascade 태깅 + 이 doll pending 신고 actioned.
-  //   storage 물리삭제 없음(가역). targets 는 permanent-delete 가 쓰고, takedown 은 무시.
-  const { data, error } = await admin.rpc("admin_takedown_doll", {
+  const { data, error } = await admin.rpc("admin_restore_doll", {
     p_admin_id: gate.user.id,
     p_doll_id: dollId,
     p_reason: reason,
   });
   if (error) {
-    log.warn("admin.takedown_fail", { dollId, ...errInfo(error) });
+    log.warn("admin.restore_fail", { dollId, ...errInfo(error) });
     return NextResponse.json({ error: adminRpcErrorCode(error) }, { status: 400 });
   }
-  const result = (data ?? {}) as { already_deleted?: boolean };
+  const result = (data ?? {}) as { already_active?: boolean };
 
-  // 이 doll 이 박힌 모든 표면 ISR 캐시 무효화(앱 표면에서 즉시 기본 부장님으로).
+  // 복구된 얼굴이 다시 보이도록 표면 ISR 캐시 무효화.
   await revalidateDollSurfaces(admin, dollId);
 
-  log.info("admin.takedown_ok", {
+  log.info("admin.restore_ok", {
     dollId,
     adminId: gate.user.id,
-    alreadyDeleted: !!result.already_deleted,
+    alreadyActive: !!result.already_active,
   });
-  return NextResponse.json({ ok: true, already_deleted: !!result.already_deleted });
+  return NextResponse.json({ ok: true, already_active: !!result.already_active });
 }

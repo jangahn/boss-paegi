@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signedDollUrl } from "@/lib/storage";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
@@ -12,6 +13,10 @@ import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
 
 const DEFAULT_BOSS = "/sprites/boss-default.png";
+
+// signed URL(TTL 600) 박히는 페이지 — ISR ≤60s 로 만료 URL/삭제(takedown) staleness 최소화.
+//   takedown/restore/permanent 라우트가 이 path 를 명시 revalidatePath(즉시 반영).
+export const revalidate = 60;
 
 type DollRow = {
   id: string;
@@ -30,11 +35,9 @@ async function fetchDoll(id: string): Promise<DollRow | null> {
     .eq("id", id)
     .single();
   if (!data) return null;
-  const row = data as unknown as DollRow;
-  // takedown(0034): 삭제된 인형은 404 대신 캐릭터 영역에 기본 부장님 — invisible takedown
-  //   (공유 화면에서 '신고/내려감' 여부 확인 불가, doll-less 점수와 구분 안 됨).
-  if (row.deleted_at) row.image_url = DEFAULT_BOSS;
-  return row;
+  // image_url=경로(raw) 유지. 서명/삭제 분기는 렌더에서(deleted→기본보스, 아니면 signedDollUrl).
+  // invisible takedown(0034): 삭제 인형도 404 안 하고 캐릭터 영역만 기본 부장님으로 대체.
+  return data as unknown as DollRow;
 }
 
 export async function generateMetadata({
@@ -91,6 +94,10 @@ export default async function DollPage({
   const rlabel = rc.label;
   const trait = dollTrait(doll.id, role, cfg);
   const joined = new Date(doll.created_at);
+  // 삭제(takedown)면 기본 부장님(public sprite, 서명 X), 아니면 private 버킷 서명.
+  const imgSrc = doll.deleted_at
+    ? DEFAULT_BOSS
+    : (await signedDollUrl(doll.image_url)) ?? DEFAULT_BOSS;
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
@@ -111,7 +118,7 @@ export default async function DollPage({
             <div className="shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={doll.image_url}
+                src={imgSrc}
                 alt={`${rlabel} 증명사진`}
                 className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100 object-contain"
               />

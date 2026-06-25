@@ -54,7 +54,25 @@ export default function GalleryPage() {
         .is("deleted_at", null) // takedown(0034): 신고 삭제된 인형은 갤러리에서도 숨김.
         .order("created_at", { ascending: false });
       if (queryError) throw queryError;
-      setDolls((data as Doll[] | null) ?? []);
+      const rows = (data as Doll[] | null) ?? [];
+      // private 버킷 — image_url(경로)을 배치 서명 API로 signed URL 치환(50개씩 청크).
+      for (let i = 0; i < rows.length; i += 50) {
+        const chunk = rows.slice(i, i + 50);
+        try {
+          const r = await fetch("/api/doll/signed-urls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: chunk.map((d) => d.id) }),
+          });
+          const { urls } = (await r.json()) as {
+            urls: Record<string, string | null>;
+          };
+          for (const d of chunk) d.image_url = urls[d.id] ?? d.image_url;
+        } catch {
+          /* 서명 실패 → 원본 경로 유지(렌더 깨질 수 있음, 드묾) */
+        }
+      }
+      setDolls(rows);
     } catch (e) {
       setError(e instanceof Error ? e.message : "불러오기 실패");
       setDolls([]);

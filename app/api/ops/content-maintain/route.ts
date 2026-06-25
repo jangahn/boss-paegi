@@ -12,23 +12,14 @@ const HIGHLIGHTS_BUCKET = "highlights";
 const TMP_FACE_PREFIX = "tmp/face";
 const TMP_FACE_MAX_AGE_MS = 30 * 60 * 1000; // 30분 — 생성(60~120초)+여유 지난 고아 얼굴.
 const EXPIRE_LIMIT = 100;
-const PURGE_LIMIT = 50;
 const FACE_FOLDER_LIMIT = 100;
-
-/** dolls 공개 URL → 버킷상대경로(없으면 null). */
-function dollPathFromUrl(url: string | null): string | null {
-  if (!url) return null;
-  const marker = "/object/public/dolls/";
-  const i = url.indexOf(marker);
-  return i >= 0 ? url.slice(i + marker.length) : null;
-}
 
 /**
  * 콘텐츠 유지보수 cron — cron-job.org 가 x-cron-secret 헤더로 주기 호출(머신, requireAdmin 아님).
  * ① 만료 하이라이트(highlight_expires_at 경과) clip 물리삭제 + highlight_deleted_at set
  * ② 고아 tmp/face 얼굴 백스톱 sweep(30분+)
- * ③ takedown 됐는데 artifacts_purged_at 미확정인 doll 의 storage 객체 물리삭제 재시도(점5 백스톱)
- * (탈퇴 시 하이라이트는 의도적으로 보존 — 여기서 건드리지 않음.)
+ * (Phase 2: takedown 은 가역이라 자동 purge 없음 — 영구삭제는 어드민 수동 permanent-delete 만.
+ *  탈퇴 시 하이라이트는 의도적으로 보존 — 여기서 건드리지 않음.)
  */
 export async function POST(req: NextRequest) {
   const secret = SERVER_ENV.CRON_SECRET;
@@ -41,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
-  const result = { expired: 0, orphanFaces: 0, purgedDolls: 0, purgeFailed: 0 };
+  const result = { expired: 0, orphanFaces: 0 };
 
   // ── ① 만료 하이라이트 purge ──
   try {
@@ -95,55 +86,6 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     log.error("content_maintain.face_sweep_fail", errInfo(e));
-  }
-
-  // ── ③ artifacts_purged_at 미확정 doll 물리삭제 백스톱 ──
-  try {
-    const { data: unpurged } = await admin
-      .from("dolls")
-      .select("id, image_url")
-      .not("deleted_at", "is", null)
-      .is("artifacts_purged_at", null)
-      .limit(PURGE_LIMIT);
-    for (const d of (unpurged ?? []) as { id: string; image_url: string | null }[]) {
-      let ok = true;
-      const dollPath = dollPathFromUrl(d.image_url);
-      if (dollPath) {
-        const { error } = await admin.storage.from(DOLLS_BUCKET).remove([dollPath]);
-        if (error) ok = false;
-      } else if (d.image_url) {
-        ok = false; // 경로 파싱 실패 → 미확정 유지.
-      }
-      // 이 doll 을 쓰는 scores 의 하이라이트 clip (2-step: score id → highlight clip).
-      const { data: scoreRows } = await admin
-        .from("scores")
-        .select("id")
-        .eq("doll_id", d.id);
-      const scoreIds = ((scoreRows ?? []) as { id: string }[]).map((s) => s.id);
-      let clipPaths: string[] = [];
-      if (scoreIds.length) {
-        const { data: hls } = await admin
-          .from("score_highlights")
-          .select("highlight_clip_path")
-          .in("score_id", scoreIds)
-          .not("highlight_clip_path", "is", null);
-        clipPaths = ((hls ?? []) as { highlight_clip_path: string }[]).map(
-          (h) => h.highlight_clip_path
-        );
-      }
-      if (clipPaths.length) {
-        const { error } = await admin.storage.from(HIGHLIGHTS_BUCKET).remove(clipPaths);
-        if (error) ok = false;
-      }
-      if (ok) {
-        await admin.from("dolls").update({ artifacts_purged_at: nowIso }).eq("id", d.id);
-        result.purgedDolls += 1;
-      } else {
-        result.purgeFailed += 1;
-      }
-    }
-  } catch (e) {
-    log.error("content_maintain.purge_backstop_fail", errInfo(e));
   }
 
   log.info("content_maintain.done", result);

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
-import { fetchScoreDetail, hasLiveHighlight, clipPublicUrl } from "@/lib/score-detail";
+import { fetchScoreDetail, hasLiveHighlight, clipSignedUrl } from "@/lib/score-detail";
+import { signedDollUrl } from "@/lib/storage";
 import { asRole } from "@/lib/roles";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
@@ -13,6 +14,9 @@ import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { ReportButton } from "@/components/ReportButton";
+
+// signed doll/clip URL(TTL 600/900) 박히는 페이지 — ISR ≤60s 로 만료/삭제 staleness 최소화.
+export const revalidate = 60;
 
 export async function generateMetadata({
   params,
@@ -62,7 +66,8 @@ export default async function HistoryDetailPage({
   const shareLabel = hasHighlight
     ? mk.share.historyShareBtnHighlight
     : mk.share.historyShareBtn;
-  const shareClipUrl = clipPublicUrl(score);
+  const shareClipUrl = await clipSignedUrl(score);
+  const dollImg = await signedDollUrl(score.dolls?.image_url); // private 버킷 서명
 
   return (
     <>
@@ -96,7 +101,7 @@ export default async function HistoryDetailPage({
             <div className="mt-3 flex items-start justify-between gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={score.dolls?.image_url ?? "/sprites/boss-default.png"}
+                src={dollImg ?? "/sprites/boss-default.png"}
                 alt={`맞은 ${rlabel}`}
                 className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
               />

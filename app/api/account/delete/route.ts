@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOLLS_BUCKET } from "@/lib/generation";
+import { dollPath } from "@/lib/storage-path";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
     .select("image_url")
     .eq("owner_id", userId);
   const dollPaths = (dolls ?? [])
-    .map((d) => (d.image_url as string | null)?.split("/dolls/")[1])
+    .map((d) => dollPath(d.image_url as string | null)) // private 후 image_url=경로(URL도 관용)
     .filter((p): p is string => !!p);
 
   // 1b) 탈퇴자 하이라이트 clip 경로 수집 — 크레딧 0(전면 스크럽)과 일관되게 얼굴 영상도 삭제.

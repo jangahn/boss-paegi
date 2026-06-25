@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
 import type {
   AdminOrder,
@@ -156,5 +157,10 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
     log.warn("admin.user_dolls_fail", errInfo(error));
     return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
   }
-  return { rows: (data ?? []) as DollRow[], total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+  // private 버킷 — image_url 서명(순차 ≤page). 삭제/영구삭제는 DollsList 칩이 덮음.
+  const rows: DollRow[] = [];
+  for (const d of (data ?? []) as DollRow[]) {
+    rows.push({ ...d, image_url: (await signedDollUrl(d.image_url)) ?? d.image_url });
+  }
+  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
 }

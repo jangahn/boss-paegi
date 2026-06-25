@@ -60,7 +60,8 @@ async function copyOne(
         continue;
       }
       return {
-        url: admin.storage.from(DOLLS_BUCKET).getPublicUrl(path).data.publicUrl,
+        // private 버킷 — 경로 저장(candidate_urls). /api/generations 가 읽을 때 서명. getPublicUrl 미사용.
+        url: path,
         width: img.width,
         height: img.height,
         copied: true,
