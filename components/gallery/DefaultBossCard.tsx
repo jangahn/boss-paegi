@@ -6,14 +6,15 @@ import { MenuItem } from "@/components/gallery/MenuItem";
 import { HookToast } from "@/components/gallery/HookToast";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
-import { ROLE_META, asRole } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
+import { asRole } from "@/lib/roles";
 
 const DEFAULT_BOSS_SRC = "/sprites/boss-default.png";
-const BOSS_CHIP = ROLE_META[asRole("boss")].label; // "부장님"
 
-// 후킹 토스트 문구 — 공유/롤 변경 시도 시. 실제 액션 대신 가입/생성 유도.
+// 후킹 토스트 문구 — 공유/역할 변경 시도 시. 실제 액션 대신 가입/생성 유도.
 const SHARE_HOOK = "나만의 캐릭터를 만들면 공유할 수 있어요!";
-const ROLE_HOOK = "다른 롤은 캐릭터를 만들어야 바꿀 수 있어요!";
+const ROLE_HOOK = "다른 역할은 캐릭터를 만들어야 바꿀 수 있어요!";
 
 /**
  * 기본부장님 카드 — 갤러리 맨 앞 상시 노출, '기본' 뱃지로 내 캐릭터와 구분.
@@ -28,6 +29,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const hasMenu = state !== "member"; // 캐릭터 보유 회원에겐 후킹 불필요 → play 전용
+  const bossChip = roleFrom(asRole("boss"), useRoleConfig()).label; // DB 발행 호칭(기본 "부장님")
   const banner = useMarketingCopy().signupBanner;
   const cta = {
     label: state === "nonmember" ? banner.nonmemberCta : banner.memberEmptyCta,
@@ -62,7 +64,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
       {/* 롤 칩 + '기본' 뱃지 (좌상단) */}
       <div className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1">
         <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm">
-          {BOSS_CHIP}
+          {bossChip}
         </span>
         <span className="rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm">
           기본
@@ -98,7 +100,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
               />
               <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
                 <MenuItem onClick={() => hook(SHARE_HOOK)}>공유</MenuItem>
-                <MenuItem onClick={() => hook(ROLE_HOOK)}>롤 변경</MenuItem>
+                <MenuItem onClick={() => hook(ROLE_HOOK)}>역할 변경</MenuItem>
               </div>
             </>
           )}

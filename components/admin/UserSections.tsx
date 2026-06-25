@@ -1,5 +1,7 @@
 import type { GenerationRow, DollRow } from "@/lib/admin-types";
 import { fmtKst, shortId } from "@/lib/admin-format";
+import { asRole } from "@/lib/roles";
+import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 const GEN_STATUS: Record<string, string> = {
   queued: "진행중",
@@ -13,16 +15,10 @@ const GEN_COLOR: Record<string, string> = {
   picked: "text-emerald-600",
   failed: "text-red-500",
 };
-const ROLE_LABEL: Record<string, string> = {
-  boss: "부장",
-  exec: "임원",
-  teamlead: "팀장",
-  client: "거래처",
-  coworker: "동료",
-};
+// 역할 호칭은 DB 발행 config(roleFrom). cfg 는 서버 부모(getRoleConfig)에서 prop 으로. ROLE_META 는 roleFrom 내부 fallback.
 
 /** AI 생성 내역(상태 포함) — candidate_urls 배열은 미반환, 후보 수만. */
-export function GenerationsTable({ rows }: { rows: GenerationRow[] }) {
+export function GenerationsTable({ rows, cfg }: { rows: GenerationRow[]; cfg: RoleConfig }) {
   if (!rows.length) return <p className="text-sm text-zinc-400">생성 내역이 없어요.</p>;
   return (
     <div className="overflow-x-auto rounded-xl border border-foreground/10">
@@ -43,7 +39,7 @@ export function GenerationsTable({ rows }: { rows: GenerationRow[] }) {
               <td className={`px-2 py-1.5 font-semibold ${GEN_COLOR[g.status] ?? ""}`}>
                 {GEN_STATUS[g.status] ?? g.status}
               </td>
-              <td className="px-2 py-1.5">{ROLE_LABEL[g.role] ?? g.role}</td>
+              <td className="px-2 py-1.5">{roleFrom(asRole(g.role), cfg).label}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{g.candidate_count}</td>
               <td className="px-2 py-1.5 font-mono text-zinc-400">
                 {g.picked_doll_id ? shortId(g.picked_doll_id) : "—"}
@@ -57,7 +53,7 @@ export function GenerationsTable({ rows }: { rows: GenerationRow[] }) {
 }
 
 /** 현재 보유 캐릭터(dolls) — 썸네일 그리드. (하드삭제라 삭제분은 미추적.) */
-export function DollsList({ rows }: { rows: DollRow[] }) {
+export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
   if (!rows.length) return <p className="text-sm text-zinc-400">캐릭터가 없어요.</p>;
   return (
     <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -69,7 +65,7 @@ export function DollsList({ rows }: { rows: DollRow[] }) {
             alt=""
             className="mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 object-cover"
           />
-          <div className="font-medium">{ROLE_LABEL[d.role] ?? d.role}</div>
+          <div className="font-medium">{roleFrom(asRole(d.role), cfg).label}</div>
           <div className="text-zinc-400">{fmtKst(d.created_at)}</div>
         </li>
       ))}

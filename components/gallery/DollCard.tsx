@@ -6,7 +6,9 @@ import { Spinner } from "@/components/Spinner";
 import { MenuItem } from "@/components/gallery/MenuItem";
 import { shareDoll } from "@/lib/doll-share";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
-import { ROLE_IDS, ROLE_META, asRole, josaEuro, type RoleId } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
+import { ROLE_IDS, asRole, josaEuro, type RoleId } from "@/lib/roles";
 
 export type Doll = {
   id: string;
@@ -29,6 +31,7 @@ export function DollCard({
 }) {
   const role = asRole(doll.role);
   const mk = useMarketingCopy();
+  const cfg = useRoleConfig(); // DB 발행 호칭(roleFrom) — 마케터 변경이 갤러리칩/메뉴/토스트에 반영
   const [imgLoaded, setImgLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [roleMenu, setRoleMenu] = useState(false);
@@ -74,13 +77,14 @@ export function DollCard({
         body: JSON.stringify({ id: doll.id, role: next }),
       });
       if (!r.ok) {
-        flash("롤 변경 실패");
+        flash("역할 변경 실패");
         return;
       }
       onRoleChange(doll.id, next);
-      flash(`${ROLE_META[next].label}${josaEuro(ROLE_META[next].label)} 변경`);
+      const nextLabel = roleFrom(next, cfg).label;
+      flash(`${nextLabel}${josaEuro(nextLabel)} 변경`);
     } catch {
-      flash("롤 변경 실패");
+      flash("역할 변경 실패");
     } finally {
       setSavingRole(false);
     }
@@ -139,7 +143,7 @@ export function DollCard({
 
       {/* 롤 칩 (좌상단 — ⋯ 버튼/공유 스피너와 안 겹치게) */}
       <span className="pointer-events-none absolute left-2 top-2 z-20 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm">
-        {ROLE_META[role].label}
+        {roleFrom(role, cfg).label}
       </span>
 
       {/* ⋯ 옵션 버튼 — 공유/롤 변경/삭제 메뉴 */}
@@ -172,14 +176,14 @@ export function DollCard({
             {roleMenu ? (
               ROLE_IDS.map((rid) => (
                 <MenuItem key={rid} onClick={() => void handleRole(rid)}>
-                  {ROLE_META[rid].label}
+                  {roleFrom(rid, cfg).label}
                   {rid === role ? " ✓" : ""}
                 </MenuItem>
               ))
             ) : (
               <>
                 <MenuItem onClick={handleShare}>공유</MenuItem>
-                <MenuItem onClick={() => setRoleMenu(true)}>롤 변경</MenuItem>
+                <MenuItem onClick={() => setRoleMenu(true)}>역할 변경</MenuItem>
                 <MenuItem
                   onClick={() => {
                     closeMenu();
