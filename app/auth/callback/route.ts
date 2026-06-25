@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
   // 신규/기존 분기 — member_accounts 선조회. **자동 생성하지 않음.**
   const { data: member } = await admin
     .from("member_accounts")
-    .select("user_id")
+    .select("user_id, reconsent_required")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -93,6 +93,12 @@ export async function GET(request: NextRequest) {
     // 신규 → 동의 화면(/signup). 마이그 쿠키 **유지**(가입 완료 시 onboard 가 익명 데이터 이전).
     log.info("auth.signup_redirect", { userId: user.id });
     return redirect(`/signup?next=${encodeURIComponent(next)}`);
+  }
+
+  // 재활성(탈퇴 복구) 회원 — 현재 약관·방침 재동의 필요(0037). 동의 완료 전 서비스 차단.
+  if ((member as { reconsent_required?: boolean }).reconsent_required) {
+    log.info("auth.reconsent_redirect", { userId: user.id });
+    return redirectClear(`/reconsent?next=${encodeURIComponent(next)}`);
   }
 
   // 기존 회원 로그인 — 이메일 동기화만(자동 초기화/프로필 덮어쓰기 제거). 마이그 쿠키 clear.

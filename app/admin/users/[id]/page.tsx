@@ -13,6 +13,7 @@ import { OrdersTable } from "@/components/admin/OrdersTable";
 import { LedgerTable } from "@/components/admin/LedgerTable";
 import { GenerationsTable, DollsList } from "@/components/admin/UserSections";
 import { CreditAdjustForm } from "@/components/admin/CreditAdjustForm";
+import { ReactivateAccountForm } from "@/components/admin/ReactivateAccountForm";
 import { Pagination } from "@/components/Pagination";
 import { fmtKst, shortId, firstParam } from "@/lib/admin-format";
 
@@ -95,6 +96,11 @@ export default async function AdminUserDetailPage({
                 admin
               </span>
             )}
+            {member.deletedAt && (
+              <span className="rounded-full border border-red-500/40 px-2 py-0.5 text-xs text-red-500">
+                탈퇴함 · {fmtKst(member.deletedAt)}
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
             <span>{member.email ?? "이메일 없음"}</span>
@@ -108,6 +114,15 @@ export default async function AdminUserDetailPage({
             플레이 내역 보기 →
           </Link>
         </section>
+
+        {/* 탈퇴 계정 재활성 — 탈퇴 상태에서만 노출(0037) */}
+        {member.deletedAt && (
+          <section>
+            <ReactivateAccountForm
+              target={{ userId: member.userId, originalEmail: member.email }}
+            />
+          </section>
+        )}
 
         {/* CS 크레딧 조정 */}
         <section>

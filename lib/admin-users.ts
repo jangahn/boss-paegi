@@ -5,6 +5,7 @@ import { log, errInfo } from "@/lib/log";
 import type {
   AdminOrder,
   MemberInfo,
+  WithdrawnMatch,
   GenerationRow,
   DollRow,
   Paged,
@@ -20,8 +21,9 @@ export const USER_PAGE_SIZE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Embed = { display_name: string | null } | { display_name: string | null }[] | null;
-const embName = (e: Embed): string | null => (Array.isArray(e) ? e[0] : e)?.display_name ?? null;
+type ProfEmbed = { display_name: string | null; deleted_at: string | null };
+type Embed = ProfEmbed | ProfEmbed[] | null;
+const emb = (e: Embed): ProfEmbed | null => (Array.isArray(e) ? e[0] ?? null : e);
 
 type MemberRow = {
   user_id: string;
@@ -33,14 +35,16 @@ type MemberRow = {
 };
 const toMemberInfo = (m: MemberRow): MemberInfo => ({
   userId: m.user_id,
-  displayName: embName(m.profiles),
+  displayName: emb(m.profiles)?.display_name ?? null,
   email: m.email,
   genCredits: m.gen_credits,
   memberSince: m.member_since,
   isAdmin: m.is_admin,
+  deletedAt: emb(m.profiles)?.deleted_at ?? null,
 });
 
-const MEMBER_SELECT = "user_id, gen_credits, member_since, email, is_admin, profiles(display_name)";
+const MEMBER_SELECT =
+  "user_id, gen_credits, member_since, email, is_admin, profiles(display_name, deleted_at)";
 
 /** 단일 회원 정보(UUID). 비회원/미존재면 null. */
 export async function getUserMemberInfo(userId: string): Promise<MemberInfo | null> {
@@ -56,6 +60,32 @@ export async function getUserMemberInfo(userId: string): Promise<MemberInfo | nu
     return null;
   }
   return toMemberInfo(data as unknown as MemberRow);
+}
+
+/**
+ * 탈퇴자 원본 이메일 검색(0037) — 탈퇴 시 member_accounts.email·닉네임이 스크럽돼 search_members
+ * 로는 못 찾으므로, auth.identities 의 원본 이메일로 조회(어드민 재활성 진입용).
+ */
+export async function findWithdrawnByEmail(email: string): Promise<WithdrawnMatch[]> {
+  const q = email.trim();
+  if (q.length < 3) return [];
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("admin_find_withdrawn_by_email", { p_email: q });
+  if (error) {
+    log.warn("admin.find_withdrawn_fail", errInfo(error));
+    return [];
+  }
+  return ((data ?? []) as {
+    user_id: string;
+    original_email: string | null;
+    deleted_at: string;
+    last_sign_in_at: string | null;
+  }[]).map((r) => ({
+    userId: r.user_id,
+    originalEmail: r.original_email,
+    deletedAt: r.deleted_at,
+    lastSignInAt: r.last_sign_in_at,
+  }));
 }
 
 /** 회원 부분검색 — UUID exact 또는 이메일/닉네임 ILIKE(search_members RPC). 최대 30. */
@@ -87,6 +117,7 @@ export async function searchMembers(q: string): Promise<MemberInfo[]> {
     genCredits: r.gen_credits,
     memberSince: r.member_since,
     isAdmin: r.is_admin,
+    deletedAt: null, // search_members 는 활성 회원 검색 경로 — 탈퇴 상태는 상세에서 재조회.
   }));
 }
 

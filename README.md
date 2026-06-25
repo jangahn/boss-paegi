@@ -481,6 +481,15 @@ v0.41 (2026-06-25, Phase 2 — `dolls`·`highlights` private 버킷 + 가역 tak
 - **캐시**: signed URL 박히는 페이지 `revalidate=60`(< TTL) + takedown/restore/permanent 시 명시 revalidatePath. HighlightPlayer/공유 버튼은 만료 시 카드/문구+링크 fallback.
 - **검증**: 사전검증 G1(public 버킷 createSignedUrl 200)·G2(signed URL `ACAO=*` → WebGL/녹화 무taint) 통과. 적대 검증(8 확정·전부 medium/low) 반영(갤러리 fallback·관측성·만료가드·에러코드). 무중단 롤아웃(코드 배포→flip前 검증→flip→flip後 검증), flip後 전 표면 200·raw public 400 확인.
 
+v0.42 (2026-06-25, 회원 재활성 — 본인 요청 시 운영자 계정 복구(데이터 미복구); Migration 0037):
+- **탈퇴 복구 능력**: 탈퇴(0034 §6)는 `profiles.deleted_at`·익명화·`gen_credits=0`·이메일 스크럽 + dolls/하이라이트/Storage 물리삭제이나 **auth.users 는 보존**(결제 FK) → 같은 OAuth 재로그인이 `deleted_at` 게이트(`requireMember` 등)에 막혀 재가입 불가였음. **재활성 = `deleted_at` 해제**(`admin_reactivate_account` RPC) — `auth.identities` 의 원본 닉/프사/이메일 즉시 복원, `gen_credits=0`·`age_confirmed_at` 유지. **캐릭터·하이라이트·생성권은 이미 영구삭제 → 복구 안 됨**(계정만 부활).
+- **본인요청·운영자·사유 필수**: 어드민 회원 상세에 탈퇴 배지 + `ReactivateAccountForm`(신원확인·데이터미복구 2-체크 + 사유 + 과거점수 실명 재노출 경고). `/api/admin/reactivate`(requireAdmin). 탈퇴자는 스크럽돼 search_members 로 못 찾으므로 **원본 이메일 검색**(`admin_find_withdrawn_by_email`, auth.identities). 이메일 복원 전 **타 활성계정 email_conflict 검사**. identities 이메일 없으면 어드민 입력 override 또는 `identity_email_missing` 중단.
+- **재로그인 시 재동의(연령 제외)**: 재활성이 `member_accounts.reconsent_required=true` + 동의 클리어 → `requireMember` 가 모든 member 경로 차단(reconsent 경로만 예외), 콜백/페이지가 `/reconsent` 로 유도 → `{terms, privacy}` 재동의(`age_confirmed_at` 유지). **"동의 stamp null" 이 아닌 명시 플래그**로 게이트 — 동의흐름 이전 생성 레거시 회원(현재 전원 stamp null) 락아웃 방지.
+- **법무 정합**: 약관 제5조(재이용 제한 + 본인요청 운영자 복구·데이터 미복구)·방침 제13조(CASCADE 오기→실제 soft-delete/익명보존) 개정(예약본 v1·초안 v0·`_local` md). 탈퇴 UI 문구도 "데이터는 되돌릴 수 없음·재이용은 고객센터 문의"로 정합.
+- **검증**: typecheck/lint/build 0. RPC 복원/가드는 트랜잭션 rollback e2e(prod 무변경)로 확인(닉/프사/이메일 복원·credit 0·age 유지·reconsent 플래그·not_withdrawn). 어드민 세션(michael) UI e2e(탈퇴자 이메일 검색·상세 배지·재활성 폼 렌더). 안전: 활성 9명 전원 reconsent_required=false(락아웃 0).
+
+**⚠️ Migration 0037 (프로덕션 적용 완료 2026-06-25)** (`supabase/migrations/0037_account_reactivate.sql`): `account_admin_actions_ledger`(계정 액션 전용 감사) + `member_accounts.reconsent_required` 컬럼 + `admin_reactivate_account`/`admin_find_withdrawn_by_email` RPC. **additive·기존 데이터 무영향**(reconsent_required default false).
+
 **⚠️ Migration 0035·0036 (Phase 2, 프로덕션 적용 완료 2026-06-25)**: 0035(`score_highlights.highlight_deleted_by_doll` + `admin_takedown_doll` 재정의[만료 가드·by_doll 태깅] + `admin_restore_doll` + ledger CHECK 확장) — 코드 배포와 함께. 0036(`dolls`·`highlights` `public=false` + `image_url`/`candidate_urls` 경로 backfill[idempotent·dry-run 후]) — **코드 배포 + flip前 검증 후** 적용. 플립은 `public=true` 로 롤백 가능.
 
 **⚠️ Migration 0034 적용 필요** (`supabase/migrations/0034_content_moderation.sql`): `dolls`에 `deleted_at`/`deleted_by`/`deletion_reason`/`artifacts_purged_at` + `content_reports`·`moderation_actions_ledger` 테이블 + `admin_takedown_doll`/`admin_dismiss_report` RPC. **additive·기존 데이터 무영향**. **배포 순서: 0034 먼저 적용 → 코드 배포**(읽기 게이트가 `deleted_at` 컬럼 조회). content-maintain cron-job.org 등록(`CRON_SECRET` 재사용). Sentry `report.new` 알림룰(occurrence당 통지) 설정. ※ 0032/0033 은 README changelog 미기재(병렬 작업) — v0.36/0.37 비어있음, 필요 시 번호 조정.
