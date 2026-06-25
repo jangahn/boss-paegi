@@ -118,6 +118,8 @@ function PlayInner() {
     if (!telemetryStartedRef.current) {
       telemetryStartedRef.current = true;
       telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
+      // 이탈(abandon/visibility) 종료도 perf 캡처되게 게임 perf 소스 등록(closure 라 gameRef 지연 읽기·재시작 무관).
+      telemetry.registerPerfSource(() => gameRef.current?.getPerfStats() ?? null);
     }
     log.info("game.start", {
       dollId: dollId ?? "default",

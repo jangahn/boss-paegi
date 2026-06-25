@@ -16,6 +16,13 @@ function detectDeviceClass(): string {
   return DEVICE_CLASSES.includes(cls) ? cls : "other";
 }
 
+export type PerfStats = {
+  dpr: number;
+  refreshHz: number;
+  avgFrameMs: number;
+  p95FrameMs: number;
+};
+
 export type TelemetryApi = {
   /** 세션 시작(마운트·재시작 시) — 새 collector/transport. */
   startSession: (startMap: string, startWeapon: string) => void;
@@ -23,7 +30,12 @@ export type TelemetryApi = {
   onMapSelect: (from: string, to: string) => void;
   onUltFire: (score: number) => void;
   /** 종료 직전 — 게임 ticker 프레임타임 통계(렉 진단) 주입. */
-  setPerf: (p: { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number }) => void;
+  setPerf: (p: PerfStats) => void;
+  /**
+   * perf 소스 등록 — abandon/visibility 종료(finalize)는 게임오버 핸들러를 안 거치므로
+   * 여기 등록된 getter 로 종료 직전 perf 를 직접 캡처(안 하면 이탈 세션 perf 유실).
+   */
+  registerPerfSource: (getPerf: () => PerfStats | null) => void;
   /** 정상/강제 종료 — end_reason 동결 + 최종 flush. */
   endSession: (reason: string) => void;
   /** 현재(또는 직전 종료된) 세션 id — 점수 제출 시 scores.telemetry_session_id 링크용. */
@@ -39,6 +51,7 @@ export function useTelemetry(): TelemetryApi {
   const txRef = useRef<TelemetryTransport | null>(null);
   const lastSessionIdRef = useRef<string | null>(null); // 종료 후에도 유지(점수 링크용)
   const pointers = useRef<Set<number>>(new Set());
+  const perfSourceRef = useRef<(() => PerfStats | null) | null>(null);
 
   useEffect(() => {
     const tickId = window.setInterval(() => {
@@ -72,6 +85,10 @@ export function useTelemetry(): TelemetryApi {
       const c = colRef.current;
       const tx = txRef.current;
       if (c && tx) {
+        // 이탈 종료(abandon/hidden_timeout)도 perf 캡처 — 게임오버 핸들러 미경유라 여기서 직접.
+        //   실프레임 표본 있을 때만(avg>0) 기록 → 무플레이/즉시이탈 0 오염 방지.
+        const perf = perfSourceRef.current?.();
+        if (perf && perf.avgFrameMs > 0) c.setPerf(perf);
         c.end(reason);
         tx.beacon(reason);
         colRef.current = null;
@@ -128,6 +145,9 @@ export function useTelemetry(): TelemetryApi {
       onMapSelect: (from, to) => colRef.current?.onMapSelect(from, to),
       onUltFire: (score) => colRef.current?.onUltFire(score),
       setPerf: (p) => colRef.current?.setPerf(p),
+      registerPerfSource: (getPerf) => {
+        perfSourceRef.current = getPerf;
+      },
       endSession: (reason) => {
         const c = colRef.current;
         const tx = txRef.current;
