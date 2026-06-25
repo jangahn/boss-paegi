@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOLLS_BUCKET, dollPath } from "@/lib/storage-path";
 import { rateLimit } from "@/lib/rate-limit";
+import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -43,10 +44,12 @@ export async function POST(req: NextRequest) {
   if (ids.length === 0) return NextResponse.json({ urls }, noStore);
 
   const admin = createAdminClient();
-  const { data: dolls } = await admin
+  const { data: dolls, error: qErr } = await admin
     .from("dolls")
     .select("id, image_url, deleted_at")
     .in("id", ids);
+  // 일시 DB 오류 → 빈 응답으로 폴백(동작 유지)하되 관측 가능하게 로깅(부분 정전이 '전부 삭제'처럼 보이는 갭 방지).
+  if (qErr) log.warn("signurls.query_fail", { count: ids.length, ...errInfo(qErr) });
 
   // 삭제(takedown) 아닌 doll 의 path 만 모아 일괄 서명. id→path 매핑 유지.
   const pathById = new Map<string, string>();

@@ -209,14 +209,15 @@ export async function GET() {
   }
 
   // private 버킷 — 후보 URL을 signed URL로(우리버킷 path/URL만; fal 폴백 URL은 통과).
-  //   픽까지 시간 여유 위해 TTL 넉넉히(3600s). copied:false fal URL은 자체 만료까지 유효.
+  //   ready 후 폴링이 멈춰 클라가 든 URL이 동결되므로, 픽 데드라인 여유 위해 TTL 길게(6h).
+  //   후보는 takedown 대상(공개 표면) 아님 → 긴 TTL 무해. copied:false fal URL은 자체 만료까지 유효.
   const signedPending = await Promise.all(
     pending.map(async (p) => ({
       ...p,
       candidateUrls: await Promise.all(
         p.candidateUrls.map(async (u) =>
           u.includes("/dolls/") || !u.includes("://")
-            ? (await signedDollUrl(u, 3600)) ?? u
+            ? (await signedDollUrl(u, 21600)) ?? u
             : u
         )
       ),

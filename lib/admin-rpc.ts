@@ -18,6 +18,8 @@ const KNOWN_ADMIN_ERRORS = [
   "report_not_found",
   "report_not_pending",
   "not_admin",
+  // 모더레이션 Phase 2(0035) — restore 가 이미 영구삭제(purged)된 doll 에 대해 raise.
+  "already_purged",
 ];
 
 /** RPC 에러 → 안전한 코드(화이트리스트 매칭, 아니면 action_failed). */

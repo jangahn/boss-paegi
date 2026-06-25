@@ -64,13 +64,15 @@ begin
      set deleted_at = now(), deleted_by = p_admin_id, deletion_reason = p_reason
    where id = p_doll_id;
 
-  -- cascade: 이 doll 을 쓰는 scores 의 하이라이트 중 **아직 안 숨겨진 것만** 새로 숨기고 이 doll 로 태깅.
-  --   (이미 만료 등으로 숨긴 행은 불간섭 → 복구 시 이 doll 이 숨긴 것만 되살리기 위함.)
+  -- cascade: 이 doll 을 쓰는 scores 의 하이라이트 중 **아직 안 숨겨졌고 만료도 안 된 것만** 숨기고 태깅.
+  --   (이미 숨김/만료(expires_at 경과) 행은 불간섭 → restore 가 만료본을 잘못 되살리는 경합 차단.
+  --    cron 이 만료행 deleted_at 을 아직 안 채운 창에서도 안전.)
   update public.score_highlights sh
      set highlight_deleted_at = now(), highlight_deleted_by_doll = p_doll_id
     from public.scores s
    where sh.score_id = s.id and s.doll_id = p_doll_id
-     and sh.highlight_deleted_at is null;
+     and sh.highlight_deleted_at is null
+     and (sh.highlight_expires_at is null or sh.highlight_expires_at > now());
 
   insert into public.moderation_actions_ledger
     (admin_user_id, action_type, target_type, target_id, reason)

@@ -126,7 +126,11 @@ function ReportRowItem({ row }: { row: ReportRow }) {
       setError(
         body.error === "reason_invalid"
           ? "사유는 5~500자여야 해요."
-          : "처리 실패 — 잠시 후 다시 시도하세요."
+          : body.error === "already_purged"
+            ? "이미 영구삭제되어 복구할 수 없어요."
+            : body.error === "not_taken_down"
+              ? "숨김(takedown) 상태가 아니에요(새로고침 후 확인)."
+              : "처리 실패 — 잠시 후 다시 시도하세요."
       );
     } catch {
       setError("네트워크 오류 — 다시 시도하세요.");

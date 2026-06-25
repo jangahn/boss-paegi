@@ -64,12 +64,16 @@ export default function GalleryPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ids: chunk.map((d) => d.id) }),
           });
-          const { urls } = (await r.json()) as {
-            urls: Record<string, string | null>;
-          };
-          for (const d of chunk) d.image_url = urls[d.id] ?? d.image_url;
+          const json = (await r.json().catch(() => null)) as {
+            urls?: Record<string, string | null>;
+          } | null;
+          const urls = json?.urls ?? {};
+          // 서명 누락/실패(429·삭제·객체부재)면 raw 경로(flip 후 깨진 상대경로) 대신 기본 보스로 강등.
+          for (const d of chunk)
+            d.image_url = urls[d.id] ?? "/sprites/boss-default.png";
         } catch {
-          /* 서명 실패 → 원본 경로 유지(렌더 깨질 수 있음, 드묾) */
+          // 네트워크 실패 → 이 청크 전체 기본 보스(raw 경로 노출 방지).
+          for (const d of chunk) d.image_url = "/sprites/boss-default.png";
         }
       }
       setDolls(rows);

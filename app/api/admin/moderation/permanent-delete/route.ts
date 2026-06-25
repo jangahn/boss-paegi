@@ -107,11 +107,19 @@ export async function POST(req: NextRequest) {
         ? { storage_remove_failed_paths: failed }
         : { purged_targets: targets.length },
   });
+  let purgedConfirmed = false;
   if (failed.length === 0) {
-    await admin
+    const { error: flagErr } = await admin
       .from("dolls")
       .update({ artifacts_purged_at: new Date().toISOString() })
       .eq("id", dollId);
+    if (flagErr) {
+      // 객체는 제거됐는데 purged 플래그 세팅 실패 → 상태/실제 불일치(복구 가능한데 객체 부재).
+      //   관측 가능하게 남김 + purged=false 반환(복구 대신 재시도 유도). 영구삭제 재호출은 멱등(없는 객체 remove 무해).
+      log.error("admin.purge_flag_set_fail", { dollId, ...errInfo(flagErr) });
+    } else {
+      purgedConfirmed = true;
+    }
   } else {
     // 일부만 실패 → purged 미세팅(복구 가능 유지) + 재시도 가능. 조용히 삼키지 않음.
     log.error("admin.purge_incomplete", { dollId, failedCount: failed.length });
@@ -125,10 +133,11 @@ export async function POST(req: NextRequest) {
     adminId: gate.user.id,
     targets: targets.length,
     failed: failed.length,
+    purged: purgedConfirmed,
   });
   return NextResponse.json({
     ok: true,
-    purged: failed.length === 0,
+    purged: purgedConfirmed,
     failed: failed.length,
   });
 }
