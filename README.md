@@ -461,6 +461,12 @@ v0.38 (2026-06-25, 콘텐츠 모더레이션 — 비동의 제3자 얼굴 신고
 - **한계·Phase 2**: public 버킷이라 origin 삭제는 즉시지만 **CDN/브라우저 캐시 잔존 가능** → "완전 즉시 직링크 사망"은 Phase 2(`dolls`·`highlights` private+signed URL 전환) 후속.
 - 검증: typecheck/build 0. **E2E·storage 직링크 사망 확인은 Migration 0034 적용 후**(읽기 게이트가 `deleted_at` 조회).
 
+v0.39 (2026-06-25, 공유 페이로드 통일 — Web Share url-in-text·미디어 모바일한정; 마이그레이션 없음):
+- **단일 공유 규약(`lib/share.runShare`)**: 점수·캐릭터 공유가 함수마다 다르던 url 배치·도메인·폴백·취소처리를 통일. **url 을 text 마지막 줄에 1개만 합성(분리 `url` 필드 폐기)** → macOS 네이티브 공유시트 Copy 가 `{url,text}` 를 구분자 없이 직렬화하던 결함(점수공유 복사 시 URL+문구 붙음) 근본 해소. OG 카드는 페이지 메타가 보장.
+- **미디어 첨부는 모바일 OS 한정**(`lib/device.isMobileOS` — UA 기반, coarse pointer 아님): iOS/iPadOS/Android 만 이미지/영상 첨부, 데스크톱은 `canShare(files)` 무관하게 문구+링크(macOS pasteboard 다중표현 → 붙여넣기 이미지 중복 회피). **파일 공유 실패는 텍스트→클립보드로 자동 강등**(첨부 실패가 전체 실패로 안 이어짐), `AbortError`(취소)만 즉시 중단.
+- **도메인 통일**: 캐릭터 공유 링크·워터마크 호스트를 `location.origin`→`PUBLIC_ENV.SITE_URL`(점수와 일치, 프리뷰/커스텀 도메인 누출 방지). 캐릭터 클립보드 폴백도 문구+링크(이전 url-only 문구 유실 수정).
+- 검증: typecheck/lint(신규 파일 클린)/build 0. **카톡 OG 카드(url-in-text)·플랫폼별 직렬화는 실기기 매트릭스(M1~M4)로 사용자 확인.** 참고: 카카오는 OG 를 캐싱 → 발행 후 `https://developers.kakao.com/tool/clear/og` 로 해당 `/share` URL 초기화.
+
 **⚠️ Migration 0034 적용 필요** (`supabase/migrations/0034_content_moderation.sql`): `dolls`에 `deleted_at`/`deleted_by`/`deletion_reason`/`artifacts_purged_at` + `content_reports`·`moderation_actions_ledger` 테이블 + `admin_takedown_doll`/`admin_dismiss_report` RPC. **additive·기존 데이터 무영향**. **배포 순서: 0034 먼저 적용 → 코드 배포**(읽기 게이트가 `deleted_at` 컬럼 조회). content-maintain cron-job.org 등록(`CRON_SECRET` 재사용). Sentry `report.new` 알림룰(occurrence당 통지) 설정. ※ 0032/0033 은 README changelog 미기재(병렬 작업) — v0.36/0.37 비어있음, 필요 시 번호 조정.
 
 **⚠️ Migration 0030 적용 필요** (`supabase/migrations/0030_withdrawal_age.sql`): `profiles.deleted_at`·`member_accounts.age_confirmed_at` 컬럼 + `payapp_orders.user_id` FK CASCADE→RESTRICT(동적 제약명) + `admin_soft_delete_account` RPC + `mark_paid_and_grant` 탈퇴자 가드(재정의). additive·결제 정상경로 불변.
