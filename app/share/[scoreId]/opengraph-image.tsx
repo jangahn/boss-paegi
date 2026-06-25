@@ -90,7 +90,7 @@ export default async function OgImage({
   const score = (s?.score ?? 0).toLocaleString();
   // takedown(0034): 삭제된 인형 얼굴은 OG 에서도 숨김 → 기본 카드 fallback.
   const dollSrc = await dollDataUri(
-    s?.dolls?.deleted_at ? null : await signedDollUrl(s?.dolls?.image_url, 60)
+    s?.dolls?.deleted_at ? null : await signedDollUrl(s?.dolls?.image_url, 60, { thumb: true })
   );
   const grade = gradeFor(s?.score ?? 0, scoreCfg.grades);
   const reaction = s ? bossReaction(s.score, s.id, role, cfg) : "";

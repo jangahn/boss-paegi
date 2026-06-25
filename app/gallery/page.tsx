@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { getMyProfile, formatCredits, type MyProfile } from "@/lib/profile";
@@ -14,6 +14,8 @@ import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import type { RoleId } from "@/lib/roles";
 import type { PendingGeneration } from "@/lib/generation";
 
+const GALLERY_PAGE = 24; // 무한스크롤 페이지 크기
+
 export default function GalleryPage() {
   const mk = useMarketingCopy();
   const [profile, setProfile] = useState<MyProfile | null>(null);
@@ -22,6 +24,55 @@ export default function GalleryPage() {
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const offsetRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // 한 페이지 조회 + 384px 썸네일 서명(무한스크롤). RLS 로 본인 doll 만.
+  const fetchDollPage = useCallback(async (offset: number): Promise<Doll[]> => {
+    const sb = createClient();
+    const { data, error: qErr } = await sb
+      .from("dolls")
+      .select("id, image_url, created_at, role")
+      .is("deleted_at", null) // takedown: 신고 삭제 인형 숨김
+      .order("created_at", { ascending: false })
+      .range(offset, offset + GALLERY_PAGE - 1);
+    if (qErr) throw qErr;
+    const rows = (data as Doll[] | null) ?? [];
+    if (rows.length) {
+      try {
+        const r = await fetch("/api/doll/signed-urls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: rows.map((d) => d.id), thumb: true }),
+        });
+        const json = (await r.json().catch(() => null)) as {
+          urls?: Record<string, string | null>;
+        } | null;
+        const urls = json?.urls ?? {};
+        for (const d of rows) d.image_url = urls[d.id] ?? "/sprites/boss-default.png";
+      } catch {
+        for (const d of rows) d.image_url = "/sprites/boss-default.png";
+      }
+    }
+    return rows;
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const rows = await fetchDollPage(offsetRef.current);
+      offsetRef.current += rows.length;
+      setDolls((prev) => [...prev, ...rows]);
+      setHasMore(rows.length === GALLERY_PAGE);
+    } catch {
+      /* 추가 로드 실패 — 기존 유지 */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, fetchDollPage]);
 
   const loadPending = useCallback(async () => {
     try {
@@ -47,36 +98,10 @@ export default function GalleryPage() {
     setProfile(prof);
 
     try {
-      const sb = createClient();
-      const { data, error: queryError } = await sb
-        .from("dolls")
-        .select("id, image_url, created_at, role")
-        .is("deleted_at", null) // takedown(0034): 신고 삭제된 인형은 갤러리에서도 숨김.
-        .order("created_at", { ascending: false });
-      if (queryError) throw queryError;
-      const rows = (data as Doll[] | null) ?? [];
-      // private 버킷 — image_url(경로)을 배치 서명 API로 signed URL 치환(50개씩 청크).
-      for (let i = 0; i < rows.length; i += 50) {
-        const chunk = rows.slice(i, i + 50);
-        try {
-          const r = await fetch("/api/doll/signed-urls", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ids: chunk.map((d) => d.id) }),
-          });
-          const json = (await r.json().catch(() => null)) as {
-            urls?: Record<string, string | null>;
-          } | null;
-          const urls = json?.urls ?? {};
-          // 서명 누락/실패(429·삭제·객체부재)면 raw 경로(flip 후 깨진 상대경로) 대신 기본 보스로 강등.
-          for (const d of chunk)
-            d.image_url = urls[d.id] ?? "/sprites/boss-default.png";
-        } catch {
-          // 네트워크 실패 → 이 청크 전체 기본 보스(raw 경로 노출 방지).
-          for (const d of chunk) d.image_url = "/sprites/boss-default.png";
-        }
-      }
+      const rows = await fetchDollPage(0);
+      offsetRef.current = rows.length;
       setDolls(rows);
+      setHasMore(rows.length === GALLERY_PAGE);
     } catch (e) {
       setError(e instanceof Error ? e.message : "불러오기 실패");
       setDolls([]);
@@ -85,7 +110,21 @@ export default function GalleryPage() {
     }
 
     if (prof?.isMember) void loadPending(); // 회원만 — 비회원은 생성 자체가 없음
-  }, [loadPending]);
+  }, [loadPending, fetchDollPage]);
+
+  // 무한스크롤 — 그리드 하단 sentinel 이 보이면 다음 페이지 로드.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore();
+      },
+      { rootMargin: "400px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loadMore]);
 
   useEffect(() => {
     void bootstrap();
@@ -116,6 +155,7 @@ export default function GalleryPage() {
         throw new Error(j.error ?? "삭제 실패");
       }
       setDolls((prev) => prev.filter((d) => d.id !== id));
+      offsetRef.current = Math.max(0, offsetRef.current - 1); // 무한스크롤 오프셋 보정
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패");
     } finally {
@@ -181,6 +221,13 @@ export default function GalleryPage() {
                   />
                 ))}
               </div>
+
+              {hasMore && <div ref={sentinelRef} className="h-4" />}
+              {loadingMore && (
+                <div className="flex justify-center py-2">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/60" />
+                </div>
+              )}
 
               {error && (
                 <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">

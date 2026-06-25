@@ -73,21 +73,26 @@ export function useGameInit(opts: {
           if (!data?.image_url) return undefined;
           setDollRole(asRole((data as { role?: string }).role));
           // private 버킷 — image_url 은 경로. 서명 API로 signed URL 획득(본인 캐릭터·장기세션 ttl 3600).
-          let signedUrl: string | undefined;
+          //   텍스처(게임 화면·녹화)는 **원본**, 게임종료 표시(ScoreReport)는 **384px 썸네일**(2개 병렬 서명).
+          let fullUrl: string | undefined;
+          let thumbUrl: string | undefined;
           try {
-            const r = await fetch("/api/doll/signed-urls", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ids: [dollId], ttl: 3600 }),
-            });
-            signedUrl = (await r.json())?.urls?.[dollId] ?? undefined;
+            const sign = (thumb: boolean) =>
+              fetch("/api/doll/signed-urls", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: [dollId], ttl: 3600, ...(thumb ? { thumb: true } : {}) }),
+              }).then((r) => r.json());
+            const [full, thumb] = await Promise.all([sign(false), sign(true)]);
+            fullUrl = full?.urls?.[dollId] ?? undefined;
+            thumbUrl = thumb?.urls?.[dollId] ?? undefined;
           } catch (e) {
             log.warn("play.sign_fail", { dollId, ...errInfo(e) });
           }
-          if (!signedUrl) return undefined; // 삭제(takedown)/실패 → placeholder
-          setDollImageUrl(signedUrl);
+          if (!fullUrl) return undefined; // 삭제(takedown)/실패 → placeholder
+          setDollImageUrl(thumbUrl ?? fullUrl); // 게임종료 표시는 썸네일(실패 시 원본)
           try {
-            return await Assets.load(signedUrl);
+            return await Assets.load(fullUrl); // 텍스처는 원본 유지
           } catch (e) {
             log.warn("play.doll_texture_fail", { dollId, ...errInfo(e) });
             return undefined;

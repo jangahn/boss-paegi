@@ -97,7 +97,7 @@ export default async function DollPage({
   // 삭제(takedown)면 기본 부장님(public sprite, 서명 X), 아니면 private 버킷 서명.
   const imgSrc = doll.deleted_at
     ? DEFAULT_BOSS
-    : (await signedDollUrl(doll.image_url)) ?? DEFAULT_BOSS;
+    : (await signedDollUrl(doll.image_url, 600, { thumb: true })) ?? DEFAULT_BOSS;
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">

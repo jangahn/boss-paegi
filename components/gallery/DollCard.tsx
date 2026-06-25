@@ -104,6 +104,8 @@ export function DollCard({
           <img
             src={doll.image_url}
             alt=""
+            loading="lazy"
+            decoding="async"
             onLoad={() => setImgLoaded(true)}
             className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
               imgLoaded ? "opacity-100" : "opacity-0"
