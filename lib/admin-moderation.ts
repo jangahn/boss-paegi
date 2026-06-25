@@ -4,141 +4,96 @@ import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
 
 /**
- * 모더레이션(신고 큐 + 물리삭제 미확정) 조회 — server-only, service_role.
- * 전체 상태(pending/actioned/dismissed) + 필터(status·dollId·ownerId) + 10/page.
+ * 모더레이션 큐 — **캐릭터 단위**(신고된 / 숨김 / 영구삭제된 doll). server-only, service_role.
+ * 처리상태 단일축: pending(대기·미결정 신고) · hidden(숨김·가역) · purged(영구삭제·비가역) · dismissed(기각·공개유지).
+ * 집계·상태계산·필터·페이지는 `admin_moderation_queue` RPC(PostgREST 임베드 모호성 회피·집계 한방). 이미지만 서명.
  */
 export const REPORT_PAGE_SIZE = 10;
+
+export const MOD_STATES = ["pending", "hidden", "purged", "dismissed"] as const;
+export type ModState = (typeof MOD_STATES)[number];
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type ReportRow = {
+export type ModReport = {
   id: string;
-  dollId: string;
   reason: string;
   detail: string | null;
   contact: string | null;
   status: string; // pending | actioned | dismissed
   created_at: string;
-  resolved_at: string | null;
-  doll: {
-    image_url: string | null;
-    owner_id: string | null;
-    owner_name: string | null;
-    deleted_at: string | null;
-    artifacts_purged_at: string | null;
-  } | null;
 };
 
-export type ReportFilters = {
-  status?: string | null;
+export type ModerationRow = {
+  dollId: string;
+  image_url: string | null; // 서명됨(공개/숨김) 또는 null(영구삭제)
+  owner_id: string | null;
+  owner_name: string | null;
+  deleted_at: string | null;
+  artifacts_purged_at: string | null;
+  state: ModState;
+  report_count: number;
+  pending_count: number;
+  latest_report_at: string | null;
+  reports: ModReport[];
+};
+
+export type ModerationFilters = {
+  state?: ModState | null;
   dollId?: string | null;
   ownerId?: string | null;
   page?: number;
 };
 
-export type ReportQueuePage = {
-  rows: ReportRow[];
+export type ModerationQueuePage = {
+  rows: ModerationRow[];
   total: number;
   page: number;
   pageSize: number;
 };
 
-const EMPTY = (page: number): ReportQueuePage => ({
+const EMPTY = (page: number): ModerationQueuePage => ({
   rows: [],
   total: 0,
   page,
   pageSize: REPORT_PAGE_SIZE,
 });
 
-export async function getReportQueue(f: ReportFilters): Promise<ReportQueuePage> {
+/** adminId = requireAdmin 통과한 호출자(RPC 내부에서도 is_admin 재검증). */
+export async function getModerationQueue(
+  adminId: string,
+  f: ModerationFilters
+): Promise<ModerationQueuePage> {
   const page = Math.max(1, f.page ?? 1);
-  const from = (page - 1) * REPORT_PAGE_SIZE;
+  if (f.dollId && !UUID_RE.test(f.dollId)) return EMPTY(page);
+  if (f.ownerId && !UUID_RE.test(f.ownerId)) return EMPTY(page);
+
   const admin = createAdminClient();
-
-  // ownerId 필터: content_reports 에 owner 가 없으니 그 owner 의 doll id 들을 먼저 구해 target_id IN.
-  let ownerDollIds: string[] | null = null;
-  if (f.ownerId) {
-    if (!UUID_RE.test(f.ownerId)) return EMPTY(page);
-    const { data: od } = await admin
-      .from("dolls")
-      .select("id")
-      .eq("owner_id", f.ownerId);
-    ownerDollIds = ((od ?? []) as { id: string }[]).map((d) => d.id);
-    if (ownerDollIds.length === 0) return EMPTY(page);
-  }
-
-  let qb = admin
-    .from("content_reports")
-    .select(
-      "id, target_id, reason, detail, reporter_contact, status, created_at, resolved_at",
-      { count: "exact" }
-    )
-    .eq("target_type", "doll");
-  if (f.status) qb = qb.eq("status", f.status);
-  if (f.dollId) {
-    if (!UUID_RE.test(f.dollId)) return EMPTY(page);
-    qb = qb.eq("target_id", f.dollId);
-  }
-  if (ownerDollIds) qb = qb.in("target_id", ownerDollIds);
-
-  const { data, count, error } = await qb
-    .order("created_at", { ascending: false })
-    .range(from, from + REPORT_PAGE_SIZE - 1);
+  const { data, error } = await admin.rpc("admin_moderation_queue", {
+    p_admin_id: adminId,
+    p_state: f.state ?? null,
+    p_doll_id: f.dollId ?? null,
+    p_owner_id: f.ownerId ?? null,
+    p_limit: REPORT_PAGE_SIZE,
+    p_offset: (page - 1) * REPORT_PAGE_SIZE,
+  });
   if (error) {
-    log.warn("admin.report_queue_fail", errInfo(error));
+    log.warn("admin.mod_queue_fail", errInfo(error));
     return EMPTY(page);
   }
+  const result = (data ?? { rows: [], total: 0 }) as {
+    rows: Omit<ModerationRow, never>[];
+    total: number;
+  };
 
-  const list = (data ?? []) as {
-    id: string;
-    target_id: string;
-    reason: string;
-    detail: string | null;
-    reporter_contact: string | null;
-    status: string;
-    created_at: string;
-    resolved_at: string | null;
-  }[];
-
-  // doll 정보 일괄 조회(content_reports.target_id 는 FK 아님 → 수동 조인).
-  const dollMap = new Map<string, ReportRow["doll"]>();
-  const ids = [...new Set(list.map((r) => r.target_id))];
-  if (ids.length) {
-    const { data: dolls } = await admin
-      .from("dolls")
-      .select("id, image_url, owner_id, deleted_at, artifacts_purged_at, profiles(display_name)")
-      .in("id", ids);
-    for (const d of (dolls ?? []) as Record<string, unknown>[]) {
-      const prof = d.profiles as
-        | { display_name?: string }
-        | { display_name?: string }[]
-        | null;
-      const ownerName = Array.isArray(prof)
-        ? prof[0]?.display_name ?? null
-        : prof?.display_name ?? null;
-      const purged = (d.artifacts_purged_at as string | null) ?? null;
-      dollMap.set(d.id as string, {
-        // 영구삭제(purged)면 객체 없음→null(UI 플레이스홀더). 아니면 서명(삭제돼도 어드민은 얼굴 확인 필요).
-        image_url: purged ? null : await signedDollUrl((d.image_url as string | null) ?? null),
-        owner_id: (d.owner_id as string | null) ?? null,
-        owner_name: ownerName,
-        deleted_at: (d.deleted_at as string | null) ?? null,
-        artifacts_purged_at: purged,
-      });
-    }
+  // 이미지 서명: 영구삭제(purged)면 객체 없음→null(플레이스홀더). 아니면 서명(공개·숨김 모두 어드민은 얼굴 확인).
+  const rows: ModerationRow[] = [];
+  for (const r of result.rows as ModerationRow[]) {
+    rows.push({
+      ...r,
+      image_url: r.artifacts_purged_at ? null : await signedDollUrl(r.image_url),
+    });
   }
-
-  const rows: ReportRow[] = list.map((r) => ({
-    id: r.id,
-    dollId: r.target_id,
-    reason: r.reason,
-    detail: r.detail,
-    contact: r.reporter_contact,
-    status: r.status,
-    created_at: r.created_at,
-    resolved_at: r.resolved_at,
-    doll: dollMap.get(r.target_id) ?? null,
-  }));
-  return { rows, total: count ?? 0, page, pageSize: REPORT_PAGE_SIZE };
+  return { rows, total: result.total ?? 0, page, pageSize: REPORT_PAGE_SIZE };
 }
