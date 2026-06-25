@@ -84,3 +84,24 @@ body {
 body:has(.game-surface) #sentry-feedback {
   display: none !important;
 }
+
+/* FadeImg — 이미지 pop-in 완화. JS 로드감지(하이드레이션) 없이도 동작하는 CSS 페이드인이라
+ * 어떤 환경에서도 이미지가 투명하게 멈추지 않는다(항상 opacity 1 로 끝). */
+@keyframes fade-in-img {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* fill-mode 없음(default none) — 애니메이션이 실행 안 되는 환경(일부 헤드리스/자동화)에서도
+ * base opacity 1 로 남아 이미지가 보인다(fail-safe). 실행되면 0→1 페이드. */
+.fade-in-img {
+  animation: fade-in-img 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-img {
+    animation: none;
+  }
+}

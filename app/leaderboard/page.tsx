@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppNav } from "@/components/AppNav";
+import { FadeImg } from "@/components/FadeImg";
 import { timeAgo } from "@/lib/report";
 
 type Period = "daily" | "weekly" | "monthly";
@@ -88,11 +89,10 @@ export default function LeaderboardPage() {
                     <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
                       {i + 1}
                     </span>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <FadeImg
                       src={r.avatar_url ?? DEFAULT_AVATAR}
-                      alt=""
-                      className="h-9 w-9 shrink-0 rounded-full border border-foreground/10 bg-foreground/10 object-cover"
+                      className="h-9 w-9 shrink-0 rounded-full border border-foreground/10"
+                      fallbackSrc={DEFAULT_AVATAR}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-medium">

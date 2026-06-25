@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
+import { FadeImg } from "@/components/FadeImg";
 import { fetchScoreDetail, hasLiveHighlight, clipSignedUrl } from "@/lib/score-detail";
 import { signedDollUrl } from "@/lib/storage";
 import { asRole } from "@/lib/roles";
@@ -99,11 +100,13 @@ export default async function HistoryDetailPage({
             )}
 
             <div className="mt-3 flex items-start justify-between gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <FadeImg
                 src={dollImg ?? "/sprites/boss-default.png"}
                 alt={`맞은 ${rlabel}`}
-                className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
+                className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
+                fit="contain"
+                placeholder="pulse"
+                fallbackSrc="/sprites/boss-default.png"
               />
               <table className="border-collapse text-center text-[10px]">
                 <tbody>
