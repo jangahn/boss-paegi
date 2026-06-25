@@ -197,10 +197,22 @@ export function GameOverModal({
         })();
       }
     }
+    // 하이라이트 영상은 모바일에서만 첨부(runShare 게이트) — PC 는 자동으로 문구+링크.
+    const clipFile = clip
+      ? new File(
+          [clip.blob],
+          `boss-paegi-highlight.${clip.mime.includes("webm") ? "webm" : "mp4"}`,
+          { type: clip.mime }
+        )
+      : null;
     void shareGameResult(sid, score, {
+      // 게임종료=플레이어 본인 결과라 {제작자}=닉네임. history 경로와 vars 정합(어드민이
+      // 웹공유텍스트에 {제작자} 넣어도 깨지지 않게 — 닉네임 미로드 시 빈 토큰).
       text: resolveCopy(mk.share.scoreShareText, roleLabel, {
+        제작자: nickname ?? undefined,
         점수: score.toLocaleString(),
       }),
+      file: clipFile,
     }).then((result) => {
       if (result === "shared") setShareMsg("공유했어요!");
       else if (result === "copied") setShareMsg("링크 복사됨");
@@ -260,7 +272,7 @@ export function GameOverModal({
             disabled={!scoreId}
             className="rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-40"
           >
-            {clipUrl ? "🔥 하이라이트 공유하기" : mk.share.gameoverShareBtn}
+            {clipUrl ? mk.share.gameoverShareBtnHighlight : mk.share.gameoverShareBtn}
           </button>
           <button
             onClick={onRestart}

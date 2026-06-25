@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
-import { fetchScoreDetail, hasLiveHighlight } from "@/lib/score-detail";
+import { fetchScoreDetail, hasLiveHighlight, clipPublicUrl } from "@/lib/score-detail";
 import { asRole } from "@/lib/roles";
 import { roleFrom } from "@/lib/config/domains/roles";
+import { resolveCopy } from "@/lib/config/template";
 import { formatDuration, gradeFor, reportNo, weaponLabel } from "@/lib/report";
-import { getScoreConfig, getBadgeCatalog, getRoleConfig } from "@/lib/config/getters";
+import { getScoreConfig, getBadgeCatalog, getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { matchPersona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
@@ -42,16 +43,26 @@ export default async function HistoryDetailPage({
   if (score.owner_id !== userId) notFound();
 
   const name = score.profiles?.display_name ?? "익명";
-  const [scoreCfg, badgeCatalog, roleCfg] = await Promise.all([
+  const [scoreCfg, badgeCatalog, roleCfg, mk] = await Promise.all([
     getScoreConfig(),
     getBadgeCatalog(),
     getRoleConfig(),
+    getMarketingCopy(),
   ]);
   const rlabel = roleFrom(asRole(score.dolls?.role), roleCfg).label; // DB 발행 호칭(roleFrom)
   const grade = gradeFor(score.score, scoreCfg.grades);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const hitCount = score.gameplay_stats?.hitCount ?? null;
   const hasHighlight = hasLiveHighlight(score);
+  // 공유 문구·버튼 라벨은 어드민 발행 config(이전기록 전용). 영상 첨부는 attached clip 일 때만.
+  const shareText = resolveCopy(mk.share.historyShareText, rlabel, {
+    제작자: name,
+    점수: score.score.toLocaleString(),
+  });
+  const shareLabel = hasHighlight
+    ? mk.share.historyShareBtnHighlight
+    : mk.share.historyShareBtn;
+  const shareClipUrl = clipPublicUrl(score);
 
   return (
     <>
@@ -148,7 +159,9 @@ export default async function HistoryDetailPage({
             scoreId={scoreId}
             score={score.score}
             highlight={hasHighlight}
-            text={`${name}님 ${rlabel} ${score.score.toLocaleString()}점 패기 결과 🥊`}
+            label={shareLabel}
+            text={shareText}
+            clipUrl={shareClipUrl}
           />
 
           {score.dolls?.id && score.dolls.image_url && (

@@ -20,6 +20,13 @@ const tpl = (max: number) =>
       message: "허용되지 않은 치환 토큰이 있어요({호칭}/{호칭을}/{호칭은}/{호칭으로}/{제작자}/{점수}/{등급}/{특이사항}/{상위}만 가능).",
     });
 
+// 웹 공유 텍스트 전용 — 공유 helper(runShare)가 URL 을 마지막 줄에 1개 자동 부착하므로
+// 문구 안에 raw URL 을 넣으면 링크가 중복된다. 저장 단계에서 차단.
+const tplNoUrl = (max: number) =>
+  tpl(max).refine((s) => !/https?:\/\//i.test(s), {
+    message: "URL 은 공유 시 자동으로 붙으니 문구에 넣지 마세요.",
+  });
+
 export const marketingCopySchema = z.object({
   home: z.object({
     tagline, // 줄바꿈으로 여러 줄
@@ -43,20 +50,26 @@ export const marketingCopySchema = z.object({
     dollHook: tpl(80),
     dollCtaMake: tpl(30),
     dollCtaDefault: tpl(40),
-    dollShareText: tpl(160),
+    dollShareText: tplNoUrl(160),
     dollOgTitle: tpl(80),
     dollOgDesc: tpl(160),
     // 점수 공유(share)
     scoreHook: tpl(60),
     scoreCtaPlay: tpl(40),
     scoreCtaPersona: tpl(40),
-    scoreShareText: tpl(60),
+    // 게임 종료 화면에서 공유 시 웹 공유 텍스트(키 유지=발행값 보존; URL 은 helper 가 자동 부착).
+    scoreShareText: tplNoUrl(60),
     scoreOgTitle: tpl(80),
     // 점수 공유 OG 설명 — 롤 무관 단일 값(구 롤 ogLines 대체). 발행된 행엔 없을 수 있어 .default().
     scoreOgDesc: tpl(160).default("{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?"),
-    // 게임오버
+    // 게임오버 — 공유 버튼(하이라이트 없을 때/있을 때) + 다시 버튼. 발행행 무중단 .default().
     gameoverShareBtn: tpl(30),
+    gameoverShareBtnHighlight: tpl(30).default("🔥 하이라이트 공유하기"),
     gameoverRetryBtn: tpl(20),
+    // 이전 플레이 기록 화면(history) — 공유 버튼 2종 + 웹 공유 텍스트. 발행행 무중단 .default().
+    historyShareBtn: tpl(30).default("결과 보고서 공유"),
+    historyShareBtnHighlight: tpl(30).default("🔥 하이라이트 공유"),
+    historyShareText: tplNoUrl(60).default("{제작자}님 {호칭} {점수}점 패기 결과 🥊"),
     scoreRankLink: tpl(40).default("이 점수, 랭킹 몇 등인지 보기"),
   }),
 });
@@ -95,7 +108,11 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     scoreOgTitle: "[결재완료] {제작자} — {점수}점 ({등급})",
     scoreOgDesc: "{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?",
     gameoverShareBtn: "보고서 공유하기",
+    gameoverShareBtnHighlight: "🔥 하이라이트 공유하기",
     gameoverRetryBtn: "다시 패기",
+    historyShareBtn: "결과 보고서 공유",
+    historyShareBtnHighlight: "🔥 하이라이트 공유",
+    historyShareText: "{제작자}님 {호칭} {점수}점 패기 결과 🥊",
     scoreRankLink: "이 점수, 랭킹 몇 등인지 보기",
   },
 };

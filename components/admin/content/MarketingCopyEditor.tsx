@@ -78,6 +78,23 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    label: "게임 종료 화면",
+    fields: [
+      { sec: "share", k: "gameoverShareBtn", label: "공유 버튼 — 하이라이트 없을 때", max: 30 },
+      { sec: "share", k: "gameoverShareBtnHighlight", label: "공유 버튼 — 하이라이트 있을 때", max: 30 },
+      { sec: "share", k: "scoreShareText", label: "웹 공유 텍스트 (이 화면에서 공유 시)", max: 60, multiline: true },
+      { sec: "share", k: "gameoverRetryBtn", label: "다시 버튼", max: 20 },
+    ],
+  },
+  {
+    label: "이전 플레이 기록 화면",
+    fields: [
+      { sec: "share", k: "historyShareBtn", label: "공유 버튼 — 하이라이트 없을 때", max: 30 },
+      { sec: "share", k: "historyShareBtnHighlight", label: "공유 버튼 — 하이라이트 있을 때", max: 30 },
+      { sec: "share", k: "historyShareText", label: "웹 공유 텍스트 (이 화면에서 공유 시)", max: 60, multiline: true },
+    ],
+  },
+  {
     label: "점수 공유 카드",
     fields: [
       { sec: "share", k: "scoreHook", label: "후킹 문구", max: 60 },
@@ -89,16 +106,8 @@ const GROUPS: Group[] = [
   {
     label: "점수 공유 미리보기 (OG)",
     fields: [
-      { sec: "share", k: "scoreOgTitle", label: "OG 제목 (메타)", max: 80 },
+      { sec: "share", k: "scoreOgTitle", label: "OG 제목", max: 80 },
       { sec: "share", k: "scoreOgDesc", label: "OG 설명", max: 160, multiline: true },
-      { sec: "share", k: "scoreShareText", label: "웹 공유 텍스트", max: 60, multiline: true },
-    ],
-  },
-  {
-    label: "게임 종료 화면",
-    fields: [
-      { sec: "share", k: "gameoverShareBtn", label: "공유 버튼", max: 30 },
-      { sec: "share", k: "gameoverRetryBtn", label: "다시 버튼", max: 20 },
     ],
   },
 ];
