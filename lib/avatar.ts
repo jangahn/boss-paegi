@@ -7,8 +7,13 @@ const MIN_DIM = 128;
 const MAX_DIM = 512;
 
 /**
- * 정사각 crop blob → 128~512 정사각 webp 로 정규화.
+ * 정사각 crop blob → 128~512 정사각 **JPEG** 로 정규화.
  * 너무 작으면 128×128 로 업스케일, 너무 크면 512×512 로 다운스케일.
+ *
+ * JPEG 고정 이유: `toBlob("image/webp")` 가 webp 미지원 브라우저(일부 Safari/iOS)에서
+ * **PNG 로 silently 폴백**(canvas 스펙 기본값) → 512px 사진 PNG=무손실 400~600KB 로 비대해져
+ * 프사 로딩이 느렸다. JPEG 는 toBlob 보편 지원·사진에 적합·알파 불필요(정사각 풀-드로) →
+ * 512px 기준 ~40~80KB. (알파 없는 JPEG 라 빈 영역 검정 방지로 흰 배경 선채움.)
  */
 async function normalizeSquare(blob: Blob): Promise<Blob> {
   const img = await loadImage(blob);
@@ -19,11 +24,13 @@ async function normalizeSquare(blob: Blob): Promise<Blob> {
   canvas.height = target;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas unsupported");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, target, target);
   const sx = (img.width - src) / 2;
   const sy = (img.height - src) / 2;
   ctx.drawImage(img, sx, sy, src, src, 0, 0, target, target);
   const out = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/webp", 0.9)
+    canvas.toBlob(resolve, "image/jpeg", 0.85)
   );
   if (!out) throw new Error("encode failed");
   return out;
@@ -65,7 +72,8 @@ export async function uploadAvatar(cropped: Blob): Promise<string> {
   const sb = createClient();
   const { error: upErr } = await sb.storage
     .from(BUCKET)
-    .uploadToSignedUrl(path, token, blob, { contentType: mime });
+    // URL 은 uuid 로 콘텐츠-주소(변경 시 새 path) → 장기 immutable 캐시 안전(재방문 즉시).
+    .uploadToSignedUrl(path, token, blob, { contentType: mime, cacheControl: "31536000" });
   if (upErr) throw new Error("업로드에 실패했어요");
 
   const r2 = await fetch("/api/avatar", {

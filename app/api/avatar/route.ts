@@ -8,8 +8,8 @@ import { log, errInfo } from "@/lib/log";
 export const runtime = "nodejs";
 
 const BUCKET = "avatars";
-/** hard cap — 클라가 ~512px 로 다운스케일, tolerance 포함 */
-const MAX_BYTES = 3 * 1024 * 1024;
+/** hard cap — 클라가 ≤512px JPEG(~40~80KB)로 정규화. 여유 포함 512KB(과거 PNG 폴백 bloat 방지). */
+const MAX_BYTES = 512 * 1024;
 
 function mimeToExt(mime?: string): "png" | "jpg" | "webp" | null {
   if (!mime) return null;
