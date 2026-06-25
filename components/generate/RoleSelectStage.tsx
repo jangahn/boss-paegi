@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ROLE_IDS, ROLE_META, type RoleId } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
+import { ROLE_IDS, type RoleId } from "@/lib/roles";
 
-/** 롤별 선택 카드 — 이모지 + 한 줄 설명. 라벨/호칭은 ROLE_META 단일 소스. */
+/** 역할별 선택 카드 — 이모지 + 한 줄 설명. 호칭은 DB 발행 config(roleFrom), ROLE_META 는 fallback. */
 const ROLE_EMOJI: Record<RoleId, string> = {
   boss: "💼",
   exec: "🏢",
@@ -31,13 +33,14 @@ export function RoleSelectStage({
   initialRole?: RoleId;
 }) {
   const [selected, setSelected] = useState<RoleId>(initialRole);
+  const cfg = useRoleConfig(); // DB 발행 호칭
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6">
       <div className="text-center">
         <h1 className="text-xl font-bold">누구로 만들까요?</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          고른 롤에 따라 표정·복장·대사가 달라져요
+          고른 역할에 따라 표정·복장·대사가 달라져요
         </p>
       </div>
 
@@ -59,7 +62,7 @@ export function RoleSelectStage({
               <span className="text-3xl" aria-hidden>
                 {ROLE_EMOJI[rid]}
               </span>
-              <span className="text-sm font-semibold">{ROLE_META[rid].label}</span>
+              <span className="text-sm font-semibold">{roleFrom(rid, cfg).label}</span>
               <span className="text-[11px] leading-tight text-zinc-500">
                 {ROLE_DESC[rid]}
               </span>
@@ -73,7 +76,7 @@ export function RoleSelectStage({
         onClick={() => onConfirm(selected)}
         className="w-full rounded-full bg-foreground py-3 font-semibold text-background transition hover:opacity-90"
       >
-        이 롤로 캐릭터 만들기
+        이 역할로 캐릭터 만들기
       </button>
     </div>
   );

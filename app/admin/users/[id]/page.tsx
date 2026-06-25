@@ -8,6 +8,7 @@ import {
   getUserDolls,
 } from "@/lib/admin-users";
 import { getLedger } from "@/lib/admin-ledger";
+import { getRoleConfig } from "@/lib/config/getters";
 import { OrdersTable } from "@/components/admin/OrdersTable";
 import { LedgerTable } from "@/components/admin/LedgerTable";
 import { GenerationsTable, DollsList } from "@/components/admin/UserSections";
@@ -66,11 +67,12 @@ export default async function AdminUserDetailPage({
     );
   }
 
-  const [orders, adjustments, generations, dolls] = await Promise.all([
+  const [orders, adjustments, generations, dolls, roleCfg] = await Promise.all([
     getUserOrders(id, pages.ordersPage),
     getLedger({ targetUserId: id, page: pages.adjPage }),
     getUserGenerations(id, pages.genPage),
     getUserDolls(id, pages.dollsPage),
+    getRoleConfig(), // 어드민 유저표 역할 호칭 = DB 발행값(roleFrom)
   ]);
 
   // overshoot(존재 행보다 큰 섹션 page) → 1페이지로(빈 화면·페이저 소실 방지). 한 번에 하나씩 수렴.
@@ -140,14 +142,14 @@ export default async function AdminUserDetailPage({
         {/* 콘텐츠 */}
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-bold text-zinc-500">AI 생성 내역 ({generations.total})</h2>
-          <GenerationsTable rows={generations.rows} />
+          <GenerationsTable rows={generations.rows} cfg={roleCfg} />
           <Pagination
             page={generations.page}
             totalPages={pp(generations.total, generations.pageSize)}
             hrefFor={hrefFor("genPage")}
           />
           <h2 className="mt-2 text-sm font-bold text-zinc-500">보유 캐릭터 ({dolls.total})</h2>
-          <DollsList rows={dolls.rows} />
+          <DollsList rows={dolls.rows} cfg={roleCfg} />
           <Pagination
             page={dolls.page}
             totalPages={pp(dolls.total, dolls.pageSize)}
