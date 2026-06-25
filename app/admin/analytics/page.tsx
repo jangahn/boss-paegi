@@ -9,6 +9,7 @@ import {
   getWeaponConcentration,
   getWeaponThroughput,
   getMapStickiness,
+  getDevicePerf,
 } from "@/lib/admin-analytics";
 import {
   BalanceBars,
@@ -17,6 +18,7 @@ import {
   WeaponThroughputBars,
   MapStickinessCard,
 } from "@/components/admin/analytics/AnalyticsViews";
+import { DevicePerfPanel } from "@/components/admin/DevicePerfPanel";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,15 +34,17 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const days = sp.days === "30" ? 30 : 7;
 
-  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick] = await Promise.all([
-    getWeaponBalance(days),
-    getMapBalance(days),
-    getFunnel(days),
-    getMemberActivity(days),
-    getWeaponConcentration(days),
-    getWeaponThroughput(days),
-    getMapStickiness(days),
-  ]);
+  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf] =
+    await Promise.all([
+      getWeaponBalance(days),
+      getMapBalance(days),
+      getFunnel(days),
+      getMemberActivity(days),
+      getWeaponConcentration(days),
+      getWeaponThroughput(days),
+      getMapStickiness(days),
+      getDevicePerf(days),
+    ]);
 
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
@@ -66,6 +70,13 @@ export default async function AnalyticsPage({
           <br />
           무기·맵 밸런스와 퍼널은 일 1회 집계라 당일 수치가 최대 ~1일 지연될 수 있어요.
         </p>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">
+            렌더 퍼포먼스 <span className="font-normal text-zinc-400">(프레임타임·렉 — device_class별)</span>
+          </h2>
+          <DevicePerfPanel data={devicePerf} />
+        </section>
 
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">무기 편중·다양성</h2>

@@ -428,3 +428,90 @@ export async function getMapStickiness(days: number): Promise<MapStickiness> {
     startMapDist,
   };
 }
+
+// ── 디바이스 렌더 퍼포먼스(렉 진단) — telemetry_sessions perf 컬럼(mig 0033) 직접 조회 ──
+//   avg_frame_ms>0(실프레임 표본 있는 세션)만 — 무플레이/배포前 0 디폴트는 제외.
+const PERF_LAG_P95_MS = 33; // p95 프레임타임 33ms ≈ 30fps 미달 스파이크 = "렉 세션"
+
+export type DevicePerfStat = {
+  deviceClass: string;
+  sessions: number;
+  medAvgMs: number;
+  medP95Ms: number;
+  estFps: number; // 1000 / medAvgMs
+  lagRate: number; // p95 > 33ms 비율(0~1)
+};
+export type WorstPerfSession = {
+  id: string;
+  deviceClass: string;
+  dpr: number;
+  refreshHz: number;
+  avgMs: number;
+  p95Ms: number;
+  durationMs: number | null;
+};
+export type DevicePerf = {
+  byDevice: DevicePerfStat[];
+  worst: WorstPerfSession[];
+  perfSessions: number; // perf 실데이터 세션 수(avg>0)
+};
+
+export async function getDevicePerf(days: number): Promise<DevicePerf> {
+  const admin = createAdminClient();
+  const start = kstDayStartIso(days - 1);
+  const { data, error } = await admin
+    .from("telemetry_sessions")
+    .select("id, device_class, dpr, refresh_hz, avg_frame_ms, p95_frame_ms, duration_ms")
+    .gte("started_at", start)
+    .gt("avg_frame_ms", 0) // 실프레임 표본 세션만(무플레이/배포前 0 제외)
+    .order("p95_frame_ms", { ascending: false })
+    .limit(5000);
+  if (error) {
+    log.warn("analytics.device_perf_fail", errInfo(error));
+    return { byDevice: [], worst: [], perfSessions: 0 };
+  }
+  const rows = (data ?? []) as {
+    id: string;
+    device_class: string;
+    dpr: number | null;
+    refresh_hz: number | null;
+    avg_frame_ms: number;
+    p95_frame_ms: number;
+    duration_ms: number | null;
+  }[];
+
+  const byClass = new Map<string, { avgs: number[]; p95s: number[]; lag: number }>();
+  for (const r of rows) {
+    const g = byClass.get(r.device_class) ?? { avgs: [], p95s: [], lag: 0 };
+    g.avgs.push(r.avg_frame_ms);
+    g.p95s.push(r.p95_frame_ms);
+    if (r.p95_frame_ms > PERF_LAG_P95_MS) g.lag += 1;
+    byClass.set(r.device_class, g);
+  }
+  const byDevice: DevicePerfStat[] = [...byClass.entries()]
+    .map(([deviceClass, g]) => {
+      const medAvg = median(g.avgs) ?? 0;
+      return {
+        deviceClass,
+        sessions: g.avgs.length,
+        medAvgMs: Math.round(medAvg * 10) / 10,
+        medP95Ms: Math.round((median(g.p95s) ?? 0) * 10) / 10,
+        estFps: medAvg > 0 ? Math.round(1000 / medAvg) : 0,
+        lagRate: g.avgs.length ? g.lag / g.avgs.length : 0,
+      };
+    })
+    .sort((a, b) => b.sessions - a.sessions);
+
+  // 가장 느린 세션 top-N (쿼리에서 p95 desc 정렬됨)
+  const worst: WorstPerfSession[] = rows.slice(0, 12).map((r) => ({
+    id: r.id,
+    deviceClass: r.device_class,
+    dpr: Number(r.dpr) || 0,
+    refreshHz: Number(r.refresh_hz) || 0,
+    avgMs: Math.round(r.avg_frame_ms * 10) / 10,
+    p95Ms: Math.round(r.p95_frame_ms * 10) / 10,
+    durationMs: r.duration_ms,
+  }));
+
+  return { byDevice, worst, perfSessions: rows.length };
+}
