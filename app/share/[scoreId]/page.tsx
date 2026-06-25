@@ -23,6 +23,7 @@ import { asRole } from "@/lib/roles";
 import { getRoleConfig, getScoreConfig, getBadgeCatalog, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
+import { ReportButton } from "@/components/ReportButton";
 
 export async function generateMetadata({
   params,
@@ -226,6 +227,12 @@ export default async function SharePage({
             </Link>
           </div>
         </div>
+
+        {score.dolls?.id && score.dolls.image_url && (
+          <div className="mt-5 text-center">
+            <ReportButton dollId={score.dolls.id} />
+          </div>
+        )}
       </div>
     </main>
   );

@@ -54,7 +54,7 @@ export default async function OgImage({
   const { data, error } = await admin
     .from("scores")
     .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url, role), score_stats(percentile)"
+      "id, score, weapon, created_at, profiles(display_name), dolls(image_url, role, deleted_at), score_stats(percentile)"
     )
     .eq("id", scoreId)
     .single();
@@ -68,7 +68,7 @@ export default async function OgImage({
         weapon: string;
         created_at: string;
         profiles: { display_name: string } | null;
-        dolls: { image_url: string | null; role: string | null } | null;
+        dolls: { image_url: string | null; role: string | null; deleted_at?: string | null } | null;
       }
     | null;
 
@@ -87,7 +87,8 @@ export default async function OgImage({
   ]);
   const rlabel = roleFrom(role, cfg).label;
   const score = (s?.score ?? 0).toLocaleString();
-  const dollSrc = await dollDataUri(s?.dolls?.image_url ?? null);
+  // takedown(0034): 삭제된 인형 얼굴은 OG 에서도 숨김 → 기본 카드 fallback.
+  const dollSrc = await dollDataUri(s?.dolls?.deleted_at ? null : s?.dolls?.image_url ?? null);
   const grade = gradeFor(s?.score ?? 0, scoreCfg.grades);
   const reaction = s ? bossReaction(s.score, s.id, role, cfg) : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";

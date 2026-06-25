@@ -9,6 +9,7 @@ import { asRole } from "@/lib/roles";
 import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
+import { ReportButton } from "@/components/ReportButton";
 
 type DollRow = {
   id: string;
@@ -24,6 +25,7 @@ async function fetchDoll(id: string): Promise<DollRow | null> {
     .from("dolls")
     .select("id, image_url, created_at, role, profiles(display_name)")
     .eq("id", id)
+    .is("deleted_at", null) // takedown(0034): 신고 삭제된 인형은 공개 페이지에서 404.
     .single();
   return (data as unknown as DollRow) ?? null;
 }
@@ -153,6 +155,10 @@ export default async function DollPage({
               {mk.share.dollCtaDefault}
             </Link>
           </div>
+        </div>
+
+        <div className="mt-5 text-center">
+          <ReportButton dollId={doll.id} />
         </div>
       </div>
     </main>

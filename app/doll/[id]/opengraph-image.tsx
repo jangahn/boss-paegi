@@ -38,6 +38,7 @@ export default async function OgImage({
     .from("dolls")
     .select("id, image_url, created_at, role, profiles(display_name)")
     .eq("id", id)
+    .is("deleted_at", null) // takedown(0034): 삭제된 인형 OG 는 기본 카드로 fallback.
     .single();
   // 조회 실패해도 기본 카드로 fallback — 단 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
   if (error) log.warn("og.doll_query_fail", { dollId: id, ...errInfo(error) });
