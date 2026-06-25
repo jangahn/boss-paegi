@@ -30,9 +30,9 @@ export const growthLeversSchema = z
 export type GrowthLevers = z.infer<typeof growthLeversSchema>;
 export type GrowthProduct = z.infer<typeof productSchema>;
 
-// 코드 기본값 = 현 SIGNUP(2) + CREDIT_PRODUCT_LIST(전부 active).
+// 코드 기본값(fallback) = 발행값과 동기화 — 가입보너스 1 + CREDIT_PRODUCT_LIST 상시상품(전부 active).
 export const GROWTH_LEVERS_DEFAULT: GrowthLevers = {
-  signupBonusCredits: 2,
+  signupBonusCredits: 1,
   products: CREDIT_PRODUCT_LIST.map((p) => ({
     productId: p.productId,
     goodname: p.goodname,
