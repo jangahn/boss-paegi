@@ -74,6 +74,19 @@ export function LoginForm() {
     });
   }, [auto, next]);
 
+  // OAuth 페이지에서 뒤로가기 → bfcache 복원 시 React 상태(busy 스피너)가 그대로 살아나
+  // 버튼이 로딩 상태로 방치되는 문제 해결. pageshow.persisted=bfcache 복원만 처리.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      setBusy(null); // 멈춘 스피너 해제 → 버튼 재활성
+      autoStarted.current = false;
+      if (auto) setAutoFailed(true); // 자동 재로그인 변형도 스피너 화면 풀고 버튼 노출
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [auto]);
+
   const onLogin = async (provider: OAuthProvider) => {
     if (busy) return;
     setBusy(provider);
