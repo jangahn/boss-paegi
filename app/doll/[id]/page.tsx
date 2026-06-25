@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { FadeImg } from "@/components/FadeImg";
 import { signedDollUrl } from "@/lib/storage";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
@@ -116,11 +117,13 @@ export default async function DollPage({
           <div className="mt-4 flex gap-4">
             {/* 증명사진란 */}
             <div className="shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <FadeImg
                 src={imgSrc}
                 alt={`${rlabel} 증명사진`}
-                className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100 object-contain"
+                className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100"
+                fit="contain"
+                placeholder="pulse"
+                fallbackSrc="/sprites/boss-default.png"
               />
               <p className="mt-1 text-center text-[10px] text-zinc-400">
                 (증명사진)

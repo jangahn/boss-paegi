@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { signOut } from "@/lib/auth-oauth";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
+import { FadeImg } from "@/components/FadeImg";
 
 const DEFAULT_AVATAR = "/avatars/default.png";
 
@@ -90,11 +91,11 @@ export function AccountMenu() {
         aria-expanded={open}
         aria-label="내 계정"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <FadeImg
           src={avatar}
-          alt=""
-          className="h-6 w-6 rounded-full border border-foreground/10 object-cover"
+          className="h-6 w-6 shrink-0 rounded-full border border-foreground/10"
+          loading="eager"
+          fallbackSrc={DEFAULT_AVATAR}
         />
         <span className="truncate">{profile.display_name}</span>
         <span aria-hidden className="text-xs text-zinc-500">

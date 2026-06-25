@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 import { AvatarEditor } from "@/components/AvatarEditor";
+import { FadeImg } from "@/components/FadeImg";
 import { signOut } from "@/lib/auth-oauth";
 import {
   getMyProfile,
@@ -81,11 +82,11 @@ export default function AccountPage() {
 
           {/* 프로필 사진 */}
           <section className="mt-6 flex items-center gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <FadeImg
               src={avatar}
-              alt=""
-              className="h-16 w-16 rounded-full border border-foreground/10 object-cover"
+              className="h-16 w-16 shrink-0 rounded-full border border-foreground/10"
+              loading="eager"
+              fallbackSrc={DEFAULT_AVATAR}
             />
             <button
               type="button"

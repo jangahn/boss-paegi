@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
+import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDuration, gradeFor, timeAgo, weaponLabel } from "@/lib/report";
@@ -83,11 +84,11 @@ export default async function HistoryPage({
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <FadeImg
               src={profile.avatar_url ?? DEFAULT_AVATAR}
-              alt=""
-              className="h-11 w-11 shrink-0 rounded-full border border-foreground/10 bg-foreground/10 object-cover"
+              className="h-11 w-11 shrink-0 rounded-full border border-foreground/10"
+              loading="eager"
+              fallbackSrc={DEFAULT_AVATAR}
             />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">{name}님의 기록</h1>
