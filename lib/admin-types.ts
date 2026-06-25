@@ -94,8 +94,10 @@ export type DollRow = {
   image_url: string;
   role: string;
   created_at: string;
-  /** takedown(신고삭제) soft-delete 시각. null=정상. (탈퇴=하드삭제라 목록서 사라짐.) */
+  /** 숨김(takedown) soft-delete 시각. null=공개. (탈퇴=하드삭제라 목록서 사라짐.) */
   deleted_at: string | null;
+  /** 영구삭제(artifact purge) 시각. null=미purge. set이면 객체 제거됨(복구 불가). */
+  artifacts_purged_at: string | null;
 };
 
 export type Paged<T> = { rows: T[]; total: number; page: number; pageSize: number };

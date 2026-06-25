@@ -180,7 +180,9 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
   const admin = createAdminClient();
   const { data, count, error } = await admin
     .from("dolls")
-    .select("id, image_url, role, created_at, deleted_at", { count: "exact" })
+    .select("id, image_url, role, created_at, deleted_at, artifacts_purged_at", {
+      count: "exact",
+    })
     .eq("owner_id", userId)
     .order("created_at", { ascending: false })
     .range(from, from + USER_PAGE_SIZE - 1);
@@ -188,10 +190,15 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
     log.warn("admin.user_dolls_fail", errInfo(error));
     return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
   }
-  // private 버킷 — image_url 서명(순차 ≤page). 삭제/영구삭제는 DollsList 칩이 덮음.
+  // private 버킷 — 공개·숨김은 서명(어드민 얼굴 확인), 영구삭제(purged)는 객체 없음→경로 그대로(칩 placeholder 가 덮음).
   const rows: DollRow[] = [];
   for (const d of (data ?? []) as DollRow[]) {
-    rows.push({ ...d, image_url: (await signedDollUrl(d.image_url)) ?? d.image_url });
+    rows.push({
+      ...d,
+      image_url: d.artifacts_purged_at
+        ? d.image_url
+        : (await signedDollUrl(d.image_url)) ?? d.image_url,
+    });
   }
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
 }
