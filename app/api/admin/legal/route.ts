@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isDocType, legalSectionsSchema, DOC_PATH, type DocType } from "@/lib/legal/types";
 
 const bodySchema = z.object({
-  action: z.enum(["save_draft", "publish"]),
+  action: z.enum(["save_draft", "publish", "unpublish"]),
   docType: z.string(),
   title: z.string().trim().min(1).max(200).optional(),
   sections: legalSectionsSchema.optional(),
@@ -19,7 +19,8 @@ const bodySchema = z.object({
 const ERR_KO: Record<string, string> = {
   not_admin: "관리자 권한이 필요해요.",
   no_draft: "먼저 초안을 저장한 뒤 발행하세요.",
-  reservation_exists: "이미 시행 예정본이 있어요. 먼저 처리(시행 또는 수정)하세요.",
+  reservation_exists: "이미 시행 예정본이 있어요. 먼저 발행취소한 뒤 수정·재발행하세요.",
+  no_reservation: "취소할 시행 예정본이 없어요(시행된 버전은 취소할 수 없어요).",
   no_change: "직전 발행본과 내용·시행일이 같아 발행할 변경이 없어요.",
   effective_date_required: "시행일을 입력하세요.",
   effective_date_past: "시행일은 오늘(KST) 이후여야 해요.",
@@ -57,6 +58,18 @@ export async function POST(req: Request) {
         p_admin_id: gate.user.id,
       });
       if (error) throw new Error(error.message);
+      return NextResponse.json(data ?? { ok: true });
+    }
+
+    if (b.action === "unpublish") {
+      // 시행 전 예약본 취소 → 예약 해제 + (draft 없으면) 내용을 draft 로 복원.
+      const { data, error } = await admin.rpc("admin_unpublish_legal", {
+        p_doc_type: docType,
+        p_admin_id: gate.user.id,
+      });
+      if (error) throw new Error(error.message);
+      revalidatePath(DOC_PATH[docType]);
+      revalidatePath("/");
       return NextResponse.json(data ?? { ok: true });
     }
 
