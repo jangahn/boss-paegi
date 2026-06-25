@@ -177,7 +177,7 @@ export function GrowthLeversEditor({
               <input
                 value={p.productId}
                 onChange={(e) => setP(i, "productId", e.target.value)}
-                placeholder="상품 ID (예: credits_5, 영문/숫자)"
+                placeholder="상품 ID (예: credits_3, 영문/숫자)"
                 className="rounded-lg border border-foreground/15 bg-transparent p-2 text-xs outline-none focus:border-foreground/40"
               />
               <input

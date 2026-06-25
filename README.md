@@ -98,7 +98,7 @@ boss-paegi/
 
 ## 회원 / 인증 (OAuth)
 
-익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹·**갤러리 열람**은 자유, **캐릭터 생성·충전·관리자는 회원 전용**(`proxy.ts` 가 `/generate`·`/credits`·`/admin` 을 익명 시 `/login` 으로 리다이렉트). 갤러리는 비회원에게 **기본부장님**만 노출(맨 앞 '기본' 뱃지) — 공유/롤 변경/새 캐릭터 시도 시 후킹 토스트·배너로 가입(가입기념 생성권 2개) 유도. 가입(`/login?next=/generate`) 후 곧장 생성으로.
+익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹·**갤러리 열람**은 자유, **캐릭터 생성·충전·관리자는 회원 전용**(`proxy.ts` 가 `/generate`·`/credits`·`/admin` 을 익명 시 `/login` 으로 리다이렉트). 갤러리는 비회원에게 **기본부장님**만 노출(맨 앞 '기본' 뱃지) — 공유/롤 변경/새 캐릭터 시도 시 후킹 토스트·배너로 가입(가입기념 생성권 1개) 유도. 가입(`/login?next=/generate`) 후 곧장 생성으로.
 
 - **로그인 = 가입**: 별도 가입 페이지 없음 — `/login` 버튼뿐. DB 에 계정 없으면 그 로그인이 곧 가입.
 - **마이그레이션(linkIdentity)**: 익명 상태에서 첫 OAuth 로그인 시 같은 `user.id` 로 멤버 승격 → 익명 때 만든 dolls/scores 보존. 로그아웃하면 새 익명 세션으로 분리. 이미 가입된 OAuth 로 재로그인(`identity_already_exists`)은 `/login?relogin=1` → `signInWithOAuth`(현재 익명 데이터는 자동 병합 안 함).
@@ -202,7 +202,7 @@ npm run typecheck   # tsc --noEmit
 - **동의 다이얼로그**: 생성 직전 3개 체크박스 강제 (본인 또는 사용권 있는 이미지 / 타인 비방 목적 아님 / 캐릭터화 변형 동의).
 - **AI 프롬프트**: 강한 캐릭터화 (3D claymation, caricature, exaggerated chibi) — 실제 얼굴과 닮음 최소화.
 - **API 키**: `FAL_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 는 **서버 전용**. 클라이언트 번들 절대 포함 금지.
-- **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 2개, 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 의견 위젯으로 추가 요청. `OPS_USER_ID` 무제한.
+- **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 1개(발행 `growth_levers.signupBonusCredits`), 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 **충전**(`/credits`, PayApp). 전역 fal 잔액 캡($2) 미만이면 service_paused. `OPS_USER_ID` 무제한.
 
 전체 정책 결정은 [CLAUDE.md](./CLAUDE.md) 참조.
 
@@ -385,7 +385,7 @@ v0.21 (2026-06-24, 어드민 전면 개편 + 페이앱 자동환불):
 v0.22 (2026-06-24, 갤러리 비회원 개방 + 기본부장님 후킹 — 가입 전환; 마이그레이션 없음):
 - **갤러리 비회원 개방**(`proxy.ts` 에서 `/gallery` 게이트 제거 — 생성/충전/관리자는 회원 전용 유지): 비회원도 갤러리 진입 가능. 3-state 뷰어(`getMyProfile().isMember`+`dolls.length`) — 비회원 / 회원·0캐릭터 / 회원·有캐릭터.
 - **기본부장님 카드 상시 노출**(맨 앞 '기본' 뱃지, `components/gallery/DefaultBossCard.tsx`): 이미지 클릭=기본부장님 플레이(`/play`). 비회원·0캐릭터에겐 ⋯ 메뉴([공유, 롤 변경], 삭제 없음)가 후킹 토스트+CTA(`HookToast`)로 가입/생성 유도. 캐릭터 보유 회원에겐 play 전용(메뉴 없음). DB row 가 아니라 실 공유/PATCH/DELETE 는 호출 안 함.
-- **상태별 가입 후킹**: 비회원=배너 "가입하면 생성권 2개"(→`/login?next=/generate`), 회원·0캐릭터="첫 캐릭터 만들기"(→`/generate`). 토스트·배너·헤더버튼 공용 헬퍼(`lib/gallery-cta.ts`).
+- **상태별 가입 후킹**: 비회원=배너 "가입하면 생성권 1개"(→`/login?next=/generate`), 회원·0캐릭터="첫 캐릭터 만들기"(→`/generate`). 토스트·배너·헤더버튼 공용 헬퍼(`lib/gallery-cta.ts`).
 - 비회원은 생성권·진행중 생성(`/api/generations`) 모두 미요청. 갤러리 472줄 → `components/gallery/` 모듈 분리(DollCard/PendingGrid 동작 보존 이동).
 
 v0.23 (2026-06-24, 마케터 콘텐츠/설정 콘솔 — substrate; 6-PR 초기 PR1):

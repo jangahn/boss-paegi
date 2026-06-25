@@ -1,9 +1,11 @@
 /**
- * 충전 상품 카탈로그 — 단일 소스(클라 표시 + 서버 결정 공용).
+ * 충전 상품 카탈로그 — **fallback default**(발행 소스는 DB config `growth_levers`).
  *
- * 클라이언트는 `productId` 만 전송하고, price/credits/goodname 결정은 항상 서버(이 allowlist).
- * 가격·구성은 비밀이 아니라 클라 노출 OK — 그래서 server-only 가 아니며 /credits 페이지에서도 import.
- * 모든 상품은 PayApp 최소 결제금액 리스크 회피를 위해 1,000원 이상.
+ * 런타임 표시·체크아웃은 항상 발행값(`getGrowthLevers()`→`activeCreditProducts`)을 쓴다. 이 정적 목록은
+ * config 조회 실패 시 fallback(`GROWTH_LEVERS_DEFAULT`/`CreditProductsProvider` 초기값)으로만 살아있다
+ * → 실제 발행 *상시* 상품(credits_3/10/20/40)과 일치시켜 fallback 시 존재하지 않는 productId 노출(결제 막힘)
+ * 을 방지. **이벤트성 상품(event_*)은 임시라 여기 넣지 않음(종료 후 재-stale 방지) — DB-only.**
+ * 클라는 `productId` 만 전송, price/credits/goodname 결정은 항상 서버. 모든 상품 1,000원 이상(PayApp floor).
  */
 export type CreditProduct = {
   productId: string;
@@ -15,21 +17,22 @@ export type CreditProduct = {
   credits: number;
 };
 
+// 발행 DB(growth_levers)의 상시 상품과 동기화(2026-06-25). 이벤트 상품(event_credits_10 등)은 DB-only.
 export const CREDIT_PRODUCTS = {
-  credits_5: { productId: "credits_5", goodname: "캐릭터 생성권 5개", price: 1000, credits: 5 },
-  credits_10: { productId: "credits_10", goodname: "캐릭터 생성권 10개", price: 1800, credits: 10 },
-  credits_20: { productId: "credits_20", goodname: "캐릭터 생성권 20개", price: 3200, credits: 20 },
-  credits_50: { productId: "credits_50", goodname: "캐릭터 생성권 50개", price: 7000, credits: 50 },
+  credits_3: { productId: "credits_3", goodname: "캐릭터 생성권 3개", price: 1000, credits: 3 },
+  credits_10: { productId: "credits_10", goodname: "캐릭터 생성권 10개", price: 3000, credits: 10 },
+  credits_20: { productId: "credits_20", goodname: "캐릭터 생성권 20개", price: 5500, credits: 20 },
+  credits_40: { productId: "credits_40", goodname: "캐릭터 생성권 40개", price: 10000, credits: 40 },
 } as const satisfies Record<string, CreditProduct>;
 
 export type CreditProductId = keyof typeof CREDIT_PRODUCTS;
 
 /** 표시 순서(가격 오름차순). */
 export const CREDIT_PRODUCT_LIST: CreditProduct[] = [
-  CREDIT_PRODUCTS.credits_5,
+  CREDIT_PRODUCTS.credits_3,
   CREDIT_PRODUCTS.credits_10,
   CREDIT_PRODUCTS.credits_20,
-  CREDIT_PRODUCTS.credits_50,
+  CREDIT_PRODUCTS.credits_40,
 ];
 
 /** productId allowlist 검증 — 유효하면 상품, 아니면 null. */

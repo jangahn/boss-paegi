@@ -12,7 +12,8 @@ export const runtime = "nodejs";
  * 1) identity_already_exists → 기존 OAuth 계정 재로그인 케이스 → /login?relogin=1.
  * 2) code 교환 → 세션 확립.
  * 3) 이메일 필수 게이트(verified-email linking 안전성).
- * 4) !익명 + 이메일 OK → 멤버 1회성 초기화(크레딧 5 + OAuth 닉/프사). 재로그인은 no-op.
+ * 4) !익명 + 이메일 OK → 멤버 1회성 초기화(가입보너스 생성권 + OAuth 닉/프사). 재로그인은 no-op.
+ *    (가입보너스 지급은 여기서가 아니라 onboard 가 growth_levers.signupBonusCredits 로 수행 — 현 발행값 1.)
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
