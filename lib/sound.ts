@@ -20,6 +20,39 @@ let unlocked = false;
 let master: GainNode | null = null;
 let recordDest: MediaStreamAudioDestinationNode | null = null;
 
+// ── 음소거 토글 (master gain 0/1) — master 가 recordDest 까지 합류하므로 녹화 음성도 함께 무음 ──
+const MUTED_KEY = "boss-paegi:sound:muted";
+let muted = false;
+let mutedLoaded = false;
+/** 첫 사운드/master 생성 전에 localStorage 저장값을 상태에 반영(SSR-safe lazy). */
+function ensureMutedLoaded(): void {
+  if (mutedLoaded || typeof window === "undefined") return;
+  mutedLoaded = true;
+  try {
+    muted = localStorage.getItem(MUTED_KEY) === "true";
+  } catch {
+    /* localStorage 불가 — 기본 ON(muted=false) */
+  }
+}
+
+export function isMuted(): boolean {
+  ensureMutedLoaded();
+  return muted;
+}
+
+/** 음소거 on/off. master 가 아직 없어도 상태 보관 → out() 생성 시 즉시 반영. */
+export function setMuted(m: boolean): void {
+  ensureMutedLoaded();
+  muted = m;
+  try {
+    localStorage.setItem(MUTED_KEY, m ? "true" : "false");
+  } catch {
+    /* 저장 실패 무시 */
+  }
+  const c = getCtx();
+  if (c && master) master.gain.setValueAtTime(m ? 0 : 1, c.currentTime);
+}
+
 function getCtx() {
   if (typeof window === "undefined") return null;
   if (!ctx) {
@@ -39,7 +72,9 @@ function getCtx() {
  */
 function out(c: AudioContext): AudioNode {
   if (!master) {
+    ensureMutedLoaded();
     master = c.createGain();
+    master.gain.value = muted ? 0 : 1; // 저장된 음소거 상태를 첫 사운드부터 반영
     master.connect(c.destination);
   }
   return master;

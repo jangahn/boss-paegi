@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { timeAgo } from "@/lib/report";
 
-type Period = "daily" | "weekly";
+type Period = "daily" | "weekly" | "monthly";
 
 type RankRow = {
   id: string;
@@ -65,6 +65,9 @@ export default function LeaderboardPage() {
             </Tab>
             <Tab active={period === "weekly"} onClick={() => setPeriod("weekly")}>
               이번 주
+            </Tab>
+            <Tab active={period === "monthly"} onClick={() => setPeriod("monthly")}>
+              이번 달
             </Tab>
           </div>
 

@@ -17,7 +17,7 @@ import { setSentryGameContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
-import { unlockAudio } from "@/lib/sound";
+import { unlockAudio, isMuted, setMuted } from "@/lib/sound";
 import { log } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
 import { useGameInit } from "./useGameInit";
@@ -63,6 +63,17 @@ function PlayInner() {
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
+  // 사운드 음소거 토글 — 저장값(localStorage)으로 초기화, master gain 0/1
+  const [soundMuted, setSoundMuted] = useState(false);
+  // SSR/hydration 안전: 서버·첫 렌더는 false(🔊), 마운트 후 저장값 반영(불일치 방지 — effect 의도적)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setSoundMuted(isMuted()), []);
+  const toggleSound = useCallback(() => {
+    setSoundMuted((m) => {
+      setMuted(!m);
+      return !m;
+    });
+  }, []);
   // 강제 종료 — 마케터 한도(시간/점수) 도달 시. 한도는 게임 시작 시점 값으로 동결(ref).
   const sessionLimits = useSessionLimits();
   const limitsRef = useRef(sessionLimits);
@@ -370,12 +381,22 @@ function PlayInner() {
           ))}
         </div>
       )}
-      <button
-        onClick={() => void handleEnd()}
-        className="pointer-events-auto absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:right-4 sm:top-4 sm:px-4 sm:py-2 sm:text-sm"
-      >
-        그만 패기
-      </button>
+      <div className="pointer-events-auto absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-center gap-2 sm:right-4 sm:top-4">
+        <button
+          type="button"
+          onClick={toggleSound}
+          aria-label={soundMuted ? "소리 켜기" : "소리 끄기"}
+          className="rounded-full bg-black/50 px-2.5 py-1.5 text-sm text-white backdrop-blur-sm sm:px-3 sm:py-2"
+        >
+          {soundMuted ? "🔇" : "🔊"}
+        </button>
+        <button
+          onClick={() => void handleEnd()}
+          className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:px-4 sm:py-2 sm:text-sm"
+        >
+          그만 패기
+        </button>
+      </div>
       {/* 강제 종료 배너 — 한도 도달 시 grace 동안 노출 후 결과 모달로 전환 */}
       {forcedBanner && !over && (
         <div className="pointer-events-none absolute inset-x-0 top-1/3 z-30 flex justify-center">
