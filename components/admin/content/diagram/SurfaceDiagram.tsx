@@ -17,7 +17,10 @@ export type SurfaceKey =
   | "dollOg"
   | "share"
   | "shareOg"
-  | "gameover";
+  | "gameover"
+  | "gameoverHl"
+  | "history"
+  | "historyHl";
 
 const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
   home: {
@@ -88,17 +91,44 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
     regions: [
       { label: "이미지 (보고서 카드)", tone: "ctx" },
       { id: "scoreHook", label: "하단 푸터 (후킹)", tone: "edit" },
-      { id: "scoreOgTitle", label: "OG 제목 (메타)", tone: "edit" },
+      { id: "scoreOgTitle", label: "OG 제목", tone: "edit" },
       { id: "scoreOgDesc", label: "OG 설명", tone: "edit" },
-      { id: "scoreShareText", label: "웹 공유 텍스트", tone: "edit" },
     ],
   },
   gameover: {
-    title: "게임 종료 화면",
+    title: "게임 종료 화면 — 하이라이트 없을 때",
     regions: [
       { label: "보고서 본문(제목·점수·뱃지·피격자 의견) — 코드/롤/등급", tone: "ctx" },
       { id: "gameoverShareBtn", label: "공유 버튼", tone: "edit" },
+      { id: "scoreShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
       { id: "gameoverRetryBtn", label: "다시 버튼", tone: "edit" },
+    ],
+  },
+  gameoverHl: {
+    title: "게임 종료 화면 — 하이라이트 있을 때",
+    regions: [
+      { label: "보고서 본문(제목·점수·뱃지·피격자 의견) — 코드/롤/등급", tone: "ctx" },
+      { label: "하이라이트 영상 (모바일은 공유에 첨부) — 자동", tone: "ctx" },
+      { id: "gameoverShareBtnHighlight", label: "공유 버튼", tone: "edit" },
+      { id: "scoreShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
+      { id: "gameoverRetryBtn", label: "다시 버튼", tone: "edit" },
+    ],
+  },
+  history: {
+    title: "이전 플레이 기록 — 하이라이트 없을 때",
+    regions: [
+      { label: "보고서 본문(점수·등급·정산표) — 코드/롤/등급", tone: "ctx" },
+      { id: "historyShareBtn", label: "공유 버튼", tone: "edit" },
+      { id: "historyShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
+    ],
+  },
+  historyHl: {
+    title: "이전 플레이 기록 — 하이라이트 있을 때",
+    regions: [
+      { label: "보고서 본문(점수·등급·정산표) — 코드/롤/등급", tone: "ctx" },
+      { label: "하이라이트 영상 (모바일은 공유에 첨부) — 자동", tone: "ctx" },
+      { id: "historyShareBtnHighlight", label: "공유 버튼", tone: "edit" },
+      { id: "historyShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
     ],
   },
 };
@@ -194,10 +224,24 @@ export const FIELD_SURFACE: Record<
   scoreRankLink: [{ surface: "share", region: "scoreRankLink" }],
   scoreOgTitle: [{ surface: "shareOg", region: "scoreOgTitle" }],
   scoreOgDesc: [{ surface: "shareOg", region: "scoreOgDesc" }],
-  scoreShareText: [{ surface: "shareOg", region: "scoreShareText" }],
-  // 게임오버
+  // 게임 종료 화면 — 웹 공유 텍스트(scoreShareText)·다시 버튼은 하이라이트 유/무 두 상태 공통.
+  scoreShareText: [
+    { surface: "gameover", region: "scoreShareText" },
+    { surface: "gameoverHl", region: "scoreShareText" },
+  ],
   gameoverShareBtn: [{ surface: "gameover", region: "gameoverShareBtn" }],
-  gameoverRetryBtn: [{ surface: "gameover", region: "gameoverRetryBtn" }],
+  gameoverShareBtnHighlight: [{ surface: "gameoverHl", region: "gameoverShareBtnHighlight" }],
+  gameoverRetryBtn: [
+    { surface: "gameover", region: "gameoverRetryBtn" },
+    { surface: "gameoverHl", region: "gameoverRetryBtn" },
+  ],
+  // 이전 플레이 기록 — 웹 공유 텍스트는 두 상태 공통.
+  historyShareBtn: [{ surface: "history", region: "historyShareBtn" }],
+  historyShareBtnHighlight: [{ surface: "historyHl", region: "historyShareBtnHighlight" }],
+  historyShareText: [
+    { surface: "history", region: "historyShareText" },
+    { surface: "historyHl", region: "historyShareText" },
+  ],
 };
 
 /* ── 롤 대사 에디터 전용 ──────────────────────────────────────────
