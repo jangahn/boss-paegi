@@ -12,7 +12,8 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   const raw = new URL(req.url).searchParams.get("period");
-  const period = raw === "weekly" ? "weekly" : "daily"; // allowlist (기본 daily)
+  const period =
+    raw === "weekly" ? "weekly" : raw === "monthly" ? "monthly" : "daily"; // allowlist (기본 daily)
 
   const admin = createAdminClient();
   const { data, error } = await admin.rpc("get_leaderboard", {

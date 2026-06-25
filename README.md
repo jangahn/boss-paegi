@@ -212,7 +212,7 @@ npm run typecheck   # tsc --noEmit
 - [x] M2 코어 게임 (PixiJS 탭 메커니즘, 점수+콤보, 결과 모달)
 - [x] M3 AI 인형 생성 플로우 (업로드 → 동의 → fal.ai → 저장)
 - [x] M4 인증 / 갤러리 (Supabase Anonymous + /gallery)
-- [x] M5 공유 / 랭킹 (점수 등록 API + 일·주간 랭킹 + Web Share + 동적 OG 이미지)
+- [x] M5 공유 / 랭킹 (점수 등록 API + 일·주·월간 랭킹 + Web Share + 동적 OG 이미지)
 - [x] M6 PWA + 마무리 (manifest + dynamic icon/apple-icon)
 
 v0.3 (2026-06-05 라이브, 실기기 1차 QA 반영):
