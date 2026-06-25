@@ -46,6 +46,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   email_required: "이메일 제공에 동의해야 가입할 수 있어요. 다시 시도해주세요.",
   oauth: "로그인에 실패했어요. 다시 시도해주세요.",
   exchange: "로그인 처리 중 문제가 생겼어요. 다시 시도해주세요.",
+  account_deleted: "탈퇴 처리된 계정이에요. 같은 계정으로는 다시 이용할 수 없어요.",
+  age_required: "만 14세 이상만 이용할 수 있어요.",
 };
 
 export function LoginForm() {
@@ -59,6 +61,7 @@ export function LoginForm() {
 
   const [busy, setBusy] = useState<OAuthProvider | null>(auto);
   const [err, setErr] = useState<string | null>(null);
+  const [ageOk, setAgeOk] = useState(false); // 만14세 이상 확인(회원전환 전 게이트·고지)
   const [autoFailed, setAutoFailed] = useState(false);
   const autoStarted = useRef(false);
 
@@ -120,11 +123,23 @@ export function LoginForm() {
           </p>
         )}
 
-        <div className="mt-2 flex w-full flex-col gap-3">
+        <label className="flex w-full items-start gap-2 text-left text-sm text-zinc-600 dark:text-zinc-400">
+          <input
+            type="checkbox"
+            checked={ageOk}
+            onChange={(e) => setAgeOk(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            본인은 <b className="text-foreground">만 14세 이상</b>입니다. (만 14세 미만은 이용할 수 없습니다.)
+          </span>
+        </label>
+
+        <div className="mt-1 flex w-full flex-col gap-3">
           <button
             type="button"
             onClick={() => void onLogin("kakao")}
-            disabled={!!busy}
+            disabled={!!busy || !ageOk}
             className="flex items-center justify-center gap-2 rounded-xl bg-[#FEE500] py-4 text-base font-semibold text-[#191600] transition hover:opacity-90 disabled:opacity-50"
           >
             {busy === "kakao" ? <Spinner className="h-5 w-5" /> : <KakaoIcon />}
@@ -133,7 +148,7 @@ export function LoginForm() {
           <button
             type="button"
             onClick={() => void onLogin("google")}
-            disabled={!!busy}
+            disabled={!!busy || !ageOk}
             className="flex items-center justify-center gap-2 rounded-xl border border-foreground/20 bg-white py-4 text-base font-semibold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
           >
             {busy === "google" ? <Spinner className="h-5 w-5" /> : <GoogleIcon />}

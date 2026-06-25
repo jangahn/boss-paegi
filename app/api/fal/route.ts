@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
   if (!gate.ok) return memberGateResponse(gate);
   const { user, member } = gate;
 
+  // 만14세 이상 1회 확인 게이트 — 미확인이면 클라가 확인(confirm-age) 후 재시도.
+  if (!member.age_confirmed_at) {
+    return NextResponse.json({ error: "age_required" }, { status: 403 });
+  }
+
   log.info("gen.request", { userId: user.id });
 
   // 운영 계정은 생성권 무제한.

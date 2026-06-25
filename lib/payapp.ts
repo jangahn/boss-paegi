@@ -93,9 +93,22 @@ export type FeedbackParams = {
   raw: Record<string, string>;
 };
 
-// raw(감사 jsonb)에 절대 영구저장하면 안 되는 키 — linkval/linkkey 는 웹훅 비밀.
-// (DB 유출 시 위변조 차단 비밀이 새어나가지 않게 — 검증엔 form 에서 직접 읽음.)
-const RAW_DENYLIST = new Set(["linkval", "linkkey"]);
+// raw(감사 jsonb)에 영구저장 금지 — linkval/linkkey 는 웹훅 비밀, 구매자 연락처류는 PII 최소보존.
+// (검증엔 form 에서 직접 읽음. 무사업자 결제라 연락처는 더미값이지만 페이앱 필드명 후보를 방어적 redaction.)
+const RAW_DENYLIST = new Set([
+  "linkval",
+  "linkkey",
+  "buyer",
+  "buyername",
+  "buyerphone",
+  "recvphone",
+  "phone",
+  "tel",
+  "hp",
+  "email",
+  "reqaddr",
+  "recvaddr",
+]);
 
 /** 웹훅 form(application/x-www-form-urlencoded) 파싱. raw 는 감사용 — 비밀키는 제외. */
 export function parseFeedback(form: FormData): FeedbackParams {

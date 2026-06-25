@@ -91,7 +91,23 @@ export async function POST(req: NextRequest) {
           orderStatus: order.status,
         });
       } else {
-        log.info("payapp.fb_paid", { orderUuid: fb.orderUuid, userId: order.user_id });
+        // 정상 지급 vs 탈퇴자 무지급(deleted_at 가드) 구분 — 탈퇴자면 운영자 수동확인 위해 경고.
+        const { data: chk } = await admin
+          .from("payapp_orders")
+          .select("error_message")
+          .eq("order_uuid", order.order_uuid)
+          .maybeSingle();
+        if (
+          (chk as { error_message?: string | null } | null)?.error_message ===
+          "account_deleted_no_grant"
+        ) {
+          log.warn("payapp.fb_deleted_no_grant", {
+            orderUuid: fb.orderUuid,
+            userId: order.user_id,
+          });
+        } else {
+          log.info("payapp.fb_paid", { orderUuid: fb.orderUuid, userId: order.user_id });
+        }
       }
       return OK(); // 멱등 — 중복/이미처리도 SUCCESS(페이앱 재시도 중단)
     }

@@ -17,6 +17,15 @@ export default function CreditsPage() {
   const products = useCreditProducts();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [agePrompt, setAgePrompt] = useState<string | null>(null); // 14세 확인 대기 productId
+
+  const confirmAgeAndBuy = async () => {
+    const pid = agePrompt;
+    if (!pid) return;
+    setAgePrompt(null);
+    await fetch("/api/account/confirm-age", { method: "POST" });
+    void buy(pid);
+  };
 
   const buy = async (productId: string) => {
     if (pending) return; // 중복 클릭 가드
@@ -40,6 +49,11 @@ export default function CreditsPage() {
           e.error === "member_setup_required"
         ) {
           window.location.assign("/login?next=/credits");
+          return;
+        }
+        if (e.error === "age_required") {
+          setAgePrompt(productId);
+          setPending(null);
           return;
         }
         throw new Error("결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.");
@@ -96,6 +110,29 @@ export default function CreditsPage() {
 
           {error && (
             <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-500">{error}</p>
+          )}
+          {agePrompt && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+              <p className="text-amber-700 dark:text-amber-300">
+                만 14세 이상만 결제할 수 있어요.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAgePrompt(null)}
+                  className="flex-1 rounded-full border border-foreground/15 py-2 text-xs font-medium"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmAgeAndBuy()}
+                  className="flex-1 rounded-full bg-foreground py-2 text-xs font-semibold text-background"
+                >
+                  만 14세 이상입니다 · 계속
+                </button>
+              </div>
+            </div>
           )}
 
           <p className="text-[11px] leading-relaxed text-zinc-400">

@@ -8,12 +8,15 @@ export type MemberRow = {
   user_id: string;
   gen_credits: number;
   member_since: string;
+  /** 만14세 이상 1회 확인 시각(0030). null=미확인 → 생성·결제 게이트(age_required). */
+  age_confirmed_at: string | null;
 };
 
 export type MemberGateError =
   | "unauthorized"
   | "member_only"
   | "member_setup_required"
+  | "account_deleted"
   | "not_admin";
 
 export type RequireMemberResult =
@@ -37,9 +40,19 @@ export async function requireMember(): Promise<RequireMemberResult> {
   if (user.is_anonymous) return { ok: false, status: 403, error: "member_only" };
 
   const admin = createAdminClient();
+  // 탈퇴(soft-delete) 계정 차단 — 모든 member-only 경로의 단일 choke point(0030 profiles.deleted_at).
+  const { data: prof } = await admin
+    .from("profiles")
+    .select("deleted_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  if ((prof as { deleted_at?: string | null } | null)?.deleted_at) {
+    return { ok: false, status: 403, error: "account_deleted" };
+  }
+
   const { data: member } = await admin
     .from("member_accounts")
-    .select("user_id, gen_credits, member_since")
+    .select("user_id, gen_credits, member_since, age_confirmed_at")
     .eq("user_id", user.id)
     .maybeSingle();
 

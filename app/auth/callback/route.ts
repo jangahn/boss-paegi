@@ -53,6 +53,21 @@ export async function GET(request: NextRequest) {
   const user = full?.user ?? data.user;
   const profile = extractOAuthProfile(user);
 
+  // 2.5) 탈퇴(soft-delete) 계정 재로그인 차단 — 어떤 upsert(프로필/멤버/이메일/아바타)보다 먼저.
+  //      deleted 계정의 display_name/avatar/email 이 복구되면 안 됨(0030).
+  if (!user.is_anonymous) {
+    const { data: delChk } = await admin
+      .from("profiles")
+      .select("deleted_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    if ((delChk as { deleted_at?: string | null } | null)?.deleted_at) {
+      log.info("auth.deleted_account_blocked", { userId: user.id });
+      await supabase.auth.signOut();
+      return redirect("/login?error=account_deleted");
+    }
+  }
+
   // 3) 이메일 필수 — 없거나 미검증이면 멤버화하지 않고 세션 종료 후 안내.
   if (!user.is_anonymous && (!profile.email || !profile.emailVerified)) {
     log.warn("auth.callback_email_required", {

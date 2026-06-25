@@ -160,7 +160,15 @@ function GeneratePageInner() {
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
       {stage === "checking" && <LoadingStage label="생성권 확인 중…" />}
-      {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
+      {stage === "consent" && (
+        <ConsentDialog
+          onAgree={() => {
+            // 동의 항목에 '만14세 이상'(age-14) 포함 → 1회 확인 플래그 저장(best-effort).
+            void fetch("/api/account/confirm-age", { method: "POST" });
+            setStage("upload");
+          }}
+        />
+      )}
       {stage === "upload" && (
         <UploadStage preview={preview} onFile={handleFile} error={error} />
       )}
