@@ -1,10 +1,21 @@
 "use client";
 
 import { SERVICE_NAME } from "@/lib/policy";
+import { PUBLIC_ENV } from "@/lib/env";
+import { runShare, type ShareResult } from "@/lib/share";
 import type { RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 import { MARKETING_COPY_DEFAULT, type MarketingCopy } from "@/lib/config/domains/marketing";
 import { resolveCopy } from "@/lib/config/template";
+
+/** 워터마크에 박을 정규 호스트 — 공유 링크 도메인(SITE_URL)과 일치시킨다. */
+function siteHost(): string {
+  try {
+    return new URL(PUBLIC_ENV.SITE_URL).host;
+  } catch {
+    return PUBLIC_ENV.SITE_URL;
+  }
+}
 
 /**
  * 갤러리 커스텀 인형의 저장/공유.
@@ -43,7 +54,7 @@ async function composeWatermark(blob: Blob): Promise<Blob> {
   ctx.shadowBlur = fontSize * 0.35;
   ctx.shadowOffsetY = 1;
   ctx.fillStyle = "rgba(255,255,255,0.82)";
-  ctx.fillText(`${SERVICE_NAME} · ${location.host}`, W - pad, H - pad);
+  ctx.fillText(`${SERVICE_NAME} · ${siteHost()}`, W - pad, H - pad);
 
   return await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
@@ -53,9 +64,12 @@ async function composeWatermark(blob: Blob): Promise<Blob> {
   );
 }
 
-export type ShareResult = "shared" | "copied" | "failed";
-
-/** 워터마크 이미지 + 공개 페이지 링크를 Web Share 로. fallback 링크 복사. */
+/**
+ * 워터마크 이미지 + 공개 페이지 링크를 통일 공유 규약([[runShare]])으로.
+ * - url 은 text 마지막 줄에 1개만 합성(분리 url 필드 미사용).
+ * - 워터마크 합성 성공 시에만 file 첨부 후보; 첨부는 모바일 OS 에서만(데스크톱 자동 제외).
+ * - 합성 실패/데스크톱/첨부 실패 → 문구+링크 공유 → 클립보드(문구 유실 없음).
+ */
 export async function shareDoll(
   imageUrl: string,
   dollId: string,
@@ -63,54 +77,17 @@ export async function shareDoll(
   cfg?: RoleConfig,
   copy?: MarketingCopy
 ): Promise<ShareResult> {
-  const pageUrl = `${location.origin}/doll/${dollId}`;
+  const pageUrl = `${PUBLIC_ENV.SITE_URL}/doll/${dollId}`;
   const c = roleFrom(role, cfg);
-  const text = resolveCopy((copy ?? MARKETING_COPY_DEFAULT).share.dollShareText, c.label);
+  const brandText = resolveCopy((copy ?? MARKETING_COPY_DEFAULT).share.dollShareText, c.label);
 
+  let file: File | null = null;
   try {
     const composed = await composeWatermark(await fetchBlob(imageUrl));
-    const file = new File([composed], `boss-${dollId.slice(0, 8)}.png`, {
-      type: "image/png",
-    });
-    if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: SERVICE_NAME,
-        text: `${text}\n${pageUrl}`,
-      });
-      return "shared";
-    }
-  } catch (e) {
-    if ((e as Error).name === "AbortError") return "shared"; // 사용자가 시트 닫음
-    // 합성/파일 공유 실패 → 링크 공유로 fallback
-  }
-
-  try {
-    if (navigator.share) {
-      await navigator.share({ title: SERVICE_NAME, text, url: pageUrl });
-      return "shared";
-    }
-  } catch (e) {
-    if ((e as Error).name === "AbortError") return "shared";
-  }
-
-  try {
-    await navigator.clipboard.writeText(pageUrl);
-    return "copied";
+    file = new File([composed], `boss-${dollId.slice(0, 8)}.png`, { type: "image/png" });
   } catch {
-    // 구형/권한 제한 환경 fallback
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = pageUrl;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      return ok ? "copied" : "failed";
-    } catch {
-      return "failed";
-    }
+    // 합성/로드 실패 → 파일 없이 문구+링크 공유
   }
+
+  return runShare({ brandText, url: pageUrl, title: SERVICE_NAME, file });
 }
