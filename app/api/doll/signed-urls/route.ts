@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOLLS_BUCKET, dollPath } from "@/lib/storage-path";
-import { DOLL_THUMB_PX } from "@/lib/storage";
+import { DOLL_THUMB_TRANSFORM } from "@/lib/storage";
 import { rateLimit } from "@/lib/rate-limit";
 import { log, errInfo } from "@/lib/log";
 
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         paths.map(async (p) => {
           const { data } = await admin.storage
             .from(DOLLS_BUCKET)
-            .createSignedUrl(p, ttl, { transform: { width: DOLL_THUMB_PX } });
+            .createSignedUrl(p, ttl, { transform: DOLL_THUMB_TRANSFORM });
           if (data?.signedUrl) byPath.set(p, data.signedUrl);
         })
       );
