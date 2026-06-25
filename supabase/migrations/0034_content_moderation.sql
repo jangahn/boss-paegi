@@ -154,3 +154,40 @@ begin
 end; $$;
 revoke all on function public.admin_dismiss_report(uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.admin_dismiss_report(uuid, uuid, text) to service_role;
+
+-- ── 6. 탈퇴 정책 보강 — admin_soft_delete_account 재정의(0030 → +하이라이트·고아신고) ──
+--   탈퇴 시 크레딧 0(전면 스크럽)과 일관되게 하이라이트(얼굴 영상)도 render-block.
+--   + 탈퇴로 hard-delete 되는 dolls 의 미처리 신고는 actioned 로 종결(target 사라져 takedown 불가한 고아 방지).
+--   clip/이미지 storage 물리삭제는 account/delete 라우트가 best-effort 수행(SQL 불가).
+create or replace function public.admin_soft_delete_account(p_user_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  update public.profiles
+     set deleted_at = coalesce(deleted_at, now()),
+         display_name = '탈퇴한 사용자',
+         avatar_url = null
+   where id = p_user_id;
+
+  update public.member_accounts
+     set email = null, gen_credits = 0
+   where user_id = p_user_id;
+
+  -- 하이라이트 render-block (highlightLive 가 이미 확인). clip 물리삭제는 라우트.
+  update public.score_highlights sh
+     set highlight_deleted_at = coalesce(sh.highlight_deleted_at, now())
+    from public.scores s
+   where sh.score_id = s.id and s.owner_id = p_user_id;
+
+  -- 곧 hard-delete 될 dolls 의 미처리 신고 종결(고아 방지). 시스템 종결이라 resolved_by null.
+  update public.content_reports
+     set status = 'actioned', resolved_at = now(), resolved_by = null
+   where target_type = 'doll' and status = 'pending'
+     and target_id in (select id from public.dolls where owner_id = p_user_id);
+
+  -- 캐릭터 row 삭제(얼굴 기반 식별성). scores.doll_id 는 set null(0017). 여러번 안전.
+  delete from public.dolls where owner_id = p_user_id;
+
+  return jsonb_build_object('ok', true);
+end; $$;
+revoke all on function public.admin_soft_delete_account(uuid) from public, anon, authenticated;
+grant execute on function public.admin_soft_delete_account(uuid) to service_role;
