@@ -39,6 +39,9 @@ export class TelemetryCollector {
   private openWeaponScores: Record<string, number> = {};
   private bucketPeakCombo = 0;
   private bucketMaxTouch = 0;
+  // 세션 전체 최대 동시터치(active pointer 수) — closeBucket/end 에서 절대 리셋 안 함.
+  // collector 는 startSession 마다 새로 생성되므로 이 필드 초기화가 곧 세션 초기화.
+  private sessionMaxTouch = 0;
 
   // 마일스톤·엣지 감지
   private firstSwitchMs: number | null = null;
@@ -147,7 +150,10 @@ export class TelemetryCollector {
   }
 
   setMaxTouch(n: number): void {
-    if (n > this.bucketMaxTouch) this.bucketMaxTouch = n;
+    if (!Number.isFinite(n) || n <= 0) return; // NaN/음수/0 무시
+    const v = Math.min(20, Math.round(n)); // 정수화 + clamp(0~20, validate/RPC 와 동일)
+    if (v > this.bucketMaxTouch) this.bucketMaxTouch = v; // 버킷 이벤트(hit_bucket.maxTouch)용
+    if (v > this.sessionMaxTouch) this.sessionMaxTouch = v; // 세션 totals 용 — 리셋 안 함
   }
 
   onWeaponSelect(from: string, to: string): void {
@@ -228,7 +234,7 @@ export class TelemetryCollector {
         distinctMaps: this.visitedMaps.size,
         apm: durMin > 0 ? Math.round(s.hitCount / durMin) : 0,
         tapShare: totalHits > 0 ? tapHits / totalHits : 0,
-        maxTouch: this.bucketMaxTouch,
+        maxTouch: this.sessionMaxTouch, // 세션 전체 최대(버킷 리셋과 무관) — 종료 후에도 보존
       },
       weaponSummary,
       mapSummary: this.mapAgg,

@@ -6,8 +6,17 @@ import {
   getMapBalance,
   getFunnel,
   getMemberActivity,
+  getWeaponConcentration,
+  getWeaponThroughput,
+  getMapStickiness,
 } from "@/lib/admin-analytics";
-import { BalanceBars, FunnelView } from "@/components/admin/analytics/AnalyticsViews";
+import {
+  BalanceBars,
+  FunnelView,
+  WeaponConcentrationCard,
+  WeaponThroughputBars,
+  MapStickinessCard,
+} from "@/components/admin/analytics/AnalyticsViews";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,11 +32,14 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const days = sp.days === "30" ? 30 : 7;
 
-  const [weapons, maps, funnel, member] = await Promise.all([
+  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick] = await Promise.all([
     getWeaponBalance(days),
     getMapBalance(days),
     getFunnel(days),
     getMemberActivity(days),
+    getWeaponConcentration(days),
+    getWeaponThroughput(days),
+    getMapStickiness(days),
   ]);
 
   return (
@@ -54,12 +66,27 @@ export default async function AnalyticsPage({
         </p>
 
         <section>
-          <h2 className="mb-2 text-sm font-bold text-zinc-500">무기 밸런스</h2>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">무기 편중·다양성</h2>
+          <WeaponConcentrationCard data={weaponConc} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">무기 효율·파워 <span className="font-normal text-zinc-400">(메인무기 기준 점수/초 중앙값 — 근사)</span></h2>
+          <WeaponThroughputBars data={throughput} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">맵 고착·전환</h2>
+          <MapStickinessCard data={mapStick} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">무기 밸런스 <span className="font-normal text-zinc-400">(타격·점수 비중)</span></h2>
           <BalanceBars stats={weapons} kind="weapon" />
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-bold text-zinc-500">맵 밸런스</h2>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">맵 밸런스 <span className="font-normal text-zinc-400">(맵 점유)</span></h2>
           <BalanceBars stats={maps} kind="map" />
         </section>
 
