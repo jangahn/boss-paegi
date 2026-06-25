@@ -24,6 +24,7 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
         <p>· {POLICY_NOTICE.imageRetention}</p>
         <p>· {POLICY_NOTICE.characterization}</p>
         <p>· {POLICY_NOTICE.prohibition}</p>
+        <p>· {POLICY_NOTICE.crossBorder}</p>
       </div>
 
       <div className="space-y-3">
