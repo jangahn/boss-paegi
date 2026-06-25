@@ -10,7 +10,10 @@
 
 -- ── 1. dolls soft-delete + 물리삭제 추적 컬럼 ──────────────────────────
 alter table public.dolls add column if not exists deleted_at timestamptz;
-alter table public.dolls add column if not exists deleted_by uuid references public.profiles(id);
+-- ⚠️ deleted_by 는 audit 용 plain uuid(FK 안 검). references profiles 를 걸면 dolls 가 profiles 로
+--   가는 FK 2개(owner_id+deleted_by)가 되어 PostgREST `profiles(...)` 임베드가 모호해짐
+--   → /doll·OG·어드민 모더레이션 null/404(2026-06-25 실장애). 임베드 단일 FK 전제 유지.
+alter table public.dolls add column if not exists deleted_by uuid;
 alter table public.dolls add column if not exists deletion_reason text;
 -- artifacts_purged_at = doll image + 관련 highlight clip 전부 storage 삭제 성공 시각(하나라도 실패면 null).
 alter table public.dolls add column if not exists artifacts_purged_at timestamptz;
