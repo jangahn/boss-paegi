@@ -62,7 +62,9 @@ export default async function AnalyticsPage({
           </div>
         </div>
         <p className="-mt-4 text-xs text-zinc-400">
-          최근 {days}일(KST). 익명+회원 합산. 비-회원은 요약만 집계(타임라인 없음).
+          최근 {days}일(KST 자정 기준). 익명+회원 합산. 비-회원은 요약만 집계(타임라인 없음).
+          <br />
+          무기·맵 밸런스와 퍼널은 일 1회 집계라 당일 수치가 최대 ~1일 지연될 수 있어요.
         </p>
 
         <section>

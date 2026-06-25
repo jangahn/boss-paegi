@@ -24,6 +24,15 @@ function kstDate(offsetDays = 0): string {
   return kst.toISOString().slice(0, 10);
 }
 
+/**
+ * KST 기준 offsetDays 일 전의 KST 자정을 UTC instant(ISO)로.
+ * 라이브(telemetry_sessions) 윈도우의 시작 경계를 롤업의 `day_kst >= kstDate(days-1)` 와
+ * 정확히 일치시키기 위함(둘 다 같은 kstDate 에서 파생 → 재드리프트 방지). KST 는 DST 없음.
+ */
+function kstDayStartIso(offsetDays = 0): string {
+  return new Date(`${kstDate(offsetDays)}T00:00:00+09:00`).toISOString();
+}
+
 async function rollupRows(dimType: string, days: number) {
   const admin = createAdminClient();
   const cutoff = kstDate(days - 1);
@@ -74,7 +83,7 @@ export async function getFunnel(days: number): Promise<Funnel> {
 /** 회원 활동(코호트·재방문 — 익명 ephemeral 이라 회원 owner_id 한정). */
 export async function getMemberActivity(days: number): Promise<{ sessions: number; members: number; returning: number }> {
   const admin = createAdminClient();
-  const cutoffIso = new Date(Date.now() - days * 86400 * 1000).toISOString();
+  const cutoffIso = kstDayStartIso(days - 1); // 롤업 day_kst 경계와 정합(KST 자정 기준)
   const { data, error } = await admin
     .from("telemetry_sessions")
     .select("owner_id")
@@ -163,7 +172,7 @@ async function fetchSessionsWindow(
   days: number
 ): Promise<{ rows: SessionShapeRow[]; meta: SampleMeta }> {
   const admin = createAdminClient();
-  const cutoffIso = new Date(Date.now() - days * 86400 * 1000).toISOString();
+  const cutoffIso = kstDayStartIso(days - 1); // 롤업 day_kst 경계와 정합(KST 자정 기준)
   const { data, error } = await admin
     .from("telemetry_sessions")
     .select(
