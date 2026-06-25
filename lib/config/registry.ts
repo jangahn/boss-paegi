@@ -6,6 +6,7 @@ import { scoreEntry } from "./domains/score";
 import { sessionEntry } from "./domains/session";
 import { growthEntry } from "./domains/growth";
 import { badgeEntry } from "./domains/badges";
+import { siteContentEntry } from "./domains/site-content";
 
 /**
  * 도메인 설정 레지스트리 — 각 도메인 PR 에서 항목을 등록한다.
@@ -33,6 +34,7 @@ export const REGISTRY: Partial<Record<DomainKey, DomainEntry<unknown>>> = {
   session_limits: sessionEntry as DomainEntry<unknown>,
   growth_levers: growthEntry as DomainEntry<unknown>,
   badge_catalog: badgeEntry as DomainEntry<unknown>,
+  site_content: siteContentEntry as DomainEntry<unknown>,
 };
 
 export function getEntry(key: DomainKey): DomainEntry<unknown> | undefined {

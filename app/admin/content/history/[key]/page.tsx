@@ -15,6 +15,7 @@ const KEY_LABEL: Record<DomainKey, string> = {
   badge_catalog: "뱃지 카탈로그",
   session_limits: "세션 한도",
   growth_levers: "성장 레버",
+  site_content: "소개·FAQ (SEO)",
 };
 
 function firstParam(v: string | string[] | undefined): string | undefined {

@@ -6,10 +6,12 @@ import { SERVICE_NAME } from "@/lib/policy";
 import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
+import { useSiteContent } from "@/components/SiteContentProvider";
 import { log, errInfo } from "@/lib/log";
 
 export default function Home() {
   const { home } = useMarketingCopy();
+  const site = useSiteContent();
   const [hasDolls, setHasDolls] = useState(false);
   const [isMember, setIsMember] = useState(false);
 
@@ -75,10 +77,24 @@ export default function Home() {
             </div>
           </div>
 
-          <p className="mt-8 whitespace-pre-line text-xs leading-relaxed text-zinc-500">
+          <p className="mt-8 whitespace-pre-line text-sm leading-relaxed text-zinc-500">
+            {site.intro}
+          </p>
+          <Link
+            href="/faq"
+            className="text-sm font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
+          >
+            소개·자주 묻는 질문 →
+          </Link>
+
+          <p className="mt-6 whitespace-pre-line text-xs leading-relaxed text-zinc-500">
             {home.disclaimer}
           </p>
-          <nav className="mt-3 flex justify-center gap-3 text-[11px] text-zinc-500">
+          <nav className="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-zinc-500">
+            <Link href="/faq" className="underline-offset-4 hover:text-foreground hover:underline">
+              소개·FAQ
+            </Link>
+            <span aria-hidden>·</span>
             <Link href="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
               이용약관
             </Link>

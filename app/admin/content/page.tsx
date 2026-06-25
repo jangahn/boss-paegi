@@ -13,6 +13,7 @@ const DOMAINS: { key: DomainKey; label: string; desc: string }[] = [
   { key: "badge_catalog", label: "뱃지", desc: "카테고리·임계값·라벨" },
   { key: "session_limits", label: "세션 한도", desc: "최대 플레이 시간·점수(강제 종료)" },
   { key: "growth_levers", label: "성장 레버", desc: "가입 생성권·충전 가격" },
+  { key: "site_content", label: "소개·FAQ (SEO)", desc: "홈 소개·자주 묻는 질문·검색 메타" },
 ];
 
 export default function ContentHome() {
