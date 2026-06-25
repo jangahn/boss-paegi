@@ -30,6 +30,11 @@ import {
   BADGE_CATALOG_DEFAULT,
   type BadgeCatalog,
 } from "./domains/badges";
+import {
+  siteContentSchema,
+  SITE_CONTENT_DEFAULT,
+  type SiteContent,
+} from "./domains/site-content";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -72,4 +77,11 @@ export function getBadgeCatalog(): Promise<BadgeCatalog> {
 }
 export function getBadgeCatalogWithMeta() {
   return getSettingWithMeta("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
+}
+
+export function getSiteContent(): Promise<SiteContent> {
+  return getSetting("site_content", siteContentSchema, SITE_CONTENT_DEFAULT);
+}
+export function getSiteContentWithMeta() {
+  return getSettingWithMeta("site_content", siteContentSchema, SITE_CONTENT_DEFAULT);
 }

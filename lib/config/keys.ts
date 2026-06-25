@@ -6,6 +6,7 @@ export const DOMAIN_KEYS = [
   "badge_catalog",
   "session_limits",
   "growth_levers",
+  "site_content",
 ] as const;
 
 export type DomainKey = (typeof DOMAIN_KEYS)[number];
