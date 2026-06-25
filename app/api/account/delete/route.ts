@@ -6,6 +6,8 @@ import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
+const HIGHLIGHTS_BUCKET = "highlights"; // lib/share.ts·content-maintain 과 동일(미export).
+
 /**
  * 셀프 계정 탈퇴(soft-delete) — 개인정보 삭제권 대응.
  * 순서: pending 차단 → 이미지 경로 수집 → DB soft-delete RPC(먼저) → storage 삭제(best-effort)
@@ -54,7 +56,26 @@ export async function POST(req: Request) {
     .map((d) => (d.image_url as string | null)?.split("/dolls/")[1])
     .filter((p): p is string => !!p);
 
-  // 2) DB soft-delete 먼저(실패 시 이미지 보존). 익명화 + dolls 삭제 + 크레딧 0.
+  // 1b) 탈퇴자 하이라이트 clip 경로 수집 — 크레딧 0(전면 스크럽)과 일관되게 얼굴 영상도 삭제.
+  //     RPC 는 highlight_deleted_at(render-block)만 세팅 → clip_path 잔존 → 여기서 객체 물리삭제.
+  const { data: hlScores } = await admin
+    .from("scores")
+    .select("id")
+    .eq("owner_id", userId);
+  const hlScoreIds = ((hlScores ?? []) as { id: string }[]).map((s) => s.id);
+  let highlightPaths: string[] = [];
+  if (hlScoreIds.length) {
+    const { data: hls } = await admin
+      .from("score_highlights")
+      .select("highlight_clip_path")
+      .in("score_id", hlScoreIds)
+      .not("highlight_clip_path", "is", null);
+    highlightPaths = ((hls ?? []) as { highlight_clip_path: string }[]).map(
+      (h) => h.highlight_clip_path
+    );
+  }
+
+  // 2) DB soft-delete 먼저(실패 시 이미지 보존). 익명화 + dolls 삭제 + 크레딧 0 + 하이라이트 render-block + 고아 신고 종결.
   const { error: rpcErr } = await admin.rpc("admin_soft_delete_account", {
     p_user_id: userId,
   });
@@ -82,6 +103,10 @@ export async function POST(req: Request) {
       await admin.storage
         .from(DOLLS_BUCKET)
         .remove(tmp.map((f) => `tmp/face/${userId}/${f.name}`));
+    }
+    // (0034) 하이라이트 clip 물리삭제 — RPC 가 render-block 완료, 여기서 객체 제거(직링크 사망).
+    if (highlightPaths.length) {
+      await admin.storage.from(HIGHLIGHTS_BUCKET).remove(highlightPaths);
     }
   } catch (e) {
     log.warn("account.storage_cleanup_fail", { userId, ...errInfo(e) });

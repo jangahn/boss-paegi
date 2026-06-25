@@ -51,6 +51,7 @@ export default function GalleryPage() {
       const { data, error: queryError } = await sb
         .from("dolls")
         .select("id, image_url, created_at, role")
+        .is("deleted_at", null) // takedown(0034): 신고 삭제된 인형은 갤러리에서도 숨김.
         .order("created_at", { ascending: false });
       if (queryError) throw queryError;
       setDolls((data as Doll[] | null) ?? []);

@@ -11,6 +11,7 @@ import { matchPersona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
+import { ReportButton } from "@/components/ReportButton";
 
 export async function generateMetadata({
   params,
@@ -149,6 +150,12 @@ export default async function HistoryDetailPage({
             highlight={hasHighlight}
             text={`${name}님 ${rlabel} ${score.score.toLocaleString()}점 패기 결과 🥊`}
           />
+
+          {score.dolls?.id && score.dolls.image_url && (
+            <div className="mt-5 text-center">
+              <ReportButton dollId={score.dolls.id} />
+            </div>
+          )}
         </div>
       </main>
     </>

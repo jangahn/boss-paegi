@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/admin/orders", label: "주문" },
   { href: "/admin/users", label: "회원" },
   { href: "/admin/ledger", label: "처리내역" },
+  { href: "/admin/moderation", label: "신고" },
   { href: "/admin/content", label: "콘텐츠" },
   { href: "/admin/analytics", label: "게임 분석" },
 ];

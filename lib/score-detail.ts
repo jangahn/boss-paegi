@@ -22,7 +22,7 @@ export type Score = {
   max_combo: number | null;
   created_at: string;
   profiles: { display_name: string } | null;
-  dolls: { image_url: string | null; role: string | null } | null;
+  dolls: { id: string; image_url: string | null; role: string | null } | null;
   highlight_clip_path: string | null;
   highlight_status: string | null;
   highlight_delta: number | null;
@@ -83,8 +83,18 @@ function flattenScore(row: Record<string, unknown>): Score {
   const { score_highlights: _h, score_stats: _s, ...rest } = row;
   void _h;
   void _s;
+  // takedown(0034): doll 이 soft-delete(deleted_at) 면 얼굴 이미지만 숨기고(점수·role 카피는 유지)
+  //   기본 보스로 fallback. 하이라이트는 highlightLive 가 highlight_deleted_at 으로 별도 차단.
+  const rawDolls = rest.dolls as
+    | { id: string; image_url: string | null; role: string | null; deleted_at?: string | null }
+    | null;
+  const dolls =
+    rawDolls && rawDolls.deleted_at
+      ? { id: rawDolls.id, image_url: null, role: rawDolls.role }
+      : rawDolls;
   return {
     ...rest,
+    dolls,
     ...((hl as Record<string, unknown>) ?? {}),
     gameplay_stats: st?.gameplay_stats ?? null,
     badge_ids: st?.badge_ids ?? null,
@@ -98,7 +108,7 @@ export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
   const { data } = await admin
     .from("scores")
     .select(
-      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(image_url, role), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
+      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(id, image_url, role, deleted_at), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
     )
     .eq("id", scoreId)
     .single();
@@ -107,7 +117,7 @@ export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
   const { data: legacy } = await admin
     .from("scores")
     .select(
-      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(image_url, role)"
+      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(id, image_url, role)"
     )
     .eq("id", scoreId)
     .single();

@@ -13,6 +13,11 @@ const KNOWN_ADMIN_ERRORS = [
   "order_status_changed",
   "status_changed",
   "insufficient_credits",
+  // 모더레이션(0034)
+  "doll_not_found",
+  "report_not_found",
+  "report_not_pending",
+  "not_admin",
 ];
 
 /** RPC 에러 → 안전한 코드(화이트리스트 매칭, 아니면 action_failed). */

@@ -9,12 +9,16 @@ import { asRole } from "@/lib/roles";
 import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
+import { ReportButton } from "@/components/ReportButton";
+
+const DEFAULT_BOSS = "/sprites/boss-default.png";
 
 type DollRow = {
   id: string;
   image_url: string;
   created_at: string;
   role: string | null;
+  deleted_at: string | null;
   profiles: { display_name: string } | null;
 };
 
@@ -22,10 +26,15 @@ async function fetchDoll(id: string): Promise<DollRow | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("dolls")
-    .select("id, image_url, created_at, role, profiles(display_name)")
+    .select("id, image_url, created_at, role, deleted_at, profiles(display_name)")
     .eq("id", id)
     .single();
-  return (data as unknown as DollRow) ?? null;
+  if (!data) return null;
+  const row = data as unknown as DollRow;
+  // takedown(0034): 삭제된 인형은 404 대신 캐릭터 영역에 기본 부장님 — invisible takedown
+  //   (공유 화면에서 '신고/내려감' 여부 확인 불가, doll-less 점수와 구분 안 됨).
+  if (row.deleted_at) row.image_url = DEFAULT_BOSS;
+  return row;
 }
 
 export async function generateMetadata({
@@ -153,6 +162,10 @@ export default async function DollPage({
               {mk.share.dollCtaDefault}
             </Link>
           </div>
+        </div>
+
+        <div className="mt-5 text-center">
+          <ReportButton dollId={doll.id} />
         </div>
       </div>
     </main>
