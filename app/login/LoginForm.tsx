@@ -146,6 +146,17 @@ export function LoginForm() {
         {err && <p className="text-sm text-red-400">{err}</p>}
 
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+          계속 진행하면{" "}
+          <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
+            이용약관
+          </Link>
+          과{" "}
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
+            개인정보처리방침
+          </Link>
+          에 동의하는 것으로 간주됩니다.
+        </p>
+        <p className="text-xs leading-relaxed text-zinc-500">
           새 계정으로 가입하면 현재 비회원 기록(점수 등)이 이전됩니다. 기존 계정으로
           로그인하면 비회원 기록은 이전되지 않습니다.
         </p>

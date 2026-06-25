@@ -8,7 +8,7 @@ import { SERVICE_NAME } from "@/lib/policy";
 const ITEMS = [
   { id: "age", label: "본인은 만 14세 이상입니다. (만 14세 미만은 이용할 수 없습니다.)", link: null },
   { id: "terms", label: "이용약관에 동의합니다.", link: "/terms" },
-  { id: "privacy", label: "개인정보처리방침에 동의합니다.", link: "/privacy" },
+  { id: "privacy", label: "개인정보처리방침 및 국외 이전(미국·싱가포르 등 클라우드/AI 사업자)에 동의합니다.", link: "/privacy" },
 ] as const;
 
 export function SignupConsent({ next }: { next: string }) {
