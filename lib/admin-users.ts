@@ -141,14 +141,14 @@ export async function getUserGenerations(userId: string, page = 1): Promise<Page
   return { rows, total, page: p, pageSize: USER_PAGE_SIZE };
 }
 
-/** 유저 현재 캐릭터(dolls) — 10/page, count:exact. (하드삭제라 삭제 이력은 미추적.) */
+/** 유저 캐릭터(dolls) — 10/page, count:exact. takedown 삭제분도 deleted_at 으로 표시(탈퇴=하드삭제는 사라짐). */
 export async function getUserDolls(userId: string, page = 1): Promise<Paged<DollRow>> {
   const p = Math.max(1, page);
   const from = (p - 1) * USER_PAGE_SIZE;
   const admin = createAdminClient();
   const { data, count, error } = await admin
     .from("dolls")
-    .select("id, image_url, role, created_at", { count: "exact" })
+    .select("id, image_url, role, created_at, deleted_at", { count: "exact" })
     .eq("owner_id", userId)
     .order("created_at", { ascending: false })
     .range(from, from + USER_PAGE_SIZE - 1);

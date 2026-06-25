@@ -84,6 +84,8 @@ export type DollRow = {
   image_url: string;
   role: string;
   created_at: string;
+  /** takedown(신고삭제) soft-delete 시각. null=정상. (탈퇴=하드삭제라 목록서 사라짐.) */
+  deleted_at: string | null;
 };
 
 export type Paged<T> = { rows: T[]; total: number; page: number; pageSize: number };

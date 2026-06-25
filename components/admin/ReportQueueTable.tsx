@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
+import { shortId } from "@/lib/admin-format";
 import type { ReportRow } from "@/lib/admin-moderation";
 
 const REASON_KO: Record<string, string> = {
@@ -14,12 +16,15 @@ const REASON_KO: Record<string, string> = {
   other: "기타",
 };
 
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  pending: { label: "대기", cls: "bg-amber-500/10 text-amber-600" },
+  actioned: { label: "삭제됨", cls: "bg-red-500/10 text-red-500" },
+  dismissed: { label: "기각", cls: "bg-foreground/10 text-zinc-500" },
+};
+
 function timeShort(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("ko-KR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    });
+    return new Date(iso).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
   } catch {
     return iso;
   }
@@ -42,7 +47,10 @@ function ReportRowItem({ row }: { row: ReportRow }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const alreadyDown = !!row.doll?.deleted_at;
+  const doll = row.doll;
+  const deleted = !!doll?.deleted_at;
+  const purged = !!doll?.artifacts_purged_at;
+  const st = STATUS_META[row.status] ?? { label: row.status, cls: "bg-foreground/10 text-zinc-500" };
 
   const open = (m: "takedown" | "dismiss") => {
     setMode(m);
@@ -95,30 +103,28 @@ function ReportRowItem({ row }: { row: ReportRow }) {
   return (
     <li className="rounded-2xl border border-foreground/10 bg-foreground/5 p-3">
       <div className="flex gap-3">
-        {row.doll?.image_url ? (
+        {/* 미리보기 — 삭제된 doll 은 placeholder(이미지 영구삭제됐을 수 있음) */}
+        {deleted || !doll?.image_url ? (
+          <div className="flex aspect-[3/4] w-16 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-foreground/10 text-xl">
+            {deleted ? "🗑️" : "😠"}
+          </div>
+        ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={row.doll.image_url}
+            src={doll.image_url}
             alt=""
             className="aspect-[3/4] w-16 shrink-0 rounded-md border border-foreground/10 bg-foreground/10 object-contain"
           />
-        ) : (
-          <div className="flex aspect-[3/4] w-16 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-foreground/10 text-xl">
-            {alreadyDown ? "🗑️" : "😠"}
-          </div>
         )}
 
         <div className="min-w-0 flex-1 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.cls}`}>
+              {st.label}
+            </span>
             <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-500">
               {REASON_KO[row.reason] ?? row.reason}
             </span>
-            {row.dollPendingCount > 1 && (
-              <span className="text-xs text-zinc-500">
-                이 인형 신고 {row.dollPendingCount}건
-              </span>
-            )}
-            {alreadyDown && <span className="text-xs text-zinc-500">· 이미 삭제됨</span>}
           </div>
 
           {row.detail && (
@@ -127,35 +133,74 @@ function ReportRowItem({ row }: { row: ReportRow }) {
             </p>
           )}
 
-          <div className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-zinc-400">
-            <span>제작자: {row.doll?.owner_name ?? "—"}</span>
-            {row.contact && <span>· 연락처: {row.contact}</span>}
-            <span>· {timeShort(row.created_at)}</span>
+          {/* 클릭 필터: 캐릭터 / 제작자 + 회원 링크 */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+            <Link
+              href={`/admin/moderation?dollId=${row.dollId}`}
+              className="rounded-full border border-foreground/15 px-2 py-0.5 font-mono text-zinc-500 transition hover:bg-foreground/10"
+              title="이 캐릭터 신고만 필터"
+            >
+              캐릭터 {shortId(row.dollId)}
+            </Link>
+            {doll?.owner_id ? (
+              <>
+                <Link
+                  href={`/admin/moderation?ownerId=${doll.owner_id}`}
+                  className="rounded-full border border-foreground/15 px-2 py-0.5 text-zinc-500 transition hover:bg-foreground/10"
+                  title="이 제작자 신고만 필터"
+                >
+                  제작자 {doll.owner_name ?? shortId(doll.owner_id)}
+                </Link>
+                <Link
+                  href={`/admin/users/${doll.owner_id}`}
+                  className="text-sky-600 underline-offset-2 hover:underline"
+                  title="회원 상세로 이동"
+                >
+                  회원 →
+                </Link>
+              </>
+            ) : (
+              <span className="text-zinc-400">제작자 — (탈퇴/삭제)</span>
+            )}
+            {row.contact && <span className="text-zinc-400">· 연락처: {row.contact}</span>}
+            <span className="text-zinc-400">· {timeShort(row.created_at)}</span>
           </div>
 
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => open("takedown")}
-              className="rounded-lg border border-red-400/50 px-2 py-1 text-xs font-medium text-red-500"
-            >
-              {alreadyDown ? "재삭제(파일)" : "삭제(takedown)"}
-            </button>
-            <button
-              type="button"
-              onClick={() => open("dismiss")}
-              className="rounded-lg border border-foreground/20 px-2 py-1 text-xs font-medium"
-            >
-              기각
-            </button>
-            <a
-              href={`/doll/${row.dollId}`}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-foreground/20 px-2 py-1 text-xs text-zinc-500"
-            >
-              미리보기 ↗
-            </a>
+          {/* 액션 */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {doll && !deleted && (
+              <button
+                type="button"
+                onClick={() => open("takedown")}
+                className="rounded-lg border border-red-400/50 px-2 py-1 text-xs font-medium text-red-500"
+              >
+                삭제(takedown)
+              </button>
+            )}
+            {row.status === "pending" && (
+              <button
+                type="button"
+                onClick={() => open("dismiss")}
+                className="rounded-lg border border-foreground/20 px-2 py-1 text-xs font-medium"
+              >
+                기각
+              </button>
+            )}
+            {deleted && (
+              <span className="text-[11px] text-zinc-400">
+                {purged ? "영구삭제됨 · 복구 불가" : "삭제됨 · 파일 미확정"} (복구는 Phase 2 후)
+              </span>
+            )}
+            {!deleted && (
+              <a
+                href={`/doll/${row.dollId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-foreground/20 px-2 py-1 text-xs text-zinc-500"
+              >
+                미리보기 ↗
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -193,9 +238,7 @@ function ReportRowItem({ row }: { row: ReportRow }) {
               onClick={() => void submit()}
               disabled={busy || reason.trim().length < 5}
               className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
-                mode === "takedown"
-                  ? "bg-red-500 text-white"
-                  : "bg-foreground text-background"
+                mode === "takedown" ? "bg-red-500 text-white" : "bg-foreground text-background"
               }`}
             >
               {busy && <Spinner className="h-3.5 w-3.5" />}
