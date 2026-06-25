@@ -28,7 +28,13 @@ export default async function LegalEditPage({
           </Link>
         </div>
         <h1 className="mt-2 text-2xl font-bold">{label}</h1>
-        <LegalDocEditor docType={docType} label={label} draft={draft} versions={versions} />
+        <LegalDocEditor
+          key={`${draft?.id ?? "no-draft"}:${versions.map((v) => v.id).join(",")}`}
+          docType={docType}
+          label={label}
+          draft={draft}
+          versions={versions}
+        />
       </div>
     </main>
   );
