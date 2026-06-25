@@ -20,6 +20,8 @@ export function HighlightPlayer({
 }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 클립 재생 실패(검은/미지원 영상 등) → 영상 대신 카드 배지로 강등(공유 페이지 일관)
+  const [failed, setFailed] = useState(false);
 
   // 파일 공유 실패/미지원 시 링크 재공유 폴백(멘트 없이 — OG 미리보기가 맥락 제공).
   const linkShare = async () => {
@@ -71,6 +73,14 @@ export function HighlightPlayer({
     }
   };
 
+  if (failed) {
+    // 영상 재생 실패 → 부모/share 페이지와 동일한 카드 배지로 폴백(delta 만으로 렌더 가능)
+    return (
+      <div className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm font-semibold text-red-300">
+        🔥 점수 급상승 하이라이트{delta ? ` · +${delta.toLocaleString()}점` : ""}
+      </div>
+    );
+  }
   return (
     <div className="mb-5">
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
@@ -82,7 +92,10 @@ export function HighlightPlayer({
           muted
           playsInline
           poster={posterUrl}
-          onError={() => log.warn("highlight.clip_play_unsupported", {})}
+          onError={() => {
+            log.warn("highlight.clip_play_unsupported", {});
+            setFailed(true);
+          }}
           className="mx-auto aspect-[9/16] max-h-64 w-full object-contain"
         />
         <p className="bg-black/70 py-1.5 text-center text-xs font-medium text-white/80">

@@ -29,6 +29,8 @@ export type GameHandle = {
   stopUltimate: () => void;
   /** 하이라이트 녹화용 — 캔버스 MediaStream (미지원 브라우저면 null) */
   captureStream: (fps?: number) => MediaStream | null;
+  /** 렉 진단용 perf 통계 — DPR·추정 주사율·평균/p95 프레임타임(ms). 종료 시 텔레메트리로. */
+  getPerfStats: () => { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number };
 };
 
 /**
@@ -49,11 +51,17 @@ export async function createGame(
   // (모바일 주소창 수축, 회전 등) → renderer 와 layout 좌표계가 어긋나
   // 입력 hit-test 가 통째로 빗나감. ResizeObserver 에서 직접 resize 한다.
   const app = new Application();
+  // DPR 캡(≤2): 고DPI/레티나/4K PC 에서 backbuffer 픽셀이 DPR² 로 폭증해 GPU fill-rate 가
+  //   매 프레임 한계 → 렉. 2 로 캡해 선명도는 유지하되 fill-rate 완화.
+  // preserveDrawingBuffer: WebGL 캡처(하이라이트 captureStream)가 합성 후 비워진 버퍼를 잡아
+  //   Whale/Mac·iOS 에서 검은 프레임이 되는 문제 방지 — 캡처 정상화(전 기기, GlContextSystem 옵션).
+  const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
   await app.init({
     background: 0x111418,
     antialias: true,
-    resolution: typeof window !== "undefined" ? window.devicePixelRatio : 1,
+    resolution: dpr,
     autoDensity: true,
+    preserveDrawingBuffer: true,
   });
 
   if (isCancelled?.()) {
@@ -86,8 +94,16 @@ export async function createGame(
   app.renderer.resize(initial.w, initial.h);
   scene.layout(initial.w, initial.h);
 
+  // 프레임타임 표본(렉 진단용) — 초기 N프레임(에셋 디코드 잰크) 스킵 후 deltaMS 수집(캡).
+  const frameSamples: number[] = [];
+  let frameSkip = 30;
   const onTick = (ticker: Ticker) => {
     scene.update(ticker.deltaMS / 1000);
+    if (frameSkip > 0) {
+      frameSkip -= 1;
+    } else if (frameSamples.length < 5000) {
+      frameSamples.push(ticker.deltaMS);
+    }
   };
   app.ticker.add(onTick);
 
@@ -124,6 +140,23 @@ export async function createGame(
         captureStream?: (fps?: number) => MediaStream;
       };
       return typeof c.captureStream === "function" ? c.captureStream(fps) : null;
+    },
+    getPerfStats: () => {
+      // 진단상 원본 DPR(캡 전) 보고 — 3x 디스플레이가 2로 캡됐는지 확인용(렌더 DPR=min(raw,2)).
+      const rawDpr =
+        typeof window !== "undefined" ? Math.round((window.devicePixelRatio || 1) * 100) / 100 : 1;
+      const n = frameSamples.length;
+      if (n === 0) return { dpr: rawDpr, refreshHz: 0, avgFrameMs: 0, p95FrameMs: 0 };
+      const sorted = [...frameSamples].sort((a, b) => a - b);
+      const sum = sorted.reduce((s, x) => s + x, 0);
+      const p95 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
+      const minFrame = sorted[0] || 16.7;
+      return {
+        dpr: rawDpr,
+        refreshHz: Math.min(360, Math.round(1000 / minFrame)), // 가장 빠른 프레임 ≈ 주사율 주기
+        avgFrameMs: Math.round((sum / n) * 10) / 10,
+        p95FrameMs: Math.round(p95 * 10) / 10,
+      };
     },
   };
 }

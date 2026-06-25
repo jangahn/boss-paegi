@@ -13,7 +13,7 @@ import { BadgeChallenge } from "@/components/play/BadgeChallenge";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { useSessionLimits } from "@/components/SessionLimitsProvider";
 import { FORCE_END_GRACE_MS } from "@/lib/score-limits";
-import { setSentryGameContext } from "@/lib/sentry-context";
+import { setSentryGameContext, setSentryPerfContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
@@ -289,6 +289,12 @@ function PlayInner() {
         gamePhase: "over",
       });
       end();
+      // 렉 진단 perf(프레임타임/DPR) — 텔레메트리 저장 + Sentry context(보조)
+      const perf = gameRef.current?.getPerfStats();
+      if (perf) {
+        telemetry.setPerf(perf);
+        setSentryPerfContext(perf);
+      }
       telemetry.endSession(reason);
       if (s.score <= 0) {
         router.push("/");

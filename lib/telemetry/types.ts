@@ -42,6 +42,11 @@ export type TelemetrySummary = {
     tapShare: number;
     /** 세션 중 관측된 최대 동시 터치 수 */
     maxTouch: number;
+    /** 렉 진단 — devicePixelRatio(캡 전 원본), 추정 주사율(Hz), 평균/p95 프레임타임(ms) */
+    dpr: number;
+    refreshHz: number;
+    avgFrameMs: number;
+    p95FrameMs: number;
   };
   weaponSummary: Record<string, DimAgg>;
   mapSummary: Record<string, DimAgg>;

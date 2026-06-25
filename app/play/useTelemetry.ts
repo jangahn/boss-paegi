@@ -22,6 +22,8 @@ export type TelemetryApi = {
   onWeaponSelect: (from: string, to: string) => void;
   onMapSelect: (from: string, to: string) => void;
   onUltFire: (score: number) => void;
+  /** 종료 직전 — 게임 ticker 프레임타임 통계(렉 진단) 주입. */
+  setPerf: (p: { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number }) => void;
   /** 정상/강제 종료 — end_reason 동결 + 최종 flush. */
   endSession: (reason: string) => void;
   /** 현재(또는 직전 종료된) 세션 id — 점수 제출 시 scores.telemetry_session_id 링크용. */
@@ -125,6 +127,7 @@ export function useTelemetry(): TelemetryApi {
       onWeaponSelect: (from, to) => colRef.current?.onWeaponSelect(from, to),
       onMapSelect: (from, to) => colRef.current?.onMapSelect(from, to),
       onUltFire: (score) => colRef.current?.onUltFire(score),
+      setPerf: (p) => colRef.current?.setPerf(p),
       endSession: (reason) => {
         const c = colRef.current;
         const tx = txRef.current;

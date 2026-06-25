@@ -64,3 +64,25 @@ export function setSentryLastAction(action: string): void {
   Sentry.setTag("last_action", action);
   Sentry.addBreadcrumb({ category: "action", level: "info", message: action });
 }
+
+/**
+ * 렉 진단 perf — 1차 소스는 우리 텔레메트리(telemetry_sessions, SQL 쿼리 가능). 여긴 보조:
+ * high-card(dpr/refresh/frametime)는 context 로만, 저카디널 perf_bucket 만 태그(에러 상관·필터용).
+ * 정상 플레이는 에러가 없어 태그만으론 안 잡히므로 breadcrumb 도 남겨 리플레이/세션 맥락 확보.
+ */
+export function setSentryPerfContext(perf: {
+  dpr: number;
+  refreshHz: number;
+  avgFrameMs: number;
+  p95FrameMs: number;
+}): void {
+  Sentry.setContext("perf_device", perf);
+  const bucket =
+    perf.avgFrameMs > 25 ? "lag_high" : perf.avgFrameMs > 18 ? "lag_med" : "smooth";
+  Sentry.setTag("perf_bucket", bucket);
+  Sentry.addBreadcrumb({
+    category: "perf",
+    level: "info",
+    message: `dpr=${perf.dpr} hz=${perf.refreshHz} avg=${perf.avgFrameMs}ms p95=${perf.p95FrameMs}ms`,
+  });
+}
