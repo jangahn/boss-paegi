@@ -71,10 +71,23 @@ export function useGameInit(opts: {
             .eq("id", dollId)
             .single();
           if (!data?.image_url) return undefined;
-          setDollImageUrl(data.image_url);
           setDollRole(asRole((data as { role?: string }).role));
+          // private 버킷 — image_url 은 경로. 서명 API로 signed URL 획득(본인 캐릭터·장기세션 ttl 3600).
+          let signedUrl: string | undefined;
           try {
-            return await Assets.load(data.image_url);
+            const r = await fetch("/api/doll/signed-urls", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids: [dollId], ttl: 3600 }),
+            });
+            signedUrl = (await r.json())?.urls?.[dollId] ?? undefined;
+          } catch (e) {
+            log.warn("play.sign_fail", { dollId, ...errInfo(e) });
+          }
+          if (!signedUrl) return undefined; // 삭제(takedown)/실패 → placeholder
+          setDollImageUrl(signedUrl);
+          try {
+            return await Assets.load(signedUrl);
           } catch (e) {
             log.warn("play.doll_texture_fail", { dollId, ...errInfo(e) });
             return undefined;

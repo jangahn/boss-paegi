@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dollPath } from "@/lib/storage-path";
 import { removeBackground } from "@/lib/fal";
 import { normalizeDollImage } from "@/lib/image-utils";
 import {
@@ -135,14 +136,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const publicUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-
+  // private 버킷 — image_url 에 **경로** 저장(읽을 때 signedDollUrl 로 서명). getPublicUrl 미사용.
   const { data: doll, error: insertError } = await admin
     .from("dolls")
     .insert({
       id: dollId,
       owner_id: user.id,
-      image_url: publicUrl,
+      image_url: path,
       style_meta: body.styleMeta ?? {},
       role: dollRole,
     })
@@ -251,7 +251,7 @@ export async function DELETE(req: NextRequest) {
 
   // Storage 파일 삭제 (admin — owner 검증은 위에서 통과)
   const admin = createAdminClient();
-  const storagePath = doll.image_url.split("/dolls/")[1];
+  const storagePath = dollPath(doll.image_url); // private 후 image_url=경로(URL도 관용 처리)
   if (storagePath) {
     // remove() 는 throw 가 아니라 { error } 반환 — best-effort 지만 실패 시
     // storage 객체가 고아로 남으므로(개인정보 정책 리스크) 추적 가능하게 남김.

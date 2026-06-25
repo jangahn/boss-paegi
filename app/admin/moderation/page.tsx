@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
-import { getReportQueue, getPurgePendingDolls } from "@/lib/admin-moderation";
+import { getReportQueue } from "@/lib/admin-moderation";
 import { ReportQueueTable } from "@/components/admin/ReportQueueTable";
 import { ReportFilter } from "@/components/admin/ReportFilter";
 import { Pagination } from "@/components/Pagination";
@@ -36,10 +36,7 @@ export default async function AdminModerationPage({
     return `/admin/moderation${u.toString() ? `?${u}` : ""}`;
   };
 
-  const [queue, purgePending] = await Promise.all([
-    getReportQueue({ status, dollId, ownerId, page }),
-    getPurgePendingDolls(),
-  ]);
+  const queue = await getReportQueue({ status, dollId, ownerId, page });
   if (queue.rows.length === 0 && page > 1) redirect(buildHref(1));
   const totalPages = Math.max(1, Math.ceil(queue.total / queue.pageSize));
   const filtered = !!(status || dollId || ownerId);
@@ -49,18 +46,11 @@ export default async function AdminModerationPage({
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         <h1 className="text-2xl font-bold">신고</h1>
         <p className="text-xs leading-relaxed text-zinc-500">
-          비동의 제3자 얼굴 등 신고된 콘텐츠. <b>삭제(takedown)는 복구 불가</b>(인형 이미지·관련
-          하이라이트 영상을 영구 삭제, 이 인형의 대기 신고 모두 처리). 기각은 콘텐츠 유지. 캐릭터/제작자
-          id를 누르면 해당 항목만 필터됩니다.
+          비동의 제3자 얼굴 등 신고된 콘텐츠. <b>숨김(takedown)은 가역</b> — 얼굴을 앱 전 표면에서
+          기본 부장님으로 가리며(이 인형 대기 신고 모두 처리), 나중에 <b>복구</b>하거나 <b>영구삭제</b>
+          (storage 객체 제거·복구 불가)할 수 있어요. 기각은 콘텐츠 유지. 캐릭터/제작자 id를 누르면 해당
+          항목만 필터됩니다.
         </p>
-
-        {purgePending.length > 0 && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-            ⚠️ 파일 삭제 확인 필요 {purgePending.length}건 — takedown 됐으나 storage 객체 물리삭제가
-            미확정입니다(직링크 잔존 가능). cron 이 자동 재시도하며, 지속되면 Supabase Storage 에서
-            수동 확인하세요.
-          </div>
-        )}
 
         <ReportFilter status={status} dollId={dollId} ownerId={ownerId} />
 

@@ -16,14 +16,19 @@ import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import {
   fetchScoreDetail,
-  clipPublicUrl,
+  clipSignedUrl,
   highlightDelta,
 } from "@/lib/score-detail";
+import { signedDollUrl } from "@/lib/storage";
 import { asRole } from "@/lib/roles";
 import { getRoleConfig, getScoreConfig, getBadgeCatalog, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
+
+// signed doll/clip URL(TTL 600/900) 박히는 페이지 — ISR ≤60s 로 만료/삭제(takedown) staleness 최소화.
+//   takedown/restore/permanent 라우트가 이 doll 을 쓰는 share path 들을 명시 revalidatePath(즉시).
+export const revalidate = 60;
 
 export async function generateMetadata({
   params,
@@ -94,7 +99,8 @@ export default async function SharePage({
   const grade = gradeFor(score.score, scoreCfg.grades);
   const reaction = bossReaction(score.score, score.id, role, cfg);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
-  const clipUrl = clipPublicUrl(score);
+  const clipUrl = await clipSignedUrl(score);
+  const dollImg = await signedDollUrl(score.dolls?.image_url); // private 버킷 서명(삭제/없음=null→기본보스)
   const posterUrl = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}/opengraph-image`;
   const hlDelta = highlightDelta(score); // clip 있으면 clip delta, card-only 면 card delta (만료/삭제 X)
 
@@ -136,7 +142,7 @@ export default async function SharePage({
             {/* 커스텀 인형 없으면 기본 부장님 이미지 */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={score.dolls?.image_url ?? "/sprites/boss-default.png"}
+              src={dollImg ?? "/sprites/boss-default.png"}
               alt={`맞은 ${rlabel}`}
               className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
             />

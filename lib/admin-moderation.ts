@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
 
 /**
@@ -116,12 +117,14 @@ export async function getReportQueue(f: ReportFilters): Promise<ReportQueuePage>
       const ownerName = Array.isArray(prof)
         ? prof[0]?.display_name ?? null
         : prof?.display_name ?? null;
+      const purged = (d.artifacts_purged_at as string | null) ?? null;
       dollMap.set(d.id as string, {
-        image_url: (d.image_url as string | null) ?? null,
+        // 영구삭제(purged)면 객체 없음→null(UI 플레이스홀더). 아니면 서명(삭제돼도 어드민은 얼굴 확인 필요).
+        image_url: purged ? null : await signedDollUrl((d.image_url as string | null) ?? null),
         owner_id: (d.owner_id as string | null) ?? null,
         owner_name: ownerName,
         deleted_at: (d.deleted_at as string | null) ?? null,
-        artifacts_purged_at: (d.artifacts_purged_at as string | null) ?? null,
+        artifacts_purged_at: purged,
       });
     }
   }
@@ -138,27 +141,4 @@ export async function getReportQueue(f: ReportFilters): Promise<ReportQueuePage>
     doll: dollMap.get(r.target_id) ?? null,
   }));
   return { rows, total: count ?? 0, page, pageSize: REPORT_PAGE_SIZE };
-}
-
-export type PurgePendingDoll = {
-  id: string;
-  image_url: string | null;
-  deleted_at: string | null;
-};
-
-/** takedown 됐는데 storage 물리삭제가 미확정(=실패/대기)인 doll — "파일 삭제 확인 필요". */
-export async function getPurgePendingDolls(): Promise<PurgePendingDoll[]> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("dolls")
-    .select("id, image_url, deleted_at")
-    .not("deleted_at", "is", null)
-    .is("artifacts_purged_at", null)
-    .order("deleted_at", { ascending: false })
-    .limit(50);
-  if (error) {
-    log.warn("admin.purge_pending_fail", errInfo(error));
-    return [];
-  }
-  return (data ?? []) as PurgePendingDoll[];
 }

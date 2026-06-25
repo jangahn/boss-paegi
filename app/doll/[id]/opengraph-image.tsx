@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { signedDollUrl } from "@/lib/storage";
 import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
 import { asRole } from "@/lib/roles";
@@ -65,7 +66,7 @@ export default async function OgImage({
   const dollImg = d
     ? d.deleted_at
       ? `${PUBLIC_ENV.SITE_URL}/sprites/boss-default.png`
-      : d.image_url
+      : await signedDollUrl(d.image_url, 60) // private 버킷 서명(OG 내부 fetch용 단명 60s)
     : null;
   const dollSrc = dollImg ? await dollDataUri(dollImg) : null;
 

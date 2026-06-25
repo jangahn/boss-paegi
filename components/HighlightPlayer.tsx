@@ -74,10 +74,14 @@ export function HighlightPlayer({
   };
 
   if (failed) {
-    // 영상 재생 실패 → 부모/share 페이지와 동일한 카드 배지로 폴백(delta 만으로 렌더 가능)
+    // 영상 재생 실패(미지원/검은영상/**signed URL 만료** 등) → 카드 배지로 폴백(delta 만으로 렌더).
+    //   signed URL 은 TTL(15분) 후 만료 — 오래 열어둔 페이지면 새로고침 시 재서명됨.
     return (
       <div className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm font-semibold text-red-300">
         🔥 점수 급상승 하이라이트{delta ? ` · +${delta.toLocaleString()}점` : ""}
+        <span className="mt-1 block text-xs font-normal text-red-300/70">
+          영상을 불러오지 못했어요 · 새로고침 후 다시 시도
+        </span>
       </div>
     );
   }
