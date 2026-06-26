@@ -11,9 +11,10 @@ export default function Loading() {
         {Array.from({ length: 3 }).map((_, s) => (
           <div key={s} className="flex flex-col gap-2">
             <div className="h-4 w-32 animate-pulse rounded bg-foreground/10" />
-            <div className="overflow-hidden rounded-xl border border-foreground/10 bg-paper-2">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-8 animate-pulse border-t border-foreground/5 bg-paper-2" />
+            <div className="overflow-hidden rounded-xl border border-foreground/10">
+              <div className="h-8 animate-pulse bg-paper-2" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-8 animate-pulse border-t border-foreground/5 bg-foreground/[0.05]" />
               ))}
             </div>
           </div>
