@@ -273,7 +273,7 @@ export function BadgeCatalogEditor({
         type="button"
         onClick={() => void submit()}
         disabled={busy}
-        className="sticky bottom-3 flex items-center justify-center gap-2 rounded-full bg-foreground py-3 text-sm font-semibold text-background shadow-lg transition hover:opacity-90 disabled:opacity-40"
+        className="sticky bottom-3 flex items-center justify-center gap-2 rounded-full bg-foreground py-3 text-sm font-semibold text-paper-2 shadow-lg transition hover:opacity-90 disabled:opacity-40"
       >
         {busy && <Spinner className="h-4 w-4" />}
         발행
@@ -292,7 +292,7 @@ export function BadgeCatalogEditor({
             <button
               type="button"
               onClick={() => setPendingDelete(null)}
-              className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm"
+              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm"
             >
               취소
             </button>

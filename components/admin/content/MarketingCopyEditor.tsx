@@ -266,7 +266,7 @@ export function MarketingCopyEditor({
         type="button"
         onClick={() => void submit()}
         disabled={busy}
-        className="flex items-center justify-center gap-2 rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+        className="flex items-center justify-center gap-2 rounded-full bg-foreground py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-40"
       >
         {busy && <Spinner className="h-4 w-4" />}
         발행

@@ -36,13 +36,13 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
               key={item.id}
               onClick={() => toggle(item.id)}
               aria-pressed={on}
-              className="flex w-full cursor-pointer touch-manipulation select-none items-start gap-3 rounded-xl border border-foreground/15 p-3 text-left transition hover:bg-foreground/5 active:scale-[0.99] active:bg-foreground/10"
+              className="flex w-full cursor-pointer touch-manipulation select-none items-start gap-3 rounded-xl border border-foreground/15 bg-paper-2 p-3 text-left transition hover:bg-foreground/5 active:scale-[0.99] active:bg-foreground/10"
             >
               <span
                 aria-hidden
                 className={`pointer-events-none mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition ${
                   on
-                    ? "border-foreground bg-foreground text-background"
+                    ? "border-foreground bg-foreground text-paper-2"
                     : "border-foreground/40 bg-transparent text-transparent"
                 }`}
               >
@@ -71,7 +71,7 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
         type="button"
         disabled={!allChecked}
         onClick={onAgree}
-        className="rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
+        className="rounded-full bg-foreground py-4 font-semibold text-paper-2 transition disabled:cursor-not-allowed disabled:opacity-30"
       >
         동의하고 사진 업로드
       </button>

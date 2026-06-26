@@ -119,7 +119,7 @@ export function AvatarEditor({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={busy}
-          className="rounded-full border border-foreground/15 px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5 disabled:opacity-50"
+          className="rounded-full border border-foreground/15 bg-paper-2 px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5 disabled:opacity-50"
         >
           사진 선택
         </button>
@@ -139,7 +139,7 @@ export function AvatarEditor({
       <button
         type="button"
         onClick={onClose}
-        className="mt-4 w-full rounded-full border border-foreground/15 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+        className="mt-4 w-full rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
       >
         닫기
       </button>

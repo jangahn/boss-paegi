@@ -67,7 +67,7 @@ export function ShareReportButton({
         type="button"
         onClick={onClick}
         disabled={busy}
-        className="w-full rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-50"
+        className="w-full rounded-full bg-foreground py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-50"
       >
         {label}
       </button>

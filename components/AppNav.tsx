@@ -27,7 +27,7 @@ export function AppNav() {
               href={l.href}
               className={`whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm font-medium transition sm:px-3 ${
                 pathname === l.href
-                  ? "bg-foreground text-background"
+                  ? "bg-foreground text-paper-2"
                   : "text-zinc-500 hover:bg-foreground/5 hover:text-foreground"
               }`}
             >

@@ -277,7 +277,7 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
               onClick={() => void submit()}
               disabled={busy || reason.trim().length < 5}
               className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
-                MODE_META[mode].danger ? "bg-red-500 text-white" : "bg-foreground text-background"
+                MODE_META[mode].danger ? "bg-red-500 text-white" : "bg-foreground text-paper-2"
               }`}
             >
               {busy && <Spinner className="h-3.5 w-3.5" />}

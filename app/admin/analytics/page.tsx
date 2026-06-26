@@ -57,7 +57,7 @@ export default async function AnalyticsPage({
                 key={d}
                 href={`/admin/analytics?days=${d}`}
                 className={`rounded-full px-3 py-1.5 font-medium transition ${
-                  days === d ? "bg-foreground text-background" : "text-zinc-500 hover:bg-foreground/5"
+                  days === d ? "bg-foreground text-paper-2" : "text-zinc-500 hover:bg-foreground/5"
                 }`}
               >
                 {d}일

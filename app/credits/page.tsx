@@ -120,14 +120,14 @@ export default function CreditsPage() {
                 <button
                   type="button"
                   onClick={() => setAgePrompt(null)}
-                  className="flex-1 rounded-full border border-foreground/15 py-2 text-xs font-medium"
+                  className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2 text-xs font-medium"
                 >
                   취소
                 </button>
                 <button
                   type="button"
                   onClick={() => void confirmAgeAndBuy()}
-                  className="flex-1 rounded-full bg-foreground py-2 text-xs font-semibold text-background"
+                  className="flex-1 rounded-full bg-foreground py-2 text-xs font-semibold text-paper-2"
                 >
                   만 14세 이상입니다 · 계속
                 </button>

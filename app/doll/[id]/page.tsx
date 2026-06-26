@@ -161,13 +161,13 @@ export default async function DollPage({
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"
-              className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
+              className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
             >
               {resolveCopy(mk.share.dollCtaMake, rlabel)}
             </Link>
             <Link
               href="/play"
-              className="rounded-full border border-foreground/15 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
+              className="rounded-full border border-foreground/15 bg-paper-2 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
             >
               {mk.share.dollCtaDefault}
             </Link>

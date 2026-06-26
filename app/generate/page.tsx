@@ -187,14 +187,14 @@ function GeneratePageInner() {
             <button
               type="button"
               onClick={() => setAgePrompt(false)}
-              className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm font-medium"
+              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm font-medium"
             >
               취소
             </button>
             <button
               type="button"
               onClick={() => void confirmAgeAndRetry()}
-              className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background"
+              className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2"
             >
               만 14세 이상입니다 · 계속
             </button>
@@ -244,7 +244,7 @@ function GeneratePageInner() {
           <button
             type="button"
             onClick={() => router.push("/credits")}
-            className="rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
+            className="rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90"
           >
             생성권 충전하기
           </button>

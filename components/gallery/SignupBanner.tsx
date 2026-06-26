@@ -26,7 +26,7 @@ export function SignupBanner({ state }: { state: ViewerState }) {
       </div>
       <Link
         href={cta.href}
-        className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
+        className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition hover:opacity-90"
       >
         {cta.label}
       </Link>

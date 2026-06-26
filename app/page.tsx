@@ -44,13 +44,13 @@ export default function Home() {
             <div className="flex w-full flex-col gap-3">
               <Link
                 href={isMember ? "/generate" : "/login?next=/generate"}
-                className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
+                className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
               >
                 {home.primaryCta}
               </Link>
               <Link
                 href="/play"
-                className="rounded-full border border-foreground/15 px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
+                className="rounded-full border border-foreground/15 bg-paper-2 px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
               >
                 {home.secondaryCta}
               </Link>

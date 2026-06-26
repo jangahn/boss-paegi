@@ -65,7 +65,7 @@ export function ReconsentConsent({ next }: { next: string }) {
             return (
               <div
                 key={item.id}
-                className="flex items-start gap-3 rounded-xl border border-foreground/15 p-3"
+                className="flex items-start gap-3 rounded-xl border border-foreground/15 bg-paper-2 p-3"
               >
                 <button
                   type="button"
@@ -77,7 +77,7 @@ export function ReconsentConsent({ next }: { next: string }) {
                     aria-hidden
                     className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition ${
                       on
-                        ? "border-foreground bg-foreground text-background"
+                        ? "border-foreground bg-foreground text-paper-2"
                         : "border-foreground/40 text-transparent"
                     }`}
                   >
@@ -105,7 +105,7 @@ export function ReconsentConsent({ next }: { next: string }) {
           type="button"
           disabled={!all || busy}
           onClick={() => void submit()}
-          className="flex items-center justify-center gap-2 rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex items-center justify-center gap-2 rounded-full bg-foreground py-4 font-semibold text-paper-2 transition disabled:cursor-not-allowed disabled:opacity-30"
         >
           {busy && <Spinner className="h-5 w-5" />}
           동의하고 계속

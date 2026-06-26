@@ -93,7 +93,7 @@ export default function AccountPage() {
               <button
                 type="button"
                 onClick={() => setEditingAvatar(true)}
-                className="rounded-full border border-foreground/15 px-4 py-1.5 text-sm font-medium transition hover:bg-foreground/5"
+                className="rounded-full border border-foreground/15 bg-paper-2 px-4 py-1.5 text-sm font-medium transition hover:bg-foreground/5"
               >
                 프로필 사진 변경
               </button>
@@ -117,7 +117,7 @@ export default function AccountPage() {
                   type="button"
                   onClick={() => void saveNick()}
                   disabled={savingNick || nick.trim().length < 2 || nick === profile.display_name}
-                  className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                  className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-40"
                 >
                   {savingNick && <Spinner className="h-4 w-4" />}
                   저장
@@ -245,7 +245,7 @@ function WithdrawSection() {
                 setConfirm("");
                 setErr(null);
               }}
-              className="flex-1 rounded-full border border-foreground/15 py-2 text-xs font-medium"
+              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2 text-xs font-medium"
             >
               취소
             </button>

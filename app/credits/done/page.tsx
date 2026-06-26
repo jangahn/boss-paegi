@@ -84,7 +84,7 @@ function CreditsDoneInner() {
               </p>
               <Link
                 href="/generate"
-                className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
+                className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90"
               >
                 캐릭터 만들러 가기
               </Link>

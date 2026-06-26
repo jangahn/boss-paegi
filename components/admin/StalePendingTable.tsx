@@ -159,14 +159,14 @@ function ActionModal({
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
       <div className="mt-4 flex gap-2">
-        <button type="button" onClick={onClose} className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm">
+        <button type="button" onClick={onClose} className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm">
           닫기
         </button>
         <button
           type="button"
           onClick={() => void submit()}
           disabled={busy || reason.trim().length < 5}
-          className="flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background disabled:opacity-40"
+          className="flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2 disabled:opacity-40"
         >
           {busy && <Spinner className="h-4 w-4" />}
           {kind === "settle" ? "지급" : "주문 취소"}
