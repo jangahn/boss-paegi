@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
+import { PaperPanel, Paperclip, DashedDivider } from "@/components/dossier";
 import { SERVICE_NAME } from "@/lib/policy";
 
 const ITEMS = [
@@ -47,13 +48,16 @@ export function SignupConsent({ next }: { next: string }) {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+      <PaperPanel folded className="relative mx-auto flex w-full max-w-md flex-col gap-6 px-7 pb-7 pt-10">
+        <Paperclip className="left-7" />
         <div>
-          <h1 className="text-2xl font-bold">{SERVICE_NAME} 회원가입</h1>
+          <h1 className="font-display text-4xl tracking-tight text-ink">{SERVICE_NAME} 회원가입</h1>
           <p className="mt-2 text-sm text-zinc-500">
             가입을 완료하려면 아래에 동의해주세요.
           </p>
         </div>
+
+        <DashedDivider />
 
         <div className="space-y-3">
           {ITEMS.map((item) => {
@@ -103,7 +107,7 @@ export function SignupConsent({ next }: { next: string }) {
           type="button"
           disabled={!all || busy}
           onClick={() => void submit()}
-          className="flex items-center justify-center gap-2 rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex items-center justify-center gap-2 rounded-lg bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
         >
           {busy && <Spinner className="h-5 w-5" />}
           동의하고 가입 완료
@@ -111,7 +115,7 @@ export function SignupConsent({ next }: { next: string }) {
         <Link href="/" className="text-center text-sm text-zinc-500 underline-offset-4 hover:text-foreground hover:underline">
           취소
         </Link>
-      </div>
+      </PaperPanel>
     </main>
   );
 }

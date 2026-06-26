@@ -10,6 +10,7 @@ import {
   type CatalogBadge,
 } from "@/lib/config/domains/badges";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
+import { PaperPanel, DashedDivider } from "@/components/dossier";
 
 /**
  * 뱃지 수집 페이지 — 프로필 메뉴("내 뱃지")에서 진입. 익명/회원 공통(self-RLS).
@@ -52,17 +53,21 @@ export default function BadgesPage() {
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-          <div className="flex items-end justify-between gap-3">
-            <h1 className="text-2xl font-bold">내 뱃지</h1>
-            {owned && (
-              <p className="text-sm text-zinc-500">
-                <span className="text-lg font-extrabold text-foreground tabular-nums">
-                  {collected}
-                </span>{" "}
-                / {total} 수집
-              </p>
-            )}
-          </div>
+          <PaperPanel className="px-6 py-5">
+            <div className="flex items-end justify-between gap-3">
+              <h1 className="font-display text-3xl tracking-tight text-ink">
+                내 뱃지
+              </h1>
+              {owned && (
+                <p className="text-sm text-zinc-500">
+                  <span className="font-display text-2xl text-gold tabular-nums">
+                    {collected}
+                  </span>{" "}
+                  / {total} 수집
+                </p>
+              )}
+            </div>
+          </PaperPanel>
 
           {owned === null ? (
             <BadgeSkeleton />
@@ -89,7 +94,7 @@ function FamilySection({
     <section>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-lg">{family.emoji}</span>
-        <h2 className="text-sm font-bold">{family.name}</h2>
+        <h2 className="text-sm font-bold text-ink">{family.name}</h2>
         <span className="text-xs text-zinc-500 tabular-nums">
           {got}/{family.badges.length}
         </span>
@@ -100,17 +105,17 @@ function FamilySection({
             <div
               key={d.slug}
               title={d.desc}
-              className="flex flex-col items-center gap-1 rounded-xl border border-foreground/10 bg-foreground/5 p-2 text-center"
+              className="flex flex-col items-center gap-1 rounded-lg border border-line bg-paper-2 p-2 text-center"
             >
               <span className="text-xl">{family.emoji}</span>
-              <span className="text-[10px] font-semibold leading-tight">
+              <span className="text-[10px] font-semibold leading-tight text-ink">
                 {d.label}
               </span>
             </div>
           ) : (
             <div
               key={d.slug}
-              className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-foreground/15 p-2 text-center"
+              className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-line p-2 text-center"
             >
               <span className="text-xl opacity-40">🔒</span>
               <span className="text-[10px] font-bold text-zinc-500">?</span>
@@ -132,7 +137,7 @@ function BadgeSkeleton() {
             {Array.from({ length: 5 }).map((_, j) => (
               <div
                 key={j}
-                className="aspect-square animate-pulse rounded-xl bg-foreground/10"
+                className="aspect-square animate-pulse rounded-lg bg-foreground/10"
               />
             ))}
           </div>

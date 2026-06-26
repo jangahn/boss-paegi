@@ -15,6 +15,7 @@ import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { ReportButton } from "@/components/ReportButton";
+import { PaperPanel, Paperclip, RubberStamp } from "@/components/dossier";
 
 // signed doll/clip URL(TTL 600/900) 박히는 페이지 — ISR ≤60s 로 만료/삭제 staleness 최소화.
 export const revalidate = 60;
@@ -78,18 +79,19 @@ export default async function HistoryDetailPage({
         <div className="w-full max-w-sm">
           <Link
             href={`/history/${userId}`}
-            className="mb-3 inline-block text-sm text-zinc-400 underline-offset-4 hover:underline"
+            className="mb-3 inline-block text-sm text-steel underline-offset-4 hover:underline"
           >
             ← {name}님의 기록
           </Link>
 
           {/* ── 보고서 (종이) — 회고용 축약판 ───────────────── */}
-          <div className="rounded-lg bg-[#fbfaf6] p-5 text-zinc-900 shadow-2xl">
-            <div className="border-b-2 border-zinc-800 pb-3 text-center">
-              <p className="text-[10px] tracking-[0.3em] text-zinc-500">
+          <PaperPanel folded className="relative px-5 pb-5 pt-10 text-ink">
+            <Paperclip className="left-6" />
+            <div className="border-b-2 border-ink pb-3 text-center">
+              <p className="text-[10px] tracking-[0.3em] text-steel">
                 {reportNo(score.id, score.created_at)}
               </p>
-              <h1 className="mt-1 text-xl font-extrabold tracking-tight">
+              <h1 className="mt-1 font-display text-3xl tracking-tight">
                 스트레스 해소 결과 보고서
               </h1>
             </div>
@@ -122,9 +124,9 @@ export default async function HistoryDetailPage({
                       {name}
                     </td>
                     <td className="border border-zinc-400 py-2">
-                      <span className="inline-block -rotate-12 rounded-full border-2 border-red-500 px-1.5 py-1 text-[9px] font-bold text-red-500">
+                      <RubberStamp tone="stamp">
                         해소완료
-                      </span>
+                      </RubberStamp>
                     </td>
                   </tr>
                 </tbody>
@@ -133,7 +135,7 @@ export default async function HistoryDetailPage({
 
             <dl className="mt-3 space-y-1.5 text-sm">
               <Row label="총 정산 점수">
-                <span className="text-2xl font-extrabold tabular-nums">
+                <span className="font-display text-3xl tabular-nums text-gold">
                   {score.score.toLocaleString()}
                 </span>
                 <span className="ml-1 text-xs text-zinc-500">점</span>
@@ -162,7 +164,7 @@ export default async function HistoryDetailPage({
             {score.badge_ids && score.badge_ids.length > 0 && (
               <BadgeStrip badgeIds={score.badge_ids} catalog={badgeCatalog} />
             )}
-          </div>
+          </PaperPanel>
 
           <ShareReportButton
             scoreId={scoreId}
