@@ -2,7 +2,7 @@
 export default function Loading() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm rounded-lg bg-[#fbfaf6] p-5 shadow-2xl">
+      <div className="w-full max-w-sm rounded-lg bg-paper-2 p-5 shadow-2xl">
         <div className="mx-auto h-5 w-32 animate-pulse rounded bg-zinc-300" />
         <div className="mt-4 flex gap-3">
           <div className="aspect-[3/4] w-28 animate-pulse rounded-xl bg-zinc-200" />

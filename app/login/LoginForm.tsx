@@ -115,7 +115,7 @@ export function LoginForm() {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border border-foreground/10 bg-paper-2/70 px-7 pb-7 pt-10 shadow-sm">
+      <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border border-foreground/10 bg-paper-2 px-7 pb-7 pt-10 shadow-sm">
         <Paperclip className="left-7" />
         <CornerFold />
         <Link href="/" className="font-display text-4xl tracking-tight text-ink">
