@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { SERVICE_NAME } from "@/lib/policy";
-import { PaperPanel, Paperclip, DashedDivider } from "@/components/dossier";
 
 // 재동의는 약관·방침만(연령은 재확인하지 않음 — age_confirmed_at 유지).
 const ITEMS = [
@@ -52,16 +51,13 @@ export function ReconsentConsent({ next }: { next: string }) {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-      <PaperPanel folded className="relative mx-auto flex w-full max-w-md flex-col gap-6 px-7 pb-7 pt-10">
-        <Paperclip className="left-7" />
+      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <div>
-          <h1 className="font-bold text-3xl tracking-tight text-ink sm:text-4xl">{SERVICE_NAME} 재이용 안내</h1>
+          <h1 className="text-2xl font-bold">{SERVICE_NAME} 재이용 안내</h1>
           <p className="mt-2 text-sm text-zinc-500">
             계정이 복구되었어요. 다시 이용하려면 현재 약관·개인정보처리방침에 동의해주세요.
           </p>
         </div>
-
-        <DashedDivider />
 
         <div className="space-y-3">
           {ITEMS.map((item) => {
@@ -109,12 +105,12 @@ export function ReconsentConsent({ next }: { next: string }) {
           type="button"
           disabled={!all || busy}
           onClick={() => void submit()}
-          className="flex items-center justify-center gap-2 rounded-lg bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex items-center justify-center gap-2 rounded-full bg-foreground py-4 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
         >
           {busy && <Spinner className="h-5 w-5" />}
           동의하고 계속
         </button>
-      </PaperPanel>
+      </div>
     </main>
   );
 }

@@ -29,7 +29,7 @@ export function AdminNav() {
             <Link
               key={l.href}
               href={l.href}
-              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-semibold transition ${
+              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition ${
                 active
                   ? "bg-foreground text-background"
                   : "text-zinc-500 hover:bg-foreground/5 hover:text-foreground"

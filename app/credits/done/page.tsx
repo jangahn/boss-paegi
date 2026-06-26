@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
-import { PaperPanel, Paperclip, RubberStamp } from "@/components/dossier";
 
 type DoneState = "checking" | "paid" | "pending" | "error";
 
@@ -64,15 +63,11 @@ function CreditsDoneInner() {
     <>
       <AppNav />
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-        <PaperPanel
-          folded
-          className="relative flex w-full max-w-sm flex-col items-center gap-4 px-7 pb-8 pt-12"
-        >
-          <Paperclip className="left-7" />
+        <div className="flex w-full max-w-sm flex-col items-center gap-4">
           {state === "checking" && (
             <>
               <Spinner className="h-8 w-8" />
-              <h1 className="font-bold text-3xl tracking-tight text-ink">결제 확인 중…</h1>
+              <h1 className="text-lg font-bold">결제 확인 중…</h1>
               <p className="text-sm text-zinc-500">잠시만 기다려주세요.</p>
             </>
           )}
@@ -81,17 +76,15 @@ function CreditsDoneInner() {
               <span className="text-4xl" aria-hidden>
                 🎉
               </span>
-              <RubberStamp tone="stamp">
-                <h1 className="font-bold text-3xl tracking-tight">충전 완료!</h1>
-              </RubberStamp>
+              <h1 className="text-lg font-bold">충전 완료!</h1>
               <p className="text-sm text-zinc-500">
                 생성권{" "}
-                <span className="font-bold text-2xl text-gold">{credits}개</span>가
+                <span className="font-bold text-foreground">{credits}개</span>가
                 충전됐어요.
               </p>
               <Link
                 href="/generate"
-                className="mt-2 rounded-lg bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
+                className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
               >
                 캐릭터 만들러 가기
               </Link>
@@ -102,7 +95,7 @@ function CreditsDoneInner() {
               <span className="text-4xl" aria-hidden>
                 {state === "pending" ? "⏳" : "⚠️"}
               </span>
-              <h1 className="font-bold text-3xl tracking-tight text-ink">
+              <h1 className="text-lg font-bold">
                 {state === "pending" ? "결제 처리 중이에요" : "결제를 확인할 수 없어요"}
               </h1>
               <p className="text-sm leading-relaxed text-zinc-500">
@@ -111,13 +104,13 @@ function CreditsDoneInner() {
               </p>
               <Link
                 href="/credits"
-                className="mt-2 text-sm font-semibold text-steel underline transition hover:text-stamp"
+                className="mt-2 text-sm font-semibold underline"
               >
                 충전 화면으로
               </Link>
             </>
           )}
-        </PaperPanel>
+        </div>
       </main>
     </>
   );

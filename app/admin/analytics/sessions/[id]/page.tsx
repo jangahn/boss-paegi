@@ -3,7 +3,6 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-server";
 import { getSessionDetail } from "@/lib/admin-analytics";
 import { SessionTimeline } from "@/components/admin/analytics/SessionTimeline";
-import { PaperPanel } from "@/components/dossier";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,9 +16,9 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <Link href="/admin/analytics/sessions" className="text-sm text-sky-600 underline whitespace-nowrap">← 세션</Link>
-          <h1 className="font-bold text-2xl sm:text-3xl">세션 {id.slice(0, 8)}</h1>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/analytics/sessions" className="text-sm text-sky-600 underline">← 세션</Link>
+          <h1 className="text-xl font-bold">세션 {id.slice(0, 8)}</h1>
         </div>
 
         {!s ? (
@@ -47,19 +46,19 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
               <Field label="플래그" value={`${s.suspicious ? "의심 " : ""}${s.has_gap ? "gap" : ""}`.trim() || "—"} />
             </div>
 
-            <PaperPanel className="min-w-0">
+            <div>
               <h2 className="mb-1 text-xs font-bold text-zinc-500">무기 요약</h2>
               <pre className="overflow-x-auto rounded-lg bg-foreground/5 p-2 text-[11px]">{JSON.stringify(s.weapon_summary, null, 0)}</pre>
-            </PaperPanel>
-            <PaperPanel className="min-w-0">
+            </div>
+            <div>
               <h2 className="mb-1 text-xs font-bold text-zinc-500">맵 요약</h2>
               <pre className="overflow-x-auto rounded-lg bg-foreground/5 p-2 text-[11px]">{JSON.stringify(s.map_summary, null, 0)}</pre>
-            </PaperPanel>
+            </div>
 
-            <PaperPanel className="min-w-0 overflow-x-auto">
+            <div>
               <h2 className="mb-1 text-xs font-bold text-zinc-500">타임라인</h2>
               <SessionTimeline timeline={s.timeline} />
-            </PaperPanel>
+            </div>
           </>
         )}
       </div>

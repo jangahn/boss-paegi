@@ -9,7 +9,6 @@ import {
 } from "@/lib/admin-data";
 import { StalePendingTable } from "@/components/admin/StalePendingTable";
 import { DashboardWarnings } from "@/components/admin/DashboardWarnings";
-import { PaperPanel } from "@/components/dossier";
 
 // 관리자 대시보드는 매출/운영 실시간이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -36,7 +35,7 @@ export default async function AdminPage() {
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
-        <h1 className="font-bold text-2xl sm:text-3xl">운영 대시보드</h1>
+        <h1 className="text-2xl font-bold">운영 대시보드</h1>
 
         <DashboardWarnings
           commitFail={refundWarnings.commitFail}
@@ -45,8 +44,7 @@ export default async function AdminPage() {
         />
 
           {/* 매출·주문 (KST today / rolling 7d·30d) */}
-          <PaperPanel className="p-4">
-            <section>
+          <section>
             <h2 className="mb-2 text-sm font-bold text-zinc-500">
               매출 · 주문{" "}
               <span className="font-normal">(오늘=KST 자정 기준, 7d/30d=현재 기준)</span>
@@ -58,17 +56,15 @@ export default async function AdminPage() {
             </div>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               {(["pending", "paid", "canceled", "failed"] as const).map((s) => (
-                <span key={s} className="whitespace-nowrap rounded-full border border-foreground/15 px-2.5 py-1">
+                <span key={s} className="rounded-full border border-foreground/15 px-2.5 py-1">
                   {s} <b className="tabular-nums">{byStatus[s] ?? 0}</b>
                 </span>
               ))}
             </div>
-            </section>
-          </PaperPanel>
+          </section>
 
           {/* 가입·구매 퍼널 */}
-          <PaperPanel className="p-4">
-            <section>
+          <section>
             <h2 className="mb-2 text-sm font-bold text-zinc-500">가입·구매 퍼널</h2>
             {funnel ? (
               <div className="grid grid-cols-5 gap-1 text-center">
@@ -81,12 +77,10 @@ export default async function AdminPage() {
             ) : (
               <p className="text-sm text-zinc-400">퍼널 데이터를 불러오지 못했어요.</p>
             )}
-            </section>
-          </PaperPanel>
+          </section>
 
           {/* 오래된 결제요청 (확인 필요) + 운영 액션 */}
-          <PaperPanel className="p-4">
-            <section>
+          <section>
             <h2 className="mb-1 text-sm font-bold text-amber-600">
               오래된 결제요청 — 확인 필요
             </h2>
@@ -94,11 +88,8 @@ export default async function AdminPage() {
               결제 시도(mul_no) 후 2시간+ pending. <b>결제완료 미지급으로 단정 금지</b> —
               페이앱 관리자에서 결제완료 여부를 확인한 뒤 처리하세요.
             </p>
-            <div className="overflow-x-auto">
-              <StalePendingTable rows={stale} />
-            </div>
-            </section>
-          </PaperPanel>
+            <StalePendingTable rows={stale} />
+          </section>
 
         {/* CS 크레딧 조정은 회원 검색 → 유저 상세로 이전됨 */}
         <p className="text-xs text-zinc-500">

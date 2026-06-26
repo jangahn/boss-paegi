@@ -32,7 +32,7 @@ export function LegalDocView({
             {BADGE[badge].label}
           </span>
         )}
-        <h1 className="mt-2 font-bold text-3xl tracking-tight text-ink">{title}</h1>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
         <p className="mt-1 text-xs text-zinc-500">
           {effectiveDate ? `시행일 ${effectiveDate}` : "미발행(초안)"}
           {version ? ` · 버전 ${version}` : ""}

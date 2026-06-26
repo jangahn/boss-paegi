@@ -94,10 +94,10 @@ export function DollCard({
     // outer 는 overflow 없음 — 드롭다운이 카드 경계 (둥근 모서리 클리핑) 에
     // 잘리지 않게 이미지 영역과 분리 (작은 폰에서 메뉴가 카드보다 큼)
     <div className="group relative">
-      <div className="relative aspect-square overflow-hidden rounded-lg border border-line bg-paper-2 shadow-[3px_4px_0_rgba(17,35,58,0.07)]">
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10">
         {/* 이미지 로드 전 pulse placeholder */}
         {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-paper-3" />
+          <div className="absolute inset-0 animate-pulse bg-foreground/10" />
         )}
         <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -144,7 +144,7 @@ export function DollCard({
       </div>
 
       {/* 롤 칩 (좌상단 — ⋯ 버튼/공유 스피너와 안 겹치게) */}
-      <span className="pointer-events-none absolute left-2 top-2 z-20 max-w-[calc(100%-3.5rem)] truncate rounded border border-line bg-paper-2 px-2 py-0.5 font-bold text-[10px] tracking-wide text-steel shadow-[1px_2px_0_rgba(17,35,58,0.10)]">
+      <span className="pointer-events-none absolute left-2 top-2 z-20 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm">
         {roleFrom(role, cfg).label}
       </span>
 
@@ -174,7 +174,7 @@ export function DollCard({
               closeMenu();
             }}
           />
-          <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-lg border border-line bg-paper-2 shadow-2xl">
+          <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
             {roleMenu ? (
               ROLE_IDS.map((rid) => (
                 <MenuItem key={rid} onClick={() => void handleRole(rid)}>

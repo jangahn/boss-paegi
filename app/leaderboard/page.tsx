@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
-import { PaperPanel } from "@/components/dossier";
 import { timeAgo } from "@/lib/report";
 
 type Period = "daily" | "weekly" | "monthly";
@@ -52,16 +51,16 @@ export default function LeaderboardPage() {
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="font-bold text-3xl tracking-tight text-ink sm:text-4xl">랭킹</h1>
+            <h1 className="text-2xl font-bold">랭킹</h1>
             <Link
               href="/play"
-              className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background"
+              className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background"
             >
               패러 가기
             </Link>
           </div>
 
-          <div className="flex gap-2 rounded-lg border border-line bg-paper-2 p-1 text-sm">
+          <div className="flex gap-2 rounded-full bg-foreground/5 p-1 text-sm">
             <Tab active={period === "daily"} onClick={() => setPeriod("daily")}>
               오늘
             </Tab>
@@ -76,46 +75,38 @@ export default function LeaderboardPage() {
           {rows === null ? (
             <RankSkeleton />
           ) : rows.length === 0 ? (
-            <PaperPanel className="p-12 text-center text-zinc-500">
+            <p className="rounded-2xl border border-dashed border-foreground/15 p-12 text-center text-zinc-500">
               아직 등록된 점수가 없어요. 첫 1등의 기회.
-            </PaperPanel>
+            </p>
           ) : (
-            <PaperPanel className="px-2 py-1">
-              <ol className="divide-y divide-line">
-                {rows.map((r, i) => (
-                  <li key={r.id}>
-                    <Link
-                      href={`/history/${r.owner_id}`}
-                      className="flex items-center gap-4 rounded-lg px-3 py-3 transition hover:bg-paper-2"
-                    >
-                      <span
-                        className={`w-8 text-center font-bold text-xl ${rankColor(i)}`}
-                      >
-                        {i + 1}
-                      </span>
-                      <FadeImg
-                        src={r.avatar_url ?? DEFAULT_AVATAR}
-                        className="h-9 w-9 shrink-0 rounded-full border border-line"
-                        fallbackSrc={DEFAULT_AVATAR}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium text-ink">
-                          {r.display_name ?? "익명"}
-                        </div>
-                        <div className="text-xs text-zinc-500">{timeAgo(r.created_at)}</div>
+            <ol className="space-y-2">
+              {rows.map((r, i) => (
+                <li key={r.id}>
+                  <Link
+                    href={`/history/${r.owner_id}`}
+                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3 transition hover:bg-foreground/10"
+                  >
+                    <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
+                      {i + 1}
+                    </span>
+                    <FadeImg
+                      src={r.avatar_url ?? DEFAULT_AVATAR}
+                      className="h-9 w-9 shrink-0 rounded-full border border-foreground/10"
+                      fallbackSrc={DEFAULT_AVATAR}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate font-medium">
+                        {r.display_name ?? "익명"}
                       </div>
-                      <div
-                        className={`font-bold text-2xl tabular-nums ${
-                          i === 0 ? "text-gold" : "text-ink"
-                        }`}
-                      >
-                        {r.score.toLocaleString()}
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            </PaperPanel>
+                      <div className="text-xs text-zinc-500">{timeAgo(r.created_at)}</div>
+                    </div>
+                    <div className="text-xl font-extrabold tabular-nums">
+                      {r.score.toLocaleString()}
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ol>
           )}
         </div>
       </main>
@@ -136,7 +127,7 @@ function Tab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-md py-2 text-center font-semibold transition ${
+      className={`flex-1 rounded-full py-2 text-center transition ${
         active ? "bg-foreground text-background" : "text-zinc-500 hover:text-foreground"
       }`}
     >
@@ -147,29 +138,28 @@ function Tab({
 
 function RankSkeleton() {
   return (
-    <PaperPanel className="px-2 py-1">
-      <ol className="divide-y divide-line">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <li key={i} className="flex items-center gap-4 px-3 py-3">
-            <span className="w-8 text-center font-bold text-xl text-zinc-600">
-              {i + 1}
-            </span>
-            <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-foreground/10" />
-            <div className="flex flex-1 flex-col gap-1.5">
-              <div className="h-3.5 w-24 animate-pulse rounded bg-foreground/10" />
-              <div className="h-2.5 w-12 animate-pulse rounded bg-foreground/10" />
-            </div>
-            <div className="h-5 w-14 animate-pulse rounded bg-foreground/10" />
-          </li>
-        ))}
-      </ol>
-    </PaperPanel>
+    <ol className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <li
+          key={i}
+          className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3"
+        >
+          <span className="w-8 text-center text-lg font-bold text-zinc-600">{i + 1}</span>
+          <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-foreground/10" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <div className="h-3.5 w-24 animate-pulse rounded bg-foreground/10" />
+            <div className="h-2.5 w-12 animate-pulse rounded bg-foreground/10" />
+          </div>
+          <div className="h-5 w-14 animate-pulse rounded bg-foreground/10" />
+        </li>
+      ))}
+    </ol>
   );
 }
 
 function rankColor(i: number) {
-  if (i === 0) return "text-gold";
-  if (i === 1) return "text-steel";
-  if (i === 2) return "text-stamp";
+  if (i === 0) return "text-amber-400";
+  if (i === 1) return "text-zinc-300";
+  if (i === 2) return "text-orange-400";
   return "text-zinc-500";
 }

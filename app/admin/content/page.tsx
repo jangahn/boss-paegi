@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { getEntry } from "@/lib/config/registry";
 import type { DomainKey } from "@/lib/config/keys";
-import { PaperPanel } from "@/components/dossier";
 
 // 콘텐츠/설정 허브 — 마케터가 코드 없이 문구·수치를 편집하는 도메인 목록.
 // 각 도메인은 레지스트리(getEntry)에 등록되면 자동 활성화(해당 PR 에서 에디터 라우트 추가).
@@ -21,63 +20,59 @@ export default function ContentHome() {
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto w-full max-w-3xl">
-        <h1 className="font-bold text-2xl sm:text-3xl">콘텐츠 / 설정</h1>
+        <h1 className="text-2xl font-bold">콘텐츠 / 설정</h1>
         <p className="mt-1 text-sm text-zinc-500">
           코드 변경 없이 마케팅·게임 문구와 수치를 직접 편집합니다. 발행 즉시 반영되며 변경 이력으로 되돌릴 수 있어요.
         </p>
 
-        <PaperPanel className="mt-6 p-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {DOMAINS.map((d) => {
-              const ready = !!getEntry(d.key);
-              const inner = (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 font-semibold">{d.label}</span>
-                    {!ready && (
-                      <span className="whitespace-nowrap rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] text-zinc-500">
-                        준비 중
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-zinc-500">{d.desc}</p>
-                </>
-              );
-              return ready ? (
-                <Link
-                  key={d.key}
-                  href={`/admin/content/${d.key}`}
-                  className="rounded-lg border border-line p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
-                >
-                  {inner}
-                </Link>
-              ) : (
-                <div
-                  key={d.key}
-                  className="rounded-lg border border-dashed border-line p-4 opacity-60"
-                >
-                  {inner}
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {DOMAINS.map((d) => {
+            const ready = !!getEntry(d.key);
+            const inner = (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{d.label}</span>
+                  {!ready && (
+                    <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] text-zinc-500">
+                      준비 중
+                    </span>
+                  )}
                 </div>
-              );
-            })}
-          </div>
-        </PaperPanel>
+                <p className="mt-1 text-xs text-zinc-500">{d.desc}</p>
+              </>
+            );
+            return ready ? (
+              <Link
+                key={d.key}
+                href={`/admin/content/${d.key}`}
+                className="rounded-2xl border border-foreground/10 p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div
+                key={d.key}
+                className="rounded-2xl border border-dashed border-foreground/10 p-4 opacity-60"
+              >
+                {inner}
+              </div>
+            );
+          })}
+        </div>
 
         {/* 법무 문서 — config 도메인이 아닌 전용 메커니즘(버전·시행일·발행) */}
         <h2 className="mt-8 text-sm font-semibold text-zinc-500">법무 문서</h2>
-        <PaperPanel className="mt-3 p-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Link
-              href="/admin/content/legal"
-              className="rounded-lg border border-line p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
-            >
-              <span className="font-semibold">이용약관 · 개인정보처리방침</span>
-              <p className="mt-1 text-xs text-zinc-500">
-                버전·시행일 관리, 예약 발행, 개정 이력 공개. /terms · /privacy 에 반영
-              </p>
-            </Link>
-          </div>
-        </PaperPanel>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href="/admin/content/legal"
+            className="rounded-2xl border border-foreground/10 p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
+          >
+            <span className="font-semibold">이용약관 · 개인정보처리방침</span>
+            <p className="mt-1 text-xs text-zinc-500">
+              버전·시행일 관리, 예약 발행, 개정 이력 공개. /terms · /privacy 에 반영
+            </p>
+          </Link>
+        </div>
       </div>
     </main>
   );

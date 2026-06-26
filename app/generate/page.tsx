@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PaperPanel, Paperclip } from "@/components/dossier";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { ModalShell } from "@/components/ModalShell";
 import { PhotoCropper } from "@/components/PhotoCropper";
@@ -180,22 +179,22 @@ function GeneratePageInner() {
       <main className="flex flex-1 flex-col px-6 py-8">
       {agePrompt && (
         <ModalShell onClose={() => setAgePrompt(false)}>
-          <h2 className="font-bold text-xl sm:text-2xl text-ink">만 14세 이상 확인</h2>
-          <p className="mt-2 text-sm text-steel">
+          <h2 className="text-lg font-bold">만 14세 이상 확인</h2>
+          <p className="mt-2 text-sm text-zinc-500">
             만 14세 이상만 캐릭터를 만들 수 있어요. (만 14세 미만은 이용할 수 없습니다.)
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex gap-2">
             <button
               type="button"
               onClick={() => setAgePrompt(false)}
-              className="flex-1 min-w-0 rounded-lg border-2 border-line py-2.5 text-sm font-medium text-ink"
+              className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm font-medium"
             >
               취소
             </button>
             <button
               type="button"
               onClick={() => void confirmAgeAndRetry()}
-              className="flex-1 min-w-0 rounded-lg bg-foreground py-2.5 text-sm font-semibold text-background"
+              className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background"
             >
               만 14세 이상입니다 · 계속
             </button>
@@ -234,31 +233,28 @@ function GeneratePageInner() {
       )}
       {stage === "saving" && <LoadingStage label="저장 중…" />}
       {stage === "no_credits" && (
-        <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center">
-          <PaperPanel folded className="relative flex flex-col items-center gap-4 px-6 pt-8 pb-8 text-center sm:px-10">
-            <Paperclip className="absolute -top-3 right-8" />
-            <span className="text-3xl" aria-hidden>
-              🎫
-            </span>
-            <h2 className="font-bold text-xl sm:text-2xl text-ink">생성권을 다 썼어요</h2>
-            <p className="text-sm leading-relaxed text-steel">
-              생성권을 충전하면 바로 캐릭터를 만들 수 있어요.
-            </p>
-            <button
-              type="button"
-              onClick={() => router.push("/credits")}
-              className="rounded-lg bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
-            >
-              생성권 충전하기
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/gallery")}
-              className="text-sm text-steel underline"
-            >
-              갤러리로 돌아가기
-            </button>
-          </PaperPanel>
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-amber-500/40 bg-amber-500/5 p-10 text-center">
+          <span className="text-3xl" aria-hidden>
+            🎫
+          </span>
+          <h2 className="text-lg font-bold">생성권을 다 썼어요</h2>
+          <p className="text-sm leading-relaxed text-zinc-500">
+            생성권을 충전하면 바로 캐릭터를 만들 수 있어요.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/credits")}
+            className="rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:opacity-90"
+          >
+            생성권 충전하기
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/gallery")}
+            className="text-sm text-zinc-500 underline"
+          >
+            갤러리로 돌아가기
+          </button>
         </div>
       )}
       </main>
