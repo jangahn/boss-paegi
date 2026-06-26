@@ -7,11 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
-import { log, errInfo } from "@/lib/log";
 
 export default function Home() {
   const { home } = useMarketingCopy();
-  const [hasDolls, setHasDolls] = useState(false);
   const [isMember, setIsMember] = useState(false);
 
   useEffect(() => {
@@ -22,11 +20,6 @@ export default function Home() {
       if (!sessionData.session) return;
       if (!cancelled)
         setIsMember(sessionData.session.user.is_anonymous !== true);
-      const { count, error } = await sb
-        .from("dolls")
-        .select("*", { head: true, count: "exact" });
-      if (error) log.warn("home.dolls_count_fail", errInfo(error));
-      if (!cancelled) setHasDolls((count ?? 0) > 0);
     })();
     return () => {
       cancelled = true;
@@ -62,14 +55,12 @@ export default function Home() {
                 {home.secondaryCta}
               </Link>
               <div className="flex justify-center gap-4 pt-1 text-sm">
-                {isMember && hasDolls && (
-                  <Link
-                    href="/gallery"
-                    className="font-semibold text-steel underline-offset-4 transition hover:text-stamp hover:underline"
-                  >
-                    내 부장님 갤러리 →
-                  </Link>
-                )}
+                <Link
+                  href="/gallery"
+                  className="font-semibold text-steel underline-offset-4 transition hover:text-stamp hover:underline"
+                >
+                  내 부장님 갤러리 →
+                </Link>
                 <Link
                   href="/leaderboard"
                   className="font-semibold text-steel underline-offset-4 transition hover:text-stamp hover:underline"
