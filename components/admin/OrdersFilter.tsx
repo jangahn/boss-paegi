@@ -34,7 +34,7 @@ export function OrdersFilter({ status, q }: { status: string | null; q: string |
         value={status ?? ""}
         disabled={pending}
         onChange={(e) => go(e.target.value, query)}
-        className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+        className="rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
       >
         {STATUSES.map((s) => (
           <option key={s.v} value={s.v}>
@@ -54,7 +54,7 @@ export function OrdersFilter({ status, q }: { status: string | null; q: string |
           disabled={pending}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="주문ID / mul_no 검색"
-          className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+          className="min-w-0 flex-1 rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
         />
         <button
           type="submit"

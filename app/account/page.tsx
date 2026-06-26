@@ -81,7 +81,7 @@ export default function AccountPage() {
           <h1 className="text-2xl font-bold text-foreground">회원정보</h1>
 
           {/* 프로필 카드 — 사진 + 닉네임 */}
-          <section className="rounded-2xl border border-foreground/10 bg-paper-2 p-6">
+          <section className="rounded-2xl border border-foreground/10 ui-surface p-6">
             {/* 프로필 사진 (중앙) */}
             <div className="flex flex-col items-center gap-3">
               <FadeImg
@@ -93,7 +93,7 @@ export default function AccountPage() {
               <button
                 type="button"
                 onClick={() => setEditingAvatar(true)}
-                className="rounded-full border border-foreground/15 bg-paper-2 px-4 py-1.5 text-sm font-medium transition hover:bg-foreground/5"
+                className="rounded-full border border-foreground/15 ui-surface px-4 py-1.5 text-sm font-medium transition hover:bg-foreground/5"
               >
                 프로필 사진 변경
               </button>
@@ -111,7 +111,7 @@ export default function AccountPage() {
                   value={nick}
                   maxLength={NICKNAME_MAX}
                   onChange={(e) => setNick(e.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-transparent px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
+                  className="min-w-0 flex-1 rounded-lg border border-foreground/15 ui-field px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
                 />
                 <button
                   type="button"
@@ -233,7 +233,7 @@ function WithdrawSection() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="회원탈퇴"
-            className="mt-1 w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-red-500/40"
+            className="mt-1 w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-red-500/40"
           />
           {err && <p className="mt-2 text-xs text-red-400">{err}</p>}
           <div className="mt-3 flex gap-2">
@@ -245,7 +245,7 @@ function WithdrawSection() {
                 setConfirm("");
                 setErr(null);
               }}
-              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2 text-xs font-medium"
+              className="flex-1 rounded-full border border-foreground/15 ui-surface py-2 text-xs font-medium"
             >
               취소
             </button>

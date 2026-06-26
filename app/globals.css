@@ -125,6 +125,31 @@
   --color-blue-600: #34516c;
 }
 
+/*
+ * ── 표면(surface) 역할 토큰 — 케이스별 클래스 불일치 종식용 단일 출처 ──
+ * 같은 시각 역할을 파일마다 다른 클래스로 쓰던 게 불일치 재발 원인이었음.
+ * 아래 역할↔클래스를 **유일한 정답**으로 고정. 새 표면은 raw bg-* 대신 이 역할 클래스를 쓴다.
+ *
+ *   역할                         | 클래스                         | 비고
+ *   ─────────────────────────────┼────────────────────────────────┼──────────────────────
+ *   페이지 배경                  | bg-background                  | body/메인/네비/스티키툴바. 라이트=크림, .theme-admin=다크
+ *   표면(카드/패널/메뉴/모달/    | ui-surface                     | 떠 있는 오프화이트(.theme-admin=다크) 면. = var(--color-paper-2)
+ *     드롭다운/2차버튼/표 헤더)  |                                |   (opacity 필요 시에만 bg-paper-2/NN 예외)
+ *   입력 필드(input/textarea/    | ui-field (= 투명)              | 면 위에서 테두리로만 구분되는 리코스트 필드
+ *     select)                    |                                |
+ *   1차 버튼(solid CTA)          | bg-foreground text-paper-2     | 네이비 위 오프화이트 글자
+ *   표 바디 행                   | (배경 없음, border-t 만)       | 헤더만 ui-surface, 바디는 투명
+ *   칩/뱃지(작은 라벨)           | border border-foreground/15    | 투명 아웃라인(채우지 않음)
+ *   차트 막대 트랙 / 옅은 노트   | bg-foreground/5                | 의도적 옅은 틴트(표면 아님)
+ *   상태 틴트(경고/성공/정보)    | bg-{amber|red|emerald|sky}-*   | 의미색 — 표면 토큰 적용 안 함
+ */
+@utility ui-surface {
+  background-color: var(--color-paper-2);
+}
+@utility ui-field {
+  background-color: transparent;
+}
+
 html,
 body {
   background: var(--background);

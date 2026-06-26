@@ -94,10 +94,10 @@ export function DollCard({
     // outer 는 overflow 없음 — 드롭다운이 카드 경계 (둥근 모서리 클리핑) 에
     // 잘리지 않게 이미지 영역과 분리 (작은 폰에서 메뉴가 카드보다 큼)
     <div className="group relative">
-      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2">
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
         {/* 이미지 로드 전 pulse placeholder */}
         {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-paper-2" />
+          <div className="absolute inset-0 animate-pulse ui-surface" />
         )}
         <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -174,7 +174,7 @@ export function DollCard({
               closeMenu();
             }}
           />
-          <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-paper-2 shadow-2xl">
+          <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 ui-surface shadow-2xl">
             {roleMenu ? (
               ROLE_IDS.map((rid) => (
                 <MenuItem key={rid} onClick={() => void handleRole(rid)}>

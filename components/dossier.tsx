@@ -18,7 +18,7 @@ export function PaperPanel({
 }) {
   return (
     <div
-      className={`relative rounded-xl border border-line bg-paper-2 shadow-[3px_4px_0_rgba(17,35,58,0.07)] ${className}`}
+      className={`relative rounded-xl border border-line ui-surface shadow-[3px_4px_0_rgba(17,35,58,0.07)] ${className}`}
     >
       {folded && <CornerFold />}
       {children}

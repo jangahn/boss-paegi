@@ -84,7 +84,7 @@ export default function LeaderboardPage() {
                 <li key={r.id}>
                   <Link
                     href={`/history/${r.owner_id}`}
-                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-paper-2 p-3 transition hover:bg-foreground/10"
+                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 ui-surface p-3 transition hover:bg-foreground/10"
                   >
                     <span className={`w-8 text-center text-lg font-bold ${rankColor(i)}`}>
                       {i + 1}
@@ -142,7 +142,7 @@ function RankSkeleton() {
       {Array.from({ length: 8 }).map((_, i) => (
         <li
           key={i}
-          className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-paper-2 p-3"
+          className="flex items-center gap-4 rounded-2xl border border-foreground/10 ui-surface p-3"
         >
           <span className="w-8 text-center text-lg font-bold text-zinc-600">{i + 1}</span>
           <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-foreground/10" />

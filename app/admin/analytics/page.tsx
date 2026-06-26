@@ -129,7 +129,7 @@ export default async function AnalyticsPage({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-foreground/10 bg-paper-2 p-3">
+    <div className="rounded-xl border border-foreground/10 ui-surface p-3">
       <p className="text-[11px] text-zinc-500">{label}</p>
       <p className="mt-0.5 text-lg font-extrabold tabular-nums">{value}</p>
     </div>

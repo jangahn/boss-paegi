@@ -153,7 +153,7 @@ export function BadgeCatalogEditor({
       {fams.map((f) => {
         const fBadges = badges.filter((b) => b.familyKey === f.key);
         return (
-          <fieldset key={f.key} className="flex flex-col gap-2 rounded-2xl border border-foreground/10 bg-paper-2 p-3">
+          <fieldset key={f.key} className="flex flex-col gap-2 rounded-2xl border border-foreground/10 ui-surface p-3">
             <div className="flex items-end gap-2">
               <label className="flex w-16 flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">이모지</span>
@@ -161,7 +161,7 @@ export function BadgeCatalogEditor({
                   value={f.emoji}
                   maxLength={8}
                   onChange={(e) => setFam(f.key, "emoji", e.target.value)}
-                  className="rounded-lg border border-foreground/15 bg-transparent p-2 text-center text-sm outline-none focus:border-foreground/40"
+                  className="rounded-lg border border-foreground/15 ui-field p-2 text-center text-sm outline-none focus:border-foreground/40"
                 />
               </label>
               <label className="flex flex-1 flex-col gap-0.5">
@@ -170,7 +170,7 @@ export function BadgeCatalogEditor({
                   value={f.name}
                   maxLength={20}
                   onChange={(e) => setFam(f.key, "name", e.target.value)}
-                  className="rounded-lg border border-foreground/15 bg-transparent p-2 text-sm font-semibold outline-none focus:border-foreground/40"
+                  className="rounded-lg border border-foreground/15 ui-field p-2 text-sm font-semibold outline-none focus:border-foreground/40"
                 />
               </label>
             </div>
@@ -179,7 +179,7 @@ export function BadgeCatalogEditor({
               const imp = impact[b.slug];
               const earned = imp && (imp.users > 0 || imp.scores > 0);
               return (
-                <div key={b.uid} className="flex flex-col gap-1 rounded-lg bg-paper-2 p-2">
+                <div key={b.uid} className="flex flex-col gap-1 rounded-lg ui-surface p-2">
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-1 text-[11px] text-zinc-500">
                       <input
@@ -228,7 +228,7 @@ export function BadgeCatalogEditor({
                       maxLength={40}
                       onChange={(e) => setBadge(b.uid, "slug", e.target.value)}
                       placeholder="키(slug)"
-                      className="w-32 rounded-lg border border-foreground/15 bg-transparent p-1.5 font-mono text-[11px] outline-none focus:border-foreground/40"
+                      className="w-32 rounded-lg border border-foreground/15 ui-field p-1.5 font-mono text-[11px] outline-none focus:border-foreground/40"
                     />
                     <input
                       type="number"
@@ -236,7 +236,7 @@ export function BadgeCatalogEditor({
                       value={b.threshold}
                       onChange={(e) => setBadge(b.uid, "threshold", e.target.value)}
                       placeholder="임계값"
-                      className="ml-auto w-24 rounded-lg border border-foreground/15 bg-transparent p-1.5 text-sm outline-none focus:border-foreground/40"
+                      className="ml-auto w-24 rounded-lg border border-foreground/15 ui-field p-1.5 text-sm outline-none focus:border-foreground/40"
                     />
                   </div>
                   <input
@@ -244,14 +244,14 @@ export function BadgeCatalogEditor({
                     maxLength={40}
                     onChange={(e) => setBadge(b.uid, "label", e.target.value)}
                     placeholder="라벨 (예: 1,000점)"
-                    className="rounded-lg border border-foreground/15 bg-transparent p-1.5 text-sm outline-none focus:border-foreground/40"
+                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-sm outline-none focus:border-foreground/40"
                   />
                   <input
                     value={b.desc}
                     maxLength={80}
                     onChange={(e) => setBadge(b.uid, "desc", e.target.value)}
                     placeholder="설명"
-                    className="rounded-lg border border-foreground/15 bg-transparent p-1.5 text-xs outline-none focus:border-foreground/40"
+                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-xs outline-none focus:border-foreground/40"
                   />
                 </div>
               );
@@ -292,7 +292,7 @@ export function BadgeCatalogEditor({
             <button
               type="button"
               onClick={() => setPendingDelete(null)}
-              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm"
+              className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm"
             >
               취소
             </button>

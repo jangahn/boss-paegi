@@ -186,7 +186,7 @@ export function LegalDocEditor({
   };
 
   const inputCls =
-    "w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40";
+    "w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40";
   const previewLink = (v: LegalDocRow) => `${DOC_PATH[docType]}?v=${v.id}`;
 
   return (
@@ -267,10 +267,10 @@ export function LegalDocEditor({
           <div className="flex flex-col gap-3">
             <span className="text-sm font-semibold text-zinc-500">섹션 <span className="text-zinc-400">· 제목 + 본문 (위→아래 표시 순서)</span></span>
             {sections.map((s, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
+              <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-zinc-400">#{i + 1}</span>
-                  <input value={s.heading} onChange={(e) => setSec(i, "heading", e.target.value)} placeholder="섹션 제목 (예: 제1조 (목적))" maxLength={120} className="flex-1 rounded-lg border border-foreground/15 bg-transparent p-2 text-sm font-medium outline-none focus:border-foreground/40" />
+                  <input value={s.heading} onChange={(e) => setSec(i, "heading", e.target.value)} placeholder="섹션 제목 (예: 제1조 (목적))" maxLength={120} className="flex-1 rounded-lg border border-foreground/15 ui-field p-2 text-sm font-medium outline-none focus:border-foreground/40" />
                   <button type="button" onClick={() => moveSec(i, -1)} disabled={i === 0} aria-label="위로" className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▲</button>
                   <button type="button" onClick={() => moveSec(i, 1)} disabled={i === sections.length - 1} aria-label="아래로" className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▼</button>
                   <button type="button" onClick={() => removeSec(i)} disabled={sections.length <= 1} className="text-xs text-red-400 hover:underline disabled:opacity-30">삭제</button>
@@ -285,7 +285,7 @@ export function LegalDocEditor({
 
           <label className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-zinc-500">시행일 <span className="text-zinc-400">· 오늘이면 즉시, 미래면 예약 발행(시행일에 자동 적용). 미래 예약본은 문서당 1개</span></span>
-            <input type="date" value={effectiveDate} min={today} onChange={(e) => setEffectiveDate(e.target.value)} className="w-48 rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40" />
+            <input type="date" value={effectiveDate} min={today} onChange={(e) => setEffectiveDate(e.target.value)} className="w-48 rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-zinc-500">공개 개정 사유 <span className="text-amber-600">· 공개 페이지에 노출됨</span></span>
@@ -331,7 +331,7 @@ export function LegalDocEditor({
             {effectiveDate > today ? " 시행 전에는 '발행취소'로 되돌릴 수 있어요." : ""}
           </p>
           <div className="mt-4 flex gap-2">
-            <button type="button" onClick={() => setConfirmPublish(false)} className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm">취소</button>
+            <button type="button" onClick={() => setConfirmPublish(false)} className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm">취소</button>
             <button type="button" onClick={() => void publish()} className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2">발행</button>
           </div>
         </ModalShell>
@@ -344,7 +344,7 @@ export function LegalDocEditor({
             버전 {scheduled.version}(<b>{scheduled.effective_date}</b> 시행 예정)의 예약을 취소합니다. 아직 시행 전이라 공개에 영향은 없으며, 내용은 <b>발행 전 문서</b>로 되돌아가 수정 후 다시 발행할 수 있어요.
           </p>
           <div className="mt-4 flex gap-2">
-            <button type="button" onClick={() => setConfirmUnpub(false)} className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm">닫기</button>
+            <button type="button" onClick={() => setConfirmUnpub(false)} className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm">닫기</button>
             <button type="button" onClick={() => void unpublish()} className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2">발행취소</button>
           </div>
         </ModalShell>

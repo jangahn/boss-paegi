@@ -125,7 +125,7 @@ export function PhotoCropper({
         <button
           onClick={onCancel}
           disabled={busy}
-          className="rounded-full border border-foreground/15 bg-paper-2 py-3 font-medium transition hover:bg-foreground/5 disabled:opacity-30"
+          className="rounded-full border border-foreground/15 ui-surface py-3 font-medium transition hover:bg-foreground/5 disabled:opacity-30"
         >
           {cancelLabel}
         </button>

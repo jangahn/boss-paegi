@@ -246,7 +246,7 @@ function GridSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="aspect-square animate-pulse rounded-2xl border border-foreground/10 bg-paper-2"
+          className="aspect-square animate-pulse rounded-2xl border border-foreground/10 ui-surface"
         />
       ))}
     </div>

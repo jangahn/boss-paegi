@@ -154,12 +154,12 @@ function ActionModal({
         onChange={(e) => setReason(e.target.value)}
         placeholder="사유 (5자 이상, 감사 로그 기록)"
         maxLength={500}
-        className="mt-3 h-20 w-full rounded-xl border border-foreground/15 bg-transparent p-3 text-sm outline-none focus:border-foreground/40"
+        className="mt-3 h-20 w-full rounded-xl border border-foreground/15 ui-field p-3 text-sm outline-none focus:border-foreground/40"
       />
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
       <div className="mt-4 flex gap-2">
-        <button type="button" onClick={onClose} className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm">
+        <button type="button" onClick={onClose} className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm">
           닫기
         </button>
         <button

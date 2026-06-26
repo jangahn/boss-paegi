@@ -122,14 +122,14 @@ export function GrowthLeversEditor({
           max={50}
           value={signup}
           onChange={(e) => setSignup(e.target.value)}
-          className="w-40 rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+          className="w-40 rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
         />
       </label>
 
       <div className="flex flex-col gap-3">
         <span className="text-sm font-semibold text-zinc-500">충전 상품</span>
         {products.map((p, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
+          <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-xs text-zinc-500">
                 <input
@@ -178,13 +178,13 @@ export function GrowthLeversEditor({
                 value={p.productId}
                 onChange={(e) => setP(i, "productId", e.target.value)}
                 placeholder="상품 ID (예: credits_3, 영문/숫자)"
-                className="rounded-lg border border-foreground/15 bg-transparent p-2 text-xs outline-none focus:border-foreground/40"
+                className="rounded-lg border border-foreground/15 ui-field p-2 text-xs outline-none focus:border-foreground/40"
               />
               <input
                 value={p.goodname}
                 onChange={(e) => setP(i, "goodname", e.target.value)}
                 placeholder="상품명 (영수증 표기)"
-                className="rounded-lg border border-foreground/15 bg-transparent p-2 text-xs outline-none focus:border-foreground/40"
+                className="rounded-lg border border-foreground/15 ui-field p-2 text-xs outline-none focus:border-foreground/40"
               />
               <label className="flex flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">가격(원) 1,000~100,000</span>
@@ -195,7 +195,7 @@ export function GrowthLeversEditor({
                   max={100000}
                   value={p.price}
                   onChange={(e) => setP(i, "price", e.target.value)}
-                  className="rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+                  className="rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
                 />
               </label>
               <label className="flex flex-col gap-0.5">
@@ -207,7 +207,7 @@ export function GrowthLeversEditor({
                   max={1000}
                   value={p.credits}
                   onChange={(e) => setP(i, "credits", e.target.value)}
-                  className="rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+                  className="rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
                 />
               </label>
             </div>
@@ -246,7 +246,7 @@ export function GrowthLeversEditor({
             <button
               type="button"
               onClick={() => setConfirm(false)}
-              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm"
+              className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm"
             >
               취소
             </button>

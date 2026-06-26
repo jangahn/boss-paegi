@@ -79,7 +79,7 @@ export function ScoreConfigEditor({
       )}
 
       {grades.map((g, i) => (
-        <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 bg-paper-2 p-3">
+        <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 ui-surface p-3">
           <span className="text-[11px] text-zinc-400">
             {i}단계 · {band(i)}점
           </span>
@@ -88,14 +88,14 @@ export function ScoreConfigEditor({
             maxLength={20}
             onChange={(e) => setField(i, "label", e.target.value)}
             placeholder="등급 라벨 (예: 폭주 차장)"
-            className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm font-semibold outline-none focus:border-foreground/40"
+            className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm font-semibold outline-none focus:border-foreground/40"
           />
           <input
             value={g.comment}
             maxLength={40}
             onChange={(e) => setField(i, "comment", e.target.value)}
             placeholder="한 줄 평 (예: 이성을 살짝 놓았습니다)"
-            className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+            className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
           />
         </div>
       ))}

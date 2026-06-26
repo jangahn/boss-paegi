@@ -104,7 +104,7 @@ export default async function DollPage({
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         {/* ── 인사기록카드 (종이) ─────────────────────────── */}
-        <div className="rounded-lg bg-paper-2 p-5 text-zinc-900 shadow-2xl">
+        <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
           <div className="border-b-2 border-zinc-800 pb-3 text-center">
             <p className="text-[10px] tracking-[0.3em] text-zinc-500">
               {reportNo(doll.id, doll.created_at)}
@@ -167,7 +167,7 @@ export default async function DollPage({
             </Link>
             <Link
               href="/play"
-              className="rounded-full border border-foreground/15 bg-paper-2 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
+              className="rounded-full border border-foreground/15 ui-surface px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
             >
               {mk.share.dollCtaDefault}
             </Link>

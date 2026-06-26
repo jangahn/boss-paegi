@@ -89,7 +89,7 @@ export default function CreditsPage() {
                   type="button"
                   disabled={!!pending}
                   onClick={() => void buy(p.productId)}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 bg-paper-2 p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 ui-surface p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
                 >
                   <div>
                     <p className="text-base font-bold">{p.goodname}</p>
@@ -120,7 +120,7 @@ export default function CreditsPage() {
                 <button
                   type="button"
                   onClick={() => setAgePrompt(null)}
-                  className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2 text-xs font-medium"
+                  className="flex-1 rounded-full border border-foreground/15 ui-surface py-2 text-xs font-medium"
                 >
                   취소
                 </button>
