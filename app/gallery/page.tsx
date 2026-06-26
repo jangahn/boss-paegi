@@ -187,7 +187,7 @@ export default function GalleryPage() {
           ) : (
             <>
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-baseline gap-2">
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <h1 className="font-display text-3xl tracking-tight text-ink">
                     {state === "member" ? "내 캐릭터들" : "캐릭터 갤러리"}
                   </h1>
@@ -199,7 +199,7 @@ export default function GalleryPage() {
                 </div>
                 <Link
                   href={ctaFor(state).href}
-                  className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
+                  className="shrink-0 whitespace-nowrap rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
                 >
                   {mk.signupBanner.memberHeaderCta}
                 </Link>
