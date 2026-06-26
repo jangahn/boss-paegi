@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
+import { PaperPanel, Paperclip, DashedDivider } from "@/components/dossier";
 import { perUnitPrice } from "@/lib/credit-products";
 import { useCreditProducts } from "@/components/CreditProductsProvider";
 import { log, errInfo } from "@/lib/log";
@@ -73,12 +74,14 @@ export default function CreditsPage() {
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-md flex-col gap-5">
-          <div>
-            <h1 className="text-2xl font-bold">생성권 충전</h1>
-            <p className="mt-1 text-sm text-zinc-500">
+          <PaperPanel folded className="relative px-7 pb-6 pt-10">
+            <Paperclip className="left-7" />
+            <h1 className="font-display text-4xl tracking-tight text-ink">생성권 충전</h1>
+            <DashedDivider className="my-4" />
+            <p className="text-sm text-zinc-500">
               캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.
             </p>
-          </div>
+          </PaperPanel>
 
           <div className="flex flex-col gap-3">
             {products.map((p) => {
@@ -89,16 +92,16 @@ export default function CreditsPage() {
                   type="button"
                   disabled={!!pending}
                   onClick={() => void buy(p.productId)}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
+                  className="flex items-center justify-between gap-3 rounded-lg border border-line bg-paper p-4 text-left shadow-sm transition hover:bg-foreground/5 disabled:opacity-50"
                 >
                   <div>
-                    <p className="text-base font-bold">{p.goodname}</p>
+                    <p className="text-base font-bold text-ink">{p.goodname}</p>
                     <p className="text-xs text-zinc-500">
                       생성권 {p.credits}개 · 개당 {perUnitPrice(p).toLocaleString()}원
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-lg font-extrabold tabular-nums">
+                    <span className="font-display text-xl tabular-nums text-gold">
                       {p.price.toLocaleString()}원
                     </span>
                     {isPending && <Spinner className="h-4 w-4" />}
@@ -120,14 +123,14 @@ export default function CreditsPage() {
                 <button
                   type="button"
                   onClick={() => setAgePrompt(null)}
-                  className="flex-1 rounded-full border border-foreground/15 py-2 text-xs font-medium"
+                  className="flex-1 rounded-lg border-2 border-line py-2 text-xs font-medium text-ink"
                 >
                   취소
                 </button>
                 <button
                   type="button"
                   onClick={() => void confirmAgeAndBuy()}
-                  className="flex-1 rounded-full bg-foreground py-2 text-xs font-semibold text-background"
+                  className="flex-1 rounded-lg bg-foreground py-2 text-xs font-semibold text-background"
                 >
                   만 14세 이상입니다 · 계속
                 </button>

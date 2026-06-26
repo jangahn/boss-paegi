@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
+import { PaperPanel } from "@/components/dossier";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDuration, gradeFor, timeAgo, weaponLabel } from "@/lib/report";
 import { getScoreConfig } from "@/lib/config/getters";
@@ -83,21 +84,21 @@ export default async function HistoryPage({
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-          <div className="flex items-center gap-3">
+          <PaperPanel className="flex items-center gap-3 px-5 py-4">
             <FadeImg
               src={profile.avatar_url ?? DEFAULT_AVATAR}
-              className="h-11 w-11 shrink-0 rounded-full border border-foreground/10"
+              className="h-11 w-11 shrink-0 rounded-full border border-line"
               loading="eager"
               fallbackSrc={DEFAULT_AVATAR}
             />
             <div className="min-w-0">
-              <h1 className="truncate text-2xl font-bold">{name}님의 기록</h1>
-              <p className="text-sm text-zinc-500">총 {total.toLocaleString()}게임</p>
+              <h1 className="truncate font-display text-3xl tracking-tight text-ink">{name}님의 기록</h1>
+              <p className="text-sm text-steel">총 {total.toLocaleString()}게임</p>
             </div>
-          </div>
+          </PaperPanel>
 
           {rows.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-foreground/15 p-12 text-center text-zinc-500">
+            <p className="rounded-lg border border-dashed border-line p-12 text-center text-steel">
               {page > 1
                 ? "이 페이지에는 기록이 없어요."
                 : "아직 게임 기록이 없어요."}
@@ -108,11 +109,11 @@ export default async function HistoryPage({
                 <li key={g.id}>
                   <Link
                     href={`/history/${userId}/${g.id}`}
-                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3 transition hover:bg-foreground/10"
+                    className="flex items-center gap-4 rounded-lg border border-line bg-paper-2 p-3 transition hover:bg-paper-3"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold">{gradeFor(g.score, scoreGrades).label}</div>
-                      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-zinc-500">
+                      <div className="font-semibold text-ink">{gradeFor(g.score, scoreGrades).label}</div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-steel">
                         <span>{weaponLabel(g.weapon)}</span>
                         {g.max_combo !== null && g.max_combo > 0 && (
                           <span>· 콤보 x{g.max_combo}</span>
@@ -122,10 +123,10 @@ export default async function HistoryPage({
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="text-xl font-extrabold tabular-nums">
+                      <div className="font-display text-2xl tabular-nums text-gold">
                         {g.score.toLocaleString()}
                       </div>
-                      <div className="text-[10px] text-zinc-500">점</div>
+                      <div className="text-[10px] text-steel">점</div>
                     </div>
                   </Link>
                 </li>

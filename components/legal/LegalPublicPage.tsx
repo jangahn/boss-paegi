@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
+import { PaperPanel, DashedDivider } from "@/components/dossier";
 import { LegalDocView } from "./LegalDocView";
 import {
   getCurrentLegal,
@@ -52,9 +53,9 @@ export async function LegalPublicPage({
           </Link>
 
           {!viewed ? (
-            <div className="mt-6 rounded-2xl border border-dashed border-foreground/15 p-8 text-center text-sm text-zinc-500">
+            <PaperPanel className="mt-6 px-7 py-8 text-center text-sm text-zinc-500">
               {label}은 준비 중입니다.
-            </div>
+            </PaperPanel>
           ) : (
             <div className="mt-4 flex flex-col gap-6">
               {/* 예정본 사전 고지 — 현재본을 볼 때만 */}
@@ -86,9 +87,10 @@ export async function LegalPublicPage({
 
               {/* 개정 이력 */}
               {history.length > 0 && (
-                <div className="border-t border-foreground/10 pt-4">
-                  <h3 className="text-sm font-semibold text-zinc-500">개정 이력</h3>
-                  <ul className="mt-2 flex flex-col gap-1 text-sm">
+                <PaperPanel className="px-6 py-5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-steel">개정 이력</h3>
+                  <DashedDivider className="my-3" />
+                  <ul className="flex flex-col gap-1 text-sm">
                     {history.map((h) => (
                       <li key={h.id}>
                         <Link
@@ -101,7 +103,7 @@ export async function LegalPublicPage({
                       </li>
                     ))}
                   </ul>
-                </div>
+                </PaperPanel>
               )}
             </div>
           )}

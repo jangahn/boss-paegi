@@ -188,7 +188,7 @@ export default function GalleryPage() {
             <>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-baseline gap-2">
-                  <h1 className="text-2xl font-bold">
+                  <h1 className="font-display text-3xl tracking-tight text-ink">
                     {state === "member" ? "내 캐릭터들" : "캐릭터 갤러리"}
                   </h1>
                   {genCredits != null && (
@@ -199,7 +199,7 @@ export default function GalleryPage() {
                 </div>
                 <Link
                   href={ctaFor(state).href}
-                  className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
+                  className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
                 >
                   {mk.signupBanner.memberHeaderCta}
                 </Link>
@@ -248,7 +248,7 @@ function GridSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="aspect-square animate-pulse rounded-2xl bg-foreground/10"
+          className="aspect-square animate-pulse rounded-lg border border-line bg-foreground/10"
         />
       ))}
     </div>

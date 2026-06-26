@@ -6,6 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 import { AvatarEditor } from "@/components/AvatarEditor";
 import { FadeImg } from "@/components/FadeImg";
+import { PaperPanel, Paperclip, DashedDivider } from "@/components/dossier";
 import { signOut } from "@/lib/auth-oauth";
 import {
   getMyProfile,
@@ -78,53 +79,58 @@ export default function AccountPage() {
       <AppNav />
       <main className="flex flex-1 flex-col px-5 py-8">
         <div className="mx-auto w-full max-w-md">
-          <h1 className="text-2xl font-bold">회원정보</h1>
+          <PaperPanel folded className="relative px-6 pb-6 pt-10">
+            <Paperclip className="left-7" />
+            <h1 className="font-display text-4xl tracking-tight text-ink">회원정보</h1>
 
-          {/* 프로필 사진 */}
-          <section className="mt-6 flex items-center gap-4">
-            <FadeImg
-              src={avatar}
-              className="h-16 w-16 shrink-0 rounded-full border border-foreground/10"
-              loading="eager"
-              fallbackSrc={DEFAULT_AVATAR}
-            />
-            <button
-              type="button"
-              onClick={() => setEditingAvatar(true)}
-              className="rounded-full border border-foreground/15 px-4 py-2 text-sm font-medium transition hover:bg-foreground/5"
-            >
-              프로필 사진 변경
-            </button>
-          </section>
+            <DashedDivider className="my-5" />
 
-          {/* 닉네임 */}
-          <section className="mt-6 flex flex-col gap-1.5">
-            <span className="text-sm font-semibold text-zinc-500">
-              닉네임 <span className="text-zinc-400">({NICKNAME_MAX}자 이내)</span>
-            </span>
-            <div className="flex gap-2">
-              <input
-                value={nick}
-                maxLength={NICKNAME_MAX}
-                onChange={(e) => setNick(e.target.value)}
-                className="flex-1 rounded-lg border border-foreground/15 bg-transparent p-2.5 text-sm outline-none focus:border-foreground/40"
+            {/* 프로필 사진 */}
+            <section className="flex items-center gap-4">
+              <FadeImg
+                src={avatar}
+                className="h-16 w-16 shrink-0 rounded-full border border-foreground/10"
+                loading="eager"
+                fallbackSrc={DEFAULT_AVATAR}
               />
               <button
                 type="button"
-                onClick={() => void saveNick()}
-                disabled={savingNick || nick.trim().length < 2 || nick === profile.display_name}
-                className="flex items-center gap-2 rounded-full bg-foreground px-5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                onClick={() => setEditingAvatar(true)}
+                className="rounded-lg border-2 border-line px-4 py-2 text-sm font-medium text-ink transition hover:bg-foreground/5"
               >
-                {savingNick && <Spinner className="h-4 w-4" />}
-                저장
+                프로필 사진 변경
               </button>
-            </div>
-            {nickMsg && (
-              <p className={`text-xs ${nickMsg.ok ? "text-emerald-600" : "text-red-400"}`}>
-                {nickMsg.text}
-              </p>
-            )}
-          </section>
+            </section>
+
+            {/* 닉네임 */}
+            <section className="mt-6 flex flex-col gap-1.5">
+              <span className="text-sm font-semibold text-zinc-500">
+                닉네임 <span className="text-zinc-400">({NICKNAME_MAX}자 이내)</span>
+              </span>
+              <div className="flex gap-2">
+                <input
+                  value={nick}
+                  maxLength={NICKNAME_MAX}
+                  onChange={(e) => setNick(e.target.value)}
+                  className="flex-1 rounded-lg border border-foreground/15 bg-transparent p-2.5 text-sm outline-none focus:border-foreground/40"
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveNick()}
+                  disabled={savingNick || nick.trim().length < 2 || nick === profile.display_name}
+                  className="flex items-center gap-2 rounded-lg bg-foreground px-5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                >
+                  {savingNick && <Spinner className="h-4 w-4" />}
+                  저장
+                </button>
+              </div>
+              {nickMsg && (
+                <p className={`text-xs ${nickMsg.ok ? "text-emerald-600" : "text-red-400"}`}>
+                  {nickMsg.text}
+                </p>
+              )}
+            </section>
+          </PaperPanel>
 
           <WithdrawSection />
 
@@ -204,8 +210,8 @@ function WithdrawSection() {
           회원탈퇴
         </button>
       ) : (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-          <h3 className="text-sm font-bold text-red-500">회원탈퇴</h3>
+        <PaperPanel className="border-stamp bg-red-500/5 p-4">
+          <h3 className="font-display text-xl tracking-tight text-stamp">회원탈퇴</h3>
           <div className="mt-2 space-y-1 text-xs text-zinc-500">
             <p>
               탈퇴하면 프로필 정보와 생성한 캐릭터 이미지·하이라이트는 삭제 또는 익명화되며,{" "}
@@ -240,7 +246,7 @@ function WithdrawSection() {
                 setConfirm("");
                 setErr(null);
               }}
-              className="flex-1 rounded-full border border-foreground/15 py-2 text-xs font-medium"
+              className="flex-1 rounded-lg border-2 border-line py-2 text-xs font-medium text-ink"
             >
               취소
             </button>
@@ -248,13 +254,13 @@ function WithdrawSection() {
               type="button"
               onClick={() => void submit()}
               disabled={!ready || busy}
-              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-red-500 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-500 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
             >
               {busy && <Spinner className="h-3.5 w-3.5" />}
               탈퇴하기
             </button>
           </div>
-        </div>
+        </PaperPanel>
       )}
     </div>
   );
