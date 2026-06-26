@@ -21,7 +21,7 @@ export default function ContentHome() {
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto w-full max-w-3xl">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">콘텐츠 / 설정</h1>
+        <h1 className="font-bold text-2xl sm:text-3xl">콘텐츠 / 설정</h1>
         <p className="mt-1 text-sm text-zinc-500">
           코드 변경 없이 마케팅·게임 문구와 수치를 직접 편집합니다. 발행 즉시 반영되며 변경 이력으로 되돌릴 수 있어요.
         </p>

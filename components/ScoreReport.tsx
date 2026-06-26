@@ -63,7 +63,7 @@ export function ScoreReport({
       {/* 헤더 */}
       <div className="border-b-2 border-line pb-3 text-center">
         <p className="text-[10px] tracking-[0.3em] text-steel">{docNo}</p>
-        <h2 className="mt-1 font-display text-2xl tracking-tight text-ink sm:text-3xl">
+        <h2 className="mt-1 font-bold text-2xl tracking-tight text-ink sm:text-3xl">
           스트레스 해소 결과 보고서
         </h2>
       </div>
@@ -110,7 +110,7 @@ export function ScoreReport({
       {/* 본문 항목 */}
       <dl className="mt-3 space-y-1.5 text-sm">
         <ReportRow label="총 정산 점수">
-          <span className="font-display text-2xl tabular-nums text-gold sm:text-3xl">
+          <span className="font-bold text-2xl tabular-nums text-gold sm:text-3xl">
             {score.toLocaleString()}
           </span>
           <span className="ml-1 text-xs text-steel">점</span>
@@ -118,7 +118,7 @@ export function ScoreReport({
         {(percentile != null || submitting) && (
           <ReportRow label="전체 상위">
             {percentile != null ? (
-              <span className="font-display text-gold">상위 {percentile}%</span>
+              <span className="font-bold text-gold">상위 {percentile}%</span>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs text-steel">
                 <Spinner className="h-3 w-3" /> 계산 중
@@ -131,7 +131,7 @@ export function ScoreReport({
         <ReportRow label="주력 무기">{weaponLabel(mainWeapon)}</ReportRow>
         <ReportRow label="소요 시간">{formatDuration(durationMs)}</ReportRow>
         <ReportRow label="판정 등급">
-          <span className="font-display text-ink">{grade.label}</span>
+          <span className="font-bold text-ink">{grade.label}</span>
           <span className="ml-1.5 text-xs text-steel">{grade.comment}</span>
         </ReportRow>
       </dl>

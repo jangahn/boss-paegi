@@ -18,7 +18,7 @@ export default async function SiteContentPage() {
             변경 내역 →
           </Link>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">소개·FAQ (SEO)</h1>
+        <h1 className="mt-2 font-bold text-2xl sm:text-3xl">소개·FAQ (SEO)</h1>
         <p className="mt-1 text-sm text-zinc-500">
           홈 소개 섹션·/faq·검색 메타·구조화 데이터의 단일 소스. 발행하면 즉시(다음 로드부터) 반영됩니다.
         </p>

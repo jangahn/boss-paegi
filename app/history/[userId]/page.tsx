@@ -92,7 +92,7 @@ export default async function HistoryPage({
               fallbackSrc={DEFAULT_AVATAR}
             />
             <div className="min-w-0">
-              <h1 className="truncate font-display text-3xl tracking-tight text-ink">{name}님의 기록</h1>
+              <h1 className="truncate font-bold text-3xl tracking-tight text-ink">{name}님의 기록</h1>
               <p className="text-sm text-steel">총 {total.toLocaleString()}게임</p>
             </div>
           </PaperPanel>
@@ -123,7 +123,7 @@ export default async function HistoryPage({
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-display text-2xl tabular-nums text-gold">
+                      <div className="font-bold text-2xl tabular-nums text-gold">
                         {g.score.toLocaleString()}
                       </div>
                       <div className="text-[10px] text-steel">점</div>

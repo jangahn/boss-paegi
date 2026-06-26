@@ -79,7 +79,7 @@ export function RubberStamp({
         : "border-stamp text-stamp";
   return (
     <span
-      className={`inline-flex -rotate-6 items-center rounded border-[2.5px] px-2.5 py-0.5 font-display leading-none tracking-wide opacity-90 ${color} ${className}`}
+      className={`inline-flex -rotate-6 items-center rounded border-[2.5px] px-2.5 py-0.5 font-bold leading-none tracking-wide opacity-90 ${color} ${className}`}
       style={{ boxShadow: "inset 0 0 0 2px color-mix(in srgb, currentColor 14%, transparent)" }}
     >
       {children}

@@ -19,7 +19,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
         <div className="flex flex-wrap items-center gap-2 min-w-0">
           <Link href="/admin/analytics/sessions" className="text-sm text-sky-600 underline whitespace-nowrap">← 세션</Link>
-          <h1 className="font-display text-2xl sm:text-3xl">세션 {id.slice(0, 8)}</h1>
+          <h1 className="font-bold text-2xl sm:text-3xl">세션 {id.slice(0, 8)}</h1>
         </div>
 
         {!s ? (

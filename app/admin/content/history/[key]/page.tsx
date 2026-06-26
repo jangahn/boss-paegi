@@ -46,7 +46,7 @@ export default async function ContentHistoryPage({
         >
           ← {KEY_LABEL[key]} 편집
         </Link>
-        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">{KEY_LABEL[key]} 변경 내역</h1>
+        <h1 className="mt-2 font-bold text-2xl sm:text-3xl">{KEY_LABEL[key]} 변경 내역</h1>
         <p className="mt-1 text-sm text-zinc-500">
           발행 시각·수정자·바뀐 항목. 보기 전용. 총 {total.toLocaleString()}건.
         </p>

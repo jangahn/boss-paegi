@@ -21,7 +21,7 @@ export default async function SessionsPage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         <div className="flex items-center gap-2">
           <Link href="/admin/analytics" className="text-sm text-sky-600 underline">← 분석</Link>
-          <h1 className="font-display text-2xl sm:text-3xl">최근 세션</h1>
+          <h1 className="font-bold text-2xl sm:text-3xl">최근 세션</h1>
         </div>
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-400">아직 세션이 없어요.</p>

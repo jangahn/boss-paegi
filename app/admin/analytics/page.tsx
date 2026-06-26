@@ -51,7 +51,7 @@ export default async function AnalyticsPage({
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
         <div className="flex items-center justify-between">
-          <h1 className="font-display text-2xl font-bold sm:text-3xl">게임플레이 분석</h1>
+          <h1 className="font-bold text-2xl sm:text-3xl">게임플레이 분석</h1>
           <div className="flex flex-wrap gap-1 text-xs">
             {[7, 30].map((d) => (
               <Link

@@ -91,7 +91,7 @@ export default async function HistoryDetailPage({
               <p className="text-[10px] tracking-[0.3em] text-steel">
                 {reportNo(score.id, score.created_at)}
               </p>
-              <h1 className="mt-1 font-display text-3xl tracking-tight">
+              <h1 className="mt-1 font-bold text-3xl tracking-tight">
                 스트레스 해소 결과 보고서
               </h1>
             </div>
@@ -135,7 +135,7 @@ export default async function HistoryDetailPage({
 
             <dl className="mt-3 space-y-1.5 text-sm">
               <Row label="총 정산 점수">
-                <span className="font-display text-3xl tabular-nums text-gold">
+                <span className="font-bold text-3xl tabular-nums text-gold">
                   {score.score.toLocaleString()}
                 </span>
                 <span className="ml-1 text-xs text-zinc-500">점</span>

@@ -18,7 +18,7 @@ export default async function ScoreConfigPage() {
             변경 내역 →
           </Link>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">점수 설정</h1>
+        <h1 className="mt-2 font-bold text-2xl sm:text-3xl">점수 설정</h1>
         <PaperPanel className="mt-3 p-4 sm:p-5">
           <p className="text-sm text-zinc-500">
             점수 10단계의 등급 라벨·한 줄 평(=&apos;패기 유형&apos;). 점수 구간(0~9,999 … 90,000+)은 고정,

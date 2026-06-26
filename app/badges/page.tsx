@@ -55,12 +55,12 @@ export default function BadgesPage() {
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <PaperPanel className="px-6 py-5">
             <div className="flex items-end justify-between gap-3">
-              <h1 className="font-display text-3xl tracking-tight text-ink">
+              <h1 className="font-bold text-3xl tracking-tight text-ink">
                 내 뱃지
               </h1>
               {owned && (
                 <p className="text-sm text-zinc-500">
-                  <span className="font-display text-2xl text-gold tabular-nums">
+                  <span className="font-bold text-2xl text-gold tabular-nums">
                     {collected}
                   </span>{" "}
                   / {total} 수집

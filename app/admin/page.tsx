@@ -36,7 +36,7 @@ export default async function AdminPage() {
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">운영 대시보드</h1>
+        <h1 className="font-bold text-2xl sm:text-3xl">운영 대시보드</h1>
 
         <DashboardWarnings
           commitFail={refundWarnings.commitFail}
