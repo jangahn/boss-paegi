@@ -117,7 +117,7 @@ export function LoginForm() {
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
       <PaperPanel folded className="relative flex w-full max-w-sm flex-col items-center gap-6 px-7 pb-7 pt-10">
         <Paperclip className="left-7" />
-        <Link href="/" className="font-display text-5xl tracking-tight text-ink">
+        <Link href="/" className="font-display text-4xl tracking-tight text-ink sm:text-5xl">
           {SERVICE_NAME}
         </Link>
         <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
