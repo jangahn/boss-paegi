@@ -45,7 +45,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2">
         {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-foreground/10" />
+          <div className="absolute inset-0 animate-pulse bg-paper-2" />
         )}
         {/* 이미지 영역만 Link — 카드 전체를 Link 로 감싸지 않음(⋯ 버튼은 Link 밖) */}
         <Link href="/play" className="block h-full w-full">

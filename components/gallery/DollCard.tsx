@@ -97,7 +97,7 @@ export function DollCard({
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2">
         {/* 이미지 로드 전 pulse placeholder */}
         {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-foreground/10" />
+          <div className="absolute inset-0 animate-pulse bg-paper-2" />
         )}
         <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
