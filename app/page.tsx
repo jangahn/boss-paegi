@@ -39,7 +39,7 @@ export default function Home() {
       <AppNav />
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
         <div className="flex max-w-md flex-col items-center gap-6">
-          <h1 className="text-5xl font-extrabold tracking-tight">
+          <h1 className="font-display text-6xl tracking-tight">
             {SERVICE_NAME}
           </h1>
           <p className="whitespace-pre-line text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
