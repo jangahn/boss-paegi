@@ -21,7 +21,7 @@ export function PendingGrid({ pending }: { pending: PendingGeneration[] }) {
 function PendingCard({ gen }: { gen: PendingGeneration }) {
   if (gen.kind === "generating") {
     return (
-      <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-foreground/10 bg-foreground/5">
+      <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-foreground/10 bg-paper-2">
         <Spinner className="h-7 w-7 text-foreground/70" />
         <span className="text-xs font-medium text-zinc-500">
           AI 가 만드는 중…
@@ -49,7 +49,7 @@ function PendingCard({ gen }: { gen: PendingGeneration }) {
   return (
     <Link
       href={`/generate?resume=${gen.id}`}
-      className="group relative flex aspect-square flex-col overflow-hidden rounded-2xl border border-emerald-500/40 bg-foreground/5 transition hover:border-emerald-500/70"
+      className="group relative flex aspect-square flex-col overflow-hidden rounded-2xl border border-emerald-500/40 bg-paper-2 transition hover:border-emerald-500/70"
     >
       <div className="grid flex-1 grid-cols-3 gap-px bg-foreground/10">
         {gen.candidateUrls.slice(0, 3).map((url, i) => (

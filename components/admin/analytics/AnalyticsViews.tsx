@@ -258,7 +258,7 @@ export function MapStickinessCard({ data }: { data: MapStickiness }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-foreground/10 bg-foreground/5 p-2 text-center">
+    <div className="rounded-lg border border-foreground/10 bg-paper-2 p-2 text-center">
       <p className="text-[10px] text-zinc-500">{label}</p>
       <p className="mt-0.5 text-base font-bold tabular-nums">{value}</p>
     </div>

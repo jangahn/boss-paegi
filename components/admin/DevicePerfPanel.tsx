@@ -26,7 +26,7 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
         “렉”으로 집계. 프레임타임 낮을수록 좋음(16.7ms=60fps · 33.3ms=30fps).
       </p>
 
-      <details className="rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+      <details className="rounded-lg border border-foreground/10 bg-paper-2 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
         <summary className="cursor-pointer font-semibold text-zinc-400">📖 지표 설명</summary>
         <dl className="mt-1.5 space-y-1">
           <div>
@@ -91,7 +91,7 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
           {data.worst.map((s) => (
             <li
               key={s.id}
-              className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-foreground/10 bg-foreground/5 px-2 py-1 text-[11px]"
+              className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-foreground/10 bg-paper-2 px-2 py-1 text-[11px]"
             >
               <span className="font-mono text-zinc-400">{s.id.slice(0, 8)}</span>
               <span>{DEVICE_KO[s.deviceClass] ?? s.deviceClass}</span>

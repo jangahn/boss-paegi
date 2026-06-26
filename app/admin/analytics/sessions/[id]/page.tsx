@@ -22,7 +22,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
         </div>
 
         {!s ? (
-          <p className="rounded-lg border border-foreground/10 bg-foreground/5 p-3 text-sm text-zinc-500">
+          <p className="rounded-lg border border-foreground/10 bg-paper-2 p-3 text-sm text-zinc-500">
             세션을 찾을 수 없어요 — 30일 경과로 prune 됐거나 존재하지 않는 세션입니다.
           </p>
         ) : (

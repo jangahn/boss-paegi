@@ -9,9 +9,9 @@ export default function Loading() {
             <div key={i} className="h-16 animate-pulse rounded-xl bg-foreground/10" />
           ))}
         </div>
-        <div className="mt-2 overflow-hidden rounded-xl border border-foreground/10">
+        <div className="mt-2 overflow-hidden rounded-xl border border-foreground/10 bg-paper-2">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-9 animate-pulse border-t border-foreground/5 bg-foreground/5" />
+            <div key={i} className="h-9 animate-pulse border-t border-foreground/5 bg-paper-2" />
           ))}
         </div>
       </div>

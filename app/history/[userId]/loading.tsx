@@ -18,7 +18,7 @@ export default function Loading() {
             {Array.from({ length: 10 }).map((_, i) => (
               <li
                 key={i}
-                className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3"
+                className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-paper-2 p-3"
               >
                 <div className="flex flex-1 flex-col gap-1.5">
                   <div className="h-4 w-28 animate-pulse rounded bg-foreground/10" />

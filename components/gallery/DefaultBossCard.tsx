@@ -43,7 +43,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
 
   return (
     <div className="group relative">
-      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10">
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2">
         {!imgLoaded && (
           <div className="absolute inset-0 animate-pulse bg-foreground/10" />
         )}
@@ -98,7 +98,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
                   setMenuOpen(false);
                 }}
               />
-              <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-2xl">
+              <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-paper-2 shadow-2xl">
                 <MenuItem onClick={() => hook(SHARE_HOOK)}>공유</MenuItem>
                 <MenuItem onClick={() => hook(ROLE_HOOK)}>역할 변경</MenuItem>
               </div>

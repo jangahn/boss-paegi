@@ -77,7 +77,7 @@ export function CreditAdjustForm({ target }: { target: Target }) {
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-foreground/10 p-3">
+    <div className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
       <div className="text-xs">
         <b>{target.displayName ?? "(닉네임 없음)"}</b> · 현재{" "}
         <b className="tabular-nums">{target.genCredits}</b>개

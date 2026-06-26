@@ -61,7 +61,7 @@ export default async function ContentHistoryPage({
               return (
                 <li
                   key={r.id}
-                  className="rounded-2xl border border-foreground/10 p-4"
+                  className="rounded-2xl border border-foreground/10 bg-paper-2 p-4"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold">

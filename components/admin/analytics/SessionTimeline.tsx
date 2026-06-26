@@ -24,7 +24,7 @@ function fmtT(ms: number): string {
 export function SessionTimeline({ timeline }: { timeline: unknown }) {
   if (!Array.isArray(timeline)) {
     return (
-      <p className="rounded-lg border border-foreground/10 bg-foreground/5 p-3 text-xs text-zinc-500">
+      <p className="rounded-lg border border-foreground/10 bg-paper-2 p-3 text-xs text-zinc-500">
         타임라인 없음 — 익명 세션(요약만 저장) 또는 30일 경과로 prune 됨. 요약 지표는 위에 표시됩니다.
       </p>
     );

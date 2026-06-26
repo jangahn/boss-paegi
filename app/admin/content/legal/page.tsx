@@ -31,7 +31,7 @@ export default async function LegalIndexPage() {
             <Link
               key={d.dt}
               href={`/admin/content/legal/${d.dt}`}
-              className="rounded-2xl border border-foreground/10 p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
+              className="rounded-2xl border border-foreground/10 bg-paper-2 p-4 transition hover:border-foreground/30 hover:bg-foreground/5"
             >
               <span className="font-semibold">{DOC_LABEL[d.dt]}</span>
               <p className="mt-1 text-xs text-zinc-500">

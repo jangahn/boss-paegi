@@ -108,7 +108,7 @@ export default async function HistoryPage({
                 <li key={g.id}>
                   <Link
                     href={`/history/${userId}/${g.id}`}
-                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 p-3 transition hover:bg-foreground/10"
+                    className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-paper-2 p-3 transition hover:bg-foreground/10"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold">{gradeFor(g.score, scoreGrades).label}</div>

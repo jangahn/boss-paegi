@@ -100,7 +100,7 @@ function FamilySection({
             <div
               key={d.slug}
               title={d.desc}
-              className="flex flex-col items-center gap-1 rounded-xl border border-foreground/10 bg-foreground/5 p-2 text-center"
+              className="flex flex-col items-center gap-1 rounded-xl border border-foreground/10 bg-paper-2 p-2 text-center"
             >
               <span className="text-xl">{family.emoji}</span>
               <span className="text-[10px] font-semibold leading-tight">

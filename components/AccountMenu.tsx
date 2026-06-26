@@ -106,7 +106,7 @@ export function AccountMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 bg-background py-1 shadow-xl"
+          className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2 py-1 shadow-xl"
         >
           {!isMember && (
             <Link

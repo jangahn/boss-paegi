@@ -153,7 +153,7 @@ export function BadgeCatalogEditor({
       {fams.map((f) => {
         const fBadges = badges.filter((b) => b.familyKey === f.key);
         return (
-          <fieldset key={f.key} className="flex flex-col gap-2 rounded-2xl border border-foreground/10 p-3">
+          <fieldset key={f.key} className="flex flex-col gap-2 rounded-2xl border border-foreground/10 bg-paper-2 p-3">
             <div className="flex items-end gap-2">
               <label className="flex w-16 flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">이모지</span>
@@ -179,7 +179,7 @@ export function BadgeCatalogEditor({
               const imp = impact[b.slug];
               const earned = imp && (imp.users > 0 || imp.scores > 0);
               return (
-                <div key={b.uid} className="flex flex-col gap-1 rounded-lg bg-foreground/5 p-2">
+                <div key={b.uid} className="flex flex-col gap-1 rounded-lg bg-paper-2 p-2">
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-1 text-[11px] text-zinc-500">
                       <input
