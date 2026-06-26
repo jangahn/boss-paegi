@@ -89,7 +89,7 @@ export default function CreditsPage() {
                   type="button"
                   disabled={!!pending}
                   onClick={() => void buy(p.productId)}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 bg-paper-2 p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
                 >
                   <div>
                     <p className="text-base font-bold">{p.goodname}</p>
