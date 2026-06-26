@@ -11,10 +11,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const gate = await requireAdmin();
   if (!gate.ok) redirect("/");
   return (
-    <>
+    <div className="theme-admin flex flex-1 flex-col bg-background text-foreground">
+      {/* 운영 모드 시그널 — 플레이(크림) 모드와 구분 */}
+      <div className="border-b border-gold/30 bg-gold/10 px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">
+        운영 모드 · ADMIN
+      </div>
       <AppNav />
       <AdminNav />
       {children}
-    </>
+    </div>
   );
 }
