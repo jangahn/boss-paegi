@@ -94,14 +94,14 @@ export default function CreditsPage() {
                   onClick={() => void buy(p.productId)}
                   className="flex items-center justify-between gap-3 rounded-lg border border-line bg-paper p-4 text-left shadow-sm transition hover:bg-foreground/5 disabled:opacity-50"
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-base font-bold text-ink">{p.goodname}</p>
                     <p className="text-xs text-zinc-500">
                       생성권 {p.credits}개 · 개당 {perUnitPrice(p).toLocaleString()}원
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-display text-xl tabular-nums text-gold">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="whitespace-nowrap font-display text-xl tabular-nums text-gold">
                       {p.price.toLocaleString()}원
                     </span>
                     {isPending && <Spinner className="h-4 w-4" />}

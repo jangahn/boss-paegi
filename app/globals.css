@@ -1,5 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap");
 @import "tailwindcss";
+
+/* 디스플레이 폰트 — Gmarket Sans Bold(모던 브랜드 볼드 고딕). 단일 face 로 모든 weight 매핑
+ * → font-display 유틸은 weight 무관하게 항상 볼드 렌더(Black Han Sans 대비 덜 과하고 스케일 자연). */
+@font-face {
+  font-family: "GmarketSans";
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/fonts-archive/GmarketSans/GmarketSansBold.woff2") format("woff2");
+}
 
 /* 다크 변형 무력화 — '인사기록부' 도시에는 크림 페이퍼 단일 라이트 테마.
  * dark: 유틸은 .dark 조상이 있을 때만 적용(우리는 절대 안 붙임) → OS 다크에서도 라이트 고정. */
@@ -15,8 +24,8 @@
   --color-foreground: var(--foreground);
   --font-sans: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system,
     BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
-  /* 디스플레이(타이틀·점수) — Black Han Sans(상단 @import 로 로드, 한글 글리프 포함) */
-  --font-display: "Black Han Sans", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  /* 디스플레이(타이틀·점수) — Gmarket Sans Bold(상단 @font-face) */
+  --font-display: "GmarketSans", "Pretendard", "Apple SD Gothic Neo", sans-serif;
 }
 
 @theme {
@@ -123,6 +132,15 @@ body {
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+}
+
+/* 한글 제목이 좁은 화면(iPhone SE 등)에서 단어 중간이 아니라 어절 단위로만 줄바꿈되게.
+ * 디스플레이 폰트(Black Han Sans)가 커서 소형폰에서 "부장님 패"/"기" 처럼 깨지는 것 방지. */
+h1,
+h2,
+h3,
+h4 {
+  word-break: keep-all;
 }
 
 /*

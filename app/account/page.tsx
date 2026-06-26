@@ -118,7 +118,7 @@ export default function AccountPage() {
                   type="button"
                   onClick={() => void saveNick()}
                   disabled={savingNick || nick.trim().length < 2 || nick === profile.display_name}
-                  className="flex items-center gap-2 rounded-lg bg-foreground px-5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                  className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-foreground px-5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
                 >
                   {savingNick && <Spinner className="h-4 w-4" />}
                   저장

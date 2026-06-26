@@ -42,7 +42,7 @@ export default function Home() {
         <div className="flex w-full max-w-md flex-col gap-5">
           <PaperPanel folded className="relative px-7 pb-7 pt-10 text-center">
             <Paperclip className="left-7" />
-            <h1 className="font-display text-6xl tracking-tight text-ink">
+            <h1 className="font-display text-5xl tracking-tight text-ink sm:text-6xl">
               {SERVICE_NAME}
             </h1>
             <p className="mt-3 whitespace-pre-line text-base leading-relaxed text-zinc-600">
