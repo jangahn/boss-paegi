@@ -39,7 +39,7 @@ export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
     return <p className="text-sm text-zinc-400">처리 내역이 없어요.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-paper-2">
+    <div className="overflow-x-auto rounded-xl border border-foreground/10">
       <table className="w-full text-left text-xs">
         <thead className="bg-paper-2 text-zinc-500">
           <tr>
