@@ -122,7 +122,7 @@ export default async function SharePage({
         ) : null}
 
         {/* ── 보고서 (종이) ───────────────────────────────── */}
-        <div className="rounded-lg bg-[#fbfaf6] p-5 text-zinc-900 shadow-2xl">
+        <div className="rounded-lg bg-paper-2 p-5 text-zinc-900 shadow-2xl">
           <div className="border-b-2 border-zinc-800 pb-3 text-center">
             <p className="text-[10px] tracking-[0.3em] text-zinc-500">
               {reportNo(score.id, score.created_at)}
@@ -152,7 +152,7 @@ export default async function SharePage({
                   <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">
                     작성자
                   </td>
-                  <td className="w-16 border border-zinc-400 py-0.5">결재</td>
+                  <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">결재</td>
                 </tr>
                 <tr>
                   <td className="border border-zinc-400 px-1 py-2 text-[11px] font-medium">
