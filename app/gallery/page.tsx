@@ -182,27 +182,30 @@ export default function GalleryPage() {
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+          {/* 헤더(제목·생성권·새로 만들기) — 정적이라 fetch 전에도 표시. 그리드만 스켈레톤. */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-2xl font-bold">내 캐릭터들</h1>
+              {genCredits != null && (
+                <span className="text-sm text-zinc-500">
+                  생성권 {formatCredits(genCredits)}
+                </span>
+              )}
+            </div>
+            <Link
+              // 로딩 중엔 state 가 nonmember 기본값이라 회원이 눌러도 /login 으로 새지 않게 /generate 고정
+              // (proxy 가 비회원은 /login?next=/generate 로 동일 게이트). 로드 후엔 state별 ctaFor.
+              href={loading ? "/generate" : ctaFor(state).href}
+              className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition hover:opacity-90"
+            >
+              {mk.signupBanner.memberHeaderCta}
+            </Link>
+          </div>
+
           {loading ? (
             <GridSkeleton />
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-baseline gap-2">
-                  <h1 className="text-2xl font-bold">내 캐릭터들</h1>
-                  {genCredits != null && (
-                    <span className="text-sm text-zinc-500">
-                      생성권 {formatCredits(genCredits)}
-                    </span>
-                  )}
-                </div>
-                <Link
-                  href={ctaFor(state).href}
-                  className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition hover:opacity-90"
-                >
-                  {mk.signupBanner.memberHeaderCta}
-                </Link>
-              </div>
-
               <SignupBanner state={state} />
 
               {isMember && pending.length > 0 && <PendingGrid pending={pending} />}
