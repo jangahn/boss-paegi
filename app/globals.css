@@ -1,8 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap");
 @import "tailwindcss";
 
+/* 다크 변형 무력화 — '인사기록부' 도시에는 크림 페이퍼 단일 라이트 테마.
+ * dark: 유틸은 .dark 조상이 있을 때만 적용(우리는 절대 안 붙임) → OS 다크에서도 라이트 고정. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7ebdb; /* 마닐라 크림 종이 */
+  --foreground: #11233a; /* 네이비-차콜 잉크 */
 }
 
 @theme inline {
@@ -10,13 +15,105 @@
   --color-foreground: var(--foreground);
   --font-sans: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system,
     BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+  /* 디스플레이(타이틀·점수) — Black Han Sans(상단 @import 로 로드, 한글 글리프 포함) */
+  --font-display: "Black Han Sans", "Pretendard", "Apple SD Gothic Neo", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  /* ── 도시에 시맨틱 토큰 (신규 컴포넌트용: bg-paper / text-ink / bg-stamp / text-gold ...) ── */
+  --color-paper: #f7ebdb;
+  --color-paper-2: #fdf6ec; /* 살짝 밝은 종이(올라온 면) */
+  --color-paper-3: #ece0cd; /* 가라앉은 종이(구분·홈) */
+  --color-ink: #11233a;
+  --color-steel: #4b5d74; /* 보조 잉크(스틸) */
+  --color-stamp: #bb2417; /* 고무도장 레드 */
+  --color-stamp-dark: #8f160e;
+  --color-gold: #c2882a;
+  --color-gold-soft: #d8a43a;
+  --color-line: rgba(17, 35, 58, 0.16); /* 점선·헤어라인 */
+
+  /* ── 중립 리맵: 차가운 zinc → 따뜻한 종이/잉크 (명도 순서 보존, 크림 위 가독성 확보) ── */
+  --color-zinc-50: #faf5ec;
+  --color-zinc-100: #f3ead9;
+  --color-zinc-200: #e8dcc6;
+  --color-zinc-300: #d8c9ac;
+  --color-zinc-400: #ad9f86;
+  --color-zinc-500: #6f6353;
+  --color-zinc-600: #564c3d;
+  --color-zinc-700: #423a2e;
+  --color-zinc-800: #2c2620;
+  --color-zinc-900: #1c1812;
+  --color-zinc-950: #100d09;
+  /* gray/neutral/stone/slate 도 동일 웜 레인지로(차가운 중립 잔여 방지) */
+  --color-neutral-100: #f3ead9;
+  --color-neutral-200: #e8dcc6;
+  --color-neutral-400: #ad9f86;
+  --color-neutral-500: #6f6353;
+  --color-neutral-700: #423a2e;
+  --color-gray-100: #f3ead9;
+  --color-gray-200: #e8dcc6;
+  --color-gray-400: #ad9f86;
+  --color-gray-500: #6f6353;
+  --color-gray-700: #423a2e;
+  --color-slate-200: #e8dcc6;
+  --color-slate-400: #ad9f86;
+  --color-slate-500: #6f6353;
+  --color-slate-700: #423a2e;
+  --color-stone-100: #f3ead9;
+  --color-stone-200: #e8dcc6;
+  --color-stone-500: #6f6353;
+
+  /* ── amber → 골드 ── */
+  --color-amber-50: #fbf4e2;
+  --color-amber-100: #f6e7c2;
+  --color-amber-200: #eed595;
+  --color-amber-300: #e0bd66;
+  --color-amber-400: #d8a43a;
+  --color-amber-500: #c2882a;
+  --color-amber-600: #9e6c1d;
+  --color-amber-700: #7c5415;
+  --color-yellow-300: #ecd089;
+  --color-yellow-400: #d8a43a;
+  --color-yellow-500: #c2882a;
+  --color-orange-400: #cf7a34;
+  --color-orange-500: #bd6a23;
+  --color-orange-600: #9a531a;
+
+  /* ── red → 스탬프 레드 ── */
+  --color-red-50: #faeae7;
+  --color-red-100: #f3d0ca;
+  --color-red-200: #e9a89f;
+  --color-red-300: #dd7c70;
+  --color-red-400: #cf4636;
+  --color-red-500: #bb2417;
+  --color-red-600: #9d1c12;
+  --color-red-700: #7e160e;
+  --color-rose-500: #bb2417;
+
+  /* ── emerald/green → 올리브 '승인' 그린 ── */
+  --color-emerald-50: #eef2e0;
+  --color-emerald-100: #dbe6bf;
+  --color-emerald-200: #c2d499;
+  --color-emerald-300: #9fb86b;
+  --color-emerald-400: #7f9b48;
+  --color-emerald-500: #5f7d33;
+  --color-emerald-600: #4c6628;
+  --color-emerald-700: #3a4f1f;
+  --color-green-400: #7f9b48;
+  --color-green-500: #5f7d33;
+  --color-green-600: #4c6628;
+
+  /* ── sky → 스틸 블루(정보, 잉크와 조화) ── */
+  --color-sky-50: #e9f0f5;
+  --color-sky-100: #cdddea;
+  --color-sky-200: #a7c2d8;
+  --color-sky-300: #7aa1c0;
+  --color-sky-400: #5480a3;
+  --color-sky-500: #426585;
+  --color-sky-600: #34516c;
+  --color-sky-700: #2a4257;
+  --color-blue-500: #426585;
+  --color-blue-600: #34516c;
 }
 
 html,

@@ -28,6 +28,15 @@ npm run dev                  # http://localhost:3000
 | 상태 관리 | Zustand |
 | 패키지 매니저 | npm |
 
+## 디자인 시스템 — "인사기록부(도시에)"
+
+OG 히어로의 톤앤매너를 사이트 전체로 확장. **크림 마닐라 종이 + 네이비 잉크 + 스탬프 레드 + 골드**의 풍자적 서류철 컨셉(단계별 PR 로 전환 중).
+
+- **토큰은 `app/globals.css` `@theme` 단일 출처.** 시맨틱 토큰(`bg-paper`/`text-ink`/`bg-stamp`/`text-gold`/`border-line`/`bg-steel`)을 쓰고, 기존 유틸(`zinc`/`amber`/`red`/`emerald`/`sky`)은 도시에 팔레트로 **리맵**돼 자동 워밍됨. 새 하드코딩 hex 금지.
+- **단일 라이트 테마.** `@custom-variant dark` 로 `dark:` 유틸 무력화(OS 다크에서도 크림 고정). 카카오 옐로우 등 **브랜드 색은 리맵 예외**(그대로 유지).
+- **디스플레이 폰트 = Black Han Sans**(타이틀·점수, `font-display` / `globals.css` 상단 `@import`). 본문은 Pretendard 스택.
+- 질감 강도 = **큐레이티드**: 히어로·빈 상태·핵심 CTA 엔 폴더탭·클립·고무도장·서류 No. 모티프, 데이터 밀집 페이지(랭킹·기록·어드민)는 장부형으로 절제.
+
 ## 디렉토리 구조
 
 ```
