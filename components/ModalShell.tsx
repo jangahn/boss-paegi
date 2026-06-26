@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
 
 /**
  * 모달 셸 — **document.body 로 포털**.
@@ -20,11 +21,15 @@ export function ModalShell({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const pathname = usePathname();
   if (!mounted) return null;
+
+  // body 로 포털하면 어드민 .theme-admin 래퍼 밖이라 라이트로 새므로, 어드민 경로에선 다크 테마를 직접 부착.
+  const themed = pathname?.startsWith("/admin") ? "theme-admin text-foreground" : "";
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] overflow-y-auto bg-black/60 backdrop-blur-sm"
+      className={`${themed} fixed inset-0 z-[100] overflow-y-auto bg-black/60 backdrop-blur-sm`}
       onClick={onClose}
     >
       <div className="flex min-h-full items-center justify-center p-4">

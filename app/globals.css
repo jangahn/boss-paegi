@@ -245,6 +245,14 @@ body {
   color: var(--foreground);
 }
 
+/* 어드민일 때 html/body(세이프에어리어·스티키 네비 위·오버스크롤·하단 여백)도 다크.
+ * .theme-admin 래퍼는 콘텐츠 영역만 덮어 최상/최하단에 :root 크림이 비치던 것 차단.
+ * 값은 .theme-admin --background 와 일치 유지. :has() 라 어드민 트리에서만 매칭. */
+html:has(.theme-admin),
+body:has(.theme-admin) {
+  background: #0d1726;
+}
+
 /* 한글 제목이 좁은 화면(iPhone SE 등)에서 단어 중간이 아니라 어절 단위로만 줄바꿈되게.
  * 디스플레이 폰트(Black Han Sans)가 커서 소형폰에서 "부장님 패"/"기" 처럼 깨지는 것 방지. */
 h1,
