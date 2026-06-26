@@ -55,7 +55,7 @@ export function ReconsentConsent({ next }: { next: string }) {
       <PaperPanel folded className="relative mx-auto flex w-full max-w-md flex-col gap-6 px-7 pb-7 pt-10">
         <Paperclip className="left-7" />
         <div>
-          <h1 className="font-display text-4xl tracking-tight text-ink">{SERVICE_NAME} 재이용 안내</h1>
+          <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">{SERVICE_NAME} 재이용 안내</h1>
           <p className="mt-2 text-sm text-zinc-500">
             계정이 복구되었어요. 다시 이용하려면 현재 약관·개인정보처리방침에 동의해주세요.
           </p>

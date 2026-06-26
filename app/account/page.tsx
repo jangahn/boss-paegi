@@ -81,7 +81,7 @@ export default function AccountPage() {
         <div className="mx-auto w-full max-w-md">
           <PaperPanel folded className="relative px-6 pb-6 pt-10">
             <Paperclip className="left-7" />
-            <h1 className="font-display text-4xl tracking-tight text-ink">회원정보</h1>
+            <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">회원정보</h1>
 
             <DashedDivider className="my-5" />
 

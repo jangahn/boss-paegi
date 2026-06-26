@@ -4,6 +4,7 @@ import type { Persona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { Spinner } from "@/components/Spinner";
+import { PaperPanel, Paperclip, RubberStamp, DashedDivider } from "@/components/dossier";
 
 /**
  * 게임 결과 "보고서(종이)" 표현 — 패기 유형(페르소나) 해석 + 점수/콤보/등급/부장님 반응.
@@ -57,11 +58,12 @@ export function ScoreReport({
   submitError: string | null;
 }) {
   return (
-    <div className="rounded-lg bg-[#fbfaf6] p-5 text-zinc-900 shadow-2xl">
+    <PaperPanel folded className="relative px-5 pb-5 pt-7 text-ink">
+      <Paperclip className="left-6" />
       {/* 헤더 */}
-      <div className="border-b-2 border-zinc-800 pb-3 text-center">
-        <p className="text-[10px] tracking-[0.3em] text-zinc-500">{docNo}</p>
-        <h2 className="mt-1 text-xl font-extrabold tracking-tight">
+      <div className="border-b-2 border-line pb-3 text-center">
+        <p className="text-[10px] tracking-[0.3em] text-steel">{docNo}</p>
+        <h2 className="mt-1 font-display text-2xl tracking-tight text-ink sm:text-3xl">
           스트레스 해소 결과 보고서
         </h2>
       </div>
@@ -79,44 +81,46 @@ export function ScoreReport({
         <img
           src={dollImageUrl ?? "/sprites/boss-default.png"}
           alt={`맞은 ${roleLabel}`}
-          className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
+          className="aspect-square w-20 shrink-0 rounded-lg border border-line bg-paper-3 object-contain"
         />
         <table className="border-collapse text-center text-[10px]">
           <tbody>
             <tr>
-              <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">
+              <td className="w-16 border border-line bg-paper-3 py-0.5 text-steel">
                 작성자
               </td>
-              <td className="w-16 border border-zinc-400 py-0.5">결재</td>
+              <td className="w-16 border border-line py-0.5 text-steel">결재</td>
             </tr>
             <tr>
-              <td className="border border-zinc-400 px-1 py-2 text-[11px] font-medium">
+              <td className="border border-line px-1 py-2 text-[11px] font-medium text-ink">
                 {nickname || "—"}
               </td>
-              <td className="relative border border-zinc-400 py-2">
-                <span className="inline-block -rotate-12 rounded-full border-2 border-red-500 px-1.5 py-1 text-[9px] font-bold text-red-500">
+              <td className="relative border border-line py-2">
+                <RubberStamp tone="stamp" className="text-[9px]">
                   해소완료
-                </span>
+                </RubberStamp>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
+      <DashedDivider className="mt-3" />
+
       {/* 본문 항목 */}
       <dl className="mt-3 space-y-1.5 text-sm">
         <ReportRow label="총 정산 점수">
-          <span className="text-2xl font-extrabold tabular-nums">
+          <span className="font-display text-2xl tabular-nums text-gold sm:text-3xl">
             {score.toLocaleString()}
           </span>
-          <span className="ml-1 text-xs text-zinc-500">점</span>
+          <span className="ml-1 text-xs text-steel">점</span>
         </ReportRow>
         {(percentile != null || submitting) && (
           <ReportRow label="전체 상위">
             {percentile != null ? (
-              <span className="font-bold text-amber-600">상위 {percentile}%</span>
+              <span className="font-display text-gold">상위 {percentile}%</span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+              <span className="inline-flex items-center gap-1 text-xs text-steel">
                 <Spinner className="h-3 w-3" /> 계산 중
               </span>
             )}
@@ -127,15 +131,15 @@ export function ScoreReport({
         <ReportRow label="주력 무기">{weaponLabel(mainWeapon)}</ReportRow>
         <ReportRow label="소요 시간">{formatDuration(durationMs)}</ReportRow>
         <ReportRow label="판정 등급">
-          <span className="font-bold">{grade.label}</span>
-          <span className="ml-1.5 text-xs text-zinc-500">{grade.comment}</span>
+          <span className="font-display text-ink">{grade.label}</span>
+          <span className="ml-1.5 text-xs text-steel">{grade.comment}</span>
         </ReportRow>
       </dl>
 
       {/* 부장님 피드백 */}
-      <div className="mt-4 rounded-md border border-dashed border-zinc-400 bg-zinc-50 p-3">
-        <p className="text-[10px] font-semibold text-zinc-500">피격자 의견</p>
-        <p className="mt-0.5 text-sm font-medium">&ldquo;{reaction}&rdquo;</p>
+      <div className="mt-4 rounded-lg border border-dashed border-line bg-paper p-3">
+        <p className="text-[10px] font-semibold tracking-wide text-steel">피격자 의견</p>
+        <p className="mt-0.5 text-sm font-medium text-ink">&ldquo;{reaction}&rdquo;</p>
       </div>
 
       {/* 획득 뱃지 (이번 판 + NEW + 누적 수집) */}
@@ -149,7 +153,7 @@ export function ScoreReport({
       )}
 
       {submitting && (
-        <p className="mt-3 flex items-center justify-center gap-2 text-xs text-zinc-500">
+        <p className="mt-3 flex items-center justify-center gap-2 text-xs text-steel">
           <Spinner className="h-3.5 w-3.5" /> 랭킹 등록 중...
         </p>
       )}
@@ -158,7 +162,7 @@ export function ScoreReport({
           점수 등록 실패: {submitError}
         </p>
       )}
-    </div>
+    </PaperPanel>
   );
 }
 
@@ -170,9 +174,9 @@ function ReportRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-zinc-200 pb-1.5">
-      <dt className="shrink-0 text-xs font-semibold text-zinc-500">{label}</dt>
-      <dd className="text-right">{children}</dd>
+    <div className="flex items-baseline justify-between gap-3 border-b border-line pb-1.5">
+      <dt className="min-w-0 shrink-0 text-xs font-semibold text-steel">{label}</dt>
+      <dd className="min-w-0 text-right text-ink">{children}</dd>
     </div>
   );
 }

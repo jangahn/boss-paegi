@@ -251,7 +251,7 @@ export function GameOverModal({
 
         {/* ── 하이라이트 클립 프리뷰 (녹화 성공 시) ───────── */}
         {clipUrl && (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-white/15 bg-black">
+          <div className="mt-4 overflow-hidden rounded-lg border border-line bg-black">
             <video
               src={clipUrl}
               autoPlay
@@ -271,17 +271,17 @@ export function GameOverModal({
           <button
             onClick={handleShare}
             disabled={!scoreId}
-            className="rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-40"
+            className="rounded-lg bg-foreground py-3 font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
           >
             {clipUrl ? mk.share.gameoverShareBtnHighlight : mk.share.gameoverShareBtn}
           </button>
           <button
             onClick={onRestart}
-            className="rounded-full border border-white/25 py-3 font-medium text-white transition hover:bg-white/10"
+            className="rounded-lg border-2 border-line py-3 font-medium text-ink transition hover:bg-paper-3/60"
           >
             {mk.share.gameoverRetryBtn}
           </button>
-          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-1 text-sm text-zinc-300">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-1 text-sm text-steel">
             <button
               onClick={() => router.push("/leaderboard")}
               className="underline-offset-4 hover:underline"
@@ -302,13 +302,13 @@ export function GameOverModal({
             </Link>
           </div>
           {uploading && (
-            <p className="text-center text-xs text-zinc-400">하이라이트 올리는 중…</p>
+            <p className="text-center text-xs text-steel">하이라이트 올리는 중…</p>
           )}
           {attached && !uploading && (
-            <p className="text-center text-xs text-emerald-500/80">하이라이트 첨부 완료</p>
+            <p className="text-center text-xs text-gold">하이라이트 첨부 완료</p>
           )}
           {shareMsg && (
-            <p className="text-center text-xs text-zinc-400">{shareMsg}</p>
+            <p className="text-center text-xs text-steel">{shareMsg}</p>
           )}
         </div>
         </div>

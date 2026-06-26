@@ -43,7 +43,7 @@ export default async function FaqPage() {
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <PaperPanel folded className="relative px-7 pb-7 pt-10">
             <Paperclip className="left-7" />
-            <h1 className="font-display text-4xl tracking-tight text-ink">{SERVICE_NAME} 소개</h1>
+            <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">{SERVICE_NAME} 소개</h1>
             <p className="mt-4 text-base leading-relaxed text-zinc-600 dark:text-zinc-300">{sc.intro}</p>
           </PaperPanel>
 
