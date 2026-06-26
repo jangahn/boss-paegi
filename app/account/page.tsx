@@ -111,7 +111,7 @@ export default function AccountPage() {
                   value={nick}
                   maxLength={NICKNAME_MAX}
                   onChange={(e) => setNick(e.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
+                  className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-transparent px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
                 />
                 <button
                   type="button"
