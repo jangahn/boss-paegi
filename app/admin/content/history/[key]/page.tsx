@@ -5,6 +5,7 @@ import { getConfigAudit } from "@/lib/config/audit";
 import { diffConfig } from "@/lib/config/diff";
 import { fmtKst } from "@/lib/admin-format";
 import { Pagination } from "@/components/Pagination";
+import { PaperPanel } from "@/components/dossier";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export default async function ContentHistoryPage({
         >
           ← {KEY_LABEL[key]} 편집
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">{KEY_LABEL[key]} 변경 내역</h1>
+        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">{KEY_LABEL[key]} 변경 내역</h1>
         <p className="mt-1 text-sm text-zinc-500">
           발행 시각·수정자·바뀐 항목. 보기 전용. 총 {total.toLocaleString()}건.
         </p>
@@ -59,15 +60,13 @@ export default async function ContentHistoryPage({
             {rows.map((r) => {
               const diff = r.oldValue == null ? [] : diffConfig(r.oldValue, r.newValue);
               return (
-                <li
-                  key={r.id}
-                  className="rounded-2xl border border-foreground/10 p-4"
-                >
+                <li key={r.id} className="min-w-0">
+                  <PaperPanel className="p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">
+                    <span className="min-w-0 truncate text-sm font-semibold">
                       {r.adminName ?? `관리자 ${r.adminId.slice(0, 8)}`}
                     </span>
-                    <span className="text-xs text-zinc-400">{fmtKst(r.createdAt)}</span>
+                    <span className="whitespace-nowrap text-xs text-zinc-400">{fmtKst(r.createdAt)}</span>
                   </div>
                   <div className="mt-0.5 text-[11px] text-zinc-400">
                     v{r.oldVersion ?? 0} → v{r.newVersion}
@@ -78,7 +77,7 @@ export default async function ContentHistoryPage({
                   ) : diff.length > 0 ? (
                     <ul className="mt-2 flex flex-col gap-1">
                       {diff.map((d, i) => (
-                        <li key={i} className="text-xs leading-relaxed">
+                        <li key={i} className="text-xs leading-relaxed break-words">
                           <span className="font-mono text-zinc-500">{d.path}</span>{" "}
                           {d.complex ? (
                             <span className="font-medium text-amber-600">변경됨</span>
@@ -95,6 +94,7 @@ export default async function ContentHistoryPage({
                   ) : (
                     <p className="mt-2 text-xs text-zinc-400">표시 가능한 변경 없음</p>
                   )}
+                  </PaperPanel>
                 </li>
               );
             })}

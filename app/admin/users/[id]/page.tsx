@@ -15,6 +15,7 @@ import { GenerationsTable, DollsList } from "@/components/admin/UserSections";
 import { CreditAdjustForm } from "@/components/admin/CreditAdjustForm";
 import { ReactivateAccountForm } from "@/components/admin/ReactivateAccountForm";
 import { Pagination } from "@/components/Pagination";
+import { PaperPanel } from "@/components/dossier";
 import { fmtKst, shortId, firstParam } from "@/lib/admin-format";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +57,7 @@ export default async function AdminUserDetailPage({
     return (
       <main className="flex flex-1 flex-col px-5 py-8">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
-          <h1 className="text-2xl font-bold">유저 상세</h1>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold">유저 상세</h1>
           <p className="text-sm text-zinc-500">
             회원(member_accounts)이 아니거나 존재하지 않는 유저예요. (id: {shortId(id)})
           </p>
@@ -90,7 +91,7 @@ export default async function AdminUserDetailPage({
         {/* 회원 기본정보 */}
         <section className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold">{member.displayName ?? "(닉네임 없음)"}</h1>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold">{member.displayName ?? "(닉네임 없음)"}</h1>
             {member.isAdmin && (
               <span className="rounded-full border border-emerald-600/40 px-2 py-0.5 text-xs text-emerald-600">
                 admin
@@ -125,7 +126,7 @@ export default async function AdminUserDetailPage({
         )}
 
         {/* CS 크레딧 조정 */}
-        <section>
+        <PaperPanel className="p-3">
           <h2 className="mb-2 text-sm font-bold text-zinc-500">CS 크레딧 조정</h2>
           <CreditAdjustForm
             target={{
@@ -134,43 +135,51 @@ export default async function AdminUserDetailPage({
               genCredits: member.genCredits,
             }}
           />
-        </section>
+        </PaperPanel>
 
         {/* 결제 · 크레딧 */}
-        <section className="flex flex-col gap-3">
+        <PaperPanel className="flex flex-col gap-3 p-3">
           <h2 className="text-sm font-bold text-zinc-500">결제 내역 ({orders.total})</h2>
-          <OrdersTable rows={orders.rows} />
+          <div className="overflow-x-auto">
+            <OrdersTable rows={orders.rows} />
+          </div>
           <Pagination
             page={orders.page}
             totalPages={pp(orders.total, orders.pageSize)}
             hrefFor={hrefFor("ordersPage")}
           />
           <h2 className="mt-2 text-sm font-bold text-zinc-500">크레딧 조정/환불 이력 ({adjustments.total})</h2>
-          <LedgerTable rows={adjustments.rows} />
+          <div className="overflow-x-auto">
+            <LedgerTable rows={adjustments.rows} />
+          </div>
           <Pagination
             page={adjustments.page}
             totalPages={pp(adjustments.total, adjustments.pageSize)}
             hrefFor={hrefFor("adjPage")}
           />
-        </section>
+        </PaperPanel>
 
         {/* 콘텐츠 */}
-        <section className="flex flex-col gap-3">
+        <PaperPanel className="flex flex-col gap-3 p-3">
           <h2 className="text-sm font-bold text-zinc-500">AI 생성 내역 ({generations.total})</h2>
-          <GenerationsTable rows={generations.rows} cfg={roleCfg} />
+          <div className="overflow-x-auto">
+            <GenerationsTable rows={generations.rows} cfg={roleCfg} />
+          </div>
           <Pagination
             page={generations.page}
             totalPages={pp(generations.total, generations.pageSize)}
             hrefFor={hrefFor("genPage")}
           />
           <h2 className="mt-2 text-sm font-bold text-zinc-500">보유 캐릭터 ({dolls.total})</h2>
-          <DollsList rows={dolls.rows} cfg={roleCfg} />
+          <div className="overflow-x-auto">
+            <DollsList rows={dolls.rows} cfg={roleCfg} />
+          </div>
           <Pagination
             page={dolls.page}
             totalPages={pp(dolls.total, dolls.pageSize)}
             hrefFor={hrefFor("dollsPage")}
           />
-        </section>
+        </PaperPanel>
       </div>
     </main>
   );

@@ -5,6 +5,7 @@ import { OrdersTable } from "@/components/admin/OrdersTable";
 import { OrdersFilter } from "@/components/admin/OrdersFilter";
 import { Pagination } from "@/components/Pagination";
 import { firstParam } from "@/lib/admin-format";
+import { PaperPanel } from "@/components/dossier";
 
 // 전체 주문 — 실시간 운영이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -45,12 +46,14 @@ export default async function AdminOrdersPage({
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="text-2xl font-bold">전체 주문</h1>
+        <h1 className="font-display text-2xl font-bold sm:text-3xl">전체 주문</h1>
         <OrdersFilter status={status} q={q} />
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-steel">
           총 {total.toLocaleString()}건{(status || q) && " (필터 적용)"}
         </p>
-        <OrdersTable rows={rows} />
+        <PaperPanel className="overflow-x-auto">
+          <OrdersTable rows={rows} />
+        </PaperPanel>
         <Pagination page={page} totalPages={totalPages} hrefFor={buildHref} />
       </div>
     </main>

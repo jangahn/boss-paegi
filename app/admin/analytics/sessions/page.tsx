@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-server";
 import { getRecentSessions } from "@/lib/admin-analytics";
+import { PaperPanel } from "@/components/dossier";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,12 +21,12 @@ export default async function SessionsPage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         <div className="flex items-center gap-2">
           <Link href="/admin/analytics" className="text-sm text-sky-600 underline">← 분석</Link>
-          <h1 className="text-2xl font-bold">최근 세션</h1>
+          <h1 className="font-display text-2xl sm:text-3xl">최근 세션</h1>
         </div>
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-400">아직 세션이 없어요.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-foreground/10">
+          <PaperPanel className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-foreground/5 text-zinc-500">
                 <tr>
@@ -54,7 +55,7 @@ export default async function SessionsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </PaperPanel>
         )}
       </div>
     </main>
