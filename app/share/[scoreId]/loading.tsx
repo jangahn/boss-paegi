@@ -6,7 +6,7 @@ export default function Loading() {
         {/* 하이라이트 영상/배지 자리 */}
         <div className="mb-5 h-40 w-full animate-pulse rounded-2xl bg-foreground/10" />
         {/* 보고서 카드 자리 */}
-        <div className="rounded-lg bg-paper-2 p-5 shadow-2xl">
+        <div className="rounded-lg ui-surface p-5 shadow-2xl">
           <div className="mx-auto h-5 w-44 animate-pulse rounded bg-zinc-300" />
           <div className="mt-4 flex gap-3">
             <div className="aspect-square w-24 animate-pulse rounded-xl bg-zinc-100" />

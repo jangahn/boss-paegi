@@ -86,7 +86,7 @@ export function FunnelView({ funnel }: { funnel: Funnel }) {
     <>
       <div className="grid grid-cols-5 gap-1 text-center">
         {steps.map((st) => (
-          <div key={st.key} className="rounded-lg border border-foreground/10 bg-paper-2 p-2">
+          <div key={st.key} className="rounded-lg border border-foreground/10 ui-surface p-2">
             <p className="text-[10px] text-zinc-500">{st.label}</p>
             <p className="text-base font-bold tabular-nums">{(funnel[st.key] ?? 0).toLocaleString()}</p>
             {st.key !== "entered" && <p className="text-[10px] text-amber-600">{pct(funnel[st.key] ?? 0, entered)}</p>}
@@ -258,7 +258,7 @@ export function MapStickinessCard({ data }: { data: MapStickiness }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-foreground/10 bg-paper-2 p-2 text-center">
+    <div className="rounded-lg border border-foreground/10 ui-surface p-2 text-center">
       <p className="text-[10px] text-zinc-500">{label}</p>
       <p className="mt-0.5 text-base font-bold tabular-nums">{value}</p>
     </div>

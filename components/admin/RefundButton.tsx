@@ -112,7 +112,7 @@ export function RefundButton({ order }: { order: Order }) {
                 placeholder="환불 사유(5~500자)"
                 maxLength={500}
                 rows={2}
-                className="mt-3 w-full rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm outline-none"
+                className="mt-3 w-full rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none"
               />
               {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
               <div className="mt-3 flex justify-end gap-2">

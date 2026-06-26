@@ -84,7 +84,7 @@ export default async function HistoryDetailPage({
           </Link>
 
           {/* ── 보고서 (종이) — 회고용 축약판 ───────────────── */}
-          <div className="rounded-lg bg-paper-2 p-5 text-zinc-900 shadow-2xl">
+          <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
             <div className="border-b-2 border-zinc-800 pb-3 text-center">
               <p className="text-[10px] tracking-[0.3em] text-zinc-500">
                 {reportNo(score.id, score.created_at)}

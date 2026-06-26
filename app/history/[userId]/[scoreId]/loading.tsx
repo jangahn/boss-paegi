@@ -8,7 +8,7 @@ export default function Loading() {
       <main className="flex flex-1 flex-col items-center px-4 py-8">
         <div className="w-full max-w-sm">
           <div className="mb-3 h-4 w-24 animate-pulse rounded bg-foreground/10" />
-          <div className="rounded-lg bg-paper-2 p-5 shadow-2xl">
+          <div className="rounded-lg ui-surface p-5 shadow-2xl">
             <div className="mx-auto h-5 w-44 animate-pulse rounded bg-zinc-300" />
             <div className="mt-4 flex gap-3">
               <div className="aspect-square w-24 animate-pulse rounded-xl bg-zinc-100" />

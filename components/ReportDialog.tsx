@@ -107,14 +107,14 @@ export function ReportDialog({
         maxLength={2000}
         rows={3}
         placeholder="상세 내용 (선택)"
-        className="mt-3 w-full resize-none rounded-xl border border-foreground/15 bg-transparent p-2.5 text-sm outline-none focus:border-foreground/30"
+        className="mt-3 w-full resize-none rounded-xl border border-foreground/15 ui-field p-2.5 text-sm outline-none focus:border-foreground/30"
       />
       <input
         value={contact}
         onChange={(e) => setContact(e.target.value)}
         maxLength={200}
         placeholder="연락처 (선택) — 처리 관련 연락을 받을 수 있어요"
-        className="mt-2 w-full rounded-xl border border-foreground/15 bg-transparent p-2.5 text-sm outline-none focus:border-foreground/30"
+        className="mt-2 w-full rounded-xl border border-foreground/15 ui-field p-2.5 text-sm outline-none focus:border-foreground/30"
       />
 
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
@@ -123,7 +123,7 @@ export function ReportDialog({
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+          className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm font-medium transition hover:bg-foreground/5"
         >
           취소
         </button>

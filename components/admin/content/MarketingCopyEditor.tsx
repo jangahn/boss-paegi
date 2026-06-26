@@ -220,7 +220,7 @@ export function MarketingCopyEditor({
                     maxLength={fld.max}
                     onFocus={() => setFocused(fld.k)}
                     onChange={(e) => setField(fld.sec, fld.k, e.target.value)}
-                    className="h-16 w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+                    className="h-16 w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
                   />
                 ) : (
                   <input
@@ -228,7 +228,7 @@ export function MarketingCopyEditor({
                     maxLength={fld.max}
                     onFocus={() => setFocused(fld.k)}
                     onChange={(e) => setField(fld.sec, fld.k, e.target.value)}
-                    className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+                    className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
                   />
                 )}
                 {val.includes("{") && (

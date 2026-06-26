@@ -124,7 +124,7 @@ export function RoleContentEditor({
 
   // 공통 textarea/input 스타일
   const inputCls =
-    "w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40";
+    "w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40";
 
   return (
     <div className="mt-5 flex flex-col gap-5">

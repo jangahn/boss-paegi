@@ -96,7 +96,7 @@ export function SessionLimitsEditor({
           max={maxPlaySeconds}
           value={playSec}
           onChange={(e) => setPlaySec(e.target.value)}
-          className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+          className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
         />
         <span className="text-[11px] text-zinc-400">= {mmss} 후 자동 종료 (예: 90초 = 1분 30초)</span>
       </label>
@@ -112,7 +112,7 @@ export function SessionLimitsEditor({
           max={maxScoreHard}
           value={score}
           onChange={(e) => setScore(e.target.value)}
-          className="w-full rounded-lg border border-foreground/15 bg-transparent p-2 text-sm outline-none focus:border-foreground/40"
+          className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
         />
         <span className="text-[11px] text-zinc-400">이 점수에 도달하면 자동 종료</span>
       </label>

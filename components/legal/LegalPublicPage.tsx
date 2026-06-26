@@ -42,7 +42,7 @@ export async function LegalPublicPage({
   return (
     <>
       <AppNav />
-      <main className="flex flex-1 flex-col bg-paper-2 px-5 py-10">
+      <main className="flex flex-1 flex-col ui-surface px-5 py-10">
         <div className="mx-auto w-full max-w-2xl">
           <Link
             href="/"

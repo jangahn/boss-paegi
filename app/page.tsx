@@ -31,7 +31,7 @@ export default function Home() {
       <AppNav />
       <main className="flex flex-1 flex-col items-center px-6 py-12">
         <div className="flex w-full max-w-sm flex-col gap-6">
-          <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 bg-paper-2 px-7 pb-7 pt-10 text-center shadow-sm">
+          <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
             <h1 className="font-display text-4xl tracking-tight text-ink">
@@ -50,7 +50,7 @@ export default function Home() {
               </Link>
               <Link
                 href="/play"
-                className="rounded-full border border-foreground/15 bg-paper-2 px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
+                className="rounded-full border border-foreground/15 ui-surface px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
               >
                 {home.secondaryCta}
               </Link>

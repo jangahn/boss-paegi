@@ -25,7 +25,7 @@ export function LedgerFilter({ actionType }: { actionType: string | null }) {
             router.push(`/admin/ledger${e.target.value ? `?type=${e.target.value}` : ""}`)
           )
         }
-        className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+        className="rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
       >
         {TYPES.map((t) => (
           <option key={t.v} value={t.v}>

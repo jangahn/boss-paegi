@@ -86,7 +86,7 @@ export function AccountMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 bg-paper-2 py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
+        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 ui-surface py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="내 계정"
@@ -106,7 +106,7 @@ export function AccountMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2 py-1 shadow-xl"
+          className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 ui-surface py-1 shadow-xl"
         >
           {!isMember && (
             <Link
@@ -275,14 +275,14 @@ function NicknameEditor({
           if (e.key === "Enter") void handleSave();
           if (e.key === "Escape") onClose();
         }}
-        className="mt-4 w-full rounded-xl border border-foreground/15 bg-transparent px-4 py-3 text-base outline-none focus:border-foreground/40"
+        className="mt-4 w-full rounded-xl border border-foreground/15 ui-field px-4 py-3 text-base outline-none focus:border-foreground/40"
       />
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       <div className="mt-4 flex gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+          className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm font-medium transition hover:bg-foreground/5"
         >
           취소
         </button>

@@ -77,7 +77,7 @@ export function CreditAdjustForm({ target }: { target: Target }) {
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
+    <div className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
       <div className="text-xs">
         <b>{target.displayName ?? "(닉네임 없음)"}</b> · 현재{" "}
         <b className="tabular-nums">{target.genCredits}</b>개
@@ -89,14 +89,14 @@ export function CreditAdjustForm({ target }: { target: Target }) {
           onChange={(e) => setDelta(e.target.value)}
           placeholder="±delta(-100~100, ≠0)"
           aria-invalid={notInt || outOfRange || isZero}
-          className="w-32 rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm outline-none aria-invalid:border-red-400"
+          className="w-32 rounded-lg border border-foreground/15 ui-field px-2 py-1.5 text-sm outline-none aria-invalid:border-red-400"
         />
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="사유(5~500자)"
           maxLength={500}
-          className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-foreground/15 ui-field px-2 py-1.5 text-sm outline-none"
         />
         <button
           type="button"

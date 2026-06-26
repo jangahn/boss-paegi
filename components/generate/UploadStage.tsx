@@ -16,7 +16,7 @@ export function UploadStage({
         </p>
       </div>
 
-      <div className="w-full rounded-2xl border border-foreground/10 bg-paper-2 p-4 text-xs leading-relaxed">
+      <div className="w-full rounded-2xl border border-foreground/10 ui-surface p-4 text-xs leading-relaxed">
         <p className="mb-2 font-semibold text-foreground/80">좋은 결과를 위한 팁</p>
         <ul className="space-y-1 text-zinc-500">
           <li>

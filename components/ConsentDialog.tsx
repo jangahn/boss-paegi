@@ -36,7 +36,7 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
               key={item.id}
               onClick={() => toggle(item.id)}
               aria-pressed={on}
-              className="flex w-full cursor-pointer touch-manipulation select-none items-start gap-3 rounded-xl border border-foreground/15 bg-paper-2 p-3 text-left transition hover:bg-foreground/5 active:scale-[0.99] active:bg-foreground/10"
+              className="flex w-full cursor-pointer touch-manipulation select-none items-start gap-3 rounded-xl border border-foreground/15 ui-surface p-3 text-left transition hover:bg-foreground/5 active:scale-[0.99] active:bg-foreground/10"
             >
               <span
                 aria-hidden

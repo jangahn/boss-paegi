@@ -33,6 +33,7 @@ npm run dev                  # http://localhost:3000
 OG 히어로의 톤앤매너를 사이트 전체로 확장. **크림 마닐라 종이 + 네이비 잉크 + 스탬프 레드 + 골드**의 풍자적 서류철 컨셉(단계별 PR 로 전환 중).
 
 - **토큰은 `app/globals.css` `@theme` 단일 출처.** 시맨틱 토큰(`bg-paper`/`text-ink`/`bg-stamp`/`text-gold`/`border-line`/`bg-steel`)을 쓰고, 기존 유틸(`zinc`/`amber`/`red`/`emerald`/`sky`)은 도시에 팔레트로 **리맵**돼 자동 워밍됨. 새 하드코딩 hex 금지.
+- **표면 역할 캐논(케이스별 불일치 종식).** 같은 시각 역할을 파일마다 다른 클래스로 쓰던 게 불일치 재발 원인 → `globals.css` 상단 주석 표를 **유일한 정답**으로 고정. 핵심 역할 클래스: **`ui-surface`**(`@utility`, =`var(--color-paper-2)`) = 떠 있는 오프화이트/다크 면(카드·패널·메뉴·모달·드롭다운·2차버튼·표 헤더), **`ui-field`**(=투명) = 입력 필드(input/textarea/select). 페이지=`bg-background`, 1차버튼=`bg-foreground text-paper-2`, 표 바디행=배경없음, 칩=`border`만, 차트/옅은노트=`bg-foreground/5`, 상태틴트=의미색. **새 표면은 raw `bg-*` 대신 역할 클래스 사용**(`bg-paper-2`는 opacity 필요 시 예외).
 - **단일 라이트 테마(플레이 모드).** `@custom-variant dark` 로 `dark:` 유틸 무력화(OS 다크에서도 크림 고정). 카카오 옐로우 등 **브랜드 색은 리맵 예외**(그대로 유지).
 - **어드민 = 다크 '운영 콘솔' 테마.** `/admin/*`(`app/admin/layout.tsx` 래퍼에 `.theme-admin`)만 **브랜드 네이비 다크**로 스위칭 — 플레이(크림)와 운영을 시각적으로 분리. 구현은 **CSS 변수 스코프 오버라이드**(`globals.css` `.theme-admin` 가 `--background`/`--foreground` + 모든 `--color-*` 램프를 다크값으로 재정의) → **같은 유틸 클래스가 컴포넌트 수정 0으로 다크 렌더**. 상단에 골드 "운영 모드" 스트립. 공개 영역은 무영향(스코프가 어드민 서브트리 한정).
 - **디스플레이 폰트 = Gmarket Sans Bold**(타이틀·점수, `font-display` / `globals.css` `@font-face`, jsdelivr `fonts-archive`). 단일 face 로 전 weight 매핑. 본문은 Pretendard 스택. 한글 제목은 `word-break: keep-all`로 어절 단위 줄바꿈(소형폰 단어중간 깨짐 방지).

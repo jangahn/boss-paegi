@@ -49,7 +49,7 @@ export function ReportFilter({
 
   const hasFilter = state !== "pending" || !!dollId || !!ownerId;
   const inputCls =
-    "w-44 rounded-lg border border-foreground/15 bg-transparent px-2.5 py-2 font-mono text-xs outline-none focus:border-foreground/40 disabled:opacity-50";
+    "w-44 rounded-lg border border-foreground/15 ui-field px-2.5 py-2 font-mono text-xs outline-none focus:border-foreground/40 disabled:opacity-50";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -57,7 +57,7 @@ export function ReportFilter({
         value={state}
         disabled={pending}
         onChange={(e) => go({ state: e.target.value })}
-        className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+        className="rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
       >
         {STATES.map((t) => (
           <option key={t.v} value={t.v}>

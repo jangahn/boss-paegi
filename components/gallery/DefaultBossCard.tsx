@@ -43,9 +43,9 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
 
   return (
     <div className="group relative">
-      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 bg-paper-2">
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
         {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-paper-2" />
+          <div className="absolute inset-0 animate-pulse ui-surface" />
         )}
         {/* 이미지 영역만 Link — 카드 전체를 Link 로 감싸지 않음(⋯ 버튼은 Link 밖) */}
         <Link href="/play" className="block h-full w-full">
@@ -98,7 +98,7 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
                   setMenuOpen(false);
                 }}
               />
-              <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 bg-paper-2 shadow-2xl">
+              <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 ui-surface shadow-2xl">
                 <MenuItem onClick={() => hook(SHARE_HOOK)}>공유</MenuItem>
                 <MenuItem onClick={() => hook(ROLE_HOOK)}>역할 변경</MenuItem>
               </div>

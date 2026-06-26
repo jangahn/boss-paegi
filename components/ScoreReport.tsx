@@ -57,7 +57,7 @@ export function ScoreReport({
   submitError: string | null;
 }) {
   return (
-    <div className="rounded-lg bg-paper-2 p-5 text-zinc-900 shadow-2xl">
+    <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
       {/* 헤더 */}
       <div className="border-b-2 border-zinc-800 pb-3 text-center">
         <p className="text-[10px] tracking-[0.3em] text-zinc-500">{docNo}</p>

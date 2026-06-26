@@ -51,7 +51,7 @@ export default async function AdminUsersPage({
                     <li key={c.userId}>
                       <Link
                         href={`/admin/users/${c.userId}`}
-                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl border border-foreground/10 bg-paper-2 p-3 text-sm transition hover:bg-foreground/10"
+                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl border border-foreground/10 ui-surface p-3 text-sm transition hover:bg-foreground/10"
                       >
                         <b>{c.displayName ?? "(닉네임 없음)"}</b>
                         {c.isAdmin && (

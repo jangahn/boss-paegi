@@ -23,7 +23,7 @@ export function MemberSearch({ q }: { q: string | null }) {
         disabled={pending}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="이메일 / 닉네임(부분) / userId(정확)"
-        className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
+        className="min-w-0 flex-1 rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40 disabled:opacity-50"
       />
       <button
         type="submit"

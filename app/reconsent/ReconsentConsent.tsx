@@ -65,7 +65,7 @@ export function ReconsentConsent({ next }: { next: string }) {
             return (
               <div
                 key={item.id}
-                className="flex items-start gap-3 rounded-xl border border-foreground/15 bg-paper-2 p-3"
+                className="flex items-start gap-3 rounded-xl border border-foreground/15 ui-surface p-3"
               >
                 <button
                   type="button"
