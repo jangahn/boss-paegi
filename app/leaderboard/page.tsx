@@ -52,7 +52,7 @@ export default function LeaderboardPage() {
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="font-display text-4xl tracking-tight text-ink">랭킹</h1>
+            <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">랭킹</h1>
             <Link
               href="/play"
               className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background"

@@ -76,7 +76,7 @@ export default function CreditsPage() {
         <div className="mx-auto flex w-full max-w-md flex-col gap-5">
           <PaperPanel folded className="relative px-7 pb-6 pt-10">
             <Paperclip className="left-7" />
-            <h1 className="font-display text-4xl tracking-tight text-ink">생성권 충전</h1>
+            <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">생성권 충전</h1>
             <DashedDivider className="my-4" />
             <p className="text-sm text-zinc-500">
               캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.

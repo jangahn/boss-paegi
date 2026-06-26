@@ -12,6 +12,7 @@ import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
+import { PaperPanel, Paperclip, RubberStamp } from "@/components/dossier";
 
 const DEFAULT_BOSS = "/sprites/boss-default.png";
 
@@ -104,12 +105,13 @@ export default async function DollPage({
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         {/* ── 인사기록카드 (종이) ─────────────────────────── */}
-        <div className="rounded-lg bg-[#fbfaf6] p-5 text-zinc-900 shadow-2xl">
-          <div className="border-b-2 border-zinc-800 pb-3 text-center">
-            <p className="text-[10px] tracking-[0.3em] text-zinc-500">
+        <PaperPanel folded className="relative px-5 pb-5 pt-8 text-ink">
+          <Paperclip className="left-6" />
+          <div className="border-b-2 border-line pb-3 text-center">
+            <p className="text-[10px] tracking-[0.3em] text-steel">
               {reportNo(doll.id, doll.created_at)}
             </p>
-            <h1 className="mt-1 text-xl font-extrabold tracking-tight">
+            <h1 className="mt-1 font-display text-2xl tracking-tight text-ink sm:text-3xl">
               인사기록카드
             </h1>
           </div>
@@ -120,12 +122,12 @@ export default async function DollPage({
               <FadeImg
                 src={imgSrc}
                 alt={`${rlabel} 증명사진`}
-                className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100"
+                className="aspect-[3/4] w-28 rounded-md border-2 border-line bg-paper-3"
                 fit="contain"
                 placeholder="pulse"
                 fallbackSrc="/sprites/boss-default.png"
               />
-              <p className="mt-1 text-center text-[10px] text-zinc-400">
+              <p className="mt-1 text-center text-[10px] text-steel">
                 (증명사진)
               </p>
             </div>
@@ -143,31 +145,31 @@ export default async function DollPage({
             </dl>
           </div>
 
-          <div className="mt-4 rounded-md border border-dashed border-zinc-400 bg-zinc-50 p-3">
-            <p className="text-[10px] font-semibold text-zinc-500">특이사항</p>
-            <p className="mt-0.5 text-sm font-medium">&ldquo;{trait}&rdquo;</p>
+          <div className="mt-4 rounded-md border border-dashed border-line bg-paper-3/50 p-3">
+            <p className="text-[10px] font-semibold text-steel">특이사항</p>
+            <p className="mt-0.5 text-sm font-medium text-ink">&ldquo;{trait}&rdquo;</p>
           </div>
 
           <div className="mt-3 flex justify-end">
-            <span className="inline-block -rotate-12 rounded-full border-2 border-red-500 px-2 py-1.5 text-[10px] font-bold text-red-500">
+            <RubberStamp tone="stamp" className="text-[10px]">
               관리대상
-            </span>
+            </RubberStamp>
           </div>
-        </div>
+        </PaperPanel>
 
         {/* ── 후킹 CTA ───────────────────────────────────── */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-zinc-400">{resolveCopy(mk.share.dollHook, rlabel)}</p>
+          <p className="text-sm text-steel">{resolveCopy(mk.share.dollHook, rlabel)}</p>
           <div className="mt-3 flex flex-col gap-2.5">
             <Link
               href="/generate"
-              className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
+              className="rounded-lg bg-foreground px-6 py-4 text-base font-bold text-background transition hover:opacity-90"
             >
               {resolveCopy(mk.share.dollCtaMake, rlabel)}
             </Link>
             <Link
               href="/play"
-              className="rounded-full border border-foreground/15 px-6 py-3.5 text-sm font-medium transition hover:bg-foreground/5"
+              className="rounded-lg border-2 border-line px-6 py-3.5 text-sm font-semibold text-ink transition hover:bg-paper-3/60"
             >
               {mk.share.dollCtaDefault}
             </Link>
@@ -190,11 +192,11 @@ function CardRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline gap-3 border-b border-zinc-200 pb-1.5">
-      <dt className="w-12 shrink-0 text-xs font-semibold text-zinc-500">
+    <div className="flex items-baseline gap-3 border-b border-line pb-1.5">
+      <dt className="w-12 shrink-0 text-xs font-semibold text-steel">
         {label}
       </dt>
-      <dd className="flex-1">{children}</dd>
+      <dd className="min-w-0 flex-1 text-ink">{children}</dd>
     </div>
   );
 }

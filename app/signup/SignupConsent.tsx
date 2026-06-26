@@ -51,7 +51,7 @@ export function SignupConsent({ next }: { next: string }) {
       <PaperPanel folded className="relative mx-auto flex w-full max-w-md flex-col gap-6 px-7 pb-7 pt-10">
         <Paperclip className="left-7" />
         <div>
-          <h1 className="font-display text-4xl tracking-tight text-ink">{SERVICE_NAME} 회원가입</h1>
+          <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">{SERVICE_NAME} 회원가입</h1>
           <p className="mt-2 text-sm text-zinc-500">
             가입을 완료하려면 아래에 동의해주세요.
           </p>
