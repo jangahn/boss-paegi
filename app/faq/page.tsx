@@ -37,7 +37,7 @@ export default async function FaqPage() {
     <>
       <AppNav />
       <JsonLd data={faqLd} />
-      <main className="flex flex-1 flex-col px-5 py-10">
+      <main className="flex flex-1 flex-col bg-paper-2 px-5 py-10">
         <div className="mx-auto w-full max-w-2xl">
           <h1 className="text-2xl font-bold tracking-tight">{SERVICE_NAME} 소개</h1>
           <p className="mt-4 text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">{sc.intro}</p>
