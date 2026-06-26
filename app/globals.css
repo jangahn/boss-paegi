@@ -31,7 +31,7 @@
 @theme {
   /* ── 도시에 시맨틱 토큰 (신규 컴포넌트용: bg-paper / text-ink / bg-stamp / text-gold ...) ── */
   --color-paper: #f7ebdb;
-  --color-paper-2: #fdf6ec; /* 살짝 밝은 종이(올라온 면) */
+  --color-paper-2: #fbfaf6; /* 오프화이트 — 종이/서류 카드 표면(보고서·홈/로그인 파일카드·인형카드 통일) */
   --color-paper-3: #ece0cd; /* 가라앉은 종이(구분·홈) */
   --color-ink: #11233a;
   --color-steel: #4b5d74; /* 보조 잉크(스틸) */

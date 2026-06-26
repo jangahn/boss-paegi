@@ -40,7 +40,7 @@ export default function Home() {
       <AppNav />
       <main className="flex flex-1 flex-col items-center px-4 py-10">
         <div className="flex w-full max-w-md flex-col gap-5">
-          <div className="relative rounded-2xl border border-foreground/10 bg-paper-2/70 px-7 pb-7 pt-10 text-center shadow-sm">
+          <div className="relative rounded-2xl border border-foreground/10 bg-paper-2 px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
             <h1 className="font-display text-5xl tracking-tight text-ink">
