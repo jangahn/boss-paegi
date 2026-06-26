@@ -70,7 +70,7 @@ export function ReportDialog({
         <button
           type="button"
           onClick={onClose}
-          className="mt-4 w-full rounded-full bg-foreground py-2.5 text-sm font-semibold text-background transition hover:opacity-90"
+          className="mt-4 w-full rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90"
         >
           닫기
         </button>
@@ -123,7 +123,7 @@ export function ReportDialog({
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+          className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
         >
           취소
         </button>

@@ -230,7 +230,7 @@ export function GrowthLeversEditor({
         type="button"
         onClick={() => setConfirm(true)}
         disabled={busy}
-        className="flex items-center justify-center gap-2 rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+        className="flex items-center justify-center gap-2 rounded-full bg-foreground py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-40"
       >
         {busy && <Spinner className="h-4 w-4" />}
         발행 (실결제 반영)
@@ -246,14 +246,14 @@ export function GrowthLeversEditor({
             <button
               type="button"
               onClick={() => setConfirm(false)}
-              className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm"
+              className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm"
             >
               취소
             </button>
             <button
               type="button"
               onClick={() => void publish()}
-              className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background"
+              className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2"
             >
               발행
             </button>

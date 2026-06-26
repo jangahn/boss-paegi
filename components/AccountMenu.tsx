@@ -86,7 +86,7 @@ export function AccountMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
+        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 bg-paper-2 py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="내 계정"
@@ -282,7 +282,7 @@ function NicknameEditor({
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-full border border-foreground/15 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+          className="flex-1 rounded-full border border-foreground/15 bg-paper-2 py-2.5 text-sm font-medium transition hover:bg-foreground/5"
         >
           취소
         </button>
@@ -290,7 +290,7 @@ function NicknameEditor({
           type="button"
           onClick={() => void handleSave()}
           disabled={saving || value.trim().length < 2}
-          className="flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground py-2.5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+          className="flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-40"
         >
           {saving && <Spinner className="h-4 w-4" />}
           저장

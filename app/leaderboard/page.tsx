@@ -54,7 +54,7 @@ export default function LeaderboardPage() {
             <h1 className="text-2xl font-bold">랭킹</h1>
             <Link
               href="/play"
-              className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background"
+              className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2"
             >
               패러 가기
             </Link>
@@ -128,7 +128,7 @@ function Tab({
       type="button"
       onClick={onClick}
       className={`flex-1 rounded-full py-2 text-center transition ${
-        active ? "bg-foreground text-background" : "text-zinc-500 hover:text-foreground"
+        active ? "bg-foreground text-paper-2" : "text-zinc-500 hover:text-foreground"
       }`}
     >
       {children}

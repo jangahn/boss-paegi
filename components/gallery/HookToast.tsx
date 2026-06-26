@@ -28,7 +28,7 @@ export function HookToast({
         <p className="flex-1 text-sm leading-snug">{message}</p>
         <Link
           href={cta.href}
-          className="shrink-0 rounded-full bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition hover:opacity-90"
+          className="shrink-0 rounded-full bg-foreground px-3 py-1.5 text-xs font-semibold text-paper-2 transition hover:opacity-90"
         >
           {cta.label}
         </Link>

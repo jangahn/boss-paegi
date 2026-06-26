@@ -102,7 +102,7 @@ export function CreditAdjustForm({ target }: { target: Target }) {
           type="button"
           onClick={() => void apply()}
           disabled={!canApply}
-          className="flex items-center gap-1 rounded-lg bg-foreground px-3 py-1.5 text-sm font-semibold text-background disabled:opacity-40"
+          className="flex items-center gap-1 rounded-lg bg-foreground px-3 py-1.5 text-sm font-semibold text-paper-2 disabled:opacity-40"
         >
           {busy && <Spinner className="h-3.5 w-3.5" />}적용
         </button>

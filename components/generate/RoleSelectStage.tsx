@@ -74,7 +74,7 @@ export function RoleSelectStage({
       <button
         type="button"
         onClick={() => onConfirm(selected)}
-        className="w-full rounded-full bg-foreground py-3 font-semibold text-background transition hover:opacity-90"
+        className="w-full rounded-full bg-foreground py-3 font-semibold text-paper-2 transition hover:opacity-90"
       >
         이 역할로 캐릭터 만들기
       </button>

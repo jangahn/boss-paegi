@@ -125,14 +125,14 @@ export function PhotoCropper({
         <button
           onClick={onCancel}
           disabled={busy}
-          className="rounded-full border border-foreground/15 py-3 font-medium transition hover:bg-foreground/5 disabled:opacity-30"
+          className="rounded-full border border-foreground/15 bg-paper-2 py-3 font-medium transition hover:bg-foreground/5 disabled:opacity-30"
         >
           {cancelLabel}
         </button>
         <button
           onClick={handleConfirm}
           disabled={busy || !croppedArea}
-          className="rounded-full bg-foreground py-3 font-semibold text-background transition disabled:cursor-not-allowed disabled:opacity-30"
+          className="rounded-full bg-foreground py-3 font-semibold text-paper-2 transition disabled:cursor-not-allowed disabled:opacity-30"
         >
           {busy ? "처리 중…" : confirmLabel}
         </button>

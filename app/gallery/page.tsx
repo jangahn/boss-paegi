@@ -197,7 +197,7 @@ export default function GalleryPage() {
                 </div>
                 <Link
                   href={ctaFor(state).href}
-                  className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90"
+                  className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition hover:opacity-90"
                 >
                   {mk.signupBanner.memberHeaderCta}
                 </Link>
