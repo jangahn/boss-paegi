@@ -77,60 +77,65 @@ export default function AccountPage() {
     <>
       <AppNav />
       <main className="flex flex-1 flex-col px-5 py-8">
-        <div className="mx-auto w-full max-w-md">
-          <h1 className="text-2xl font-bold">회원정보</h1>
+        <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+          <h1 className="text-2xl font-bold text-foreground">회원정보</h1>
 
-          {/* 프로필 사진 */}
-          <section className="mt-6 flex items-center gap-4">
-            <FadeImg
-              src={avatar}
-              className="h-16 w-16 shrink-0 rounded-full border border-foreground/10"
-              loading="eager"
-              fallbackSrc={DEFAULT_AVATAR}
-            />
-            <button
-              type="button"
-              onClick={() => setEditingAvatar(true)}
-              className="rounded-full border border-foreground/15 px-4 py-2 text-sm font-medium transition hover:bg-foreground/5"
-            >
-              프로필 사진 변경
-            </button>
-          </section>
-
-          {/* 닉네임 */}
-          <section className="mt-6 flex flex-col gap-1.5">
-            <span className="text-sm font-semibold text-zinc-500">
-              닉네임 <span className="text-zinc-400">({NICKNAME_MAX}자 이내)</span>
-            </span>
-            <div className="flex gap-2">
-              <input
-                value={nick}
-                maxLength={NICKNAME_MAX}
-                onChange={(e) => setNick(e.target.value)}
-                className="flex-1 rounded-lg border border-foreground/15 bg-transparent p-2.5 text-sm outline-none focus:border-foreground/40"
+          {/* 프로필 카드 — 사진 + 닉네임 */}
+          <section className="rounded-2xl border border-foreground/10 bg-paper-2 p-6">
+            {/* 프로필 사진 (중앙) */}
+            <div className="flex flex-col items-center gap-3">
+              <FadeImg
+                src={avatar}
+                className="h-24 w-24 shrink-0 rounded-full border border-foreground/10 object-cover"
+                loading="eager"
+                fallbackSrc={DEFAULT_AVATAR}
               />
               <button
                 type="button"
-                onClick={() => void saveNick()}
-                disabled={savingNick || nick.trim().length < 2 || nick === profile.display_name}
-                className="flex items-center gap-2 rounded-full bg-foreground px-5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                onClick={() => setEditingAvatar(true)}
+                className="rounded-full border border-foreground/15 px-4 py-1.5 text-sm font-medium transition hover:bg-foreground/5"
               >
-                {savingNick && <Spinner className="h-4 w-4" />}
-                저장
+                프로필 사진 변경
               </button>
             </div>
-            {nickMsg && (
-              <p className={`text-xs ${nickMsg.ok ? "text-emerald-600" : "text-red-400"}`}>
-                {nickMsg.text}
-              </p>
-            )}
+
+            <hr className="my-5 border-t border-foreground/10" />
+
+            {/* 닉네임 */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-zinc-500">
+                닉네임 <span className="font-normal text-zinc-400">({NICKNAME_MAX}자 이내)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  value={nick}
+                  maxLength={NICKNAME_MAX}
+                  onChange={(e) => setNick(e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:border-foreground/40"
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveNick()}
+                  disabled={savingNick || nick.trim().length < 2 || nick === profile.display_name}
+                  className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                >
+                  {savingNick && <Spinner className="h-4 w-4" />}
+                  저장
+                </button>
+              </div>
+              {nickMsg && (
+                <p className={`text-xs ${nickMsg.ok ? "text-emerald-600" : "text-red-400"}`}>
+                  {nickMsg.text}
+                </p>
+              )}
+            </div>
           </section>
 
           <WithdrawSection />
 
           <Link
             href="/"
-            className="mt-8 inline-block text-sm text-zinc-500 underline-offset-4 hover:text-foreground hover:underline"
+            className="text-sm text-zinc-500 underline-offset-4 hover:text-foreground hover:underline"
           >
             ← 홈
           </Link>
@@ -194,7 +199,7 @@ function WithdrawSection() {
   };
 
   return (
-    <div className="mt-12 border-t border-foreground/10 pt-6">
+    <div className="border-t border-foreground/10 pt-6">
       {!open ? (
         <button
           type="button"
