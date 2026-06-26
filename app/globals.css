@@ -134,6 +134,117 @@ body {
   overscroll-behavior: none;
 }
 
+/*
+ * 어드민 '운영 콘솔' 다크 테마 — 플레이(크림) 모드와 시각적으로 분리.
+ * app/admin/layout.tsx 래퍼에 .theme-admin 을 붙이면, 같은 유틸 클래스가
+ * 아래 CSS 변수 오버라이드를 통해 브랜드 네이비 다크로 스위칭된다(컴포넌트 수정 0).
+ * @theme inline 인 background/foreground 는 원본 변수(--background/--foreground)를,
+ * 그 외 램프는 --color-* 를 덮는다. 라이트 색 누수 방지 위해 정의된 모든 스톱을 덮는다.
+ */
+.theme-admin {
+  /* 기조: 딥 네이비 캔버스 + 근백색 텍스트 */
+  --background: #0d1726;
+  --foreground: #e7ecf3;
+
+  /* 시맨틱 */
+  --color-paper: #0d1726;
+  --color-paper-2: #16233a; /* 카드/표면 — 배경에서 떠 보이게 */
+  --color-paper-3: #0a1320; /* 가라앉은 면 */
+  --color-ink: #e7ecf3;
+  --color-steel: #9fb0c7;
+  --color-stamp: #ef5a4d; /* 도장 레드(다크용 밝게) */
+  --color-stamp-dark: #c8392c;
+  --color-gold: #dca838;
+  --color-gold-soft: #e8bf63;
+  --color-line: rgba(231, 236, 243, 0.14);
+
+  /* 그레이 패밀리(zinc/neutral/gray/slate/stone) → 네이비-그레이.
+     저번호=어두운 면, 고번호=밝은 텍스트 (라이트와 역할 보존) */
+  --color-zinc-50: #0d1726;
+  --color-zinc-100: #15233a;
+  --color-zinc-200: #1e2e48;
+  --color-zinc-300: #2b3b58;
+  --color-zinc-400: #677890;
+  --color-zinc-500: #93a2b8;
+  --color-zinc-600: #aab7ca;
+  --color-zinc-700: #c5cedb;
+  --color-zinc-800: #dbe1ea;
+  --color-zinc-900: #e9edf3;
+  --color-zinc-950: #f3f6fa;
+  --color-neutral-100: #15233a;
+  --color-neutral-200: #1e2e48;
+  --color-neutral-400: #677890;
+  --color-neutral-500: #93a2b8;
+  --color-neutral-700: #c5cedb;
+  --color-gray-100: #15233a;
+  --color-gray-200: #1e2e48;
+  --color-gray-400: #677890;
+  --color-gray-500: #93a2b8;
+  --color-gray-700: #c5cedb;
+  --color-slate-200: #1e2e48;
+  --color-slate-400: #677890;
+  --color-slate-500: #93a2b8;
+  --color-slate-700: #c5cedb;
+  --color-stone-100: #15233a;
+  --color-stone-200: #1e2e48;
+  --color-stone-500: #93a2b8;
+
+  /* amber/yellow/orange → 골드(경고·강조), 다크에서 밝게 */
+  --color-amber-50: #2a2210;
+  --color-amber-100: #3a2e14;
+  --color-amber-200: #574420;
+  --color-amber-300: #ecc66e;
+  --color-amber-400: #e3b250;
+  --color-amber-500: #d8a43a;
+  --color-amber-600: #e3b250;
+  --color-amber-700: #ecc66e;
+  --color-yellow-300: #ecc66e;
+  --color-yellow-400: #e3b250;
+  --color-yellow-500: #d8a43a;
+  --color-orange-400: #e0894a;
+  --color-orange-500: #d4783a;
+  --color-orange-600: #e0894a;
+
+  /* red → 위험·취소·환불, 다크에서 밝게 */
+  --color-red-50: #2a1411;
+  --color-red-100: #3a1813;
+  --color-red-200: #57241d;
+  --color-red-300: #e89a90;
+  --color-red-400: #f07568;
+  --color-red-500: #ec5447;
+  --color-red-600: #e84436;
+  --color-red-700: #e03a2c;
+  --color-rose-500: #ec5447;
+
+  /* emerald/green → 승인 올리브, 다크에서 밝게 */
+  --color-emerald-50: #18210f;
+  --color-emerald-100: #202c15;
+  --color-emerald-200: #324722;
+  --color-emerald-300: #b3cd86;
+  --color-emerald-400: #9dbf68;
+  --color-emerald-500: #87ac4f;
+  --color-emerald-600: #9dbf68;
+  --color-emerald-700: #87ac4f;
+  --color-green-400: #9dbf68;
+  --color-green-500: #87ac4f;
+  --color-green-600: #9dbf68;
+
+  /* sky/blue → 정보 스틸, 다크에서 밝게 */
+  --color-sky-50: #12202c;
+  --color-sky-100: #182a3b;
+  --color-sky-200: #21394e;
+  --color-sky-300: #7ba3c2;
+  --color-sky-400: #6f9cc4;
+  --color-sky-500: #79a6cd;
+  --color-sky-600: #8fb5d6;
+  --color-sky-700: #a3c3de;
+  --color-blue-500: #79a6cd;
+  --color-blue-600: #8fb5d6;
+
+  background: var(--background);
+  color: var(--foreground);
+}
+
 /* 한글 제목이 좁은 화면(iPhone SE 등)에서 단어 중간이 아니라 어절 단위로만 줄바꿈되게.
  * 디스플레이 폰트(Black Han Sans)가 커서 소형폰에서 "부장님 패"/"기" 처럼 깨지는 것 방지. */
 h1,
