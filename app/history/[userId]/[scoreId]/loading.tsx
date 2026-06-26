@@ -11,7 +11,7 @@ export default function Loading() {
           <div className="rounded-lg bg-paper-2 p-5 shadow-2xl">
             <div className="mx-auto h-5 w-44 animate-pulse rounded bg-zinc-300" />
             <div className="mt-4 flex gap-3">
-              <div className="aspect-square w-24 animate-pulse rounded-xl bg-zinc-200" />
+              <div className="aspect-square w-24 animate-pulse rounded-xl bg-zinc-100" />
               <div className="flex-1 space-y-2 pt-2">
                 <div className="h-4 w-3/4 animate-pulse rounded bg-zinc-200" />
                 <div className="h-4 w-1/2 animate-pulse rounded bg-zinc-200" />

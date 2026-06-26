@@ -7,13 +7,13 @@ export default function Loading() {
           <div className="h-7 w-44 animate-pulse rounded bg-foreground/10" />
           <div className="h-3 w-64 animate-pulse rounded bg-foreground/10" />
         </div>
-        <div className="h-24 animate-pulse rounded-xl bg-foreground/10" />
+        <div className="h-24 animate-pulse rounded-xl border border-foreground/10 bg-paper-2" />
         {Array.from({ length: 3 }).map((_, s) => (
           <div key={s} className="flex flex-col gap-2">
             <div className="h-4 w-32 animate-pulse rounded bg-foreground/10" />
             <div className="overflow-hidden rounded-xl border border-foreground/10 bg-paper-2">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-8 animate-pulse border-t border-foreground/5 bg-foreground/5" />
+                <div key={i} className="h-8 animate-pulse border-t border-foreground/5 bg-paper-2" />
               ))}
             </div>
           </div>

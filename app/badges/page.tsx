@@ -132,7 +132,7 @@ function BadgeSkeleton() {
             {Array.from({ length: 5 }).map((_, j) => (
               <div
                 key={j}
-                className="aspect-square animate-pulse rounded-xl bg-foreground/10"
+                className="aspect-square animate-pulse rounded-xl border border-foreground/10 bg-paper-2"
               />
             ))}
           </div>
