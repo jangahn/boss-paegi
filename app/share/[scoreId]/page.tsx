@@ -129,7 +129,7 @@ export default async function SharePage({
             <p className="text-[10px] tracking-[0.3em] text-steel">
               {reportNo(score.id, score.created_at)}
             </p>
-            <h1 className="mt-1 font-display text-2xl tracking-tight text-ink sm:text-3xl">
+            <h1 className="mt-1 font-bold text-2xl tracking-tight text-ink sm:text-3xl">
               스트레스 해소 결과 보고서
             </h1>
           </div>
@@ -172,7 +172,7 @@ export default async function SharePage({
 
           <dl className="mt-3 space-y-1.5 text-sm">
             <Row label="총 정산 점수">
-              <span className="font-display text-3xl text-gold tabular-nums sm:text-4xl">
+              <span className="font-bold text-3xl text-gold tabular-nums sm:text-4xl">
                 {score.score.toLocaleString()}
               </span>
               <span className="ml-1 text-xs text-steel">점</span>
@@ -190,7 +190,7 @@ export default async function SharePage({
             <Row label="주력 무기">{weaponLabel(score.weapon)}</Row>
             <Row label="소요 시간">{formatDuration(score.duration_ms)}</Row>
             <Row label="판정 등급">
-              <span className="font-display font-bold text-ink">{grade.label}</span>
+              <span className="font-bold text-ink">{grade.label}</span>
               <span className="ml-1.5 text-xs text-steel">
                 {grade.comment}
               </span>

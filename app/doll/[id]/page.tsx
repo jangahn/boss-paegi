@@ -111,7 +111,7 @@ export default async function DollPage({
             <p className="text-[10px] tracking-[0.3em] text-steel">
               {reportNo(doll.id, doll.created_at)}
             </p>
-            <h1 className="mt-1 font-display text-2xl tracking-tight text-ink sm:text-3xl">
+            <h1 className="mt-1 font-bold text-2xl tracking-tight text-ink sm:text-3xl">
               인사기록카드
             </h1>
           </div>

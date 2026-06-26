@@ -52,7 +52,7 @@ export default function LeaderboardPage() {
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">랭킹</h1>
+            <h1 className="font-bold text-3xl tracking-tight text-ink sm:text-4xl">랭킹</h1>
             <Link
               href="/play"
               className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background"
@@ -89,7 +89,7 @@ export default function LeaderboardPage() {
                       className="flex items-center gap-4 rounded-lg px-3 py-3 transition hover:bg-paper-2"
                     >
                       <span
-                        className={`w-8 text-center font-display text-xl ${rankColor(i)}`}
+                        className={`w-8 text-center font-bold text-xl ${rankColor(i)}`}
                       >
                         {i + 1}
                       </span>
@@ -105,7 +105,7 @@ export default function LeaderboardPage() {
                         <div className="text-xs text-zinc-500">{timeAgo(r.created_at)}</div>
                       </div>
                       <div
-                        className={`font-display text-2xl tabular-nums ${
+                        className={`font-bold text-2xl tabular-nums ${
                           i === 0 ? "text-gold" : "text-ink"
                         }`}
                       >
@@ -151,7 +151,7 @@ function RankSkeleton() {
       <ol className="divide-y divide-line">
         {Array.from({ length: 8 }).map((_, i) => (
           <li key={i} className="flex items-center gap-4 px-3 py-3">
-            <span className="w-8 text-center font-display text-xl text-zinc-600">
+            <span className="w-8 text-center font-bold text-xl text-zinc-600">
               {i + 1}
             </span>
             <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-foreground/10" />

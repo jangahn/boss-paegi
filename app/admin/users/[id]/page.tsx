@@ -57,7 +57,7 @@ export default async function AdminUserDetailPage({
     return (
       <main className="flex flex-1 flex-col px-5 py-8">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
-          <h1 className="font-display text-2xl sm:text-3xl font-bold">유저 상세</h1>
+          <h1 className="font-bold text-2xl sm:text-3xl">유저 상세</h1>
           <p className="text-sm text-zinc-500">
             회원(member_accounts)이 아니거나 존재하지 않는 유저예요. (id: {shortId(id)})
           </p>
@@ -91,7 +91,7 @@ export default async function AdminUserDetailPage({
         {/* 회원 기본정보 */}
         <section className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl sm:text-3xl font-bold">{member.displayName ?? "(닉네임 없음)"}</h1>
+            <h1 className="font-bold text-2xl sm:text-3xl">{member.displayName ?? "(닉네임 없음)"}</h1>
             {member.isAdmin && (
               <span className="rounded-full border border-emerald-600/40 px-2 py-0.5 text-xs text-emerald-600">
                 admin

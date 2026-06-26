@@ -81,7 +81,7 @@ export default function AccountPage() {
         <div className="mx-auto w-full max-w-md">
           <PaperPanel folded className="relative px-6 pb-6 pt-10">
             <Paperclip className="left-7" />
-            <h1 className="font-display text-3xl tracking-tight text-ink sm:text-4xl">회원정보</h1>
+            <h1 className="font-bold text-3xl tracking-tight text-ink sm:text-4xl">회원정보</h1>
 
             <DashedDivider className="my-5" />
 
@@ -211,7 +211,7 @@ function WithdrawSection() {
         </button>
       ) : (
         <PaperPanel className="border-stamp bg-red-500/5 p-4">
-          <h3 className="font-display text-xl tracking-tight text-stamp">회원탈퇴</h3>
+          <h3 className="font-bold text-xl tracking-tight text-stamp">회원탈퇴</h3>
           <div className="mt-2 space-y-1 text-xs text-zinc-500">
             <p>
               탈퇴하면 프로필 정보와 생성한 캐릭터 이미지·하이라이트는 삭제 또는 익명화되며,{" "}

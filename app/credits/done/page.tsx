@@ -72,7 +72,7 @@ function CreditsDoneInner() {
           {state === "checking" && (
             <>
               <Spinner className="h-8 w-8" />
-              <h1 className="font-display text-3xl tracking-tight text-ink">결제 확인 중…</h1>
+              <h1 className="font-bold text-3xl tracking-tight text-ink">결제 확인 중…</h1>
               <p className="text-sm text-zinc-500">잠시만 기다려주세요.</p>
             </>
           )}
@@ -82,11 +82,11 @@ function CreditsDoneInner() {
                 🎉
               </span>
               <RubberStamp tone="stamp">
-                <h1 className="font-display text-3xl tracking-tight">충전 완료!</h1>
+                <h1 className="font-bold text-3xl tracking-tight">충전 완료!</h1>
               </RubberStamp>
               <p className="text-sm text-zinc-500">
                 생성권{" "}
-                <span className="font-display text-2xl text-gold">{credits}개</span>가
+                <span className="font-bold text-2xl text-gold">{credits}개</span>가
                 충전됐어요.
               </p>
               <Link
@@ -102,7 +102,7 @@ function CreditsDoneInner() {
               <span className="text-4xl" aria-hidden>
                 {state === "pending" ? "⏳" : "⚠️"}
               </span>
-              <h1 className="font-display text-3xl tracking-tight text-ink">
+              <h1 className="font-bold text-3xl tracking-tight text-ink">
                 {state === "pending" ? "결제 처리 중이에요" : "결제를 확인할 수 없어요"}
               </h1>
               <p className="text-sm leading-relaxed text-zinc-500">

@@ -28,7 +28,7 @@ export default async function AdminUsersPage({
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">회원 관리</h1>
+        <h1 className="font-bold text-2xl sm:text-3xl">회원 관리</h1>
         <MemberSearch q={q} />
 
         {q === null ? (

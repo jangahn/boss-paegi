@@ -20,7 +20,7 @@ export default async function SessionLimitsPage() {
             변경 내역 →
           </Link>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">세션 한도 (강제 종료)</h1>
+        <h1 className="mt-2 font-bold text-2xl sm:text-3xl">세션 한도 (강제 종료)</h1>
         <p className="mt-1 text-sm text-steel">
           한 판이 이 시간/점수에 도달하면 자동으로 종료되고 결과 화면으로 넘어가요. 기본값은 사실상 무제한이라,
           낮춰야 강제 종료가 동작합니다. (게임 시작 시점 값으로 고정 — 진행 중 변경은 다음 판부터.)

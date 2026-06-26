@@ -28,7 +28,7 @@ export default async function LegalEditPage({
             공개 페이지 →
           </Link>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">{label}</h1>
+        <h1 className="mt-2 font-bold text-2xl text-ink sm:text-3xl">{label}</h1>
         <PaperPanel className="mt-4 overflow-x-auto">
           <LegalDocEditor
             key={`${draft?.id ?? "no-draft"}:${versions.map((v) => v.id).join(",")}`}

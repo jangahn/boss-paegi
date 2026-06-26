@@ -84,7 +84,7 @@ export default function Home() {
           </PaperPanel>
 
           <PaperPanel className="px-6 py-5 text-center">
-            <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-600">
+            <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-600">
               {site.intro}
             </p>
             <Link

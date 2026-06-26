@@ -180,7 +180,7 @@ function GeneratePageInner() {
       <main className="flex flex-1 flex-col px-6 py-8">
       {agePrompt && (
         <ModalShell onClose={() => setAgePrompt(false)}>
-          <h2 className="font-display text-xl sm:text-2xl text-ink">만 14세 이상 확인</h2>
+          <h2 className="font-bold text-xl sm:text-2xl text-ink">만 14세 이상 확인</h2>
           <p className="mt-2 text-sm text-steel">
             만 14세 이상만 캐릭터를 만들 수 있어요. (만 14세 미만은 이용할 수 없습니다.)
           </p>
@@ -240,7 +240,7 @@ function GeneratePageInner() {
             <span className="text-3xl" aria-hidden>
               🎫
             </span>
-            <h2 className="font-display text-xl sm:text-2xl text-ink">생성권을 다 썼어요</h2>
+            <h2 className="font-bold text-xl sm:text-2xl text-ink">생성권을 다 썼어요</h2>
             <p className="text-sm leading-relaxed text-steel">
               생성권을 충전하면 바로 캐릭터를 만들 수 있어요.
             </p>

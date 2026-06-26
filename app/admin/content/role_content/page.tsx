@@ -18,7 +18,7 @@ export default async function RoleContentPage() {
             변경 내역 →
           </Link>
         </div>
-        <h1 className="mt-2 font-display text-2xl sm:text-3xl">롤 대사</h1>
+        <h1 className="mt-2 font-bold text-2xl sm:text-3xl">롤 대사</h1>
         <p className="mt-1 text-sm text-steel">
           롤별 시비 멘트·반응·공유 문구·인사기록. 점수 10단계(0~9,999 … 90,000+)는 고정이며 칸 안의 문구만 편집합니다.
           줄바꿈으로 여러 개를 입력하면 랜덤으로 노출돼요.

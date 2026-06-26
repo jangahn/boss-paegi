@@ -57,7 +57,7 @@ export default async function AdminModerationPage({
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="font-display text-2xl font-bold text-ink sm:text-3xl">신고</h1>
+        <h1 className="font-bold text-2xl text-ink sm:text-3xl">신고</h1>
         <p className="text-xs leading-relaxed text-zinc-500">
           신고된 캐릭터를 <b>처리상태</b>별로 봅니다. <b>대기</b>=결정 전 · <b>숨김</b>=얼굴 가림(가역,
           기본 부장님 대체) · <b>영구삭제</b>=파일 제거(복구 불가) · <b>기각</b>=신고 무효·공개 유지.

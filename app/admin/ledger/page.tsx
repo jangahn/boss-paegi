@@ -41,7 +41,7 @@ export default async function AdminLedgerPage({
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="font-display text-2xl sm:text-3xl font-bold">처리 내역</h1>
+        <h1 className="font-bold text-2xl sm:text-3xl">처리 내역</h1>
         <p className="text-xs leading-relaxed text-zinc-500">
           관리자 크레딧 조정 · 환불/취소 · stuck 지급 감사 로그(append-only).
         </p>

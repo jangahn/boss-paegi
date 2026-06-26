@@ -20,7 +20,7 @@ export function PickStage({
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6">
       <PaperPanel className="w-full px-5 py-6 sm:px-7 sm:py-7">
-        <h1 className="text-center font-display text-2xl tracking-tight text-ink sm:text-3xl">
+        <h1 className="text-center font-bold text-2xl tracking-tight text-ink sm:text-3xl">
           마음에 드는 인형 선택
         </h1>
         <DashedDivider className="my-5" />

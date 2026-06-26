@@ -46,7 +46,7 @@ export default async function AdminOrdersPage({
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">전체 주문</h1>
+        <h1 className="font-bold text-2xl sm:text-3xl">전체 주문</h1>
         <OrdersFilter status={status} q={q} />
         <p className="text-xs text-steel">
           총 {total.toLocaleString()}건{(status || q) && " (필터 적용)"}

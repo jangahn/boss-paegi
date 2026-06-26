@@ -144,7 +144,7 @@ export function DollCard({
       </div>
 
       {/* 롤 칩 (좌상단 — ⋯ 버튼/공유 스피너와 안 겹치게) */}
-      <span className="pointer-events-none absolute left-2 top-2 z-20 max-w-[calc(100%-3.5rem)] truncate rounded border border-line bg-paper-2 px-2 py-0.5 font-display text-[10px] tracking-wide text-steel shadow-[1px_2px_0_rgba(17,35,58,0.10)]">
+      <span className="pointer-events-none absolute left-2 top-2 z-20 max-w-[calc(100%-3.5rem)] truncate rounded border border-line bg-paper-2 px-2 py-0.5 font-bold text-[10px] tracking-wide text-steel shadow-[1px_2px_0_rgba(17,35,58,0.10)]">
         {roleFrom(role, cfg).label}
       </span>
 

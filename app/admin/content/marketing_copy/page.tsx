@@ -18,7 +18,7 @@ export default async function MarketingCopyPage() {
             변경 내역 →
           </Link>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">마케팅 카피</h1>
+        <h1 className="mt-2 font-bold text-2xl sm:text-3xl">마케팅 카피</h1>
         <p className="mt-1 text-sm text-zinc-500">
           홈 화면·가입 배너 문구. 발행하면 즉시(다음 로드부터) 반영됩니다.
         </p>
