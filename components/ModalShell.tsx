@@ -29,7 +29,7 @@ export function ModalShell({
     >
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className={`w-full ${wide ? "max-w-md" : "max-w-sm"} rounded-xl border border-line bg-paper-2 p-5 shadow-[3px_4px_0_rgba(17,35,58,0.07)] sm:p-6`}
+          className={`w-full ${wide ? "max-w-md" : "max-w-sm"} rounded-3xl bg-background p-6 shadow-2xl`}
           onClick={(e) => e.stopPropagation()}
         >
           {children}

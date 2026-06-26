@@ -7,7 +7,7 @@ import { SERVICE_NAME } from "@/lib/policy";
 import { startOAuth, type OAuthProvider } from "@/lib/auth-oauth";
 import { safeNext } from "@/lib/oauth-metadata";
 import { Spinner } from "@/components/Spinner";
-import { PaperPanel, Paperclip, DashedDivider } from "@/components/dossier";
+import { Paperclip, CornerFold } from "@/components/dossier";
 
 function KakaoIcon() {
   return (
@@ -115,9 +115,10 @@ export function LoginForm() {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <PaperPanel folded className="relative flex w-full max-w-sm flex-col items-center gap-6 px-7 pb-7 pt-10">
+      <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border border-foreground/10 bg-paper-2/70 px-7 pb-7 pt-10 shadow-sm">
         <Paperclip className="left-7" />
-        <Link href="/" className="font-display text-4xl tracking-tight text-ink sm:text-5xl">
+        <CornerFold />
+        <Link href="/" className="font-display text-4xl tracking-tight text-ink">
           {SERVICE_NAME}
         </Link>
         <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
@@ -125,8 +126,6 @@ export function LoginForm() {
           <br />
           만들어보세요.
         </p>
-
-        <DashedDivider className="w-full" />
 
         {autoFailed && (
           <p className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
@@ -183,7 +182,7 @@ export function LoginForm() {
         >
           ← 홈으로
         </Link>
-      </PaperPanel>
+      </div>
     </main>
   );
 }

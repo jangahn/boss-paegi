@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { SERVICE_NAME } from "@/lib/policy";
 import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
-import { PaperPanel, Paperclip, DashedDivider } from "@/components/dossier";
+import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useSiteContent } from "@/components/SiteContentProvider";
 import { log, errInfo } from "@/lib/log";
@@ -40,27 +40,26 @@ export default function Home() {
       <AppNav />
       <main className="flex flex-1 flex-col items-center px-4 py-10">
         <div className="flex w-full max-w-md flex-col gap-5">
-          <PaperPanel folded className="relative px-7 pb-7 pt-10 text-center">
+          <div className="relative rounded-2xl border border-foreground/10 bg-paper-2/70 px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
-            <h1 className="font-display text-5xl tracking-tight text-ink sm:text-6xl">
+            <CornerFold />
+            <h1 className="font-display text-5xl tracking-tight text-ink">
               {SERVICE_NAME}
             </h1>
-            <p className="mt-3 whitespace-pre-line text-base leading-relaxed text-zinc-600">
+            <p className="mt-3 whitespace-pre-line text-lg leading-relaxed text-zinc-600">
               {home.tagline}
             </p>
 
-            <DashedDivider className="my-6" />
-
-            <div className="flex w-full flex-col gap-3">
+            <div className="mt-7 flex w-full flex-col gap-3">
               <Link
                 href={isMember ? "/generate" : "/login?next=/generate"}
-                className="rounded-lg bg-foreground px-6 py-3.5 text-base font-bold text-background transition hover:opacity-90"
+                className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
               >
                 {home.primaryCta}
               </Link>
               <Link
                 href="/play"
-                className="rounded-lg border-2 border-line px-6 py-3.5 text-base font-semibold text-ink transition hover:bg-paper-3/60"
+                className="rounded-full border border-foreground/15 px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
               >
                 {home.secondaryCta}
               </Link>
@@ -81,19 +80,19 @@ export default function Home() {
                 </Link>
               </div>
             </div>
-          </PaperPanel>
+          </div>
 
-          <PaperPanel className="px-6 py-5 text-center">
+          <div className="px-2 text-center">
             <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-600">
               {site.intro}
             </p>
             <Link
               href="/faq"
-              className="mt-3 inline-block text-sm font-semibold text-steel underline-offset-4 transition hover:text-stamp hover:underline"
+              className="mt-3 inline-block text-sm font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
             >
               소개·자주 묻는 질문 →
             </Link>
-          </PaperPanel>
+          </div>
 
           <div className="px-2 text-center">
             <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-500">
