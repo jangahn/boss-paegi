@@ -7,12 +7,10 @@ import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
-import { useSiteContent } from "@/components/SiteContentProvider";
 import { log, errInfo } from "@/lib/log";
 
 export default function Home() {
   const { home } = useMarketingCopy();
-  const site = useSiteContent();
   const [hasDolls, setHasDolls] = useState(false);
   const [isMember, setIsMember] = useState(false);
 
@@ -38,19 +36,19 @@ export default function Home() {
   return (
     <>
       <AppNav />
-      <main className="flex flex-1 flex-col items-center px-4 py-10">
-        <div className="flex w-full max-w-md flex-col gap-5">
-          <div className="relative rounded-2xl border border-foreground/10 bg-paper-2 px-7 pb-7 pt-10 text-center shadow-sm">
+      <main className="flex flex-1 flex-col items-center px-6 py-12">
+        <div className="flex w-full max-w-sm flex-col gap-6">
+          <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 bg-paper-2 px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
-            <h1 className="font-display text-5xl tracking-tight text-ink">
+            <h1 className="font-display text-4xl tracking-tight text-ink">
               {SERVICE_NAME}
             </h1>
-            <p className="mt-3 whitespace-pre-line text-lg leading-relaxed text-zinc-600">
+            <p className="whitespace-pre-line text-base leading-relaxed text-zinc-600">
               {home.tagline}
             </p>
 
-            <div className="mt-7 flex w-full flex-col gap-3">
+            <div className="flex w-full flex-col gap-3">
               <Link
                 href={isMember ? "/generate" : "/login?next=/generate"}
                 className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-background transition hover:opacity-90"
@@ -80,18 +78,6 @@ export default function Home() {
                 </Link>
               </div>
             </div>
-          </div>
-
-          <div className="px-2 text-center">
-            <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-600">
-              {site.intro}
-            </p>
-            <Link
-              href="/faq"
-              className="mt-3 inline-block text-sm font-medium text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
-            >
-              소개·자주 묻는 질문 →
-            </Link>
           </div>
 
           <div className="px-2 text-center">
