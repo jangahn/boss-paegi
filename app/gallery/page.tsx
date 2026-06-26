@@ -188,9 +188,7 @@ export default function GalleryPage() {
             <>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-baseline gap-2">
-                  <h1 className="text-2xl font-bold">
-                    {state === "member" ? "내 캐릭터들" : "캐릭터 갤러리"}
-                  </h1>
+                  <h1 className="text-2xl font-bold">내 캐릭터들</h1>
                   {genCredits != null && (
                     <span className="text-sm text-zinc-500">
                       생성권 {formatCredits(genCredits)}
