@@ -39,9 +39,9 @@ export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
     return <p className="text-sm text-zinc-400">처리 내역이 없어요.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-foreground/10">
+    <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-paper-2">
       <table className="w-full text-left text-xs">
-        <thead className="bg-foreground/5 text-zinc-500">
+        <thead className="bg-paper-2 text-zinc-500">
           <tr>
             <th className="px-2 py-1.5">시각(KST)</th>
             <th className="px-2 py-1.5">유형</th>

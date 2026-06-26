@@ -25,9 +25,9 @@ export default async function SessionsPage() {
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-400">아직 세션이 없어요.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-foreground/10">
+          <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-paper-2">
             <table className="w-full text-left text-xs">
-              <thead className="bg-foreground/5 text-zinc-500">
+              <thead className="bg-paper-2 text-zinc-500">
                 <tr>
                   <th className="px-3 py-2">시각(KST)</th>
                   <th className="px-2 py-2">유형</th>

@@ -24,7 +24,7 @@ export function HookToast({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4">
-      <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl border border-foreground/10 bg-background/95 p-3 shadow-2xl backdrop-blur">
+      <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl border border-foreground/10 bg-paper-2/95 p-3 shadow-2xl backdrop-blur">
         <p className="flex-1 text-sm leading-snug">{message}</p>
         <Link
           href={cta.href}

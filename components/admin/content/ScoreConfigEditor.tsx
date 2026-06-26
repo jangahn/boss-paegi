@@ -79,7 +79,7 @@ export function ScoreConfigEditor({
       )}
 
       {grades.map((g, i) => (
-        <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 p-3">
+        <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 bg-paper-2 p-3">
           <span className="text-[11px] text-zinc-400">
             {i}단계 · {band(i)}점
           </span>

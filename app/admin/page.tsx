@@ -106,7 +106,7 @@ export default async function AdminPage() {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
+    <div className="rounded-xl border border-foreground/10 bg-paper-2 p-3">
       <p className="text-[11px] text-zinc-500">{label}</p>
       <p className="mt-0.5 text-lg font-extrabold tabular-nums">{value}</p>
       {sub && <p className="text-[11px] text-zinc-400">{sub}</p>}
@@ -116,7 +116,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 
 function FunnelStep({ label, value, rate }: { label: string; value: number; rate?: string }) {
   return (
-    <div className="rounded-lg border border-foreground/10 p-2">
+    <div className="rounded-lg border border-foreground/10 bg-paper-2 p-2">
       <p className="text-[10px] text-zinc-500">{label}</p>
       <p className="text-base font-bold tabular-nums">{value.toLocaleString()}</p>
       {rate && <p className="text-[10px] text-amber-600">{rate}</p>}

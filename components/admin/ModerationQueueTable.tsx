@@ -129,7 +129,7 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
   };
 
   return (
-    <li className="rounded-2xl border border-foreground/10 bg-foreground/5 p-3">
+    <li className="rounded-2xl border border-foreground/10 bg-paper-2 p-3">
       <div className="flex gap-3">
         {/* 얼굴 미리보기 — 영구삭제면 placeholder(객체 없음), 숨김/공개는 서명 이미지(+숨김 오버레이) */}
         <div className="relative aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-md border border-foreground/10 bg-foreground/10">
