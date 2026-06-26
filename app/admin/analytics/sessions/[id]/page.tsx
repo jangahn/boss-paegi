@@ -68,7 +68,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-foreground/10 p-2">
+    <div className="rounded-lg border border-foreground/10 bg-paper-2 p-2">
       <p className="text-[10px] text-zinc-500">{label}</p>
       <p className="tabular-nums font-medium">{value}</p>
     </div>
