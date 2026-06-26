@@ -129,7 +129,7 @@ export function GrowthLeversEditor({
       <div className="flex flex-col gap-3">
         <span className="text-sm font-semibold text-zinc-500">충전 상품</span>
         {products.map((p, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 p-3">
+          <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-xs text-zinc-500">
                 <input

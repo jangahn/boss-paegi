@@ -117,7 +117,7 @@ export function SiteContentEditor({
           자주 묻는 질문(FAQ) <span className="text-zinc-400">· {form.faq.length}개 (위→아래 표시 순서)</span>
         </span>
         {form.faq.map((it, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 p-3">
+          <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-zinc-400">#{i + 1}</span>
               <input value={it.q} maxLength={200} onChange={(e) => setFaq(i, "q", e.target.value)} placeholder="질문" className="flex-1 rounded-lg border border-foreground/15 bg-transparent p-2 text-sm font-medium outline-none focus:border-foreground/40" />

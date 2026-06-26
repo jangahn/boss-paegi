@@ -267,7 +267,7 @@ export function LegalDocEditor({
           <div className="flex flex-col gap-3">
             <span className="text-sm font-semibold text-zinc-500">섹션 <span className="text-zinc-400">· 제목 + 본문 (위→아래 표시 순서)</span></span>
             {sections.map((s, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 p-3">
+              <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 bg-paper-2 p-3">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-zinc-400">#{i + 1}</span>
                   <input value={s.heading} onChange={(e) => setSec(i, "heading", e.target.value)} placeholder="섹션 제목 (예: 제1조 (목적))" maxLength={120} className="flex-1 rounded-lg border border-foreground/15 bg-transparent p-2 text-sm font-medium outline-none focus:border-foreground/40" />
