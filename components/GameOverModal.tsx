@@ -180,15 +180,16 @@ export function GameOverModal({
         setUploading(true);
         void (async () => {
           try {
-            let ok = false;
+            let clipAttached = false;
             if (clip) {
               const r = await uploadHighlightClip(sid, clip);
-              if (r !== "failed") ok = true;
-              else if (cardH) ok = (await saveCardHighlight(sid, cardH)) !== "failed";
+              if (r !== "failed") clipAttached = true;
+              else if (cardH) await saveCardHighlight(sid, cardH); // 클립 실패 → 카드 폴백(영상 아님)
             } else if (cardH) {
-              ok = (await saveCardHighlight(sid, cardH)) !== "failed";
+              await saveCardHighlight(sid, cardH); // 카드만(영상 없음)
             }
-            if (ok) setAttached(true); // 실제 첨부 성공일 때만 '첨부 완료' 표시(실패는 무표시 — 링크 공유는 이미 됨).
+            // '하이라이트 첨부 완료'는 실제 영상 클립이 붙었을 때만. card(stat 폴백)는 영상이 없어 표시 안 함.
+            if (clipAttached) setAttached(true);
           } catch {
             // 업로드 실패해도 링크 공유는 이미 됨(불변 원칙) — 조용히 무시.
           } finally {

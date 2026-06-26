@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
-import { fetchScoreDetail, hasLiveHighlight, clipSignedUrl } from "@/lib/score-detail";
+import { fetchScoreDetail, clipSignedUrl } from "@/lib/score-detail";
 import { signedDollUrl } from "@/lib/storage";
 import { asRole } from "@/lib/roles";
 import { roleFrom } from "@/lib/config/domains/roles";
@@ -58,16 +58,17 @@ export default async function HistoryDetailPage({
   const grade = gradeFor(score.score, scoreCfg.grades);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const hitCount = score.gameplay_stats?.hitCount ?? null;
-  const hasHighlight = hasLiveHighlight(score);
-  // 공유 문구·버튼 라벨은 어드민 발행 config(이전기록 전용). 영상 첨부는 attached clip 일 때만.
+  // 라벨/영상첨부는 실제 클립(attached·라이브)이 있을 때만 — card(영상 없는 stat 폴백)는 '보고서 공유'.
+  const shareClipUrl = await clipSignedUrl(score); // attached & 라이브만, card/none 은 null
+  const hasClip = !!shareClipUrl;
+  // 공유 문구·버튼 라벨은 어드민 발행 config(이전기록 전용).
   const shareText = resolveCopy(mk.share.historyShareText, rlabel, {
     제작자: name,
     점수: score.score.toLocaleString(),
   });
-  const shareLabel = hasHighlight
+  const shareLabel = hasClip
     ? mk.share.historyShareBtnHighlight
     : mk.share.historyShareBtn;
-  const shareClipUrl = await clipSignedUrl(score);
   const dollImg = await signedDollUrl(score.dolls?.image_url, 600, { thumb: true }); // 384px 썸네일
 
   return (
@@ -166,7 +167,7 @@ export default async function HistoryDetailPage({
           <ShareReportButton
             scoreId={scoreId}
             score={score.score}
-            highlight={hasHighlight}
+            highlight={hasClip}
             label={shareLabel}
             text={shareText}
             clipUrl={shareClipUrl}
