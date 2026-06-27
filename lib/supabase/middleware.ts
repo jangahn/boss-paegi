@@ -5,7 +5,8 @@ import { PUBLIC_ENV } from "@/lib/env";
 /**
  * Next.js proxy(미들웨어) helper — Supabase 세션 토큰 refresh.
  * 모든 요청에 대해 호출해서 만료된 세션을 갱신.
- * getUser() 결과(user)도 함께 반환 — proxy 의 멤버 게이팅이 재조회 없이 쓰도록.
+ * getUser() 결과(user) + supabase 클라이언트도 함께 반환 — proxy 의 동의 게이팅이
+ * member_accounts/profiles self-read(RLS) 를 재생성 없이 쓰도록.
  */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -32,5 +33,5 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return { response, user };
+  return { response, user, supabase };
 }

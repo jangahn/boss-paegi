@@ -47,8 +47,6 @@ export function AccountMenu() {
               prev ?? {
                 id: uid,
                 ...cached,
-                consentPending: false,
-                canUseMemberFeatures: false,
                 genCredits: null,
                 isAdmin: false,
               }

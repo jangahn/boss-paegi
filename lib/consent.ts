@@ -18,10 +18,14 @@ export type ConsentMember = {
 } | null;
 
 /**
- * 아직 받아야 할 동의 항목 (I1/I9 단일 규칙).
+ * 아직 받아야 할 동의 항목 (단일 규칙).
  * - **age**: row 없음 ∨ `age_confirmed_at == null`. **법률 버전과 무관·항상 enforce** →
  *   인프라 실패·발행본 부재로도 신규/미완료 계정을 member 로 승격시키지 않는다.
- * - **terms**: 현재 발행본 버전이 **있을 때만**(null=발행본없음/조회실패면 보류) ∧ (row 없음 ∨ 버전 불일치).
+ * - **terms**: 현재 발행본 버전이 **있을 때만**(null=발행본없음/조회실패면 보류) ∧
+ *   (row 없음 ∨ 미동의 ∨ **동의 버전이 현재보다 낮음**). `<` 사용(`!==` 아님) —
+ *   동의 버전이 현재보다 **높아도**(이미 더 최신 동의) 재동의 요구 안 함. 이는 두 버전 소스
+ *   (app server unstable_cache vs proxy edge-versions 60s)가 publish 직후 잠깐 어긋날 때
+ *   "방금 동의한 사용자"가 proxy↔목적지로 루프 도는 것을 막는다.
  * - **privacy**: terms 와 동일.
  */
 export function missingConsentItems(
@@ -30,10 +34,16 @@ export function missingConsentItems(
 ): ConsentItem[] {
   const items: ConsentItem[] = [];
   if (!member || member.age_confirmed_at == null) items.push("age");
-  if (curr.terms != null && (!member || member.terms_version !== curr.terms)) {
+  if (
+    curr.terms != null &&
+    (!member || member.terms_version == null || member.terms_version < curr.terms)
+  ) {
     items.push("terms");
   }
-  if (curr.privacy != null && (!member || member.privacy_version !== curr.privacy)) {
+  if (
+    curr.privacy != null &&
+    (!member || member.privacy_version == null || member.privacy_version < curr.privacy)
+  ) {
     items.push("privacy");
   }
   return items;

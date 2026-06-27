@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // 탈퇴는 "회원기능 사용"이 아니라 "계정 종료 권리" — 미동의(consentPending)여도 허용(로그인만 요구).
+  // 탈퇴는 "회원기능 사용"이 아니라 "계정 종료 권리" — 로그인만 요구(동의 완료 무관).
   const gate = await requireAuthedNonDeleted();
   if (!gate.ok) return memberGateResponse(gate);
   const userId = gate.user.id;

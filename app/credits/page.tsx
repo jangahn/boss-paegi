@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { perUnitPrice } from "@/lib/credit-products";
 import { useCreditProducts } from "@/components/CreditProductsProvider";
-import { getMyProfile } from "@/lib/profile";
 import { log, errInfo } from "@/lib/log";
 import { setSentryLastAction } from "@/lib/sentry-context";
 
@@ -17,24 +15,11 @@ import { setSentryLastAction } from "@/lib/sentry-context";
  * (회원 게이트는 proxy.ts 가 처리 — 비회원은 /login 으로.)
  */
 export default function CreditsPage() {
-  const router = useRouter();
   const products = useCreditProducts();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // lazy 동의 게이트: 진입 시 미동의면 통합 동의 화면으로(동의 후 /credits 복귀).
-  useEffect(() => {
-    let cancelled = false;
-    getMyProfile()
-      .then((p) => {
-        if (!cancelled && p?.consentPending) router.replace("/consent?next=/credits");
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
+  // 법적 동의는 서버 proxy 가 렌더 전 게이트(미동의면 여기 안 옴). 진입 시 클라 동의 가드 불필요.
   // 페이앱 결제창 갔다가 뒤로가기 → bfcache 복원 시 멈춘 스피너(pending) 해제.
   useBfcacheReset(() => setPending(null));
 
