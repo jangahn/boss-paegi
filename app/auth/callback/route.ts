@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
-import { getCurrentLegalVersions } from "@/lib/legal";
-import { needsConsent } from "@/lib/consent";
+import { getGrowthLevers } from "@/lib/config/getters";
+import { seedOAuthProfile, migrateAnonData } from "@/lib/account-onboard";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -84,32 +84,43 @@ export async function GET(request: NextRequest) {
   // 익명 콜백(드묾) — 멤버 아님. 그대로.
   if (user.is_anonymous) return redirectClear(next);
 
-  // 신규/기존 + 동의 필요 분기 — member_accounts 선조회(동의 컬럼). **자동 생성하지 않음.**
+  // 신규/기존 분기 — member_accounts 선조회. **lazy 모델: 로그인 시 회원을 만들되 동의는 안 받음**
+  // (동의는 회원기능 진입 시 게이트). 동의는 안 stamp 하고 보너스·OAuth 시드·익명이전만.
   const { data: member } = await admin
     .from("member_accounts")
-    .select("user_id, age_confirmed_at, terms_version, privacy_version")
+    .select("user_id")
     .eq("user_id", user.id)
     .maybeSingle();
-  const mRow = member as {
-    age_confirmed_at?: string | null;
-    terms_version?: number | null;
-    privacy_version?: number | null;
-  } | null;
 
-  // 동의 미충족(신규 row없음 / 레거시 stamp없음 / 구버전 / 재활성 version=null) → 통합 동의 화면.
-  const curr = await getCurrentLegalVersions();
-  const consentMember = mRow
-    ? {
-        age_confirmed_at: mRow.age_confirmed_at ?? null,
-        terms_version: mRow.terms_version ?? null,
-        privacy_version: mRow.privacy_version ?? null,
+  if (!member) {
+    // 신규 → 회원 생성(보너스, 동의 stamp 없음). is_new 시 프로필 시드 + 익명이전(I4).
+    const bonus = await getGrowthLevers()
+      .then((g) => g.signupBonusCredits)
+      .catch(() => 0);
+    const { data: isNew, error: rpcErr } = await admin.rpc(
+      "create_or_update_member_consent",
+      {
+        p_user_id: user.id,
+        p_bonus: bonus,
+        p_set_age: false,
+        p_set_terms: false,
+        p_terms_ver: null,
+        p_set_privacy: false,
+        p_privacy_ver: null,
       }
-    : null;
-  if (needsConsent(consentMember, curr)) {
-    log.info("auth.consent_redirect", { userId: user.id, isNew: !member });
-    const dest = `/consent?next=${encodeURIComponent(next)}`;
-    // 마이그 쿠키: row없음(신규)이면 유지(동의 완료 시 익명데이터 이전), 있으면 clear.
-    return member ? redirectClear(dest) : redirect(dest);
+    );
+    if (rpcErr) {
+      // 생성 실패 → 로그인은 유지(getMyProfile no-row fallback, I10), MIGRATE_COOKIE **유지**
+      // (consent API INSERT 복구가 이전 재시도, I3/I4) + Sentry.
+      log.error("auth.member_create_fail", { userId: user.id, ...errInfo(rpcErr) });
+      return redirect(next);
+    }
+    if (isNew === true) {
+      await seedOAuthProfile(admin, user);
+      await migrateAnonData(admin, request.cookies.get(MIGRATE_COOKIE)?.value, user.id);
+    }
+    log.info("auth.member_created", { userId: user.id });
+    return redirectClear(next); // INSERT 성공 → 쿠키 clear(best-effort migrate, I4)
   }
 
   // 기존 회원 로그인 — 이메일 동기화만(자동 초기화/프로필 덮어쓰기 제거). 마이그 쿠키 clear.

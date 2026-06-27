@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { dollPath } from "@/lib/storage-path";
 import { removeBackground } from "@/lib/fal";
 import { normalizeDollImage } from "@/lib/image-utils";
@@ -33,17 +34,11 @@ function isTrustedImageUrl(raw: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  // 회원 전용 + 동의 완료 게이트(lazy 모델: 미동의 로그인 차단). 익명/무세션/미동의 → 401/403.
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user } = gate;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  // 갤러리/생성은 회원 전용 — 익명(비회원)은 차단.
-  if (user.is_anonymous) {
-    return NextResponse.json({ error: "member_only" }, { status: 403 });
-  }
 
   const body = (await req.json().catch(() => null)) as {
     imageUrl?: string;
@@ -196,17 +191,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  // 회원 전용 + 동의 완료 게이트(lazy 모델: 미동의 로그인 차단). 익명/무세션/미동의 → 401/403.
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user } = gate;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  // 갤러리/생성은 회원 전용 — 익명(비회원)은 차단.
-  if (user.is_anonymous) {
-    return NextResponse.json({ error: "member_only" }, { status: 403 });
-  }
 
   const { data } = await supabase
     .from("dolls")
@@ -218,17 +207,11 @@ export async function GET() {
 }
 
 export async function DELETE(req: NextRequest) {
+  // 회원 전용 + 동의 완료 게이트(lazy 모델: 미동의 로그인 차단). 익명/무세션/미동의 → 401/403.
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user } = gate;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  // 갤러리/생성은 회원 전용 — 익명(비회원)은 차단.
-  if (user.is_anonymous) {
-    return NextResponse.json({ error: "member_only" }, { status: 403 });
-  }
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -282,16 +265,10 @@ export async function DELETE(req: NextRequest) {
 
 /** 캐릭터 롤 변경 (갤러리 점세개 메뉴). 쓰기 API라 unknown role 은 400(렌더의 boss 폴백과 달리 엄격). */
 export async function PATCH(req: NextRequest) {
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user } = gate;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  if (user.is_anonymous) {
-    return NextResponse.json({ error: "member_only" }, { status: 403 });
-  }
 
   const body = (await req.json().catch(() => null)) as {
     id?: string;

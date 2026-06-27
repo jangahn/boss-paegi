@@ -111,9 +111,9 @@ boss-paegi/
 
 익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹·**갤러리 열람**은 자유, **캐릭터 생성·충전·관리자는 회원 전용**(`proxy.ts` 가 `/generate`·`/credits`·`/admin` 을 익명 시 `/login` 으로 리다이렉트). 갤러리는 비회원에게 **기본부장님**만 노출(맨 앞 '기본' 뱃지) — 공유/롤 변경/새 캐릭터 시도 시 후킹 토스트·배너로 가입(가입기념 생성권 1개) 유도. 가입(`/login?next=/generate`) 후 곧장 생성으로.
 
-- **로그인 = 가입 + 동의(통합 `/consent`)**: 별도 가입 페이지 없음 — `/login` 버튼뿐. OAuth 콜백이 **동의 미충족**(신규 계정·레거시·약관 개정·재활성)이면 **로그인의 마지막·필수 단계**인 `/consent` 로 보낸다. 14세+약관+방침 동의를 마쳐야 비로소 로그인(`member`)된다 — **"동의까지 끝나야 로그인"**(중간 이탈은 비로그인, `ConsentGuard` 가 **회원전용 페이지(`lib/routes`)에서만** `/consent` 로 수렴 — 홈·랭킹·약관·방침 등 공개 페이지는 전체 허용; 약관/방침 "보기"는 **인라인 모달**(네비 없음·체크 보존); [로그아웃하고 다시 로그인]은 쿠키 clear+signOut→계정 재선택). 신규·재가입·레거시·구버전 재동의가 **한 화면·한 엔드포인트**(`/api/account/consent` → `create_or_update_member_consent` RPC, row 유무로 insert/update·보너스·익명이전은 신규 1회). `/signup`·`/reconsent` 는 `/consent` 로의 redirect stub.
-- **계정 상태(클라)**: `anonymous` / `consent_incomplete`(과도기) / `member`(`isMember`=동의까지 끝난 회원만). 약관/방침 **개정(버전)** 시 기존 동의자도 다음 로그인/내비에 재동의(`member.terms_version`/`privacy_version` vs 현재 발행본 — `lib/consent` 단일 규칙, 서버 게이트 `requireMember` 가 비동의자에 `consent_required`). 14세 동의도 로그인 직후 통합 → 생성/결제의 age backstop 제거. 발행본 미존재·버전 조회 실패는 fail-open(신규/미완료 계정 승격은 막음).
-- **마이그레이션(익명→회원)**: 익명 상태에서 첫 OAuth 로그인 시 새 OAuth `user.id` 로 세션 교체 + **서명 쿠키(`MIGRATE_COOKIE`)** 로 익명 데이터(dolls/scores)를 가입 완료 1회에만 이전(`reassign_anon_data`). 로그아웃하면 새 익명 세션으로 분리. 이미 가입된 OAuth 재로그인(`identity_already_exists`)은 `/login` 안내.
+- **로그인 = 가입(동의는 회원기능 진입 시 — lazy 게이트)**: 별도 가입 페이지 없음 — `/login` 버튼뿐. OAuth 로그인하면 **그냥 로그인된다**(콜백이 로그인 시 회원 생성 + OAuth 닉/프사 시드 + 가입보너스 + 익명이전, 동의 stamp 없음). **동의는 회원 기능(생성·결제·마이페이지·어드민·내 자산 변경) 진입 시 검사** → 미동의면 그때 `/consent`(14세+약관+방침; 빠진/구버전 항목만, 약관/방침 "보기"는 인라인 모달). **[돌아가기]→홈**(로그인 유지·회원기능만 미사용). 동의 완료 후 원래 기능으로. 단일 엔드포인트 `/api/account/consent`(→ `create_or_update_member_consent` RPC, row 없으면 INSERT 복구). `/signup`·`/reconsent` 는 `/consent` redirect stub. **회원탈퇴는 동의 불요**(`account/delete`=`requireAuthedNonDeleted`, 계정 종료 권리).
+- **계정 상태(클라, `lib/profile`)**: `isLoggedIn`(비익명=로그인, 메뉴 표시) + `consentPending`(동의 미충족) + `canUseMemberFeatures`(=isLoggedIn&&!consentPending). 메뉴=isLoggedIn(미동의여도 온전한 로그인 표시), 회원기능 클라 게이트=canUseMemberFeatures, **서버 회원기능 API=`requireMember`(동의완료 회원만, 미동의→`consent_required`)**. 약관/방침 **개정(버전)** 시 기존 동의자도 다음 회원기능 진입에 재동의(`terms_version`/`privacy_version` vs 현재 발행본, `lib/consent.missingConsentItems` 단일 규칙). 발행본 미존재·버전 조회 실패는 fail-open. **⚠️ 법적**: 동의를 기능 진입으로 미루므로 privacy 동의 전 OAuth PII 저장(인지·감수, 로그인 화면 최소 고지 + 약관/방침 문서 반영 과제).
+- **마이그레이션(익명→회원)**: 익명 상태에서 첫 OAuth 로그인 시 새 OAuth `user.id` 로 세션 교체 + **서명 쿠키(`MIGRATE_COOKIE`)** 로 익명 데이터(dolls/scores)를 **신규 회원 생성(is_new) 1회에만** 이전(`reassign_anon_data`, best-effort). **기존 회원 재로그인은 익명데이터 병합 안 함**(보수적). MIGRATE_COOKIE 는 콜백 성공/로그아웃 시 clear(타계정 오이전 방지). 이미 가입된 OAuth 재로그인(`identity_already_exists`)은 `/login` 안내.
 - **계정 분리**: Supabase 자동 linking 수용 — 동일 **verified 이메일**의 Kakao/Google 은 같은 계정으로 연결될 수 있음. 다른 이메일이면 별개 계정. 멀티연동 UI 없음.
 - **이메일 필수**: 이메일 없는/미검증 OAuth 는 멤버화 차단(`/login?error=email_required`). Kakao 는 Biz 인증 + `account_email` 필수 동의 필요.
 - **테이블 분리**: 공개 프로필은 `profiles`(display_name/avatar_url, public read), 멤버십·생성권은 private `member_accounts`(self-read만, write 는 service-role/`SECURITY DEFINER` RPC). `profiles.avatar_url` 은 컬럼레벨 grant 로 클라 직접 변조 차단 → 변경은 검증된 `/api/avatar`(admin) 경유.
@@ -526,6 +526,21 @@ v0.47 (2026-06-27, 동의 화면 약관 "보기" 수정 + 가드 공개페이지
 - **약관/방침 "보기"가 막히던 문제**: ConsentGuard 가 consent_incomplete 를 `/terms`·`/privacy` 에서도 `/consent` 로 되돌려 전문을 못 읽던 버그. **인라인 모달**로 전환(`/consent` 서버가 `getCurrentLegal` sections 를 ConsentForm 에 props 로 → `ModalShell`+`LegalDocView`, 네비게이션 0·체크 상태 보존·모바일 인앱브라우저 `_blank` 불안정 회피).
 - **ConsentGuard 를 회원전용 페이지에만 작동**: `lib/routes.ts`(신규) `MEMBER_ONLY_PAGES` 단일 소스를 proxy·ConsentGuard 공유. consent_incomplete 도 **공개 페이지(비로그인 열람 가능: 홈·랭킹·플레이·갤러리·공유·약관·방침 등)는 전체 허용** — member 자원은 서버 `requireMember` 가 별도 차단하므로 enforcement 무약화.
 - 검증: typecheck/build 0. dev 스모크(proxy 게이트 유지·공개 200·/terms LegalDocView 렌더=모달 데이터경로). 모달 시각은 consent_incomplete OAuth 세션 필요 → 실기기 확인.
+
+v0.48 (2026-06-27, 동의 모델 전환 — lazy 게이트(로그인 자유, 회원기능 진입 시 동의); 마이그레이션 없음):
+- **"동의 완료돼야 로그인" → "로그인 자유 + 회원기능 진입 시 lazy 동의 게이트"**: 콜백 `/consent` 강제·`ConsentGuard` 제거. OAuth 로그인하면 콜백이 **로그인 시 회원 생성**(보너스·OAuth 시드·익명이전, 동의 stamp 없음) → 바로 온전한 로그인(메뉴 닉/프사/크레딧/로그아웃). 동의는 회원 기능(생성·결제·마이페이지·어드민) 진입 시 검사 → 미동의면 `/consent`, **[돌아가기]→홈**(로그인 유지). v0.46/0.47의 consent_incomplete 비로그인 취급·ConsentGuard 폐기. (배경: Supabase PKCE 상 "동의 전 미인증" 불가 — 교환=인증. 세션 커밋 지연은 결을 거스름 → lazy 게이트 채택.)
+- **클라 상태 분리(I1)**: `isMember` 폐기 → `isLoggedIn`(메뉴) + `consentPending` + `canUseMemberFeatures`. 서버 `requireMember`=동의완료 회원 게이트 유지(미동의→`consent_required`).
+- **게이트 누락 audit(I5)**: 회원 자산 API 전수 requireMember — `doll`(전 메서드)·`generations` 승격. **`account/delete`는 `requireAuthedNonDeleted`**(탈퇴=권리, 미동의 허용; `/account` 미동의 시 최소 폴백). `payapp/feedback`은 public webhook(requireMember 금지). 아래 gate list.
+- **익명이전 보수화(I4)**: is_new(신규 생성) 1회만, 기존 회원 병합 안 함. MIGRATE_COOKIE 콜백 성공/로그아웃 clear + 생성 실패 시 유지(consent API INSERT 복구). 신규 `POST /api/auth/signout`(쿠키 clear).
+- ⚠️ **법적**: 동의를 기능 진입으로 미뤄 privacy 동의 전 OAuth PII 저장(인지·감수). 로그인 화면 최소 고지 추가, **약관/방침 문서에 lazy consent 반영은 별도 과제**.
+- 검증: typecheck/lint(신규 0)/build 0. RPC e2e(rollback: 로그인 all-false→INSERT 보너스·stamp null / 동의→UPDATE stamp). dev 스모크(anon→member_only·proxy·signout·공개 200). consent-pending 게이트 실동작은 실기기/어드민 세션.
+
+**member feature gate list (lazy 동의 모델)**:
+- `requireMember`(동의완료): fal · doll(POST/GET/DELETE/PATCH) · generations · avatar · payapp/checkout · payapp/order-status · admin/*(requireAdmin)
+- `requireAuthedNonDeleted`(로그인만·동의 불요): account/delete(탈퇴) · /api/account/consent · /consent
+- public webhook(인증 금지·linkval/order 검증): payapp/feedback · payapp/return
+- 공개(게이트 없음·조회/공유): leaderboard · score · doll/signed-urls · highlight · report · gallery 열람 · config/public · auth/prepare-signup · /api/legal/versions
+- 클라 진입 가드(consentPending→/consent): /generate · /credits · /admin(RSC) · /account(최소 폴백)
 
 **⚠️ Migration 0041 (프로덕션 적용 완료 2026-06-27)** (`supabase/migrations/0041_consent_unify.sql`): `create_or_update_member_consent` RPC — 통합 동의(insert[보너스·stamp]/update[필요 항목만] 원자 처리·`on conflict (user_id) do nothing`·`is_new` 반환, `security definer set search_path`·service_role only). **컬럼 변경 없음**(기존 0030/0031/0037 컬럼 사용) — 함수 추가만, 롤백=`drop function`. 코드 배포와 함께 적용.
 

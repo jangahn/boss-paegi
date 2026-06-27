@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SessionBootstrap } from "@/components/SessionBootstrap";
-import { ConsentGuard } from "@/components/ConsentGuard";
 import { MarketingCopyProvider } from "@/components/MarketingCopyProvider";
 import { RoleContentProvider } from "@/components/RoleContentProvider";
 import { ScoreConfigProvider } from "@/components/ScoreConfigProvider";
@@ -93,7 +92,6 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <JsonLd data={jsonLd} />
         <SessionBootstrap />
-        <ConsentGuard />
         <SiteContentProvider value={siteContent}>
         <MarketingCopyProvider value={marketingCopy}>
           <RoleContentProvider value={roleConfig}>

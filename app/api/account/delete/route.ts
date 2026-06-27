@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireMember, memberGateResponse } from "@/lib/auth-server";
+import { requireAuthedNonDeleted, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOLLS_BUCKET } from "@/lib/generation";
 import { dollPath } from "@/lib/storage-path";
@@ -29,7 +29,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const gate = await requireMember();
+  // 탈퇴는 "회원기능 사용"이 아니라 "계정 종료 권리" — 미동의(consentPending)여도 허용(로그인만 요구).
+  const gate = await requireAuthedNonDeleted();
   if (!gate.ok) return memberGateResponse(gate);
   const userId = gate.user.id;
   const admin = createAdminClient();

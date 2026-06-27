@@ -7,9 +7,7 @@ import { ModalShell } from "@/components/ModalShell";
 import { LegalDocView } from "@/components/legal/LegalDocView";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { SERVICE_NAME } from "@/lib/policy";
-import { createClient } from "@/lib/supabase/client";
 import { getMyProfile, writeCachedProfile, clearProfileCache } from "@/lib/profile";
-import { clearSentryIdentity } from "@/lib/sentry-context";
 import type { ConsentItem } from "@/lib/consent";
 import type { LegalSection } from "@/lib/legal/types";
 
@@ -29,9 +27,9 @@ const ITEM_LABEL: Record<ConsentItem, string> = {
 };
 
 /**
- * 통합 동의 폼 — `/consent` 가 서버에서 산출한 필요 항목(items)만 표시.
- * 약관/방침 "보기"는 **인라인 모달**(네비게이션 없음 → 체크 상태 보존, 모바일 인앱브라우저 안전).
- * [동의하고 시작] 완료 시 비로소 로그인(member). [로그아웃하고 다시 로그인]은 서버 cookie clear + signOut → /login.
+ * 통합 동의 폼 — 회원 기능 진입 시(lazy 게이트) 도달. 서버가 산출한 필요 항목(items)만 표시.
+ * 약관/방침 "보기"는 **인라인 모달**(네비게이션 없음). [동의하고 시작]→해당 기능(next)으로.
+ * **[돌아가기]→홈**(로그인은 유지, 회원기능만 미사용 — I9). 동의 거절도 자유.
  */
 export function ConsentForm({
   items,
@@ -44,18 +42,18 @@ export function ConsentForm({
 }) {
   const router = useRouter();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState<null | "submit" | "switch">(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ConsentItem | null>(null);
   // 같은 탭 이동 → 뒤로가기(bfcache) 시 멈춘 스피너 해제.
-  useBfcacheReset(() => setBusy(null));
+  useBfcacheReset(() => setBusy(false));
 
   const all = items.every((i) => checked[i]);
   const toggle = (id: ConsentItem) => setChecked((p) => ({ ...p, [id]: !p[id] }));
 
   const submit = async () => {
     if (busy || !all) return;
-    setBusy("submit");
+    setBusy(true);
     setErr(null);
     try {
       const payload: Record<string, boolean> = {};
@@ -66,13 +64,13 @@ export function ConsentForm({
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        // I3: stale consent_incomplete 캐시 제거 → 신선 member 캐시 확정 → 이동(ConsentGuard 루프 방지).
+        // 동의 완료 → 프로필 캐시 갱신(consentPending=false 반영) 후 원래 기능으로.
         clearProfileCache();
         try {
           const p = await getMyProfile();
           if (p) writeCachedProfile(p.id, p);
         } catch {
-          /* refetch 실패해도 캐시는 비워졌으니 다음 진입에 신선 조회 */
+          /* refetch 실패해도 캐시 비워졌으니 다음 진입에 신선 조회 */
         }
         router.replace(next);
         return;
@@ -83,30 +81,10 @@ export function ConsentForm({
         return;
       }
       setErr("처리에 실패했어요. 잠시 후 다시 시도해주세요.");
-      setBusy(null);
+      setBusy(false);
     } catch {
       setErr("네트워크 오류 — 다시 시도해주세요.");
-      setBusy(null);
-    }
-  };
-
-  const switchAccount = async () => {
-    if (busy) return;
-    setBusy("switch");
-    setErr(null);
-    try {
-      // 서버: httpOnly MIGRATE_COOKIE clear + 세션 로그아웃(#1/I2).
-      await fetch("/api/account/consent/cancel", { method: "POST" }).catch(() => {});
-      clearProfileCache();
-      clearSentryIdentity();
-      try {
-        await createClient().auth.signOut();
-      } catch {
-        /* 서버에서 이미 로그아웃됐을 수 있음 */
-      }
-      window.location.href = "/login";
-    } catch {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -118,7 +96,7 @@ export function ConsentForm({
         <div>
           <h1 className="text-2xl font-bold">{SERVICE_NAME}</h1>
           <p className="mt-2 text-sm text-zinc-500">
-            로그인을 마치려면 아래에 동의해주세요. 동의를 완료해야 로그인됩니다.
+            생성·결제 등 회원 기능을 이용하려면 아래에 동의해주세요.
           </p>
         </div>
 
@@ -169,21 +147,20 @@ export function ConsentForm({
 
         <button
           type="button"
-          disabled={!all || busy !== null}
+          disabled={!all || busy}
           onClick={() => void submit()}
           className="flex items-center justify-center gap-2 rounded-full bg-foreground py-4 font-semibold text-paper-2 transition disabled:cursor-not-allowed disabled:opacity-30"
         >
-          {busy === "submit" && <Spinner className="h-5 w-5" />}
+          {busy && <Spinner className="h-5 w-5" />}
           동의하고 시작
         </button>
         <button
           type="button"
-          disabled={busy !== null}
-          onClick={() => void switchAccount()}
-          className="flex items-center justify-center gap-2 text-center text-sm text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline disabled:opacity-40"
+          disabled={busy}
+          onClick={() => router.push("/")}
+          className="text-center text-sm text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline disabled:opacity-40"
         >
-          {busy === "switch" && <Spinner className="h-4 w-4" />}
-          로그아웃하고 다시 로그인
+          돌아가기
         </button>
       </div>
 
