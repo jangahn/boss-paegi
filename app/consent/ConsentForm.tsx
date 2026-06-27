@@ -8,6 +8,7 @@ import { LegalDocView } from "@/components/legal/LegalDocView";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { SERVICE_NAME } from "@/lib/policy";
 import { getMyProfile, writeCachedProfile, clearProfileCache } from "@/lib/profile";
+import { signOut } from "@/lib/auth-oauth";
 import type { ConsentItem } from "@/lib/consent";
 import type { LegalSection } from "@/lib/legal/types";
 
@@ -27,9 +28,9 @@ const ITEM_LABEL: Record<ConsentItem, string> = {
 };
 
 /**
- * 통합 동의 폼 — 회원 기능 진입 시(lazy 게이트) 도달. 서버가 산출한 필요 항목(items)만 표시.
- * 약관/방침 "보기"는 **인라인 모달**(네비게이션 없음). [동의하고 시작]→해당 기능(next)으로.
- * **[돌아가기]→홈**(로그인은 유지, 회원기능만 미사용 — I9). 동의 거절도 자유.
+ * 통합 동의 폼 — 글로벌 게이트(proxy)가 미동의 로그인 사용자를 보냄. 서버가 산출한 필요 항목(items)만 표시.
+ * 약관/방침 "보기"는 **인라인 모달**(네비게이션 없음). [동의하고 시작]→원래 목적지(next)로.
+ * **[로그아웃]→로그아웃**(미동의 시 유일한 비동의 선택지 — 모든 페이지가 /consent 로 가니 돌아갈 곳 없음).
  */
 export function ConsentForm({
   items,
@@ -49,6 +50,8 @@ export function ConsentForm({
   useBfcacheReset(() => setBusy(false));
 
   const all = items.every((i) => checked[i]);
+  // 약관/방침 항목인데 전문 로드 실패(서버 조회 일시 오류) → 동의 차단(읽지 못한 채 동의 방지, B10).
+  const docLoadFailed = items.some((i) => (i === "terms" || i === "privacy") && !docs[i]);
   const toggle = (id: ConsentItem) => setChecked((p) => ({ ...p, [id]: !p[id] }));
 
   const submit = async () => {
@@ -64,7 +67,7 @@ export function ConsentForm({
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        // 동의 완료 → 프로필 캐시 갱신(consentPending=false 반영) 후 원래 기능으로.
+        // 동의 완료 → 프로필 캐시 갱신 후 원래 목적지로(proxy 가 통과시킴).
         clearProfileCache();
         try {
           const p = await getMyProfile();
@@ -143,11 +146,16 @@ export function ConsentForm({
           })}
         </div>
 
+        {docLoadFailed && (
+          <p className="text-sm text-red-400">
+            약관을 불러올 수 없어요. 잠시 후 새로고침해 다시 시도해주세요.
+          </p>
+        )}
         {err && <p className="text-sm text-red-400">{err}</p>}
 
         <button
           type="button"
-          disabled={!all || busy}
+          disabled={!all || busy || docLoadFailed}
           onClick={() => void submit()}
           className="flex items-center justify-center gap-2 rounded-full bg-foreground py-4 font-semibold text-paper-2 transition disabled:cursor-not-allowed disabled:opacity-30"
         >
@@ -157,10 +165,10 @@ export function ConsentForm({
         <button
           type="button"
           disabled={busy}
-          onClick={() => router.push("/")}
+          onClick={() => void signOut()}
           className="text-center text-sm text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline disabled:opacity-40"
         >
-          돌아가기
+          로그아웃
         </button>
       </div>
 

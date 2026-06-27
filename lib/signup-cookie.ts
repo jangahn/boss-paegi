@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import { SERVER_ENV } from "@/lib/env.server";
 
 // 익명→신규회원 데이터 마이그용 쿠키. anon user.id 를 HMAC 서명해 위조 차단(평문 신뢰 금지).
-export const MIGRATE_COOKIE = "signup_migrate";
+// 이름은 edge(proxy) 공용 단일 소스(lib/cookies)에서 재수출 — 기존 import 경로 유지.
+export { MIGRATE_COOKIE } from "@/lib/cookies";
 export const MIGRATE_MAX_AGE = 15 * 60; // 15분
 
 function mac(payload: string): string {

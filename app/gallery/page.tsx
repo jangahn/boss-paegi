@@ -109,7 +109,7 @@ export default function GalleryPage() {
       setLoading(false);
     }
 
-    if (prof?.canUseMemberFeatures) void loadPending(); // 회원만 — 비회원은 생성 자체가 없음
+    if (prof?.isLoggedIn) void loadPending(); // 회원만 — 비회원은 생성 자체가 없음
   }, [loadPending, fetchDollPage]);
 
   // 무한스크롤 — 그리드 하단 sentinel 이 보이면 다음 페이지 로드.
@@ -169,12 +169,12 @@ export default function GalleryPage() {
   };
 
   // 뷰어 상태 — 비회원/프로필없음=nonmember, 회원이지만 0캐릭터=member-empty, 회원+캐릭터=member.
-  const state: ViewerState = !profile?.canUseMemberFeatures
+  const state: ViewerState = !profile?.isLoggedIn
     ? "nonmember"
     : dolls.length === 0
       ? "member-empty"
       : "member";
-  const canUse = profile?.canUseMemberFeatures === true;
+  const canUse = profile?.isLoggedIn === true;
   const genCredits = canUse ? (profile?.genCredits ?? null) : null;
 
   return (

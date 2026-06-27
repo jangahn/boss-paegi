@@ -50,38 +50,7 @@ export default function AccountPage() {
     );
   }
 
-  // lazy 동의 게이트(I10): 미동의면 회원정보 편집 대신 최소 화면(동의 CTA + 회원탈퇴=권리는 동의 불요).
-  if (profile.consentPending) {
-    return (
-      <>
-        <AppNav />
-        <main className="flex flex-1 flex-col px-5 py-8">
-          <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-            <h1 className="text-2xl font-bold text-foreground">회원정보</h1>
-            <section className="flex flex-col gap-3 rounded-2xl border border-foreground/10 ui-surface p-6">
-              <p className="text-sm text-zinc-500">
-                프로필 변경 등 회원 기능을 이용하려면 약관·개인정보처리방침에 동의가 필요해요.
-              </p>
-              <Link
-                href="/consent?next=/account"
-                className="rounded-full bg-foreground px-5 py-2.5 text-center text-sm font-semibold text-paper-2 transition hover:opacity-90"
-              >
-                동의하고 계속
-              </Link>
-            </section>
-            <WithdrawSection />
-            <Link
-              href="/"
-              className="text-sm text-zinc-500 underline-offset-4 hover:text-foreground hover:underline"
-            >
-              ← 홈
-            </Link>
-          </div>
-        </main>
-      </>
-    );
-  }
-
+  // 법적 동의는 서버 proxy 가 /account 진입 전 게이트 → 여기 도달 = 동의완료. 별도 폴백 불필요.
   const avatar = profile.avatar_url ?? DEFAULT_AVATAR;
 
   const saveNick = async () => {

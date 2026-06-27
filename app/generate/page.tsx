@@ -35,19 +35,15 @@ function GeneratePageInner() {
   const activeGenId = resumeId ?? generationId;
 
   // 진입 가드: 생성권 확인(getMyProfile 가 세션 워밍업도 겸함). resume 은 이미 진행 중이라 스킵.
-  // 멤버 & 생성권 0 확정이면 차단. 비멤버(프록시가 이미 막음)·조회 실패는 consent 로(서버가 최종 판단).
+  // **법적 동의는 서버 proxy 가 렌더 전 게이트** → 여기 도달 = 로그인+동의완료. 생성권 0 만 차단,
+  // 그 외는 photo 동의 단계("consent" = ConsentDialog). 조회 실패도 동의 단계(서버가 최종 판단).
   useEffect(() => {
     if (resumeId) return;
     let cancelled = false;
     getMyProfile()
       .then((p) => {
         if (cancelled) return;
-        // lazy 동의 게이트: 미동의면 통합 동의 화면으로(진입 차단). 동의 후 /generate 복귀.
-        if (p?.consentPending) {
-          router.replace("/consent?next=/generate");
-          return;
-        }
-        setStage(p?.canUseMemberFeatures && p.genCredits === 0 ? "no_credits" : "consent");
+        setStage(p?.isLoggedIn && p.genCredits === 0 ? "no_credits" : "consent");
       })
       .catch(() => {
         if (!cancelled) setStage("consent");
@@ -55,7 +51,7 @@ function GeneratePageInner() {
     return () => {
       cancelled = true;
     };
-  }, [resumeId, router]);
+  }, [resumeId]);
 
   // 진행 중 생성 폴링(fresh/resume 공통) — ready 면 고르기 단계로. 동시폴/취소/복귀 처리는 hook 내부.
   useGenerationPolling({

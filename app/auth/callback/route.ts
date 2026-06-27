@@ -3,19 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
-import { getGrowthLevers } from "@/lib/config/getters";
-import { seedOAuthProfile, migrateAnonData } from "@/lib/account-onboard";
+import { getCurrentLegalVersions } from "@/lib/legal";
+import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
 /**
- * OAuth 콜백 — linkIdentity(익명 승격) / signInWithOAuth(로그인) 공통 복귀점.
- * 1) identity_already_exists → 기존 OAuth 계정 재로그인 케이스 → /login?relogin=1.
- * 2) code 교환 → 세션 확립.
- * 3) 이메일 필수 게이트(verified-email linking 안전성).
- * 4) !익명 + 이메일 OK → 멤버 1회성 초기화(가입보너스 생성권 + OAuth 닉/프사). 재로그인은 no-op.
- *    (가입보너스 지급은 여기서가 아니라 onboard 가 growth_levers.signupBonusCredits 로 수행 — 현 발행값 1.)
+ * OAuth 콜백 — 세션 확립 + **동의여부 판정 분기**. 글로벌 동의 모델:
+ * **회원 생성·가입보너스·OAuth 시드·익명이전은 모두 동의 시점(consent API)** — 콜백은 안 만듦.
+ * 1) 교환 → 세션. 2) 탈퇴/이메일 게이트(세션·쿠키 정리). 3) 비익명:
+ *    미동의(신규 no-row/레거시/구버전) → **직접 `/consent`**(MIGRATE 유지 → consent 가 is_new 시 이전+clear).
+ *    동의완료(기존회원) → 이메일 동기화 + 목적지(MIGRATE clear). proxy 는 뒤로가기/직접URL 방어선.
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -26,10 +25,20 @@ export async function GET(request: NextRequest) {
   const provider = rawP === "kakao" || rawP === "google" ? rawP : null; // allowlist
 
   const redirect = (path: string) => NextResponse.redirect(new URL(path, request.url));
-  // 마이그 쿠키 clear 한 redirect — 신규→/signup 정상 경로를 제외한 **모든 종료 경로**에 사용.
+  // 마이그 쿠키 clear redirect — 정상 종료 경로(동의완료/익명).
   const redirectClear = (path: string) => {
     const res = redirect(path);
     res.cookies.set(MIGRATE_COOKIE, "", { maxAge: 0, path: "/" });
+    return res;
+  };
+  // 탈퇴/이메일 게이트 — 세션 종료 + sb-* auth 쿠키·MIGRATE 만료 + no-store (잔존 세션 루프 방지, E2).
+  const signoutClear = (path: string) => {
+    const res = redirect(path);
+    for (const c of request.cookies.getAll()) {
+      if (c.name.startsWith("sb-")) res.cookies.set(c.name, "", { maxAge: 0, path: "/" });
+    }
+    res.cookies.set(MIGRATE_COOKIE, "", { maxAge: 0, path: "/" });
+    res.headers.set("Cache-Control", "no-store");
     return res;
   };
 
@@ -56,7 +65,7 @@ export async function GET(request: NextRequest) {
   const user = full?.user ?? data.user;
   const profile = extractOAuthProfile(user);
 
-  // 탈퇴(soft-delete) 계정 재로그인 차단 — 어떤 upsert 보다 먼저(0030).
+  // 탈퇴(soft-delete) 계정 재로그인 차단 — 어떤 분기보다 먼저(0030). 세션·쿠키 정리(E2).
   if (!user.is_anonymous) {
     const { data: delChk } = await admin
       .from("profiles")
@@ -66,7 +75,7 @@ export async function GET(request: NextRequest) {
     if ((delChk as { deleted_at?: string | null } | null)?.deleted_at) {
       log.info("auth.deleted_account_blocked", { userId: user.id });
       await supabase.auth.signOut();
-      return redirectClear("/login?error=account_deleted");
+      return signoutClear("/login?error=account_deleted");
     }
   }
 
@@ -78,66 +87,47 @@ export async function GET(request: NextRequest) {
       verified: profile.emailVerified,
     });
     await supabase.auth.signOut();
-    return redirectClear("/login?error=email_required");
+    return signoutClear("/login?error=email_required");
   }
 
   // 익명 콜백(드묾) — 멤버 아님. 그대로.
   if (user.is_anonymous) return redirectClear(next);
 
-  // 신규/기존 분기 — member_accounts 선조회. **lazy 모델: 로그인 시 회원을 만들되 동의는 안 받음**
-  // (동의는 회원기능 진입 시 게이트). 동의는 안 stamp 하고 보너스·OAuth 시드·익명이전만.
-  const { data: member } = await admin
-    .from("member_accounts")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // 비익명 — 동의여부로 분기(회원 생성은 consent API). member 동의 컬럼 + 현재 버전 병렬 조회.
+  const [memberRes, curr] = await Promise.all([
+    admin
+      .from("member_accounts")
+      .select("age_confirmed_at, terms_version, privacy_version, email")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    getCurrentLegalVersions(),
+  ]);
+  const m = memberRes.data as {
+    age_confirmed_at: string | null;
+    terms_version: number | null;
+    privacy_version: number | null;
+    email: string | null;
+  } | null;
 
-  if (!member) {
-    // 신규 → 회원 생성(보너스, 동의 stamp 없음). is_new 시 프로필 시드 + 익명이전(I4).
-    const bonus = await getGrowthLevers()
-      .then((g) => g.signupBonusCredits)
-      .catch(() => 0);
-    const { data: isNew, error: rpcErr } = await admin.rpc(
-      "create_or_update_member_consent",
-      {
-        p_user_id: user.id,
-        p_bonus: bonus,
-        p_set_age: false,
-        p_set_terms: false,
-        p_terms_ver: null,
-        p_set_privacy: false,
-        p_privacy_ver: null,
-      }
-    );
-    if (rpcErr) {
-      // 생성 실패 → 로그인은 유지(getMyProfile no-row fallback, I10), MIGRATE_COOKIE **유지**
-      // (consent API INSERT 복구가 이전 재시도, I3/I4) + Sentry.
-      log.error("auth.member_create_fail", { userId: user.id, ...errInfo(rpcErr) });
-      return redirect(next);
+  // 기존 회원 이메일 동기화(동의 무관, best-effort).
+  if (m && profile.email && m.email !== profile.email) {
+    try {
+      await admin.from("member_accounts").update({ email: profile.email }).eq("user_id", user.id);
+      log.info("auth.member_email_synced", { userId: user.id });
+    } catch (e) {
+      log.warn("auth.email_sync_fail", { userId: user.id, ...errInfo(e) });
     }
-    if (isNew === true) {
-      await seedOAuthProfile(admin, user);
-      await migrateAnonData(admin, request.cookies.get(MIGRATE_COOKIE)?.value, user.id);
-    }
-    log.info("auth.member_created", { userId: user.id });
-    return redirectClear(next); // INSERT 성공 → 쿠키 clear(best-effort migrate, I4)
   }
 
-  // 기존 회원 로그인 — 이메일 동기화만(자동 초기화/프로필 덮어쓰기 제거). 마이그 쿠키 clear.
-  try {
-    if (profile.email) {
-      const { data: cur } = await admin
-        .from("member_accounts")
-        .select("email")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (cur && cur.email !== profile.email) {
-        await admin.from("member_accounts").update({ email: profile.email }).eq("user_id", user.id);
-        log.info("auth.member_email_synced", { userId: user.id });
-      }
-    }
-  } catch (e) {
-    log.warn("auth.email_sync_fail", { userId: user.id, ...errInfo(e) });
+  const member: ConsentMember = m
+    ? { age_confirmed_at: m.age_confirmed_at, terms_version: m.terms_version, privacy_version: m.privacy_version }
+    : null;
+  if (missingConsentItems(member, curr).length > 0) {
+    // 미동의(신규 no-row/레거시/구버전) → **직접 동의화면**. MIGRATE_COOKIE **유지**
+    // (consent API 가 is_new INSERT 시 익명이전+clear, C3). proxy 의존 없이 보냄.
+    log.info("auth.consent_required", { userId: user.id, isNew: !m });
+    return redirect(`/consent?next=${encodeURIComponent(next)}`);
   }
+  // 동의완료(기존회원) → 목적지(MIGRATE clear — 마이그 불요).
   return redirectClear(next);
 }
