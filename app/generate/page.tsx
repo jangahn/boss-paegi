@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
-import { ModalShell } from "@/components/ModalShell";
 import { PhotoCropper } from "@/components/PhotoCropper";
 import { AppNav } from "@/components/AppNav";
 import { UploadStage } from "@/components/generate/UploadStage";
@@ -31,17 +30,6 @@ function GeneratePageInner() {
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<RoleId>("boss");
   const [error, setError] = useState<string | null>(null);
-  const [agePrompt, setAgePrompt] = useState(false); // 레거시 14세 backstop
-
-  const confirmAgeAndRetry = async () => {
-    setAgePrompt(false);
-    try {
-      await fetch("/api/account/confirm-age", { method: "POST" });
-    } catch {
-      /* best-effort */
-    }
-    void handleGenerate();
-  };
 
   // 폴링 대상 genId — resume(URL) 우선, fresh 는 state. 리로드 시 URL 이 살아있어 이어짐.
   const activeGenId = resumeId ?? generationId;
@@ -121,15 +109,14 @@ function GeneratePageInner() {
           router.push("/credits");
           return;
         }
-        if (err.error === "member_only" || err.error === "member_setup_required") {
-          // 비회원/멤버화 미완 — 로그인 페이지로.
+        if (err.error === "member_only") {
+          // 비회원 — 로그인 페이지로.
           router.push("/login?next=/generate");
           return;
         }
-        if (err.error === "age_required") {
-          // 레거시 회원(가입 시 14세 미확인) backstop — 확인 후 재시도.
-          setAgePrompt(true);
-          setStage("upload");
+        if (err.error === "consent_required") {
+          // 동의 미완(in-between/레거시/구버전) — 통합 동의 화면으로.
+          router.push("/consent?next=/generate");
           return;
         }
         if (err.error === "service_paused") {
@@ -177,30 +164,6 @@ function GeneratePageInner() {
     <>
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
-      {agePrompt && (
-        <ModalShell onClose={() => setAgePrompt(false)}>
-          <h2 className="text-lg font-bold">만 14세 이상 확인</h2>
-          <p className="mt-2 text-sm text-zinc-500">
-            만 14세 이상만 캐릭터를 만들 수 있어요. (만 14세 미만은 이용할 수 없습니다.)
-          </p>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setAgePrompt(false)}
-              className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm font-medium"
-            >
-              취소
-            </button>
-            <button
-              type="button"
-              onClick={() => void confirmAgeAndRetry()}
-              className="flex-1 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2"
-            >
-              만 14세 이상입니다 · 계속
-            </button>
-          </div>
-        </ModalShell>
-      )}
       {stage === "checking" && <LoadingStage label="생성권 확인 중…" />}
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
       {stage === "upload" && (

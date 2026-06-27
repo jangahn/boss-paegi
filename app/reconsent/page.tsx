@@ -1,29 +1,14 @@
 import { redirect } from "next/navigation";
-import { requireMember } from "@/lib/auth-server";
 import { safeNext } from "@/lib/oauth-metadata";
-import { ReconsentConsent } from "./ReconsentConsent";
 
 /**
- * 재활성(탈퇴 복구) 회원의 재동의 화면 — 현재 약관·방침에 다시 동의해야 서비스 재이용.
- * 게이트는 allowReconsent(이 경로만 reconsent_required 우회). 이미 동의했으면 목적지로.
+ * Deprecated — 재동의는 통합 화면 `/consent` 로 일원화됨(버전 기반 재동의로 일반화). redirect stub.
  */
-export default async function ReconsentPage({
+export default async function ReconsentRedirect({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string }>;
 }) {
   const { next } = await searchParams;
-  const dest = safeNext(next);
-
-  const gate = await requireMember({ allowReconsent: true });
-  if (!gate.ok) {
-    redirect(
-      gate.error === "account_deleted"
-        ? "/login?error=account_deleted"
-        : `/login?next=${encodeURIComponent("/reconsent")}`
-    );
-  }
-  if (!gate.member.reconsent_required) redirect(dest); // 이미 동의 완료
-
-  return <ReconsentConsent next={dest} />;
+  redirect(`/consent?next=${encodeURIComponent(safeNext(next))}`);
 }

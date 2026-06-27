@@ -44,7 +44,13 @@ export function AccountMenu() {
         if (cached)
           setProfile(
             (prev) =>
-              prev ?? { id: uid, ...cached, genCredits: null, isAdmin: false }
+              prev ?? {
+                id: uid,
+                ...cached,
+                isMember: cached.accountState === "member",
+                genCredits: null,
+                isAdmin: false,
+              }
           );
       })
       .catch(() => {});

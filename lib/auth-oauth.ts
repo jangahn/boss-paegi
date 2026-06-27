@@ -33,7 +33,13 @@ export async function startOAuth(
     log.warn("auth.prepare_signup_fail", { ...errInfo(e) });
   }
 
-  const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo } });
+  // 계정 재선택 보장: Google 은 prompt=select_account 로 계정 picker 재노출(취소→재로그인 시 다른 계정 선택).
+  // Kakao 는 동일 파라미터를 지원하지 않으므로 주입하지 않음(미지원 param 으로 로그인 실패 방지) — 기존 세션 재사용될 수 있음.
+  const options =
+    provider === "google"
+      ? { redirectTo, queryParams: { prompt: "select_account" } }
+      : { redirectTo };
+  const { error } = await sb.auth.signInWithOAuth({ provider, options });
   if (error) {
     log.warn("auth.oauth_start_fail", { provider, ...errInfo(error) });
     throw error;

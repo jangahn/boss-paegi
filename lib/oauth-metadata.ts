@@ -57,15 +57,22 @@ function firstString(...vals: unknown[]): string | null {
 }
 
 /**
- * open redirect/redirect loop 차단 — 내부 절대경로만 허용.
- * 외부 URL/프로토콜-상대(`//`)/비경로는 "/". 위험 내부 경로(`/auth/*`·`/api/*`·`/signup`)도 "/".
+ * open redirect/redirect loop 차단 — 내부 절대경로만 허용(query 는 보존, I8).
+ * 외부 URL/프로토콜-상대(`//`)/비경로는 "/". 위험·자기참조 내부 경로
+ * (`/auth/*`·`/api/*`·동의 흐름 자체인 `/consent`·`/signup`·`/reconsent`)도 "/".
  */
 export function safeNext(next: string | null | undefined): string {
   if (!next || typeof next !== "string") return "/";
   if (!next.startsWith("/")) return "/";
   if (next.startsWith("//")) return "/";
   const path = next.split(/[?#]/)[0];
-  if (path.startsWith("/auth/") || path.startsWith("/api/") || path === "/signup") {
+  if (
+    path.startsWith("/auth/") ||
+    path.startsWith("/api/") ||
+    path === "/consent" ||
+    path === "/signup" ||
+    path === "/reconsent"
+  ) {
     return "/";
   }
   return next;

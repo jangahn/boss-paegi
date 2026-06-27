@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
+import { getCurrentLegalVersions } from "@/lib/legal";
+import { needsConsent } from "@/lib/consent";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -82,23 +84,32 @@ export async function GET(request: NextRequest) {
   // 익명 콜백(드묾) — 멤버 아님. 그대로.
   if (user.is_anonymous) return redirectClear(next);
 
-  // 신규/기존 분기 — member_accounts 선조회. **자동 생성하지 않음.**
+  // 신규/기존 + 동의 필요 분기 — member_accounts 선조회(동의 컬럼). **자동 생성하지 않음.**
   const { data: member } = await admin
     .from("member_accounts")
-    .select("user_id, reconsent_required")
+    .select("user_id, age_confirmed_at, terms_version, privacy_version")
     .eq("user_id", user.id)
     .maybeSingle();
+  const mRow = member as {
+    age_confirmed_at?: string | null;
+    terms_version?: number | null;
+    privacy_version?: number | null;
+  } | null;
 
-  if (!member) {
-    // 신규 → 동의 화면(/signup). 마이그 쿠키 **유지**(가입 완료 시 onboard 가 익명 데이터 이전).
-    log.info("auth.signup_redirect", { userId: user.id });
-    return redirect(`/signup?next=${encodeURIComponent(next)}`);
-  }
-
-  // 재활성(탈퇴 복구) 회원 — 현재 약관·방침 재동의 필요(0037). 동의 완료 전 서비스 차단.
-  if ((member as { reconsent_required?: boolean }).reconsent_required) {
-    log.info("auth.reconsent_redirect", { userId: user.id });
-    return redirectClear(`/reconsent?next=${encodeURIComponent(next)}`);
+  // 동의 미충족(신규 row없음 / 레거시 stamp없음 / 구버전 / 재활성 version=null) → 통합 동의 화면.
+  const curr = await getCurrentLegalVersions();
+  const consentMember = mRow
+    ? {
+        age_confirmed_at: mRow.age_confirmed_at ?? null,
+        terms_version: mRow.terms_version ?? null,
+        privacy_version: mRow.privacy_version ?? null,
+      }
+    : null;
+  if (needsConsent(consentMember, curr)) {
+    log.info("auth.consent_redirect", { userId: user.id, isNew: !member });
+    const dest = `/consent?next=${encodeURIComponent(next)}`;
+    // 마이그 쿠키: row없음(신규)이면 유지(동의 완료 시 익명데이터 이전), 있으면 clear.
+    return member ? redirectClear(dest) : redirect(dest);
   }
 
   // 기존 회원 로그인 — 이메일 동기화만(자동 초기화/프로필 덮어쓰기 제거). 마이그 쿠키 clear.
