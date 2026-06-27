@@ -1,22 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { isMemberOnlyPath } from "@/lib/routes";
 
-// 회원 전용 페이지 — 익명/무세션 접근 시 /login 으로. (생성·충전·관리자)
-// /credits 는 결제(회원만), /admin 은 관리자 — 둘 다 로그인 게이트.
+// 회원 전용 페이지(lib/routes 단일 소스) — 익명/무세션 접근 시 /login 으로. (생성·충전·관리자·마이페이지)
 // (/admin 의 is_admin 최종 판정은 서버 RSC/라우트의 requireAdmin — 미들웨어는 DB read 회피.)
-// play/leaderboard/share/doll/홈/갤러리 는 게이팅하지 않음 (비회원 유지).
-// /gallery 는 비회원도 열람 가능(기본부장님 노출+가입 후킹) — 단 캐릭터 생성(/generate)은 회원 전용.
-const MEMBER_ONLY_PAGES = ["/generate", "/credits", "/admin", "/account"];
-
+// play/leaderboard/share/doll/홈/갤러리·약관·방침 등 공개 페이지는 게이팅하지 않음 (비회원 유지).
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
   const path = request.nextUrl.pathname;
 
-  const memberOnly = MEMBER_ONLY_PAGES.some(
-    (p) => path === p || path.startsWith(p + "/")
-  );
   // 익명(user.is_anonymous)도 user 는 존재하므로 `!user` 만으로 판별 금지.
-  if (memberOnly && (!user || user.is_anonymous)) {
+  if (isMemberOnlyPath(path) && (!user || user.is_anonymous)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = `?next=${encodeURIComponent(path)}`;

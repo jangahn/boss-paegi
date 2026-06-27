@@ -111,7 +111,7 @@ boss-paegi/
 
 익명 세션(`signInAnonymously`) + **Kakao/Google OAuth 회원**. 비회원도 플레이·랭킹·**갤러리 열람**은 자유, **캐릭터 생성·충전·관리자는 회원 전용**(`proxy.ts` 가 `/generate`·`/credits`·`/admin` 을 익명 시 `/login` 으로 리다이렉트). 갤러리는 비회원에게 **기본부장님**만 노출(맨 앞 '기본' 뱃지) — 공유/롤 변경/새 캐릭터 시도 시 후킹 토스트·배너로 가입(가입기념 생성권 1개) 유도. 가입(`/login?next=/generate`) 후 곧장 생성으로.
 
-- **로그인 = 가입 + 동의(통합 `/consent`)**: 별도 가입 페이지 없음 — `/login` 버튼뿐. OAuth 콜백이 **동의 미충족**(신규 계정·레거시·약관 개정·재활성)이면 **로그인의 마지막·필수 단계**인 `/consent` 로 보낸다. 14세+약관+방침 동의를 마쳐야 비로소 로그인(`member`)된다 — **"동의까지 끝나야 로그인"**(중간 이탈은 비로그인, `ConsentGuard` 가 다시 `/consent` 로 수렴; [로그아웃하고 다시 로그인]은 쿠키 clear+signOut→계정 재선택). 신규·재가입·레거시·구버전 재동의가 **한 화면·한 엔드포인트**(`/api/account/consent` → `create_or_update_member_consent` RPC, row 유무로 insert/update·보너스·익명이전은 신규 1회). `/signup`·`/reconsent` 는 `/consent` 로의 redirect stub.
+- **로그인 = 가입 + 동의(통합 `/consent`)**: 별도 가입 페이지 없음 — `/login` 버튼뿐. OAuth 콜백이 **동의 미충족**(신규 계정·레거시·약관 개정·재활성)이면 **로그인의 마지막·필수 단계**인 `/consent` 로 보낸다. 14세+약관+방침 동의를 마쳐야 비로소 로그인(`member`)된다 — **"동의까지 끝나야 로그인"**(중간 이탈은 비로그인, `ConsentGuard` 가 **회원전용 페이지(`lib/routes`)에서만** `/consent` 로 수렴 — 홈·랭킹·약관·방침 등 공개 페이지는 전체 허용; 약관/방침 "보기"는 **인라인 모달**(네비 없음·체크 보존); [로그아웃하고 다시 로그인]은 쿠키 clear+signOut→계정 재선택). 신규·재가입·레거시·구버전 재동의가 **한 화면·한 엔드포인트**(`/api/account/consent` → `create_or_update_member_consent` RPC, row 유무로 insert/update·보너스·익명이전은 신규 1회). `/signup`·`/reconsent` 는 `/consent` 로의 redirect stub.
 - **계정 상태(클라)**: `anonymous` / `consent_incomplete`(과도기) / `member`(`isMember`=동의까지 끝난 회원만). 약관/방침 **개정(버전)** 시 기존 동의자도 다음 로그인/내비에 재동의(`member.terms_version`/`privacy_version` vs 현재 발행본 — `lib/consent` 단일 규칙, 서버 게이트 `requireMember` 가 비동의자에 `consent_required`). 14세 동의도 로그인 직후 통합 → 생성/결제의 age backstop 제거. 발행본 미존재·버전 조회 실패는 fail-open(신규/미완료 계정 승격은 막음).
 - **마이그레이션(익명→회원)**: 익명 상태에서 첫 OAuth 로그인 시 새 OAuth `user.id` 로 세션 교체 + **서명 쿠키(`MIGRATE_COOKIE`)** 로 익명 데이터(dolls/scores)를 가입 완료 1회에만 이전(`reassign_anon_data`). 로그아웃하면 새 익명 세션으로 분리. 이미 가입된 OAuth 재로그인(`identity_already_exists`)은 `/login` 안내.
 - **계정 분리**: Supabase 자동 linking 수용 — 동일 **verified 이메일**의 Kakao/Google 은 같은 계정으로 연결될 수 있음. 다른 이메일이면 별개 계정. 멀티연동 UI 없음.
@@ -520,7 +520,12 @@ v0.46 (2026-06-27, 로그인·가입·재가입·동의 흐름 전면 개편 —
 - **신규=재가입=레거시=구버전 통일**: `/signup`·`/reconsent`·`onboard`·`reconsent`·`confirm-age` 를 단일 `/consent` + `POST /api/account/consent` 로 통합(row 유무로 insert/update, 보너스·익명이전은 **신규 insert 1회** — `create_or_update_member_consent` RPC 트랜잭션). 옛 페이지=redirect stub, 옛 API=410 shim.
 - **버전 기반 재동의**: `member.terms_version`/`privacy_version` vs 현재 발행본(`getCurrentLegalVersions` `unstable_cache` + publish/unpublish 시 `revalidateTag('legal-versions','max')`). 14세도 로그인 직후 통합 → 생성/결제 `age_required` backstop 제거. 판정은 `lib/consent.missingConsentItems` **단일 소스**(서버 게이트·콜백·클라·`/consent` 공용). 발행본 미존재·조회 실패는 fail-open(단, 신규/미완료 계정 승격은 막음 — age·row 검사 항상 유효).
 - **부수**: `ensureAuth` 동시성 안전(in-flight 합류 — 첫 진입 익명 세션 race 방지), 클라 `accountState`(anonymous/consent_incomplete/member) + 프로필 캐시 TTL 120s(개정 전파).
-- 검증: typecheck/lint(신규 에러 0)/build 0. e2e(신규/이탈/레거시/재활성/개정/동시클릭)는 Migration 0041 적용 후 어드민 세션.
+- 검증: typecheck/lint(신규 에러 0)/build 0. RPC e2e(트랜잭션 rollback) + dev/prod 스모크 green. 0041 prod 적용 완료.
+
+v0.47 (2026-06-27, 동의 화면 약관 "보기" 수정 + 가드 공개페이지 허용; 마이그레이션 없음):
+- **약관/방침 "보기"가 막히던 문제**: ConsentGuard 가 consent_incomplete 를 `/terms`·`/privacy` 에서도 `/consent` 로 되돌려 전문을 못 읽던 버그. **인라인 모달**로 전환(`/consent` 서버가 `getCurrentLegal` sections 를 ConsentForm 에 props 로 → `ModalShell`+`LegalDocView`, 네비게이션 0·체크 상태 보존·모바일 인앱브라우저 `_blank` 불안정 회피).
+- **ConsentGuard 를 회원전용 페이지에만 작동**: `lib/routes.ts`(신규) `MEMBER_ONLY_PAGES` 단일 소스를 proxy·ConsentGuard 공유. consent_incomplete 도 **공개 페이지(비로그인 열람 가능: 홈·랭킹·플레이·갤러리·공유·약관·방침 등)는 전체 허용** — member 자원은 서버 `requireMember` 가 별도 차단하므로 enforcement 무약화.
+- 검증: typecheck/build 0. dev 스모크(proxy 게이트 유지·공개 200·/terms LegalDocView 렌더=모달 데이터경로). 모달 시각은 consent_incomplete OAuth 세션 필요 → 실기기 확인.
 
 **⚠️ Migration 0041 (프로덕션 적용 완료 2026-06-27)** (`supabase/migrations/0041_consent_unify.sql`): `create_or_update_member_consent` RPC — 통합 동의(insert[보너스·stamp]/update[필요 항목만] 원자 처리·`on conflict (user_id) do nothing`·`is_new` 반환, `security definer set search_path`·service_role only). **컬럼 변경 없음**(기존 0030/0031/0037 컬럼 사용) — 함수 추가만, 롤백=`drop function`. 코드 배포와 함께 적용.
 

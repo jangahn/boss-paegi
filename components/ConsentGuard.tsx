@@ -4,22 +4,21 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getMyProfile, writeCachedProfile } from "@/lib/profile";
 import { safeNext } from "@/lib/oauth-metadata";
-
-// /consent(동의 화면 자체)·/auth/callback(로그인 콜백)은 consent_incomplete 가 정상 → 예외(루프 방지).
-const EXEMPT = ["/consent", "/auth/callback"];
+import { isMemberOnlyPath } from "@/lib/routes";
 
 /**
- * "동의까지 끝나야 로그인"(I7) — route 변경 시 consent_incomplete 세션을 `/consent` 로 수렴시킨다.
- * 포커스 중 페이지 한복판에서 강제이탈은 하지 않음(게임 플레이 보호) — **내비게이션 시점에만**.
- * 주 경로는 OAuth 콜백의 서버 리다이렉트이고, 이 가드는 뒤로가기/직접 URL 진입의 안전망이다.
- * (member 액션은 서버 requireMember 가 즉시 consent_required 로 차단하므로 법적 enforcement 는 별도 보장.)
+ * "동의까지 끝나야 로그인"(I7) — consent_incomplete 세션이 **회원 전용 페이지**(lib/routes)에 들어오면
+ * route 변경 시 `/consent` 로 보낸다. **공개 페이지(비로그인도 보는 홈·랭킹·플레이·갤러리·공유·약관·방침
+ * 등)는 전체 허용** — consent_incomplete 는 메뉴상 비회원으로 보이고(accountState), member 자원 접근은
+ * 서버 requireMember 가 별도 차단하므로 공개 페이지 열람을 막을 이유가 없다.
+ * 포커스 중 강제이탈은 안 함(게임 플레이 보호) — 내비게이션 시점에만. 주 경로는 OAuth 콜백의 서버 리다이렉트.
  */
 export function ConsentGuard() {
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
-    if (EXEMPT.some((p) => pathname === p || pathname.startsWith(p + "/"))) return;
+    if (!isMemberOnlyPath(pathname)) return; // 공개 페이지 전체 허용
     let cancelled = false;
     getMyProfile()
       .then((p) => {

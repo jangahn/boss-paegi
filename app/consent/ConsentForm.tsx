@@ -1,45 +1,52 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
+import { ModalShell } from "@/components/ModalShell";
+import { LegalDocView } from "@/components/legal/LegalDocView";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { SERVICE_NAME } from "@/lib/policy";
 import { createClient } from "@/lib/supabase/client";
 import { getMyProfile, writeCachedProfile, clearProfileCache } from "@/lib/profile";
 import { clearSentryIdentity } from "@/lib/sentry-context";
 import type { ConsentItem } from "@/lib/consent";
+import type { LegalSection } from "@/lib/legal/types";
 
-const ITEM_META: Record<ConsentItem, { label: string; link: string | null }> = {
-  age: {
-    label: "본인은 만 14세 이상입니다. (만 14세 미만은 이용할 수 없습니다.)",
-    link: null,
-  },
-  terms: { label: "이용약관에 동의합니다.", link: "/terms" },
-  privacy: {
-    label:
-      "개인정보처리방침 및 국외 이전(미국·싱가포르 등 클라우드/AI 사업자)에 동의합니다.",
-    link: "/privacy",
-  },
+/** /consent 서버가 내려주는 약관/방침 전문(인라인 "보기" 모달용). */
+export type LegalDocLite = {
+  title: string;
+  sections: LegalSection[];
+  version: number;
+  effectiveDate: string | null;
+};
+
+const ITEM_LABEL: Record<ConsentItem, string> = {
+  age: "본인은 만 14세 이상입니다. (만 14세 미만은 이용할 수 없습니다.)",
+  terms: "이용약관에 동의합니다.",
+  privacy:
+    "개인정보처리방침 및 국외 이전(미국·싱가포르 등 클라우드/AI 사업자)에 동의합니다.",
 };
 
 /**
  * 통합 동의 폼 — `/consent` 가 서버에서 산출한 필요 항목(items)만 표시.
- * [동의하고 시작] 완료 시 비로소 로그인(member). [로그아웃하고 다시 로그인]은 서버 cookie clear + signOut →
- * /login(새 계정 선택). 둘 중 하나로만 정상 이탈 — 미완료로 떠나면 ConsentGuard 가 다시 /consent 로.
+ * 약관/방침 "보기"는 **인라인 모달**(네비게이션 없음 → 체크 상태 보존, 모바일 인앱브라우저 안전).
+ * [동의하고 시작] 완료 시 비로소 로그인(member). [로그아웃하고 다시 로그인]은 서버 cookie clear + signOut → /login.
  */
 export function ConsentForm({
   items,
   next,
+  docs,
 }: {
   items: ConsentItem[];
   next: string;
+  docs: Partial<Record<ConsentItem, LegalDocLite | null>>;
 }) {
   const router = useRouter();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<null | "submit" | "switch">(null);
   const [err, setErr] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<ConsentItem | null>(null);
   // 같은 탭 이동 → 뒤로가기(bfcache) 시 멈춘 스피너 해제.
   useBfcacheReset(() => setBusy(null));
 
@@ -92,7 +99,6 @@ export function ConsentForm({
       await fetch("/api/account/consent/cancel", { method: "POST" }).catch(() => {});
       clearProfileCache();
       clearSentryIdentity();
-      // 클라 signOut 으로 auth 쿠키 확실 정리 후 로그인 화면 → 새 계정 선택.
       try {
         await createClient().auth.signOut();
       } catch {
@@ -103,6 +109,8 @@ export function ConsentForm({
       setBusy(null);
     }
   };
+
+  const viewingDoc = viewing ? docs[viewing] : null;
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
@@ -116,8 +124,8 @@ export function ConsentForm({
 
         <div className="space-y-3">
           {items.map((id) => {
-            const meta = ITEM_META[id];
             const on = !!checked[id];
+            const hasDoc = !!docs[id];
             return (
               <div
                 key={id}
@@ -141,16 +149,16 @@ export function ConsentForm({
                       <path d="M5 12l5 5L20 7" />
                     </svg>
                   </span>
-                  <span className="text-sm leading-relaxed">{meta.label}</span>
+                  <span className="text-sm leading-relaxed">{ITEM_LABEL[id]}</span>
                 </button>
-                {meta.link && (
-                  <Link
-                    href={meta.link}
-                    target="_blank"
+                {hasDoc && (
+                  <button
+                    type="button"
+                    onClick={() => setViewing(id)}
                     className="shrink-0 text-xs text-zinc-500 underline underline-offset-2 hover:text-foreground"
                   >
                     보기
-                  </Link>
+                  </button>
                 )}
               </div>
             );
@@ -178,6 +186,37 @@ export function ConsentForm({
           로그아웃하고 다시 로그인
         </button>
       </div>
+
+      {viewing && viewingDoc && (
+        <ModalShell wide onClose={() => setViewing(null)}>
+          <div className="mb-1 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setViewing(null)}
+              aria-label="닫기"
+              className="text-lg leading-none text-zinc-500 hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto pr-1">
+            <LegalDocView
+              title={viewingDoc.title}
+              sections={viewingDoc.sections}
+              version={viewingDoc.version}
+              effectiveDate={viewingDoc.effectiveDate}
+              badge="current"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setViewing(null)}
+            className="mt-4 w-full rounded-full border border-foreground/15 ui-surface py-2.5 text-sm font-medium transition hover:bg-foreground/5"
+          >
+            닫기
+          </button>
+        </ModalShell>
+      )}
     </main>
   );
 }
