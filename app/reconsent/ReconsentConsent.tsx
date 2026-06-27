@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
+import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { SERVICE_NAME } from "@/lib/policy";
 
 // 재동의는 약관·방침만(연령은 재확인하지 않음 — age_confirmed_at 유지).
@@ -19,6 +20,8 @@ export function ReconsentConsent({ next }: { next: string }) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 동의 후 같은 탭 이동 → 뒤로가기(bfcache) 시 멈춘 스피너 해제.
+  useBfcacheReset(() => setBusy(false));
   const all = ITEMS.every((i) => checked[i.id]);
   const toggle = (id: string) => setChecked((p) => ({ ...p, [id]: !p[id] }));
 

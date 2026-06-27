@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
+import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { perUnitPrice } from "@/lib/credit-products";
 import { useCreditProducts } from "@/components/CreditProductsProvider";
 import { log, errInfo } from "@/lib/log";
@@ -18,6 +19,9 @@ export default function CreditsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agePrompt, setAgePrompt] = useState<string | null>(null); // 14세 확인 대기 productId
+
+  // 페이앱 결제창 갔다가 뒤로가기 → bfcache 복원 시 멈춘 스피너(pending) 해제.
+  useBfcacheReset(() => setPending(null));
 
   const confirmAgeAndBuy = async () => {
     const pid = agePrompt;
