@@ -1,6 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 
-// 순수 함수 모듈 (server-only 아님) — safeNext 는 client(login page)·server(callback) 공용.
+// 순수 함수 모듈 (server-only 아님) — safeNext 는 client(login page)·server(callback)·proxy 공용.
 
 const NICKNAME_MAX = 12;
 
@@ -56,20 +56,29 @@ function firstString(...vals: unknown[]): string | null {
   return null;
 }
 
-/**
- * open redirect/redirect loop 차단 — 내부 절대경로만 허용(query 보존, **hash 제거**).
- * 외부 URL/프로토콜-상대(`//`)/비경로는 "/". 위험·자기참조 내부 경로
- * (`/auth/*`·`/api/*`·`/login`·동의 흐름 `/consent`·`/signup`·`/reconsent`·정적 asset)도 "/".
- * proxy redirect·callback·consent 공용 단일 함수.
- */
+// next 목적지로 부적합한 정적 asset 확장자(게이트 우회·루프 방지).
 const STATIC_EXT = /\.(?:png|jpe?g|webp|gif|svg|ico|css|js|map|txt|xml|json|woff2?)$/i;
+// open-redirect 검사용 더미 base — 이 origin 으로만 풀리는 값(=내부 절대경로)만 허용.
+const SAFE_BASE = "http://internal.invalid";
 
+/**
+ * 안전한 내부 이동 경로 — proxy redirect·callback·consent·login 공용 단일 함수.
+ * **WHATWG URL 파서로 정규화**해 open-redirect 우회를 봉쇄: 외부 URL·프로토콜-상대(`//`)·
+ * 백슬래시/제어문자 트릭(`/\evil.com`·`/\t//evil.com` 등 브라우저가 `//evil.com` 으로 해석)이
+ * 모두 `SAFE_BASE` 가 아닌 origin 으로 풀려 `/` 로 collapse 된다. pathname+search 보존, **hash 제거**.
+ * 위험·자기참조 내부 경로(`/auth/*`·`/api/*`·`/login`·`/consent`·`/signup`·`/reconsent`·정적 asset)도 `/`.
+ */
 export function safeNext(next: string | null | undefined): string {
   if (!next || typeof next !== "string") return "/";
-  if (!next.startsWith("/")) return "/";
-  if (next.startsWith("//")) return "/";
-  const pathAndQuery = next.split("#")[0]; // hash 제거 → pathname+search
-  const path = pathAndQuery.split("?")[0];
+  if (!next.startsWith("/")) return "/"; // 절대 내부 경로만(외부/상대 차단)
+  let parsed: URL;
+  try {
+    parsed = new URL(next, SAFE_BASE);
+  } catch {
+    return "/";
+  }
+  if (parsed.origin !== SAFE_BASE) return "/"; // 다른 origin 으로 풀리면(우회) collapse
+  const path = parsed.pathname; // hash 자동 제거
   if (
     path.startsWith("/auth/") ||
     path.startsWith("/api/") ||
@@ -81,5 +90,5 @@ export function safeNext(next: string | null | undefined): string {
   ) {
     return "/";
   }
-  return pathAndQuery;
+  return parsed.pathname + parsed.search;
 }
