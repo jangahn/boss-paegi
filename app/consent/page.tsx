@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentLegalVersions } from "@/lib/legal";
+import { getCurrentLegal, getCurrentLegalVersions } from "@/lib/legal";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { safeNext } from "@/lib/oauth-metadata";
-import { ConsentForm } from "./ConsentForm";
+import { ConsentForm, type LegalDocLite } from "./ConsentForm";
 
 export const dynamic = "force-dynamic";
 
@@ -51,5 +51,19 @@ export default async function ConsentPage({
   const items = missingConsentItems(member, curr);
   if (items.length === 0) redirect(dest); // 이미 동의 완료(member)
 
-  return <ConsentForm items={items} next={dest} />;
+  // 표시 항목의 약관/방침 전문(sections)을 함께 내려 "보기"를 인라인 모달로(네비게이션 없음).
+  const [termsDoc, privacyDoc] = await Promise.all([
+    items.includes("terms") ? getCurrentLegal("terms") : Promise.resolve(null),
+    items.includes("privacy") ? getCurrentLegal("privacy") : Promise.resolve(null),
+  ]);
+  const toLite = (d: Awaited<ReturnType<typeof getCurrentLegal>>): LegalDocLite | null =>
+    d ? { title: d.title, sections: d.sections, version: d.version, effectiveDate: d.effective_date } : null;
+
+  return (
+    <ConsentForm
+      items={items}
+      next={dest}
+      docs={{ terms: toLite(termsDoc), privacy: toLite(privacyDoc) }}
+    />
+  );
 }
