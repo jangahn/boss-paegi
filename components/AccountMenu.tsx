@@ -47,7 +47,8 @@ export function AccountMenu() {
               prev ?? {
                 id: uid,
                 ...cached,
-                isMember: cached.accountState === "member",
+                consentPending: false,
+                canUseMemberFeatures: false,
                 genCredits: null,
                 isAdmin: false,
               }
@@ -84,7 +85,7 @@ export function AccountMenu() {
     );
   }
 
-  const isMember = profile.isMember;
+  const isLoggedIn = profile.isLoggedIn;
   const avatar = profile.avatar_url ?? DEFAULT_AVATAR;
 
   return (
@@ -114,7 +115,7 @@ export function AccountMenu() {
           role="menu"
           className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 ui-surface py-1 shadow-xl"
         >
-          {!isMember && (
+          {!isLoggedIn && (
             <Link
               href="/login"
               role="menuitem"
@@ -124,7 +125,7 @@ export function AccountMenu() {
               로그인 / 회원가입
             </Link>
           )}
-          {isMember && profile.genCredits !== null && (
+          {isLoggedIn && profile.genCredits !== null && (
             <div className="border-b border-foreground/10 px-4 py-2.5 text-sm text-zinc-500">
               생성권{" "}
               <span className="font-semibold text-foreground">
@@ -132,7 +133,7 @@ export function AccountMenu() {
               </span>
             </div>
           )}
-          {isMember && (
+          {isLoggedIn && (
             <Link
               href="/credits"
               role="menuitem"
@@ -142,7 +143,7 @@ export function AccountMenu() {
               생성권 충전
             </Link>
           )}
-          {isMember && profile.isAdmin && (
+          {isLoggedIn && profile.isAdmin && (
             <Link
               href="/admin"
               role="menuitem"
@@ -168,7 +169,7 @@ export function AccountMenu() {
           >
             내 기록
           </Link>
-          {!isMember && (
+          {!isLoggedIn && (
             <MenuItem
               onClick={() => {
                 setEditingNick(true);
@@ -178,7 +179,7 @@ export function AccountMenu() {
               닉네임 변경
             </MenuItem>
           )}
-          {isMember && (
+          {isLoggedIn && (
             <Link
               href="/account"
               role="menuitem"
@@ -188,7 +189,7 @@ export function AccountMenu() {
               마이페이지
             </Link>
           )}
-          {isMember && (
+          {isLoggedIn && (
             <MenuItem
               onClick={() => void signOut()}
               className="border-t border-foreground/10 text-red-500"

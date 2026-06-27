@@ -109,7 +109,7 @@ export default function GalleryPage() {
       setLoading(false);
     }
 
-    if (prof?.isMember) void loadPending(); // 회원만 — 비회원은 생성 자체가 없음
+    if (prof?.canUseMemberFeatures) void loadPending(); // 회원만 — 비회원은 생성 자체가 없음
   }, [loadPending, fetchDollPage]);
 
   // 무한스크롤 — 그리드 하단 sentinel 이 보이면 다음 페이지 로드.
@@ -169,13 +169,13 @@ export default function GalleryPage() {
   };
 
   // 뷰어 상태 — 비회원/프로필없음=nonmember, 회원이지만 0캐릭터=member-empty, 회원+캐릭터=member.
-  const state: ViewerState = !profile?.isMember
+  const state: ViewerState = !profile?.canUseMemberFeatures
     ? "nonmember"
     : dolls.length === 0
       ? "member-empty"
       : "member";
-  const isMember = profile?.isMember === true;
-  const genCredits = isMember ? (profile?.genCredits ?? null) : null;
+  const canUse = profile?.canUseMemberFeatures === true;
+  const genCredits = canUse ? (profile?.genCredits ?? null) : null;
 
   return (
     <>
@@ -208,7 +208,7 @@ export default function GalleryPage() {
             <>
               <SignupBanner state={state} />
 
-              {isMember && pending.length > 0 && <PendingGrid pending={pending} />}
+              {canUse && pending.length > 0 && <PendingGrid pending={pending} />}
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <DefaultBossCard state={state} />

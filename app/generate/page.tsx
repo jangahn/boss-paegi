@@ -42,7 +42,12 @@ function GeneratePageInner() {
     getMyProfile()
       .then((p) => {
         if (cancelled) return;
-        setStage(p?.isMember && p.genCredits === 0 ? "no_credits" : "consent");
+        // lazy 동의 게이트: 미동의면 통합 동의 화면으로(진입 차단). 동의 후 /generate 복귀.
+        if (p?.consentPending) {
+          router.replace("/consent?next=/generate");
+          return;
+        }
+        setStage(p?.canUseMemberFeatures && p.genCredits === 0 ? "no_credits" : "consent");
       })
       .catch(() => {
         if (!cancelled) setStage("consent");
@@ -50,7 +55,7 @@ function GeneratePageInner() {
     return () => {
       cancelled = true;
     };
-  }, [resumeId]);
+  }, [resumeId, router]);
 
   // 진행 중 생성 폴링(fresh/resume 공통) — ready 면 고르기 단계로. 동시폴/취소/복귀 처리는 hook 내부.
   useGenerationPolling({

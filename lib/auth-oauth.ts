@@ -51,6 +51,8 @@ export async function signOut(): Promise<void> {
   const sb = createClient();
   clearProfileCache(); // user별 프로필 캐시 정리 (다음 계정 오표시 방지)
   clearSentryIdentity(); // Sentry user 초기화 (이전 멤버 email/닉네임이 다음 익명에 잔류 방지)
+  // httpOnly MIGRATE_COOKIE 정리(타계정 오이전 방지, I4) — 서버 경유.
+  await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
   const { error } = await sb.auth.signOut();
   if (error) log.warn("auth.sign_out_fail", { ...errInfo(error) });
   window.location.href = "/";

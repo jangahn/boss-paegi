@@ -10,7 +10,7 @@ import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 
 export default function Home() {
   const { home } = useMarketingCopy();
-  const [isMember, setIsMember] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +19,7 @@ export default function Home() {
       const { data: sessionData } = await sb.auth.getSession();
       if (!sessionData.session) return;
       if (!cancelled)
-        setIsMember(sessionData.session.user.is_anonymous !== true);
+        setIsLoggedIn(sessionData.session.user.is_anonymous !== true);
     })();
     return () => {
       cancelled = true;
@@ -43,7 +43,7 @@ export default function Home() {
 
             <div className="flex w-full flex-col gap-3">
               <Link
-                href={isMember ? "/generate" : "/login?next=/generate"}
+                href={isLoggedIn ? "/generate" : "/login?next=/generate"}
                 className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
               >
                 {home.primaryCta}

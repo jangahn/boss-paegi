@@ -157,15 +157,15 @@ export function LoginForm() {
         {err && <p className="text-sm text-red-400">{err}</p>}
 
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-          계속 진행하면{" "}
+          로그인 시 계정 식별·서비스 제공을 위해 프로필 정보가 저장될 수 있어요. 생성·결제 등 회원 기능을 이용할 때{" "}
           <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
             이용약관
           </Link>
-          과{" "}
+          ·{" "}
           <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
             개인정보처리방침
-          </Link>
-          에 동의하는 것으로 간주됩니다.
+          </Link>{" "}
+          동의가 필요합니다.
         </p>
         <p className="text-xs leading-relaxed text-zinc-500">
           새 계정으로 가입하면 현재 비회원 기록(점수 등)이 이전됩니다. 기존 계정으로

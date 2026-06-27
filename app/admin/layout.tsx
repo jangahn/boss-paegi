@@ -16,7 +16,8 @@ export const viewport: Viewport = {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const gate = await requireAdmin();
-  if (!gate.ok) redirect("/");
+  // lazy 동의 게이트: 미동의 관리자는 통합 동의 화면으로(동의 후 /admin 복귀). 비관리자 등은 홈.
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
   return (
     <div className="theme-admin flex flex-1 flex-col bg-background text-foreground">
       {/* 운영 모드 시그널 — 플레이(크림) 모드와 구분 */}

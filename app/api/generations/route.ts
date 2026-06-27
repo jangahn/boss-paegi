@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import {
   CANDIDATE_TTL_MS,
   QUEUED_STALE_MS,
@@ -29,17 +29,10 @@ export const maxDuration = 30;
  * 으로 유지(조기 실패 방지). 행별 복구는 Promise.all 로 병렬(슬롯 점유 시간↓).
  */
 export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  // 생성 폴링은 회원 전용 — 익명(비회원)은 차단.
-  if (user.is_anonymous) {
-    return NextResponse.json({ error: "member_only" }, { status: 403 });
-  }
+  // 회원 전용 + 동의 완료 게이트(lazy 모델). 익명/무세션/미동의 → 401/403.
+  const gate = await requireMember();
+  if (!gate.ok) return memberGateResponse(gate);
+  const { user } = gate;
 
   const admin = createAdminClient();
   const baseQuery = (cols: string) =>
