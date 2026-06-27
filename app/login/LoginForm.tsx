@@ -49,7 +49,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   oauth: "로그인에 실패했어요. 다시 시도해주세요.",
   exchange: "로그인 처리 중 문제가 생겼어요. 다시 시도해주세요.",
   account_deleted: "탈퇴 처리된 계정이에요. 같은 계정으로는 다시 이용할 수 없어요.",
-  age_required: "만 14세 이상만 이용할 수 있어요.",
 };
 
 export function LoginForm() {

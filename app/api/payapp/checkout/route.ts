@@ -25,12 +25,8 @@ export async function POST(req: NextRequest) {
   }
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
-  const { user, member } = gate;
-
-  // 만14세 이상 1회 확인 게이트 — 미확인이면 클라가 확인(confirm-age) 후 재시도.
-  if (!member.age_confirmed_at) {
-    return NextResponse.json({ error: "age_required" }, { status: 403 });
-  }
+  const { user } = gate;
+  // 14세/약관/방침 동의는 로그인 직후 통합 게이트(requireMember 의 consent_required)에서 보장 — 여기 backstop 없음.
 
   const body = (await req.json().catch(() => null)) as { productId?: string } | null;
   // 가격/개수/상품명은 서버 config 의 **active 상품**으로만 결정(클라 조작·비활성 상품 차단).

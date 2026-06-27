@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { DocType, LegalDocRow } from "./types";
 
@@ -26,6 +27,24 @@ export async function getCurrentLegal(docType: DocType): Promise<LegalDocRow | n
     .maybeSingle();
   return (data as LegalDocRow | null) ?? null;
 }
+
+/**
+ * 현재 발행본 **버전 정수만**(`{terms,privacy}`) — `requireMember` 게이트와 공개 `/api/legal/versions` 공용.
+ * 매 member 요청에 타므로 캐시: `revalidate 300s` + tag `legal-versions`(약관 publish/unpublish 시
+ * `revalidateTag('legal-versions')` 로 즉시 무효화 → 서버 게이트는 즉시 새 버전). 실패는 null(fail-open, I9).
+ * (service_role·세션 무관 → `unstable_cache` 의 쿠키/헤더 접근 금지 제약에 안전.)
+ */
+export const getCurrentLegalVersions = unstable_cache(
+  async (): Promise<{ terms: number | null; privacy: number | null }> => {
+    const [t, p] = await Promise.all([
+      getCurrentLegal("terms").catch(() => null),
+      getCurrentLegal("privacy").catch(() => null),
+    ]);
+    return { terms: t?.version ?? null, privacy: p?.version ?? null };
+  },
+  ["legal-versions"],
+  { revalidate: 300, tags: ["legal-versions"] }
+);
 
 /** 시행 예정본 — published & effective_date>오늘(KST)(예약 발행, doc_type당 0~1개). */
 export async function getUpcomingLegal(docType: DocType): Promise<LegalDocRow | null> {

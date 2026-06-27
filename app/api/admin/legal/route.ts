@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       if (error) throw new Error(error.message);
       revalidatePath(DOC_PATH[docType]);
       revalidatePath("/");
+      revalidateTag("legal-versions", "max"); // 현재 발행본 버전 캐시 즉시 무효화(동의 게이트 즉시 반영)
       return NextResponse.json(data ?? { ok: true });
     }
 
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
     if (error) throw new Error(error.message);
     revalidatePath(DOC_PATH[docType]);
     revalidatePath("/");
+    revalidateTag("legal-versions", "max"); // 현재 발행본 버전 캐시 즉시 무효화(동의 게이트 즉시 반영)
     return NextResponse.json(data ?? { ok: true });
   } catch (e) {
     const code = (e as { message?: string })?.message ?? "update_failed";

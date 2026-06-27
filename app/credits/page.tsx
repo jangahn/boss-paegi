@@ -18,18 +18,9 @@ export default function CreditsPage() {
   const products = useCreditProducts();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [agePrompt, setAgePrompt] = useState<string | null>(null); // 14세 확인 대기 productId
 
   // 페이앱 결제창 갔다가 뒤로가기 → bfcache 복원 시 멈춘 스피너(pending) 해제.
   useBfcacheReset(() => setPending(null));
-
-  const confirmAgeAndBuy = async () => {
-    const pid = agePrompt;
-    if (!pid) return;
-    setAgePrompt(null);
-    await fetch("/api/account/confirm-age", { method: "POST" });
-    void buy(pid);
-  };
 
   const buy = async (productId: string) => {
     if (pending) return; // 중복 클릭 가드
@@ -47,17 +38,13 @@ export default function CreditsPage() {
         if (e.error === "payment_unavailable") {
           throw new Error("결제 기능이 잠시 비활성화돼 있어요. 잠시 후 다시 시도해주세요.");
         }
-        if (
-          e.error === "unauthorized" ||
-          e.error === "member_only" ||
-          e.error === "member_setup_required"
-        ) {
+        if (e.error === "unauthorized" || e.error === "member_only") {
           window.location.assign("/login?next=/credits");
           return;
         }
-        if (e.error === "age_required") {
-          setAgePrompt(productId);
-          setPending(null);
+        if (e.error === "consent_required") {
+          // 동의 미완(in-between/레거시/구버전) — 통합 동의 화면으로.
+          window.location.assign("/consent?next=/credits");
           return;
         }
         throw new Error("결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.");
@@ -114,29 +101,6 @@ export default function CreditsPage() {
 
           {error && (
             <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-500">{error}</p>
-          )}
-          {agePrompt && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-              <p className="text-amber-700 dark:text-amber-300">
-                만 14세 이상만 결제할 수 있어요.
-              </p>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAgePrompt(null)}
-                  className="flex-1 rounded-full border border-foreground/15 ui-surface py-2 text-xs font-medium"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void confirmAgeAndBuy()}
-                  className="flex-1 rounded-full bg-foreground py-2 text-xs font-semibold text-paper-2"
-                >
-                  만 14세 이상입니다 · 계속
-                </button>
-              </div>
-            </div>
           )}
 
           <p className="text-[11px] leading-relaxed text-zinc-400">
