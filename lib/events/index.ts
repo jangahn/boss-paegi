@@ -8,14 +8,35 @@ import { BANNER_FLAG, NEWS_PAGE_SIZE, type BannerSurface, type EventRow, type Ev
 const COLS =
   "id, type, status, title, summary, body, cover_image_path, starts_at, ends_at, popup_active, banner_home_active, banner_gallery_active, banner_leaderboard_active, priority, pinned, noindex, popup_dismiss_days, published_at, created_by, created_at, updated_at, deleted_at";
 
-/** cover_image_path(상대경로) → events 버킷 public URL(없으면 null). */
-function coverUrl(path: string | null): string | null {
+/**
+ * 커버 변환(on-the-fly) — 원본 1장에서 표시 시점 리사이즈(갤러리 DOLL_THUMB 패턴과 동일).
+ * 둘 다 **40:21**(=1200/630, 1.905)·**resize:cover** 로 목록 썸네일·og 프레이밍을 통일하고
+ * 풀 원본(~수백KB) 대신 webp ~수십KB 만 받게 한다. width/height 둘 다 필수(한쪽만이면 왜곡).
+ * events 버킷은 public 이라 서명 불요 — getPublicUrl 의 transform 옵션으로 render URL 파생.
+ */
+const COVER_THUMB_TRANSFORM = { width: 600, height: 315, resize: "cover" } as const;
+const COVER_OG_TRANSFORM = { width: 1200, height: 630, resize: "cover" } as const;
+
+/** cover_image_path(상대경로) → events 버킷 public URL(없으면 null). transform 주면 변환 render URL. */
+function coverUrl(
+  path: string | null,
+  transform?: { width: number; height: number; resize: "cover" }
+): string | null {
   if (!path) return null;
   const admin = createAdminClient();
-  return admin.storage.from(EVENTS_BUCKET).getPublicUrl(path).data.publicUrl ?? null;
+  return (
+    admin.storage
+      .from(EVENTS_BUCKET)
+      .getPublicUrl(path, transform ? { transform } : undefined).data.publicUrl ?? null
+  );
 }
 function toView(row: EventRow): EventView {
-  return { ...row, coverUrl: coverUrl(row.cover_image_path) };
+  return {
+    ...row,
+    coverUrl: coverUrl(row.cover_image_path),
+    coverThumbUrl: coverUrl(row.cover_image_path, COVER_THUMB_TRANSFORM),
+    coverOgUrl: coverUrl(row.cover_image_path, COVER_OG_TRANSFORM),
+  };
 }
 
 /**
