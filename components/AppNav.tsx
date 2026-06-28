@@ -15,6 +15,7 @@ export function AppNav() {
     { href: "/", label: "홈" },
     { href: "/gallery", label: "갤러리" },
     { href: "/leaderboard", label: "랭킹" },
+    { href: "/news", label: "소식" },
   ];
 
   return (
@@ -26,7 +27,7 @@ export function AppNav() {
               key={l.href}
               href={l.href}
               className={`whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm font-medium transition sm:px-3 ${
-                pathname === l.href
+                (l.href === "/" ? pathname === "/" : pathname.startsWith(l.href))
                   ? "bg-foreground text-paper-2"
                   : "text-zinc-500 hover:bg-foreground/5 hover:text-foreground"
               }`}

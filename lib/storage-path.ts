@@ -3,6 +3,7 @@
 
 export const DOLLS_BUCKET = "dolls";
 export const HIGHLIGHTS_BUCKET = "highlights";
+export const EVENTS_BUCKET = "events"; // 이벤트/공지 이미지(public — 서명 불요·CDN/OG 친화)
 
 /**
  * dolls 저장값(전체 공개 URL · signed URL · 이미 버킷상대경로 · null) → 버킷상대경로.

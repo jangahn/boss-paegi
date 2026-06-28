@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
+import { EventBanner } from "@/components/events/EventBanner";
+import { EventPopup } from "@/components/events/EventPopup";
 
 export default function Home() {
   const { home } = useMarketingCopy();
@@ -29,8 +31,10 @@ export default function Home() {
   return (
     <>
       <AppNav />
+      <EventPopup />
       <main className="flex flex-1 flex-col items-center px-6 py-12">
         <div className="flex w-full max-w-sm flex-col gap-6">
+          <EventBanner />
           <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
