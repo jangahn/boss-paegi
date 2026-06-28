@@ -58,7 +58,7 @@ function PendingCard({ gen }: { gen: PendingGeneration }) {
         ))}
       </div>
       <div className="flex items-center justify-center gap-1 bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-        고르던 인형 이어서 →
+        고르던 캐릭터 이어서 →
       </div>
     </Link>
   );

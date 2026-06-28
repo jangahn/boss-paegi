@@ -18,7 +18,7 @@ export function PickStage({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6">
-      <h1 className="text-2xl font-bold">마음에 드는 인형 선택</h1>
+      <h1 className="text-2xl font-bold">마음에 드는 캐릭터 선택</h1>
       <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">
         {results.map((img, i) => (
           <PickCandidate key={i} img={img} onPick={onPick} />

@@ -20,6 +20,6 @@ create index if not exists ai_generations_owner_status_idx
   on public.ai_generations (owner_id, status, created_at desc);
 
 -- 참고: dolls 버킷을 그대로 재사용한다 (별도 버킷 불필요).
---  - 확정 인형:  {owner}/{dollId}.png
+--  - 확정 캐릭터:  {owner}/{dollId}.png
 --  - 생성 후보:  {owner}/candidates/{genId}/{0,1,2}.jpg
 -- 24시간 지난 미선택 후보는 서버(/api/generations)에서 lazy 정리.

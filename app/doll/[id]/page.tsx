@@ -37,7 +37,7 @@ async function fetchDoll(id: string): Promise<DollRow | null> {
     .single();
   if (!data) return null;
   // image_url=경로(raw) 유지. 서명/삭제 분기는 렌더에서(deleted→기본보스, 아니면 signedDollUrl).
-  // invisible takedown(0034): 삭제 인형도 404 안 하고 캐릭터 영역만 기본 부장님으로 대체.
+  // invisible takedown(0034): 삭제 캐릭터도 404 안 하고 캐릭터 영역만 기본 부장님으로 대체.
   return data as unknown as DollRow;
 }
 

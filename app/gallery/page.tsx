@@ -36,7 +36,7 @@ export default function GalleryPage() {
     const { data, error: qErr } = await sb
       .from("dolls")
       .select("id, image_url, created_at, role")
-      .is("deleted_at", null) // takedown: 신고 삭제 인형 숨김
+      .is("deleted_at", null) // takedown: 신고 삭제 캐릭터 숨김
       .order("created_at", { ascending: false })
       .range(offset, offset + GALLERY_PAGE - 1);
     if (qErr) throw qErr;

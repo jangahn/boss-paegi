@@ -188,7 +188,7 @@ function GeneratePageInner() {
       )}
       {stage === "generating" && (
         <LoadingStage
-          label="AI 가 인형 만드는 중…"
+          label="AI 가 캐릭터 만드는 중…"
           sub={error ?? "보통 1분, 길면 2분까지 걸려요. 완료되면 자동으로 떠요."}
         />
       )}

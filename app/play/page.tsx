@@ -50,11 +50,11 @@ function PlayInner() {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
-  // 인형/배경 fetch + 게임 init 동안 로딩 오버레이
+  // 캐릭터/배경 fetch + 게임 init 동안 로딩 오버레이
   const [gameReady, setGameReady] = useState(false);
   // 낙서 존재 여부 — picker 의 펜 슬롯이 지우개(🧽)로 토글
   const [hasDrawing, setHasDrawing] = useState(false);
-  // 결과 보고서에 표시할 인형 이미지 (커스텀 or 기본)
+  // 결과 보고서에 표시할 캐릭터 이미지 (커스텀 or 기본)
   const [dollImageUrl, setDollImageUrl] = useState<string>(
     "/sprites/boss-default.png"
   );
@@ -134,7 +134,7 @@ function PlayInner() {
     });
   }, [start, dollId, telemetry]);
 
-  // Pixi 게임 인스턴스 생성/해제 (인형·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
+  // Pixi 게임 인스턴스 생성/해제 (캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
   useGameInit({
     dollId,
     stageRef,

@@ -23,7 +23,7 @@ if (!srcPath) throw new Error("usage: node prepare-default-boss.mjs <image>");
 
 const CANVAS_W = 768;
 const CANVAS_H = 1024;
-const CHAR_H_RATIO = 0.82; // 캐릭터 높이 = 캔버스 높이의 82% (기존 AI 인형과 동일)
+const CHAR_H_RATIO = 0.82; // 캐릭터 높이 = 캔버스 높이의 82% (기존 AI 캐릭터와 동일)
 
 console.log("1) fal storage 업로드...");
 const buf = readFileSync(srcPath);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 기존 dolls 정규화 (1회성). 새 sharp 파이프라인 도입 전 만들어진
- * 인형들을 trim + 정사각형 1:1 + 캐릭터 중앙으로 재처리.
+ * 캐릭터들을 trim + 정사각형 1:1 + 캐릭터 중앙으로 재처리.
  *
  * 실행:
  *   node --env-file=.env.local scripts/backfill-dolls.mjs

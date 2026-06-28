@@ -21,7 +21,7 @@ export type GameHandle = {
   setBackground: (t: Texture) => void;
   /** 낙서 전체 삭제 — 점수 영향 없음 */
   clearDrawing: () => void;
-  /** 현재 점수 전달 — 임계 넘으면 인형 꼬질꼬질 데칼 추가, 0 이면 초기화 */
+  /** 현재 점수 전달 — 임계 넘으면 캐릭터 꼬질꼬질 데칼 추가, 0 이면 초기화 */
   setDamageScore: (score: number) => void;
   /** 궁극기 발동 — 난사타 연출 */
   triggerUltimate: () => void;

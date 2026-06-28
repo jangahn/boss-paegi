@@ -7,7 +7,7 @@ import { uploadAvatar, removeAvatar } from "@/lib/avatar";
 import { Spinner } from "@/components/Spinner";
 
 /**
- * 프로필 사진 변경/삭제 — 인형 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
+ * 프로필 사진 변경/삭제 — 캐릭터 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
  * onSaved(null) = 기본 프사로 삭제됨.
  */
 export function AvatarEditor({

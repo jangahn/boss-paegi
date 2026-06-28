@@ -10,7 +10,7 @@ type Callbacks = {
 /**
  * 펜 낙서 입력.
  * - 좌표: doll.bodyWrap local 로 변환해 DrawingLayer (bodyWrap 의 child) 에 그림 —
- *   인형이 흔들리거나 던져져도 낙서가 같은 레이어로 함께 움직임.
+ *   캐릭터가 흔들리거나 던져져도 낙서가 같은 레이어로 함께 움직임.
  * - 영역: doll.isInsideBody (PNG 알파맵) 안만 stroke 허용. 밖은 입력 자체 무시.
  */
 export class DrawInput {

@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: SERVICE_NAME,
     short_name: SERVICE_NAME,
-    description: "직장인 스트레스 해소용 캐주얼 게임. AI 가 만들어주는 부장님 인형을 마음껏 패고 가세요.",
+    description: "직장인 스트레스 해소용 캐주얼 게임. AI 가 만들어주는 부장님 캐릭터를 마음껏 패고 가세요.",
     start_url: "/",
     display: "standalone",
     background_color: "#0a0a0a",

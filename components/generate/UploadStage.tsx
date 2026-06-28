@@ -59,7 +59,7 @@ export function UploadStage({
       </label>
 
       <div className="w-full space-y-1 text-center text-[11px] leading-relaxed text-zinc-500">
-        <p>업로드한 원본은 인형 생성 직후 자동으로 폐기됩니다.</p>
+        <p>업로드한 원본은 캐릭터 생성 직후 자동으로 폐기됩니다.</p>
         <p>결과가 마음에 안 들면 다시 만들 수 있어요 — 매번 조금씩 달라져요.</p>
       </div>
 
