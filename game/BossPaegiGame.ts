@@ -90,11 +90,17 @@ export async function createGame(
   });
   app.stage.addChild(scene);
   // app.screen.width 가 DPR 가산값 반환하는 경우가 있어, container CSS 크기 명시 사용.
+  // **정수 floor**: getBoundingClientRect 의 소수점 폭을 그대로 renderer.resize 에 먹이면 autoDensity 가
+  //   캔버스 CSS 를 되쓰며 ±1px 오버플로 → 스크롤바 출현/소멸이 컨테이너 폭을 흔들어 ResizeObserver
+  //   피드백 루프(특정 창 폭·분수 DPR 에서 좌우 진동, 줌으로 정상화)가 발생. floor 로 캔버스를 항상
+  //   컨테이너 이하로 만들어 오버플로·스크롤바 자체를 차단(round 면 올림 시 여전히 넘쳐 루프 잔존).
   const measure = () => {
     const rect = container.getBoundingClientRect();
-    return { w: rect.width, h: rect.height };
+    return { w: Math.floor(rect.width), h: Math.floor(rect.height) };
   };
   const initial = measure();
+  let lastW = initial.w;
+  let lastH = initial.h;
   app.renderer.resize(initial.w, initial.h);
   scene.layout(initial.w, initial.h);
 
@@ -114,6 +120,10 @@ export async function createGame(
   const ro = new ResizeObserver(() => {
     const m = measure();
     if (m.w <= 0 || m.h <= 0) return;
+    // 정수 dims 가 직전 적용값과 같으면 skip — 소수점 리플로우·스크롤바 oscillation 의 피드백 루프 차단.
+    if (m.w === lastW && m.h === lastH) return;
+    lastW = m.w;
+    lastH = m.h;
     app.renderer.resize(m.w, m.h);
     scene.layout(m.w, m.h);
   });
