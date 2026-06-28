@@ -16,6 +16,7 @@ const KEY_LABEL: Record<DomainKey, string> = {
   session_limits: "세션 한도",
   growth_levers: "성장 레버",
   site_content: "소개·FAQ (SEO)",
+  media_config: "미디어 자산",
 };
 
 function firstParam(v: string | string[] | undefined): string | undefined {
