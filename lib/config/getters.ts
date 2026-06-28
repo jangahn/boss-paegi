@@ -35,6 +35,11 @@ import {
   SITE_CONTENT_DEFAULT,
   type SiteContent,
 } from "./domains/site-content";
+import {
+  mediaConfigSchema,
+  MEDIA_CONFIG_DEFAULT,
+  type MediaConfig,
+} from "./domains/media-config";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -84,4 +89,11 @@ export function getSiteContent(): Promise<SiteContent> {
 }
 export function getSiteContentWithMeta() {
   return getSettingWithMeta("site_content", siteContentSchema, SITE_CONTENT_DEFAULT);
+}
+
+export function getMediaConfig(): Promise<MediaConfig> {
+  return getSetting("media_config", mediaConfigSchema, MEDIA_CONFIG_DEFAULT);
+}
+export function getMediaConfigWithMeta() {
+  return getSettingWithMeta("media_config", mediaConfigSchema, MEDIA_CONFIG_DEFAULT);
 }

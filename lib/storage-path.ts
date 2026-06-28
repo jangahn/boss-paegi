@@ -4,6 +4,7 @@
 export const DOLLS_BUCKET = "dolls";
 export const HIGHLIGHTS_BUCKET = "highlights";
 export const EVENTS_BUCKET = "events"; // 이벤트/공지 이미지(public — 서명 불요·CDN/OG 친화)
+export const SITE_ASSETS_BUCKET = "site-assets"; // 기본 OG·서비스 로고(public — 변환 render URL 로 소비). 대시보드/Management API 로 수동 생성.
 
 /**
  * dolls 저장값(전체 공개 URL · signed URL · 이미 버킷상대경로 · null) → 버킷상대경로.
