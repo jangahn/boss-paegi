@@ -90,9 +90,28 @@ export async function POST(req: NextRequest) {
       ? body.telemetrySessionId
       : null;
 
+  // doll_id IDOR 방어(적대감사 #1) — 본인 소유 doll 만 attach. 미소유/미존재/무효 UUID → null 강등(점수는
+  //   doll-less 로 저장=기본보스). 타인 doll UUID 위조 제출로 피해자 얼굴이 공격자 공개 share/history 에
+  //   오귀속(명예훼손·개인정보)되던 벡터 차단. user 클라 RLS(dolls owner read=auth.uid()=owner_id)가
+  //   본인 doll 일 때만 row 반환. 일시 DB 에러는 doll_id 유지 → DB RLS with-check(mig 0042)가 최종 게이트.
+  //   정상 플레이어는 항상 본인 doll 로 플레이 → 절대 강등 안 됨(강등=위조 때만).
+  let dollId: string | null =
+    typeof body.dollId === "string" && UUID_RE.test(body.dollId) ? body.dollId : null;
+  if (dollId) {
+    const { data: ownDoll, error: dollErr } = await supabase
+      .from("dolls")
+      .select("id")
+      .eq("id", dollId)
+      .maybeSingle();
+    if (!dollErr && !ownDoll) {
+      log.warn("score.doll_ownership_mismatch", { userId: user.id, dollId });
+      dollId = null;
+    }
+  }
+
   const baseRow = {
     owner_id: user.id,
-    doll_id: body.dollId ?? null,
+    doll_id: dollId,
     score: body.score,
     weapon: body.weapon,
     duration_ms: Math.round(body.durationMs),
@@ -160,7 +179,7 @@ export async function POST(req: NextRequest) {
     maxCombo,
     weapon: body.weapon,
     durationMs: Math.round(body.durationMs),
-    hasDoll: !!body.dollId,
+    hasDoll: !!dollId,
   });
 
   // ── 부가 리포트(스탯·페르소나·뱃지·백분위) — best-effort. 점수 저장과 완전 분리. ──
