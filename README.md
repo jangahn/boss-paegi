@@ -571,6 +571,10 @@ v0.51 (2026-06-28, 배너 지면별 분리 + 소식 상세 정리; Migration 004
 - **소식 상세(`/news/[id]`) 정리**: 본문에서 **커버 이미지·요약 제거**(커버·요약은 목록 썸네일·팝업·배너·OG 메타 전용으로만 유지) + 약관/방침처럼 **오프화이트(`ui-surface`) 카드** + header border-b.
 - 검증: typecheck 0·신규 변경 파일 lint 0. 라이브(어드민 세션 주입 로컬) — 에디터 3체크박스·**per-surface 독립**(갤러리=테스트 배너, 홈/랭킹=기존 배너 동시 확인)·상세 오프화이트·커버 미노출 확인.
 
+v0.52 (2026-06-29, 소식 썸네일 og 비율 정합 + 커버 transform 경량화):
+- **썸네일·OG 비율 통일·경량화**: 소식 목록 썸네일이 1.25:1(`h-16 w-20`, 풀 원본 png ~2.27MB)이라 og(1200×630=1.91:1)와 비율 어긋나고 느리던 문제. 커버 원본 1장에서 **표시 시점 Supabase transform**(갤러리 `DOLL_THUMB` 패턴)으로 `coverThumbUrl`(600×315)·`coverOgUrl`(1200×630) 파생 — 둘 다 **40:21·resize:cover** 로 목록·og 프레이밍 통일. 목록=`<FadeImg aspect-[40/21] shimmer>`(webp ~44KB, ~98%↓), `/news/[id]` `generateMetadata` OG=`coverOgUrl`+width/height 1200×630. **재크롭/마이그레이션 0**(public 버킷 render URL·기존 원본 그대로). OG는 콘텐츠 협상(브라우저=webp·SNS 스크래퍼=png)이라 미리보기 호환.
+- 검증: typecheck 0·build 0. prod `events` 버킷 실측(원본 2.27MB png → 썸네일 44KB webp, og 1200×630 webp/png 협상). 배너(`EventBanner`)도 동일 경량화는 후속 후보(표시 비율 달라 별도 PR).
+
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0043 (이벤트/공지)** (`supabase/migrations/0043_events.sql`): `events`(공지/이벤트 게시판·팝업·배너 단일 소스, status+노출윈도우+플래그) + `events_audit`(details jsonb) + `admin_save/publish/unpublish/delete_event` RPC(하드닝·advisory lock·이미지 출처 검증·끝에 `notify pgrst`). **신규 public `events` 스토리지 버킷**은 별도 생성(Management API, 마이그 밖). additive·무중단(신규 테이블, 기존 무영향). **코드 배포 전 적용**(배포된 코드가 events 테이블 조회).
