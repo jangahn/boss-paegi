@@ -364,7 +364,7 @@ function PlayInner() {
 
   return (
     <div
-      className="game-surface relative flex flex-1 flex-col bg-zinc-900"
+      className="game-surface relative flex flex-1 flex-col overflow-hidden bg-zinc-900"
       onContextMenu={(e) => e.preventDefault()}
     >
       <div ref={stageRef} className="flex-1 select-none" />
