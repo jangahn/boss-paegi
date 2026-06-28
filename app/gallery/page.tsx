@@ -7,6 +7,7 @@ import { getMyProfile, formatCredits, type MyProfile } from "@/lib/profile";
 import { AppNav } from "@/components/AppNav";
 import { DefaultBossCard } from "@/components/gallery/DefaultBossCard";
 import { SignupBanner } from "@/components/gallery/SignupBanner";
+import { EventBanner } from "@/components/events/EventBanner";
 import { PendingGrid } from "@/components/gallery/PendingGrid";
 import { DollCard, type Doll } from "@/components/gallery/DollCard";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
@@ -201,6 +202,8 @@ export default function GalleryPage() {
               {mk.signupBanner.memberHeaderCta}
             </Link>
           </div>
+
+          <EventBanner />
 
           {loading ? (
             <GridSkeleton />

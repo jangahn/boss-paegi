@@ -144,7 +144,7 @@ boss-paegi/
 
 관리자 전용 운영 대시보드 + 결제 대사. 권한은 `member_accounts.is_admin`(service_role 만 쓰기 → 자가부여 불가, 0020). `proxy.ts` 가 `/admin` 로그인 게이트, 페이지·`/api/admin/*` 는 **`requireAdmin()`** 으로 최종 판정 — is_admin 을 **별도·관용 조회**(0020 미적용/비admin 이면 안전 차단, 기존 회원 흐름 무영향).
 
-- **멀티 라우트**(공통 `app/admin/layout.tsx` = `requireAdmin` 1회 + `AppNav`+`AdminNav`): `/admin`(대시보드) · `/admin/orders`(전체 주문) · `/admin/users`(회원) · `/admin/ledger`(처리내역).
+- **멀티 라우트**(공통 `app/admin/layout.tsx` = `requireAdmin` 1회 + `AppNav`+`AdminNav`): `/admin`(대시보드) · `/admin/orders`(전체 주문) · `/admin/users`(회원) · `/admin/ledger`(처리내역) · `/admin/moderation`(신고) · `/admin/events`(이벤트/소식 — 공지·이벤트 작성/발행·홈 팝업·배너 운영, v0.50) · `/admin/content`(콘텐츠) · `/admin/analytics`(게임 분석).
 - **`/admin`**(대시보드, RSC `force-dynamic`): 매출·주문(오늘=KST 자정 / 7d·30d rolling, 상태별) · 가입·구매 퍼널(방문→플레이→가입→첫생성→첫구매) · **오래된 결제요청(확인 필요)**. CS 조정·환불은 **회원 관리(유저 상세)로 이전**. 정확 수치는 DB(`lib/admin-data` + `get_admin_funnel`/`get_admin_order_summary` RPC), Sentry 아님.
 - **`/admin/orders`**(전체 주문, RSC): 상태 필터 + 주문ID/mul_no 부분검색 + 10건/page. `search_orders` RPC(`order_uuid::text`/`mul_no` prefix·window `total_count`, `lib/admin-orders.ts`).
 - **`/admin/users`**(회원, RSC): 이메일·닉네임 부분검색(`search_members` RPC, ID exact) → 후보 → **유저 상세 `/admin/users/[id]`**: 결제·크레딧(주문 + 조정/환불 이력) · 콘텐츠(AI 생성내역[상태]·보유 캐릭터) · 회원정보 + 플레이내역 링크, 각 섹션 10/page. **CS 크레딧 조정**(범위초과 명시·이중 방어) 통합. `lib/admin-users.ts`.
@@ -555,6 +555,18 @@ v0.49 (2026-06-28, 동의 모델 재전환 — 글로벌 게이트(렌더 전)·
 - `requireMember`(동의완료, endpoint 백스톱): fal · doll(전 메서드) · generations · avatar · payapp/checkout · payapp/order-status · admin/*(requireAdmin)
 - `requireAuthedNonDeleted`(로그인만): account/delete(탈퇴) · /api/account/consent
 - public webhook: payapp/feedback · payapp/return · 공개 조회: leaderboard·score·signed-urls·highlight·report·gallery·config/public·/api/legal/versions
+
+v0.50 (2026-06-28, 이벤트/공지 운영 — 소식 게시판·홈 팝업·배너 구좌; Migration 0043):
+- **신규 기능**: 어드민이 공지·이벤트를 작성·발행하고 3지면을 운영. (a)**홈 진입 팝업**("○일 안보기" 이벤트별 localStorage dismiss·기본 7일) · (b)**소식 게시판 `/news`**(홈/갤러리/랭킹과 동급 탭, 타입[공지/이벤트] 배지·필터·페이징·상세) · (c)**배너 구좌**(홈·랭킹·갤러리 공통 1건, 기존 가입배너와 별개). a·c 는 events 행의 `popup_active`/`banner_active` 플래그로 b 의 특정 글을 가리켜 랜딩(단일 소스).
+- **데이터(전용 테이블 — config 부적합)**: `events`(0043) status(draft/published)+노출 윈도우(starts_at/ends_at)+priority·pinned·noindex·popup_dismiss_days. **버전 이력 없음**(과거본 공개 의무 없음). 노출=발행+윈도우+미삭제. 팝업/배너는 priority deterministic 1건. legal_documents(0029) 하드닝(security definer·search_path·revoke·내부 admin 재검증·advisory lock) 복제 + 전용 `events_audit`(details jsonb). RPC: `admin_save/publish/unpublish/delete_event`.
+- **이미지**: 신규 **public `events` 버킷**(서명 불요·CDN/OG). DB 는 `cover_image_path`(상대경로) 저장→서버 getter 가 `getPublicUrl` 파생. 업로드(`/api/admin/event-image`, avatar 패턴)+저장 API(zod)+RPC **3중** events 버킷·SVG 금지·5MB 검증. 본문 마크다운 인라인 이미지도 events 버킷 URL 만 렌더.
+- **본문**: 마크다운(`react-markdown`+`remark-gfm`, **rehype-raw 미사용**=XSS 안전, 링크 http/https/mailto·외부 target/rel, img events 버킷만).
+- **어드민**: `/admin/events`(목록·status/type 필터·페이징) + `/admin/events/[id]`(에디터: 폼·커버/본문 이미지 업로드·마크다운 미리보기·발행/예약/삭제·다중활성 경고). AdminNav 탭 추가.
+- **공개·캐시**: 목록·상세·팝업·배너·sitemap getter 전부 `unstable_cache(60s, tag 'events')`(60초 now-버킷 키로 윈도우 비교 안정화) → 발행/수정/삭제 시 `revalidateTag('events')` + 경로별 `revalidatePath('/'·'/news'·'/news/[id]'·'/leaderboard'·'/gallery')` 무효화. **starts_at/ends_at 자동 노출·만료는 ≤60초 지연**(MVP). 공개 팝업/배너는 `/api/events/active`(슬림 DTO·CDN swr) 클라 fetch(홈/갤러리/랭킹이 client 컴포넌트).
+- **SEO**: `/news` + 발행·윈도우 active·noindex=false 상세를 `sitemap.ts` 동적 등재, 상세 `generateMetadata` OG(cover)·행별 robots noindex. **`/news` 는 public 이나 로그인 미동의자는 v0.49 글로벌 게이트(`proxy.ts`)로 `/consent`**(anon·동의완료는 정상). 만료/삭제/예약 상세는 `notFound`(404) — **만료 안 시킬 공지는 `ends_at=null`**(보드 영속). ⚠️ 만료 이벤트의 공유·북마크 링크는 404.
+- 검증: typecheck 0·신규 파일 lint 0. **이미지 orphan(미저장 업로드)=MVP 허용**(추후 cleanup). slug(`/news/[slug]`)·지면별 배너·만료 자동 purge cron·팝업 dismiss reset 은 추후.
+
+**⚠️ Migration 0043 (이벤트/공지)** (`supabase/migrations/0043_events.sql`): `events`(공지/이벤트 게시판·팝업·배너 단일 소스, status+노출윈도우+플래그) + `events_audit`(details jsonb) + `admin_save/publish/unpublish/delete_event` RPC(하드닝·advisory lock·이미지 출처 검증·끝에 `notify pgrst`). **신규 public `events` 스토리지 버킷**은 별도 생성(Management API, 마이그 밖). additive·무중단(신규 테이블, 기존 무영향). **코드 배포 전 적용**(배포된 코드가 events 테이블 조회).
 
 **⚠️ Migration 0041 (프로덕션 적용 완료 2026-06-27)** (`supabase/migrations/0041_consent_unify.sql`): `create_or_update_member_consent` RPC — 통합 동의(insert[보너스·stamp]/update[필요 항목만] 원자 처리·`on conflict (user_id) do nothing`·`is_new` 반환, `security definer set search_path`·service_role only). **컬럼 변경 없음**(기존 0030/0031/0037 컬럼 사용) — 함수 추가만, 롤백=`drop function`. 코드 배포와 함께 적용.
 
