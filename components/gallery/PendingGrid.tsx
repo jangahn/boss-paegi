@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
+import { FadeImg } from "@/components/FadeImg";
 import type { PendingGeneration } from "@/lib/generation";
 
 // 미완결 생성 — 생성 중 / 고르기 대기 / 중단됨. (app/gallery/page.tsx 에서 분리·이동.)
@@ -53,8 +54,7 @@ function PendingCard({ gen }: { gen: PendingGeneration }) {
     >
       <div className="grid flex-1 grid-cols-3 gap-px bg-foreground/10">
         {gen.candidateUrls.slice(0, 3).map((url, i) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={i} src={url} alt="" className="h-full w-full object-cover" />
+          <FadeImg key={i} src={url} placeholder="shimmer" loading="lazy" fit="cover" className="h-full w-full" />
         ))}
       </div>
       <div className="flex items-center justify-center gap-1 bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">

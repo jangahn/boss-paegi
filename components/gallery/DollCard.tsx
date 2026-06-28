@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
+import { FadeImg } from "@/components/FadeImg";
 import { MenuItem } from "@/components/gallery/MenuItem";
 import { shareDoll } from "@/lib/doll-share";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
@@ -32,7 +33,6 @@ export function DollCard({
   const role = asRole(doll.role);
   const mk = useMarketingCopy();
   const cfg = useRoleConfig(); // DB 발행 호칭(roleFrom) — 마케터 변경이 갤러리칩/메뉴/토스트에 반영
-  const [imgLoaded, setImgLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [roleMenu, setRoleMenu] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -95,21 +95,14 @@ export function DollCard({
     // 잘리지 않게 이미지 영역과 분리 (작은 폰에서 메뉴가 카드보다 큼)
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
-        {/* 이미지 로드 전 pulse placeholder */}
-        {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse ui-surface" />
-        )}
+        {/* 이미지 로드 전 shimmer 스켈레톤(FadeImg) → 로드 시 페이드인. hover 줌은 wrapper 스케일. */}
         <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <FadeImg
             src={doll.image_url}
-            alt=""
+            placeholder="shimmer"
             loading="lazy"
-            decoding="async"
-            onLoad={() => setImgLoaded(true)}
-            className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
-              imgLoaded ? "opacity-100" : "opacity-0"
-            }`}
+            fit="cover"
+            className="h-full w-full transition duration-300 group-hover:scale-105"
           />
         </Link>
 

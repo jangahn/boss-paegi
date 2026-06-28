@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { HighlightPlayer } from "@/components/HighlightPlayer";
+import { FadeImg } from "@/components/FadeImg";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVICE_NAME } from "@/lib/policy";
 import {
@@ -140,11 +141,13 @@ export default async function SharePage({
 
           <div className="mt-3 flex items-start justify-between gap-3">
             {/* 커스텀 인형 없으면 기본 부장님 이미지 */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <FadeImg
               src={dollImg ?? "/sprites/boss-default.png"}
               alt={`맞은 ${rlabel}`}
-              className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
+              className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
+              fit="contain"
+              placeholder="shimmer"
+              fallbackSrc="/sprites/boss-default.png"
             />
             <table className="border-collapse text-center text-[10px]">
               <tbody>

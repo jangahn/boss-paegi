@@ -15,7 +15,7 @@ import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import type { RoleId } from "@/lib/roles";
 import type { PendingGeneration } from "@/lib/generation";
 
-const GALLERY_PAGE = 24; // 무한스크롤 페이지 크기
+const GALLERY_PAGE = 12; // 무한스크롤 페이지 크기
 
 export default function GalleryPage() {
   const mk = useMarketingCopy();

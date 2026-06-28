@@ -122,7 +122,7 @@ export default async function DollPage({
                 alt={`${rlabel} 증명사진`}
                 className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100"
                 fit="contain"
-                placeholder="pulse"
+                placeholder="shimmer"
                 fallbackSrc="/sprites/boss-default.png"
               />
               <p className="mt-1 text-center text-[10px] text-zinc-400">

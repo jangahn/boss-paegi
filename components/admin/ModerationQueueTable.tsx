@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
+import { FadeImg } from "@/components/FadeImg";
 import { shortId } from "@/lib/admin-format";
 import type { ModerationRow, ModState, ModReport } from "@/lib/admin-moderation";
 
@@ -139,8 +140,7 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
             </div>
           ) : (
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={row.image_url} alt="" className="h-full w-full object-contain" />
+              <FadeImg src={row.image_url} placeholder="shimmer" fit="contain" className="h-full w-full" />
               {row.state === "hidden" && (
                 <span className="absolute inset-x-0 bottom-0 bg-yellow-500/80 py-0.5 text-center text-[9px] font-bold text-black">
                   숨김

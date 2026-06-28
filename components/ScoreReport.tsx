@@ -4,6 +4,7 @@ import type { Persona } from "@/lib/persona";
 import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { Spinner } from "@/components/Spinner";
+import { FadeImg } from "@/components/FadeImg";
 
 /**
  * 게임 결과 "보고서(종이)" 표현 — 패기 유형(페르소나) 해석 + 점수/콤보/등급/부장님 반응.
@@ -75,11 +76,13 @@ export function ScoreReport({
 
       {/* 인형 + 결재란 */}
       <div className="mt-3 flex items-start justify-between gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <FadeImg
           src={dollImageUrl ?? "/sprites/boss-default.png"}
           alt={`맞은 ${roleLabel}`}
-          className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100 object-contain"
+          className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100"
+          fit="contain"
+          placeholder="shimmer"
+          fallbackSrc="/sprites/boss-default.png"
         />
         <table className="border-collapse text-center text-[10px]">
           <tbody>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { FadeImg } from "@/components/FadeImg";
 import type { GeneratedImage } from "@/app/generate/useGenerationPolling";
 
 /**
  * 생성 후보 선택 — 1~2분 유료 생성 직후라 이미지 로드 전 "빈 카드" 인상 방지.
- * 각 후보는 로드 전 pulse placeholder → onLoad 시 fade-in (갤러리 DollCard 패턴).
+ * 각 후보는 로드 전 shimmer placeholder → fade-in (공용 FadeImg, 갤러리/공유와 동일).
  */
 export function PickStage({
   results,
@@ -38,23 +38,12 @@ function PickCandidate({
   img: GeneratedImage;
   onPick: (img: GeneratedImage) => void;
 }) {
-  const [loaded, setLoaded] = useState(false);
   return (
     <button
       onClick={() => onPick(img)}
       className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 transition hover:scale-[1.02] hover:border-foreground/40"
     >
-      {!loaded && <div className="absolute inset-0 animate-pulse bg-foreground/10" />}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={img.url}
-        alt=""
-        onLoad={() => setLoaded(true)}
-        onError={() => setLoaded(true)}
-        className={`h-full w-full object-cover transition-opacity duration-300 ${
-          loaded ? "opacity-100" : "opacity-0"
-        }`}
-      />
+      <FadeImg src={img.url} placeholder="shimmer" loading="eager" fit="cover" className="h-full w-full" />
     </button>
   );
 }
