@@ -28,7 +28,7 @@ export async function generateMetadata({
       title: e.title,
       description: e.summary,
       type: "article",
-      ...(e.coverUrl ? { images: [{ url: e.coverUrl }] } : {}),
+      ...(e.coverOgUrl ? { images: [{ url: e.coverOgUrl, width: 1200, height: 630 }] } : {}),
     },
   };
 }

@@ -60,8 +60,17 @@ export type EventRow = {
   deleted_at: string | null;
 };
 
-/** 공개/뷰 투영 — cover_image_path → coverUrl(파생). */
-export type EventView = EventRow & { coverUrl: string | null };
+/**
+ * 공개/뷰 투영 — cover_image_path → URL 파생(원본 1장에서 표시 시점 변환).
+ * - coverUrl: 원본 public URL(변환 없음).
+ * - coverThumbUrl: 목록 썸네일용 600×315(=40:21) cover 크롭 webp(풀 원본 대신 ~수십KB).
+ * - coverOgUrl: og:image용 1200×630(=1.91:1) cover 크롭 — SNS 미리보기 규격 고정·목록과 동일 프레이밍.
+ */
+export type EventView = EventRow & {
+  coverUrl: string | null;
+  coverThumbUrl: string | null;
+  coverOgUrl: string | null;
+};
 
 /**
  * cover_image_path 검증(zod) — events 버킷 **상대경로**만(URL·절대경로·경로탈출·SVG 금지).

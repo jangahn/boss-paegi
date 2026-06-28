@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
+import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { getPublishedEvents } from "@/lib/events";
 import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/types";
@@ -70,9 +71,14 @@ export default async function NewsPage({
                     href={`/news/${e.id}`}
                     className="flex items-center gap-3 rounded-2xl border border-foreground/10 ui-surface p-3 transition hover:bg-foreground/10"
                   >
-                    {e.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={e.coverUrl} alt="" loading="lazy" className="h-16 w-20 shrink-0 rounded-xl object-cover" />
+                    {e.coverThumbUrl && (
+                      // og(1200×630)와 동일한 40:21 cover 크롭 썸네일 + shimmer. 풀 원본 대신 ~수십KB webp.
+                      <FadeImg
+                        src={e.coverThumbUrl}
+                        className="aspect-[40/21] w-28 shrink-0 rounded-xl"
+                        fit="cover"
+                        placeholder="shimmer"
+                      />
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
