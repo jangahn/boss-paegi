@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
+import { FadeImg } from "@/components/FadeImg";
 import { ModalShell } from "@/components/ModalShell";
 import { Markdown } from "@/components/events/Markdown";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +37,8 @@ export function EventEditor({ event }: { event: EventView | null }) {
   const [body, setBody] = useState(event?.body ?? "");
   const [coverPath, setCoverPath] = useState<string | null>(event?.cover_image_path ?? null);
   const [coverUrl, setCoverUrl] = useState<string | null>(event?.coverUrl ?? null);
+  // 미리보기용 서버 리사이즈 썸네일(기존 이벤트). 새 업로드 시 null → 새 풀 coverUrl 로 표시.
+  const [coverThumbUrl, setCoverThumbUrl] = useState<string | null>(event?.coverThumbUrl ?? null);
   const [startsAt, setStartsAt] = useState(isoToKstLocal(event?.starts_at ?? null));
   const [endsAt, setEndsAt] = useState(isoToKstLocal(event?.ends_at ?? null));
   const [popupActive, setPopupActive] = useState(event?.popup_active ?? false);
@@ -115,6 +118,7 @@ export function EventEditor({ event }: { event: EventView | null }) {
       const { path, url } = await upload(file);
       setCoverPath(path);
       setCoverUrl(url);
+      setCoverThumbUrl(null); // 새 업로드는 풀 URL 로 즉시 표시(저장·재로드 후 썸네일).
     } catch (e) {
       setMsg({ ok: false, text: `커버 업로드 실패 (${(e as Error).message})` });
     } finally {
@@ -287,12 +291,16 @@ export function EventEditor({ event }: { event: EventView | null }) {
         {/* 커버 이미지 */}
         <div className="flex flex-col gap-1">
           <span className="text-sm font-semibold text-zinc-500">
-            커버 이미지 <span className="text-zinc-400">· 목록 썸네일·OG(선택)</span>
+            커버 이미지 <span className="text-zinc-400">· 목록 썸네일·OG(선택) · 권장 1200×630 (1.91:1)</span>
           </span>
           <div className="flex items-center gap-3">
             {coverUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={coverUrl} alt="" className="h-16 w-24 rounded-lg object-cover" />
+              <FadeImg
+                src={coverThumbUrl ?? coverUrl}
+                className="aspect-[40/21] w-28 shrink-0 rounded-lg"
+                fit="cover"
+                placeholder="gray"
+              />
             )}
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-foreground/20 px-3 py-1.5 text-xs hover:bg-foreground/5">
               {uploading === "cover" ? <Spinner className="h-3.5 w-3.5" /> : coverUrl ? "변경" : "업로드"}
@@ -309,6 +317,7 @@ export function EventEditor({ event }: { event: EventView | null }) {
                 onClick={() => {
                   setCoverPath(null);
                   setCoverUrl(null);
+                  setCoverThumbUrl(null);
                 }}
                 className="text-xs text-red-400 hover:underline"
               >
