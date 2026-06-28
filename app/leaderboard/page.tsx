@@ -51,7 +51,6 @@ export default function LeaderboardPage() {
       <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-          <EventBanner surface="leaderboard" />
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-2xl font-bold">랭킹</h1>
             <Link
@@ -61,6 +60,8 @@ export default function LeaderboardPage() {
               패러 가기
             </Link>
           </div>
+          {/* 공지 배너 — 제목 아래(갤러리 '내 캐릭터들' 아래와 일관). */}
+          <EventBanner surface="leaderboard" />
 
           <div className="flex gap-2 rounded-full bg-foreground/5 p-1 text-sm">
             <Tab active={period === "daily"} onClick={() => setPeriod("daily")}>
