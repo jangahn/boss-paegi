@@ -14,6 +14,7 @@ const DOMAINS: { key: DomainKey; label: string; desc: string }[] = [
   { key: "session_limits", label: "세션 한도", desc: "최대 플레이 시간·점수(강제 종료)" },
   { key: "growth_levers", label: "성장 레버", desc: "가입 생성권·충전 가격" },
   { key: "site_content", label: "소개·FAQ (SEO)", desc: "홈 소개·자주 묻는 질문·검색 메타" },
+  { key: "media_config", label: "미디어 자산", desc: "기본 OG 공유 이미지·서비스 로고" },
 ];
 
 export default function ContentHome() {
