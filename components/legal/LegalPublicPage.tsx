@@ -44,19 +44,12 @@ export async function LegalPublicPage({
       <AppNav />
       <main className="flex flex-1 flex-col ui-surface px-5 py-10">
         <div className="mx-auto w-full max-w-2xl">
-          <Link
-            href="/"
-            className="text-xs text-zinc-500 underline-offset-4 hover:text-foreground hover:underline"
-          >
-            ← 홈
-          </Link>
-
           {!viewed ? (
-            <div className="mt-6 rounded-2xl border border-dashed border-foreground/15 p-8 text-center text-sm text-zinc-500">
+            <div className="rounded-2xl border border-dashed border-foreground/15 p-8 text-center text-sm text-zinc-500">
               {label}은 준비 중입니다.
             </div>
           ) : (
-            <div className="mt-4 flex flex-col gap-6">
+            <div className="flex flex-col gap-6">
               {/* 예정본 사전 고지 — 현재본을 볼 때만 */}
               {!viewId && upcoming && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
