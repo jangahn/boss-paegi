@@ -7,11 +7,13 @@ import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
+import { useMediaAssets } from "@/components/MediaAssetsProvider";
 import { EventBanner } from "@/components/events/EventBanner";
 import { EventPopup } from "@/components/events/EventPopup";
 
 export default function Home() {
   const { home } = useMarketingCopy();
+  const { logoUrl } = useMediaAssets();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
@@ -38,13 +40,14 @@ export default function Home() {
           <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
+            {/* 정사각 로고 슬롯(LOGO_TRANSFORM 640²·에디터 미리보기와 동일 비율) — 4:3 정적 폴백은 object-contain 으로 안전 수용 */}
             <Image
-              src="/logo.png"
+              src={logoUrl ?? "/logo.png"}
               alt="부장님 패기"
               width={640}
-              height={480}
+              height={640}
               priority
-              className="w-36 max-w-full"
+              className="w-36 max-w-full object-contain"
             />
             <p className="whitespace-pre-line text-base leading-relaxed text-zinc-600">
               {home.tagline}

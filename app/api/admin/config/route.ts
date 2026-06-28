@@ -1,5 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { isDomainKey } from "@/lib/config/keys";
 import { getEntry } from "@/lib/config/registry";
@@ -47,6 +48,13 @@ export async function POST(req: NextRequest) {
       { error: res.error },
       { status: res.error === "version_conflict" ? 409 : 400 }
     );
+  }
+  // media_config 는 텍스트 config 와 달리 렌더(layout metadata·로고)에 박힘 → 도메인 tag 외에
+  // layout/metadata 소비 경로도 무효화(og:image·twitter·로고 즉시 반영). 다른 도메인은 tag 로 충분.
+  if (body.key === "media_config") {
+    revalidatePath("/", "layout");
+    revalidatePath("/");
+    revalidatePath("/login");
   }
   log.info("config.update_ok", { key: body.key, adminId: gate.user.id, version: res.version });
   return NextResponse.json({ ok: true, version: res.version });

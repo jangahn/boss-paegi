@@ -19,11 +19,15 @@ import {
 } from "@/lib/config/getters";
 import { activeCreditProducts } from "@/lib/config/domains/growth";
 import { SiteContentProvider } from "@/components/SiteContentProvider";
+import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
+import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
 
 export async function generateMetadata(): Promise<Metadata> {
   const sc = await getSiteContent();
+  // OG/twitter 이미지를 명시(파일-기반 컨벤션 미사용). 우선순위 media_config 기본 OG > 정적 default.
+  const ogImages = await resolveOgImages();
   return {
     metadataBase: new URL(SITE_URL),
     title: {
@@ -46,8 +50,9 @@ export async function generateMetadata(): Promise<Metadata> {
       url: SITE_URL,
       locale: "ko_KR",
       type: "website",
+      images: ogImages,
     },
-    twitter: { card: "summary_large_image", title: SERVICE_NAME, description: sc.definition },
+    twitter: { card: "summary_large_image", title: SERVICE_NAME, description: sc.definition, images: ogImages },
   };
 }
 
@@ -65,7 +70,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // 마케팅 카피 + 롤 콘텐츠 + 점수 등급을 서버에서 1회 읽어 클라 컨텍스트로 주입(클라 fetch 불필요·코드 기본값 폴백).
-  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog, siteContent] =
+  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog, siteContent, mediaAssets] =
     await Promise.all([
       getMarketingCopy(),
       getRoleConfig(),
@@ -74,6 +79,7 @@ export default async function RootLayout({
       getGrowthLevers(),
       getBadgeCatalog(),
       getSiteContent(),
+      getMediaAssetUrls(),
     ]);
   const jsonLd = [
     { "@context": "https://schema.org", "@type": "WebSite", name: SERVICE_NAME, url: SITE_URL, inLanguage: "ko-KR", description: siteContent.definition },
@@ -98,6 +104,7 @@ export default async function RootLayout({
         <JsonLd data={jsonLd} />
         <SessionBootstrap />
         <SiteContentProvider value={siteContent}>
+        <MediaAssetsProvider value={{ logoUrl: mediaAssets.logoUrl }}>
         <MarketingCopyProvider value={marketingCopy}>
           <RoleContentProvider value={roleConfig}>
             <ScoreConfigProvider value={scoreConfig}>
@@ -111,6 +118,7 @@ export default async function RootLayout({
             </ScoreConfigProvider>
           </RoleContentProvider>
         </MarketingCopyProvider>
+        </MediaAssetsProvider>
         </SiteContentProvider>
       </body>
     </html>

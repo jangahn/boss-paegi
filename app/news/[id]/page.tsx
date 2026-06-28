@@ -5,6 +5,9 @@ import { AppNav } from "@/components/AppNav";
 import { Markdown } from "@/components/events/Markdown";
 import { getEventById } from "@/lib/events";
 import { EVENT_TYPE_LABEL } from "@/lib/events/types";
+import { resolveOgImages } from "@/lib/site-assets";
+import { SERVICE_NAME } from "@/lib/policy";
+import { SITE_URL } from "@/lib/site";
 
 function fmtKstDate(iso: string | null): string {
   if (!iso) return "";
@@ -19,6 +22,9 @@ export async function generateMetadata({
   const { id } = await params;
   const e = await getEventById(id);
   if (!e) return { title: "소식", robots: { index: false, follow: true } };
+  // 우선순위: 이벤트 cover > media_config 기본 OG > 정적 default. openGraph 는 deep-merge 안 되므로
+  // images 를 항상 명시(없으면 layout 기본 OG 를 잃음). twitter 도 동일 우선순위로 미러.
+  const ogImages = await resolveOgImages(e.coverOgUrl);
   return {
     title: e.title,
     description: e.summary,
@@ -27,9 +33,13 @@ export async function generateMetadata({
     openGraph: {
       title: e.title,
       description: e.summary,
+      siteName: SERVICE_NAME,
+      url: `${SITE_URL}/news/${id}`,
+      locale: "ko_KR",
       type: "article",
-      ...(e.coverOgUrl ? { images: [{ url: e.coverOgUrl, width: 1200, height: 630 }] } : {}),
+      images: ogImages,
     },
+    twitter: { card: "summary_large_image", title: e.title, description: e.summary, images: ogImages },
   };
 }
 
