@@ -174,7 +174,8 @@ export function MediaConfigEditor({
       <div className="flex flex-col gap-2 rounded-2xl border border-foreground/10 ui-surface p-4">
         <span className="text-sm font-semibold">{s.label}</span>
         <p className="text-xs text-zinc-500">{s.hint}</p>
-        <div className="mt-1 flex items-start gap-4">
+        {/* 모바일: 미리보기 위·버튼 아래로 스택(w-full 미리보기가 버튼을 밀어내 잘리던 것 방지). 데스크톱: 가로 배치 */}
+        <div className="mt-1 flex flex-col items-start gap-3 sm:flex-row sm:gap-4">
           {preview ? (
             <FadeImg
               src={preview}
