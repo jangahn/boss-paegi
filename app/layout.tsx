@@ -34,6 +34,11 @@ export async function generateMetadata(): Promise<Metadata> {
     applicationName: SERVICE_NAME,
     keywords: sc.keywords,
     alternates: { canonical: "/" },
+    // 검색엔진 소유확인(메타태그 방식). 토큰은 비밀 아님(공개 HTML 렌더) — 코드에 고정.
+    verification: {
+      google: "lFpQQH8GbI-gtGbDbWuHYkrHngToMMWUT294pxdm3MY",
+      other: { "naver-site-verification": "a864d35c73a0565ade6dad4a878659916ca9a832" },
+    },
     openGraph: {
       title: SERVICE_NAME,
       description: sc.definition,
