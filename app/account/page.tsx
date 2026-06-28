@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 import { AvatarEditor } from "@/components/AvatarEditor";
@@ -133,13 +132,6 @@ export default function AccountPage() {
           </section>
 
           <WithdrawSection />
-
-          <Link
-            href="/"
-            className="text-sm text-zinc-500 underline-offset-4 hover:text-foreground hover:underline"
-          >
-            ← 홈
-          </Link>
         </div>
       </main>
 
