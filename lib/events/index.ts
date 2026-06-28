@@ -2,11 +2,11 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EVENTS_BUCKET } from "@/lib/storage-path";
-import { NEWS_PAGE_SIZE, type EventRow, type EventType, type EventView } from "./types";
+import { BANNER_FLAG, NEWS_PAGE_SIZE, type BannerSurface, type EventRow, type EventType, type EventView } from "./types";
 
 // 공개 노출은 항상 서버에서 service_role 로 읽어 **발행본+윈도우+미삭제만** 투영(테이블은 anon/auth revoke).
 const COLS =
-  "id, type, status, title, summary, body, cover_image_path, starts_at, ends_at, popup_active, banner_active, priority, pinned, noindex, popup_dismiss_days, published_at, created_by, created_at, updated_at, deleted_at";
+  "id, type, status, title, summary, body, cover_image_path, starts_at, ends_at, popup_active, banner_home_active, banner_gallery_active, banner_leaderboard_active, priority, pinned, noindex, popup_dismiss_days, published_at, created_by, created_at, updated_at, deleted_at";
 
 /** cover_image_path(상대경로) → events 버킷 public URL(없으면 null). */
 function coverUrl(path: string | null): string | null {
@@ -98,7 +98,12 @@ export function getEventById(id: string): Promise<EventView | null> {
 }
 
 // ── 팝업/배너 1건 픽 ──────────────────────────────────────
-function pickActiveQuery(flag: "popup_active" | "banner_active", now: string) {
+type ActiveFlag =
+  | "popup_active"
+  | "banner_home_active"
+  | "banner_gallery_active"
+  | "banner_leaderboard_active";
+function pickActiveQuery(flag: ActiveFlag, now: string) {
   const admin = createAdminClient();
   return admin
     .from("events")
@@ -125,9 +130,9 @@ const _getActivePopupEvent = unstable_cache(
   ["events-popup"],
   { revalidate: 60, tags: ["events"] }
 );
-const _getActiveBannerEvent = unstable_cache(
-  async (bucket: number): Promise<EventView | null> => {
-    const { data } = await pickActiveQuery("banner_active", bucketIso(bucket));
+const _getActiveBanner = unstable_cache(
+  async (flag: ActiveFlag, bucket: number): Promise<EventView | null> => {
+    const { data } = await pickActiveQuery(flag, bucketIso(bucket));
     return data ? toView(data as EventRow) : null;
   },
   ["events-banner"],
@@ -138,9 +143,9 @@ const _getActiveBannerEvent = unstable_cache(
 export function getActivePopupEvent() {
   return _getActivePopupEvent(nowBucket());
 }
-/** 홈·랭킹·갤러리 공통 배너 1건. */
-export function getActiveBannerEvent() {
-  return _getActiveBannerEvent(nowBucket());
+/** 지면별 배너 1건(홈·갤러리·랭킹 각 독립, 우선순위 deterministic). */
+export function getActiveBanner(surface: BannerSurface) {
+  return _getActiveBanner(BANNER_FLAG[surface], nowBucket());
 }
 
 // ── sitemap ──────────────────────────────────────────────

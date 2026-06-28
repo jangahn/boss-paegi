@@ -110,7 +110,18 @@ export default async function AdminEventsPage({
                         {e.status === "published" ? "발행" : "초안"}
                       </span>
                       {e.popup_active && <span className="text-[10px] text-sky-500">● 팝업</span>}
-                      {e.banner_active && <span className="text-[10px] text-violet-500">● 배너</span>}
+                      {(e.banner_home_active || e.banner_gallery_active || e.banner_leaderboard_active) && (
+                        <span className="text-[10px] text-violet-500">
+                          ● 배너
+                          {[
+                            e.banner_home_active && "홈",
+                            e.banner_gallery_active && "갤러리",
+                            e.banner_leaderboard_active && "랭킹",
+                          ]
+                            .filter(Boolean)
+                            .join("·")}
+                        </span>
+                      )}
                       {e.pinned && <span className="text-[10px] text-zinc-400">📌</span>}
                     </div>
                     <p className="mt-0.5 truncate text-sm font-medium">{e.title}</p>

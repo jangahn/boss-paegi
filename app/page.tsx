@@ -34,7 +34,7 @@ export default function Home() {
       <EventPopup />
       <main className="flex flex-1 flex-col items-center px-6 py-12">
         <div className="flex w-full max-w-sm flex-col gap-6">
-          <EventBanner />
+          <EventBanner surface="home" />
           <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
