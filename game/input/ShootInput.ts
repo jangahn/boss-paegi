@@ -6,14 +6,14 @@ import {
 import type { Weapon } from "@/lib/weapons";
 
 type Callbacks = {
-  /** 한 발 발사 — (x, y) 에서 인형을 향해. PlayScene 이 pellet 생성. */
+  /** 한 발 발사 — (x, y) 에서 캐릭터를 향해. PlayScene 이 pellet 생성. */
   onFire: (info: { x: number; y: number; weapon: Weapon }) => void;
 };
 
 const FIRE_INTERVAL_SEC = 0.18;
 
 /**
- * 비비탄총 입력 — 빈 곳을 꾹 누르고 있으면 🔫 이 인형을 자동 조준,
+ * 비비탄총 입력 — 빈 곳을 꾹 누르고 있으면 🔫 이 캐릭터를 자동 조준,
  * 일정 간격으로 연사. 손가락을 떼면 멈춤.
  */
 export class ShootInput {
@@ -72,10 +72,10 @@ export class ShootInput {
     this.cancel();
   };
 
-  /** 매 프레임 — 조준 회전 + 연사 타이밍. (dollX, dollY) 는 인형 현재 위치. */
+  /** 매 프레임 — 조준 회전 + 연사 타이밍. (dollX, dollY) 는 캐릭터 현재 위치. */
   update(deltaSec: number, dollX: number, dollY: number) {
     if (this.pointerId === null || !this.currentWeapon) return;
-    // 🔫 이모지는 왼쪽을 향함 — 타겟 각도 + π 로 총구가 인형을 향하게.
+    // 🔫 이모지는 왼쪽을 향함 — 타겟 각도 + π 로 총구가 캐릭터를 향하게.
     const angle = Math.atan2(dollY - this.holdPos.y, dollX - this.holdPos.x);
     this.gunSprite.rotation = angle + Math.PI;
     // 타겟이 오른쪽이면 회전 결과가 뒤집히므로 수직 미러로 바로 세움

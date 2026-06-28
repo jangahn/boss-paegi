@@ -19,9 +19,9 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 /**
- * 인형 이미지를 data URI 로 — Satori 는 외부 URL <img> 를 자체 fetch 하다
+ * 캐릭터 이미지를 data URI 로 — Satori 는 외부 URL <img> 를 자체 fetch 하다
  * 특정 PNG 에서 조용히 실패함 (영역이 빈 채 렌더). 서버에서 미리 받아 embed.
- * 커스텀 인형 없으면 기본 부장님 (public/sprites).
+ * 커스텀 캐릭터 없으면 기본 부장님 (public/sprites).
  */
 async function dollDataUri(dollUrl: string | null): Promise<string | null> {
   try {
@@ -88,7 +88,7 @@ export default async function OgImage({
   ]);
   const rlabel = roleFrom(role, cfg).label;
   const score = (s?.score ?? 0).toLocaleString();
-  // takedown(0034): 삭제된 인형 얼굴은 OG 에서도 숨김 → 기본 카드 fallback.
+  // takedown(0034): 삭제된 캐릭터 얼굴은 OG 에서도 숨김 → 기본 카드 fallback.
   const dollSrc = await dollDataUri(
     s?.dolls?.deleted_at ? null : await signedDollUrl(s?.dolls?.image_url, 60, { thumb: true })
   );
@@ -141,7 +141,7 @@ export default async function OgImage({
             </div>
           </div>
 
-          {/* 본문: 인형 + 정보 */}
+          {/* 본문: 캐릭터 + 정보 */}
           <div style={{ display: "flex", flex: 1, gap: 44, marginTop: 16, alignItems: "center" }}>
             {dollSrc ? (
               // eslint-disable-next-line @next/next/no-img-element

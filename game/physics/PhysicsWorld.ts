@@ -70,7 +70,7 @@ export class PhysicsWorld {
 
   // ── factory helpers ────────────────────────────────────────────────
   createDollAnchor(x: number, y: number, radius: number): Body {
-    // 인형 body — dynamic 이지만 spring 으로 anchor 에 묶여 복귀.
+    // 캐릭터 body — dynamic 이지만 spring 으로 anchor 에 묶여 복귀.
     // walls 와 충돌하려면 mask 에 0x0008 (wall category) 포함.
     return Bodies.circle(x, y, radius, {
       mass: 6,
@@ -93,13 +93,13 @@ export class PhysicsWorld {
   }
 
   /**
-   * 화면 4벽 — 인형 던질 때 튕김. category 0x0008, doll(0x0002)만 충돌.
+   * 화면 4벽 — 캐릭터 던질 때 튕김. category 0x0008, doll(0x0002)만 충돌.
    * 두께 400: 고속 fling 이 한 step 에 벽을 관통(tunneling)하거나 침투가
    * 깊어 분리 임펄스가 바깥쪽으로 향해 탈출하는 것 방지.
    *
    * @param overhang 벽 안쪽 면을 화면 밖으로 후퇴시키는 거리(px).
-   *   인형 body 가 화면 폭 대비 클 때 (좁은 모바일) 벽 사이에 끼어
-   *   수평 이동이 불가능해지는 것 방지 — 인형이 화면 밖으로 일부
+   *   캐릭터 body 가 화면 폭 대비 클 때 (좁은 모바일) 벽 사이에 끼어
+   *   수평 이동이 불가능해지는 것 방지 — 캐릭터가 화면 밖으로 일부
    *   나갔다 튕겨 돌아오는 연출도 자연스러움.
    */
   createWalls(width: number, height: number, overhang = 0): Body[] {

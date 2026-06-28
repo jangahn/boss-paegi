@@ -15,7 +15,7 @@ export function SpeechBubble({ text }: Props) {
         <p className="whitespace-nowrap text-center text-base font-semibold text-zinc-900">
           {text ?? " "}
         </p>
-        {/* 말풍선 꼬리 (아래 인형 가리킴) */}
+        {/* 말풍선 꼬리 (아래 캐릭터 가리킴) */}
         <div className="absolute -bottom-1.5 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 bg-white" />
       </div>
     </div>

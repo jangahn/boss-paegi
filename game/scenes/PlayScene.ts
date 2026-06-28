@@ -61,7 +61,7 @@ export type HitInfo = {
 // 궁극기 난사타 지속/간격
 const ULT_DURATION_SEC = 3.9;
 const ULT_BLOW_INTERVAL = 0.085;
-// 궁극기 중 인형을 마구 내던지는 간격 + 임펄스 세기 (px/step)
+// 궁극기 중 캐릭터를 마구 내던지는 간격 + 임펄스 세기 (px/step)
 const ULT_THROW_INTERVAL = 0.4;
 
 type PlaySceneOptions = {
@@ -94,7 +94,7 @@ export class PlayScene extends Container {
   private projectiles: Projectile[] = [];
   private removeCollisionListener?: () => void;
 
-  // drawing — doll.bodyWrap 의 child. 인형과 같은 레이어로 함께 움직임.
+  // drawing — doll.bodyWrap 의 child. 캐릭터와 같은 레이어로 함께 움직임.
   private drawingLayer: DrawingLayer;
   // 점수 누적에 따른 꼬질꼬질 데칼 — 역시 bodyWrap child
   private damageLayer: DamageLayer;
@@ -149,7 +149,7 @@ export class PlayScene extends Container {
     this.doll = new Doll({ texture: opts.dollTexture });
     this.addChild(this.doll);
 
-    // 데칼 루트 — 꼬질꼬질 + 낙서를 담고 인형 실루엣 mask 로 클리핑.
+    // 데칼 루트 — 꼬질꼬질 + 낙서를 담고 캐릭터 실루엣 mask 로 클리핑.
     // 데칼이 면적을 가져도 (멍 반경, 먼지 spread) 캐릭터 픽셀 밖으로는
     // 한 픽셀도 안 나감 (sprite = alpha mask, placeholder = 도형 mask).
     const decalRoot = new Container();
@@ -165,7 +165,7 @@ export class PlayScene extends Container {
     );
     decalRoot.addChild(this.damageLayer);
 
-    // 낙서 레이어 — 인형 bodyWrap 에 부착. 흔들림/던지기/회전 전부 인형과 함께.
+    // 낙서 레이어 — 캐릭터 bodyWrap 에 부착. 흔들림/던지기/회전 전부 캐릭터와 함께.
     // 보간 dot 도 실루엣 안만 허용 (빠른 스트로크가 오목 영역을 가로지를 때 잉크 새는 것 방지)
     this.drawingLayer = new DrawingLayer(
       (x, y) => this.doll.isInsideBody(x, y),
@@ -215,7 +215,7 @@ export class PlayScene extends Container {
     this.on("pointerupoutside", this.handleStagePointerUp);
 
     this.doll.on("pointerdown", this.handleDollPointerDown);
-    // v8 의 pointermove 는 hit-test 경로에만 dispatch — 드래그가 인형 밖으로
+    // v8 의 pointermove 는 hit-test 경로에만 dispatch — 드래그가 캐릭터 밖으로
     // 나가는 순간 끊기므로 globalpointermove 로 추적 (pointerId 가드로 필터).
     this.doll.on("globalpointermove", this.handleDollPointerMove);
     this.doll.on("pointerup", this.handleDollPointerUp);
@@ -274,13 +274,13 @@ export class PlayScene extends Container {
     this.ultBlowAccum = 0;
     this.ultThrowAccum = ULT_THROW_INTERVAL; // 첫 던지기 즉시
     this.ultShake = 22;
-    // 인형을 멀리 날려보내려 스프링을 약하게 (난타 동안 자유롭게 휘저음)
+    // 캐릭터를 멀리 날려보내려 스프링을 약하게 (난타 동안 자유롭게 휘저음)
     this.dollSpring.stiffness = 0.02;
     this.dollBody.collisionFilter.mask = 0x0001 | 0x0008; // 벽 튕김 유지
     playHitSound("whoosh", 1.3);
   }
 
-  /** 궁극기 중 인형을 랜덤 방향으로 내던짐 (벽에 튕기며 화면을 휘젓다 복귀) */
+  /** 궁극기 중 캐릭터를 랜덤 방향으로 내던짐 (벽에 튕기며 화면을 휘젓다 복귀) */
   private ultThrow() {
     const sp = 20 + Math.random() * 16;
     const a = Math.random() * Math.PI * 2;
@@ -289,7 +289,7 @@ export class PlayScene extends Container {
     playHitSound("whoosh", 0.8);
   }
 
-  /** 난사타 1발 — 랜덤 무기로 인형 실루엣 내 랜덤 위치 타격 (게이지 재충전 X) */
+  /** 난사타 1발 — 랜덤 무기로 캐릭터 실루엣 내 랜덤 위치 타격 (게이지 재충전 X) */
   private ultBlow() {
     const w = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
     const r = this.doll.naturalSize * 0.45 * (this.doll.scale.x || 1);
@@ -327,7 +327,7 @@ export class PlayScene extends Container {
     this.restoreDollAfterUlt();
   }
 
-  /** 궁극기 종료 — 스프링 복원 + 인형 anchor 즉시 복귀 (던져진 상태 정리) */
+  /** 궁극기 종료 — 스프링 복원 + 캐릭터 anchor 즉시 복귀 (던져진 상태 정리) */
   private restoreDollAfterUlt() {
     this.dollSpring.stiffness = 0.06;
     Body.setPosition(this.dollBody, {
@@ -365,7 +365,7 @@ export class PlayScene extends Container {
     this.shootInput.setActive(this.mode === "shoot", this.weapon);
     this.drawInput.setActive(this.mode === "draw", this.weapon);
 
-    // tap: 인형 탭만. grab: 인형 잡고 fling. 나머지: 인형 위 제스처를 stage 입력에 양보.
+    // tap: 캐릭터 탭만. grab: 캐릭터 잡고 fling. 나머지: 캐릭터 위 제스처를 stage 입력에 양보.
     const dollInteractive = this.mode === "tap" || this.mode === "grab";
     this.doll.eventMode = dollInteractive ? "static" : "none";
     this.doll.cursor = dollInteractive ? "pointer" : "default";
@@ -374,7 +374,7 @@ export class PlayScene extends Container {
     }
   }
 
-  /** stage 좌표가 인형 타격 범위(원, face+여유) 안인지 — swipe 용 관대한 판정 */
+  /** stage 좌표가 캐릭터 타격 범위(원, face+여유) 안인지 — swipe 용 관대한 판정 */
   private isOverDoll(sx: number, sy: number): boolean {
     const r = this.doll.naturalSize * 0.55 * (this.doll.scale.x || 1);
     const dx = sx - this.doll.x;
@@ -428,7 +428,7 @@ export class PlayScene extends Container {
       this.dollSpring.stiffness = 0;
       this.originalAirFriction = this.dollBody.frictionAir;
       this.dollBody.frictionAir = 0;
-      // drag 중에는 벽 충돌 off — 모바일처럼 인형 body 가 화면 폭에 끼는
+      // drag 중에는 벽 충돌 off — 모바일처럼 캐릭터 body 가 화면 폭에 끼는
       // 경우 벽 해소가 손가락 추적을 x 축에서 막아버림 (위아래로만 움직임).
       this.dollBody.collisionFilter.mask = 0x0001;
       // 누적된 각도 정규화 — 다음 자유비행에서 다회전 unwind 방지
@@ -610,7 +610,7 @@ export class PlayScene extends Container {
     this.fx.shockwave(x, y, 16, 60 + 50 * factor, weapon.color);
     this.fx.scorePop(x, y - 30, points, weapon.color);
     playHitSound("slap", 0.6 + factor * 0.5);
-    // 손이 움직인 방향으로 인형 밀치기
+    // 손이 움직인 방향으로 캐릭터 밀치기
     Body.applyForce(this.dollBody, this.dollBody.position, {
       x: dirX * 0.012 * factor,
       y: dirY * 0.012 * factor,
@@ -706,7 +706,7 @@ export class PlayScene extends Container {
     playHitSound("pew", 0.9);
   };
 
-  /** 매 프레임 pellet 전진 + 인형 명중 판정 */
+  /** 매 프레임 pellet 전진 + 캐릭터 명중 판정 */
   private updatePellets(deltaSec: number) {
     if (!this.pellets.length) return;
     const hitR = this.doll.naturalSize * 0.45 * (this.doll.scale.x || 1);
@@ -781,7 +781,7 @@ export class PlayScene extends Container {
       this.fx.shockwave(hx, hy, 30, 110 + 50 * factor, w.color);
       playHitSound("thud", 0.7 + factor * 0.5);
       if (w.key === "keyboard") playHitSound("clack", 0.8);
-      // projectile momentum 으로 인형 밀어내기.
+      // projectile momentum 으로 캐릭터 밀어내기.
       // collisionStart 안의 applyForce 는 matter 의 step 순서상 적분 전에
       // 클리어되어 no-op — setVelocity 로 직접 임펄스 적용.
       const v = projBody.velocity;
@@ -805,7 +805,7 @@ export class PlayScene extends Container {
         this.ultBlow();
         this.ultShake = Math.max(this.ultShake, 16); // 난타 내내 흔들림 유지
       }
-      // 마무리 직전(0.35s)까진 인형을 계속 내던짐
+      // 마무리 직전(0.35s)까진 캐릭터를 계속 내던짐
       this.ultThrowAccum += deltaSec;
       while (this.ultThrowAccum >= ULT_THROW_INTERVAL && this.ultTimer > 0.35) {
         this.ultThrowAccum -= ULT_THROW_INTERVAL;
@@ -818,7 +818,7 @@ export class PlayScene extends Container {
     }
 
     // drag 중에는 매 tick 손가락 위치에 고정 — 중력 velocity 누적으로
-    // 인형이 손에서 처지거나 (포인터 정지 시) 빠져나가는 것 방지.
+    // 캐릭터가 손에서 처지거나 (포인터 정지 시) 빠져나가는 것 방지.
     if (this.flingActive) {
       Body.setPosition(this.dollBody, this.flingPointerPos);
       Body.setVelocity(this.dollBody, { x: 0, y: 0 });
@@ -913,7 +913,7 @@ export class PlayScene extends Container {
     const targetDoll = this.doll.isSprite ? baseTarget * 1.3 : baseTarget * 0.8;
     this.doll.scale.set(targetDoll / this.doll.naturalSize);
     // 물리 body 반경을 표시 scale 에 동기화 — 안 하면 충돌 판정이
-    // 보이는 인형보다 한참 작고 벽 반사도 화면 밖으로 뚫림.
+    // 보이는 캐릭터보다 한참 작고 벽 반사도 화면 밖으로 뚫림.
     const nextScale = this.doll.scale.x || 1;
     const ratio = nextScale / this.dollBodyScale;
     if (Math.abs(ratio - 1) > 1e-3) {
@@ -926,7 +926,7 @@ export class PlayScene extends Container {
     this.fx.x = 0;
     this.fx.y = 0;
 
-    // 벽 overhang: 인형 body 반경의 70% 만큼 화면 밖으로 — 좁은 화면에서
+    // 벽 overhang: 캐릭터 body 반경의 70% 만큼 화면 밖으로 — 좁은 화면에서
     // body 가 좌우 벽 사이에 끼어 수평 이동 불가가 되는 것 방지.
     const bodyRadius = this.doll.naturalSize * 0.55 * nextScale;
     const overhang = bodyRadius * 0.7;

@@ -140,7 +140,7 @@ export default async function SharePage({
           )}
 
           <div className="mt-3 flex items-start justify-between gap-3">
-            {/* 커스텀 인형 없으면 기본 부장님 이미지 */}
+            {/* 커스텀 캐릭터 없으면 기본 부장님 이미지 */}
             <FadeImg
               src={dollImg ?? "/sprites/boss-default.png"}
               alt={`맞은 ${rlabel}`}

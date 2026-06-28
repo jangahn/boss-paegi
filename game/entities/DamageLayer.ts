@@ -1,8 +1,8 @@
 import { Container, FillGradient, Graphics } from "pixi.js";
 
 /**
- * 점수가 쌓일수록 인형이 꼬질꼬질해지는 데미지 데칼 레이어.
- * Doll.bodyWrap 의 child — 낙서처럼 인형과 함께 흔들리고 던져짐.
+ * 점수가 쌓일수록 캐릭터가 꼬질꼬질해지는 데미지 데칼 레이어.
+ * Doll.bodyWrap 의 child — 낙서처럼 캐릭터와 함께 흔들리고 던져짐.
  *
  * 누적 규칙 (상한 없음):
  *  - 2,000점마다: 약한 꼬질 1세트 (때 + 작은 멍/스크래치) — 궁극기로 점수가

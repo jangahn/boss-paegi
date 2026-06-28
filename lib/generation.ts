@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { log, errInfo } from "@/lib/log";
 
-/** dolls 버킷 재사용 — 확정 인형 + 생성 후보 모두 여기에 */
+/** dolls 버킷 재사용 — 확정 캐릭터 + 생성 후보 모두 여기에 */
 export const DOLLS_BUCKET = "dolls";
 
 /**

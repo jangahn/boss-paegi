@@ -7,15 +7,15 @@ type DollOptions = {
 };
 
 /**
- * 인형 본체. placeholder (Graphics) 또는 AI 생성 PNG sprite.
+ * 캐릭터 본체. placeholder (Graphics) 또는 AI 생성 PNG sprite.
  *
  * - bodyWrap: shake/펀치 transform 이 걸리는 내부 컨테이너. 낙서 레이어도 여기 붙음 —
- *   인형이 흔들리거나 던져질 때 낙서가 같은 레이어로 함께 움직임.
+ *   캐릭터가 흔들리거나 던져질 때 낙서가 같은 레이어로 함께 움직임.
  * - isInsideBody(lx, ly): bodyWrap local 좌표가 캐릭터 실루엣 안인지.
  *   AI sprite 는 PNG 알파맵 기반 (누끼 딴 실루엣 그대로), placeholder 는 도형 근사.
  */
 export class Doll extends Container {
-  /** 인형의 base 지름 (px) — 외부에서 viewport 기반 scale 계산 시 참조 */
+  /** 캐릭터의 base 지름 (px) — 외부에서 viewport 기반 scale 계산 시 참조 */
   public readonly naturalSize: number;
   /** AI sprite 인지 placeholder 인지 */
   public readonly isSprite: boolean;

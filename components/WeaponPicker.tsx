@@ -5,7 +5,7 @@ import { WEAPONS, Weapon, WeaponKey } from "@/lib/weapons";
 type Props = {
   active: WeaponKey;
   onChange: (w: Weapon) => void;
-  /** 인형에 낙서가 있는지 — 있으면 펜 슬롯이 지우개(🧽)로 변함 */
+  /** 캐릭터에 낙서가 있는지 — 있으면 펜 슬롯이 지우개(🧽)로 변함 */
   hasDrawing?: boolean;
   /** 지우개 터치 시 낙서 전체 삭제 (점수 무관, 무기 모드 유지) */
   onClearDrawing?: () => void;

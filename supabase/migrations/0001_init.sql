@@ -39,7 +39,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 2. dolls : 생성된 인형 (사용자 갤러리)
+-- 2. dolls : 생성된 캐릭터 (사용자 갤러리)
 create table public.dolls (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references public.profiles(id) on delete cascade,

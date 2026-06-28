@@ -18,7 +18,7 @@ function siteHost(): string {
 }
 
 /**
- * 갤러리 커스텀 인형의 저장/공유.
+ * 갤러리 커스텀 캐릭터의 저장/공유.
  * - 저장: share-first — 모바일은 공유 시트의 "이미지 저장" 으로 사진 앱에
  *   바로 (iOS 는 OS 가 사진 권한 팝업 처리). 미지원 환경은 다운로드 fallback.
  * - 공유: 이미지 + /doll/[id] 공개 페이지 링크를 Web Share 로.

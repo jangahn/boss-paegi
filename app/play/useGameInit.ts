@@ -9,7 +9,7 @@ import type { Weapon } from "@/lib/weapons";
 import type { GameHandle, CreateGameOptions } from "@/game/BossPaegiGame";
 
 /**
- * Pixi 게임 인스턴스 생성/해제 — 인형·배경 텍스처 로드 후 createGame, 언마운트 시 destroy.
+ * Pixi 게임 인스턴스 생성/해제 — 캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy.
  * 게임 세션 생명주기(start/log/context)는 호출부(play page)에 별도로 둔다 — 여긴 Pixi 만.
  *
  * 무기/배경 변경은 재마운트가 아니라 hot-swap effect 에서 처리하므로 deps 는 dollId 만.

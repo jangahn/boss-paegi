@@ -9,9 +9,9 @@ type Props = {
   /** crop 확정 시 호출. crop 영역 JPEG Blob 반환. */
   onConfirm: (blob: Blob) => void;
   onCancel: () => void;
-  /** crop 비율 (default 3:4 — 인형 생성용). 아바타는 1. */
+  /** crop 비율 (default 3:4 — 캐릭터 생성용). 아바타는 1. */
   aspect?: number;
-  /** 얼굴 화질 검사 (default true — 인형용). 아바타는 false. */
+  /** 얼굴 화질 검사 (default true — 캐릭터용). 아바타는 false. */
   assessQuality?: boolean;
   title?: string;
   subtitle?: string;
@@ -47,7 +47,7 @@ export function PhotoCropper({
     setReject(null);
     try {
       const img = await loadImage(imageUrl);
-      // 저화질(작거나 흐린) 얼굴은 깨진 캐릭터를 만들므로 생성 전 차단 (인형 전용)
+      // 저화질(작거나 흐린) 얼굴은 깨진 캐릭터를 만들므로 생성 전 차단 (캐릭터 전용)
       if (assessQuality) {
         const quality = assessFaceCrop(img, croppedArea);
         if (!quality.ok) {

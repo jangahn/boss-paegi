@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 
 /**
  * 펜 낙서 누적 레이어 — Doll.bodyWrap 의 child (bodyWrap local 좌표).
- * 인형과 같은 레이어라 흔들림/던지기/회전 시 낙서가 함께 움직임.
+ * 캐릭터와 같은 레이어라 흔들림/던지기/회전 시 낙서가 함께 움직임.
  *
  * stroke 는 lastPt→현재점을 dot row 로 보간하는데, 빠른 드래그에서 두 샘플 사이
  * 직선이 실루엣의 오목한 투명 영역(목/어깨 갭 등)을 가로지를 수 있어

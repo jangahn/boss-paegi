@@ -7,7 +7,7 @@ import type { Weapon } from "@/lib/weapons";
  *
  * 라이프사이클:
  *  - 발사 → 화면 안에서 비행
- *  - 인형에 충돌 (hasHit=true) → 0.2초 잔존 (회전 멈추고 page fade) → isDead
+ *  - 캐릭터에 충돌 (hasHit=true) → 0.2초 잔존 (회전 멈추고 page fade) → isDead
  *  - 화면 밖 나감 → isDead
  */
 export class Projectile extends Container {
@@ -39,7 +39,7 @@ export class Projectile extends Container {
     this.addChild(t);
   }
 
-  /** 인형에 맞은 직후 호출 — 회전 멈추고 잠시 잔존 후 사라짐 */
+  /** 캐릭터에 맞은 직후 호출 — 회전 멈추고 잠시 잔존 후 사라짐 */
   markHit() {
     this.hasHit = true;
     this.fadeTime = 0;

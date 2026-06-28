@@ -73,7 +73,7 @@ type BirefnetResponse = {
 
 /**
  * 누끼 제거 — 캐릭터만 남기고 배경을 투명 PNG 로.
- * 게임 씬에서 인형이 깔끔하게 떠 있도록 (배경 사각형 X).
+ * 게임 씬에서 캐릭터가 깔끔하게 떠 있도록 (배경 사각형 X).
  */
 export async function removeBackground(imageUrl: string): Promise<string> {
   const result = await fal.subscribe("fal-ai/birefnet", {

@@ -28,7 +28,7 @@ type Props = {
   dollId: string | null;
   /** 맞는 캐릭터의 롤 — 피격자 의견·공유 문구 분기. 기본 boss. */
   role?: RoleId;
-  /** 보고서에 표시할 인형 이미지 (커스텀 or 기본) */
+  /** 보고서에 표시할 캐릭터 이미지 (커스텀 or 기본) */
   dollImageUrl?: string;
   /** 하이라이트 녹화분 (없으면 카드만 공유) */
   highlightClip?: HighlightClip | null;

@@ -74,7 +74,7 @@ export function ScoreReport({
         </div>
       )}
 
-      {/* 인형 + 결재란 */}
+      {/* 캐릭터 + 결재란 */}
       <div className="mt-3 flex items-start justify-between gap-3">
         <FadeImg
           src={dollImageUrl ?? "/sprites/boss-default.png"}

@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
       .eq("owner_id", user.id);
     if (pickErr) {
       // picked 전이 실패 → generation 이 done(미선택)으로 남아 24h 내 갤러리에
-      // ready 후보로 다시 노출됨. '인형은 저장됐는데 generation 이 안 닫힌' 케이스.
+      // ready 후보로 다시 노출됨. '캐릭터는 저장됐는데 generation 이 안 닫힌' 케이스.
       log.error("doll.pick_transition_fail", {
         userId: user.id,
         genId,
