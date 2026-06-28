@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
-import { SERVICE_NAME } from "@/lib/policy";
 import { createClient } from "@/lib/supabase/client";
 import { AppNav } from "@/components/AppNav";
 import { Paperclip, CornerFold } from "@/components/dossier";
@@ -38,9 +38,14 @@ export default function Home() {
           <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
-            <h1 className="font-display text-4xl tracking-tight text-ink">
-              {SERVICE_NAME}
-            </h1>
+            <Image
+              src="/logo.png"
+              alt="부장님 패기"
+              width={640}
+              height={480}
+              priority
+              className="w-36 max-w-full"
+            />
             <p className="whitespace-pre-line text-base leading-relaxed text-zinc-600">
               {home.tagline}
             </p>

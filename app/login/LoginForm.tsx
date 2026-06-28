@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { SERVICE_NAME } from "@/lib/policy";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { startOAuth, type OAuthProvider } from "@/lib/auth-oauth";
 import { safeNext } from "@/lib/oauth-metadata";
@@ -113,8 +113,15 @@ export function LoginForm() {
       <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 shadow-sm">
         <Paperclip className="left-7" />
         <CornerFold />
-        <Link href="/" className="font-display text-4xl tracking-tight text-ink">
-          {SERVICE_NAME}
+        <Link href="/" aria-label="부장님 패기 홈">
+          <Image
+            src="/logo.png"
+            alt="부장님 패기"
+            width={640}
+            height={480}
+            priority
+            className="w-32 max-w-full"
+          />
         </Link>
         <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
           로그인하고 나만의 부장님을
