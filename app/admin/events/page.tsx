@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
 import { getAdminEvents } from "@/lib/events";
 import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/types";
+import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { firstParam } from "@/lib/admin-format";
 
@@ -91,9 +92,14 @@ export default async function AdminEventsPage({
                   href={`/admin/events/${e.id}`}
                   className="flex items-center gap-3 rounded-xl border border-foreground/10 p-3 transition hover:bg-foreground/5"
                 >
-                  {e.coverUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={e.coverUrl} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />
+                  {e.coverThumbUrl && (
+                    // og(1200×630)와 같은 40:21 + 서버 리사이즈 썸네일(풀커버 대신) + shimmer.
+                    <FadeImg
+                      src={e.coverThumbUrl}
+                      className="aspect-[40/21] w-20 shrink-0 rounded-lg"
+                      fit="cover"
+                      placeholder="shimmer"
+                    />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
