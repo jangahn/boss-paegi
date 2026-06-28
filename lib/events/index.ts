@@ -8,14 +8,27 @@ import { BANNER_FLAG, NEWS_PAGE_SIZE, type BannerSurface, type EventRow, type Ev
 const COLS =
   "id, type, status, title, summary, body, cover_image_path, starts_at, ends_at, popup_active, banner_home_active, banner_gallery_active, banner_leaderboard_active, priority, pinned, noindex, popup_dismiss_days, published_at, created_by, created_at, updated_at, deleted_at";
 
-/** cover_image_path(상대경로) → events 버킷 public URL(없으면 null). */
-function coverUrl(path: string | null): string | null {
+// 소식 목록 썸네일 — og(1200×630)와 같은 1.91:1, 작게 서버 리사이즈(목록 로드 가볍게).
+// 갤러리 doll 썸네일(DOLL_THUMB_TRANSFORM)과 동일하게 Supabase 이미지 transform 사용.
+const COVER_THUMB = { width: 400, height: 210, resize: "cover" } as const;
+
+/** cover_image_path(상대경로) → events 버킷 public URL(없으면 null). thumb=true 면 1.91:1 리사이즈 썸네일. */
+function coverUrl(path: string | null, thumb = false): string | null {
   if (!path) return null;
   const admin = createAdminClient();
-  return admin.storage.from(EVENTS_BUCKET).getPublicUrl(path).data.publicUrl ?? null;
+  return (
+    admin.storage
+      .from(EVENTS_BUCKET)
+      .getPublicUrl(path, thumb ? { transform: COVER_THUMB } : undefined).data
+      .publicUrl ?? null
+  );
 }
 function toView(row: EventRow): EventView {
-  return { ...row, coverUrl: coverUrl(row.cover_image_path) };
+  return {
+    ...row,
+    coverUrl: coverUrl(row.cover_image_path),
+    coverThumbUrl: coverUrl(row.cover_image_path, true),
+  };
 }
 
 /**

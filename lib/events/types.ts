@@ -60,8 +60,11 @@ export type EventRow = {
   deleted_at: string | null;
 };
 
-/** 공개/뷰 투영 — cover_image_path → coverUrl(파생). */
-export type EventView = EventRow & { coverUrl: string | null };
+/** 공개/뷰 투영 — cover_image_path → coverUrl(풀, og용)·coverThumbUrl(1.91:1 리사이즈, 목록 썸네일용) 파생. */
+export type EventView = EventRow & {
+  coverUrl: string | null;
+  coverThumbUrl: string | null;
+};
 
 /**
  * cover_image_path 검증(zod) — events 버킷 **상대경로**만(URL·절대경로·경로탈출·SVG 금지).
