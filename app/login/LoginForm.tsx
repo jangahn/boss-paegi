@@ -9,6 +9,7 @@ import { startOAuth, type OAuthProvider } from "@/lib/auth-oauth";
 import { safeNext } from "@/lib/oauth-metadata";
 import { Spinner } from "@/components/Spinner";
 import { Paperclip, CornerFold } from "@/components/dossier";
+import { useMediaAssets } from "@/components/MediaAssetsProvider";
 
 function KakaoIcon() {
   return (
@@ -52,6 +53,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function LoginForm() {
+  const { logoUrl } = useMediaAssets();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
   const rawAuto = params.get("auto");
@@ -114,13 +116,14 @@ export function LoginForm() {
         <Paperclip className="left-7" />
         <CornerFold />
         <Link href="/" aria-label="부장님 패기 홈">
+          {/* 정사각 로고 슬롯(LOGO_TRANSFORM 640²·에디터 미리보기와 동일 비율) — 4:3 정적 폴백은 object-contain 으로 안전 수용 */}
           <Image
-            src="/logo.png"
+            src={logoUrl ?? "/logo.png"}
             alt="부장님 패기"
             width={640}
-            height={480}
+            height={640}
             priority
-            className="w-32 max-w-full"
+            className="w-32 max-w-full object-contain"
           />
         </Link>
         <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">

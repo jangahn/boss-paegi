@@ -6,7 +6,10 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "*.fal.media" },
       { protocol: "https", hostname: "fal.media" },
-      { protocol: "https", hostname: "*.supabase.co" },
+      // Supabase Storage 만 — 호스트 전체 개방 대신 storage 경로로 제한.
+      // 핵심: render(변환) 경로(로고 등 next/image 소비). object(원본)는 폴백/디버그용.
+      { protocol: "https", hostname: "*.supabase.co", pathname: "/storage/v1/render/image/public/**" },
+      { protocol: "https", hostname: "*.supabase.co", pathname: "/storage/v1/object/public/**" },
     ],
   },
   // dev mode 에서 LAN IP 로 접속 허용 (핸드폰 → http://<mac LAN IP>:3100).

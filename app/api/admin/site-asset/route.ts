@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { SITE_ASSETS_BUCKET } from "@/lib/storage-path";
 import { siteAssetUrl, OG_PREVIEW_TRANSFORM, LOGO_PREVIEW_TRANSFORM } from "@/lib/site-assets";
+import { OG_PATH_RE, LOGO_PATH_RE } from "@/lib/config/domains/media-config";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -25,8 +26,8 @@ type Slot = "og" | "logo";
 function isSlot(v: unknown): v is Slot {
   return v === "og" || v === "logo";
 }
-// 슬롯별 prefix 강제 — og 슬롯엔 og/, logo 슬롯엔 logo/ 만.
-const PATH_RE = /^(og|logo)\/\d{6}\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
+// path 검증 정규식은 media-config 도메인과 단일 출처 공유(슬롯 prefix·정식 UUID·확장자 강제).
+const pathReFor = (slot: Slot) => (slot === "og" ? OG_PATH_RE : LOGO_PATH_RE);
 
 /** YYYYMM (KST). */
 function kstYearMonth(): string {
@@ -68,12 +69,15 @@ export async function PATCH(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as { path?: string; slot?: string } | null;
   const path = body?.path;
   const slot = body?.slot;
-  if (!path || !PATH_RE.test(path) || !isSlot(slot) || !path.startsWith(`${slot}/`)) {
+  // 슬롯별 정규식이 prefix(og/·logo/)·정식 UUID·확장자를 한 번에 강제(slot↔prefix 포함).
+  if (!path || !isSlot(slot) || !pathReFor(slot).test(path)) {
     return NextResponse.json({ error: "invalid_path" }, { status: 400 });
   }
 
   const admin = createAdminClient();
-  // 서버측 object 검증(클라 size/mime 불신)
+  // 서버측 object 재검증: size 는 실제 수신 바이트(신뢰), contentType 은 저장된 객체 메타데이터
+  // (업로드 시 클라 Content-Type 에서 파생 — 매직바이트 스니핑 아님). 어드민 전용 게이트라 허용 수준.
+  // SVG/GIF active 콘텐츠는 소비 시 항상 transform(render) 재인코딩을 거쳐 무력화됨.
   const { data: info, error: infoErr } = await admin.storage.from(SITE_ASSETS_BUCKET).info(path);
   if (infoErr || !info) {
     log.warn("site_asset.upload_missing", { userId: gate.user.id, ...errInfo(infoErr) });
