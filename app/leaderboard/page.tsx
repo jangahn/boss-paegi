@@ -27,7 +27,7 @@ const DEFAULT_AVATAR = "/avatars/default.png";
  * 데이터는 캐시된 public API(/api/leaderboard, Vercel Edge 30s)에서 로드 → 서울 PoP 서빙.
  */
 export default function LeaderboardPage() {
-  const [period, setPeriod] = useState<Period>("daily");
+  const [period, setPeriod] = useState<Period>("monthly");
   const [rows, setRows] = useState<RankRow[] | null>(null); // null = 로딩(스켈레톤)
 
   useEffect(() => {
@@ -64,14 +64,14 @@ export default function LeaderboardPage() {
           <EventBanner surface="leaderboard" />
 
           <div className="flex gap-2 rounded-full bg-foreground/5 p-1 text-sm">
-            <Tab active={period === "daily"} onClick={() => setPeriod("daily")}>
-              오늘
+            <Tab active={period === "monthly"} onClick={() => setPeriod("monthly")}>
+              이번 달
             </Tab>
             <Tab active={period === "weekly"} onClick={() => setPeriod("weekly")}>
               이번 주
             </Tab>
-            <Tab active={period === "monthly"} onClick={() => setPeriod("monthly")}>
-              이번 달
+            <Tab active={period === "daily"} onClick={() => setPeriod("daily")}>
+              오늘
             </Tab>
           </div>
 
