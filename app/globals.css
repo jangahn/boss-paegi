@@ -367,7 +367,8 @@ body:has(.game-surface) #sentry-feedback {
 
 /* 이미지 로딩 placeholder — 쓸어가는 shimmer 스켈레톤. 고정 비율 박스 안에 깔려 '불러오는 중'을
  * 명확히 보여준다(기존 오프화이트 펄스는 카드와 동색이라 흰배경처럼 보이던 문제 해소).
- * base = foreground 12% 회색(.theme-admin 다크에도 적응), sweep = 흰 하이라이트가 좌→우로 쓸려감. */
+ * base = foreground 14% 회색(.theme-admin 다크에도 적응), sweep = 흰 하이라이트가 좌→우로 쓸려감.
+ * ⚠️ --foreground(원본 raw 변수)를 쓴다 — @theme inline 이라 --color-foreground 는 런타임 노출 안 됨. */
 @keyframes ui-shimmer {
   100% {
     transform: translateX(100%);
@@ -376,7 +377,7 @@ body:has(.game-surface) #sentry-feedback {
 .ui-shimmer {
   position: relative;
   overflow: hidden;
-  background-color: color-mix(in oklab, var(--color-foreground) 12%, transparent);
+  background-color: color-mix(in oklab, var(--foreground) 14%, transparent);
 }
 .ui-shimmer::after {
   content: "";
