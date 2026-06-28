@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 로컬 스크래치(워크스페이스 규칙: 미추적)
+_local/

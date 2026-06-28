@@ -203,7 +203,7 @@ export default function GalleryPage() {
             </Link>
           </div>
 
-          <EventBanner />
+          <EventBanner surface="gallery" />
 
           {loading ? (
             <GridSkeleton />

@@ -13,6 +13,24 @@ export const EVENT_TYPE_LABEL: Record<EventType, string> = {
 
 export type EventStatus = "draft" | "published";
 
+/** 배너 노출 지면 — 각 독립 제어(홈·갤러리·랭킹). */
+export const BANNER_SURFACES = ["home", "gallery", "leaderboard"] as const;
+export type BannerSurface = (typeof BANNER_SURFACES)[number];
+/** 지면 → events 테이블 플래그 컬럼. */
+export const BANNER_FLAG: Record<
+  BannerSurface,
+  "banner_home_active" | "banner_gallery_active" | "banner_leaderboard_active"
+> = {
+  home: "banner_home_active",
+  gallery: "banner_gallery_active",
+  leaderboard: "banner_leaderboard_active",
+};
+export const BANNER_SURFACE_LABEL: Record<BannerSurface, string> = {
+  home: "홈",
+  gallery: "갤러리",
+  leaderboard: "랭킹",
+};
+
 /** 목록 페이지 크기(공개·어드민 공용). */
 export const NEWS_PAGE_SIZE = 10;
 
@@ -28,7 +46,9 @@ export type EventRow = {
   starts_at: string | null;
   ends_at: string | null;
   popup_active: boolean;
-  banner_active: boolean;
+  banner_home_active: boolean;
+  banner_gallery_active: boolean;
+  banner_leaderboard_active: boolean;
   priority: number;
   pinned: boolean;
   noindex: boolean;
@@ -81,7 +101,9 @@ export const eventSaveSchema = z.object({
   startsAt: optionalDateTime,
   endsAt: optionalDateTime,
   popupActive: z.boolean().default(false),
-  bannerActive: z.boolean().default(false),
+  bannerHomeActive: z.boolean().default(false),
+  bannerGalleryActive: z.boolean().default(false),
+  bannerLeaderboardActive: z.boolean().default(false),
   priority: z.number().int().min(-1000).max(1000).default(0),
   pinned: z.boolean().default(false),
   noindex: z.boolean().default(false),

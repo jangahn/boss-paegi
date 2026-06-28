@@ -39,7 +39,9 @@ export function EventEditor({ event }: { event: EventView | null }) {
   const [startsAt, setStartsAt] = useState(isoToKstLocal(event?.starts_at ?? null));
   const [endsAt, setEndsAt] = useState(isoToKstLocal(event?.ends_at ?? null));
   const [popupActive, setPopupActive] = useState(event?.popup_active ?? false);
-  const [bannerActive, setBannerActive] = useState(event?.banner_active ?? false);
+  const [bannerHome, setBannerHome] = useState(event?.banner_home_active ?? false);
+  const [bannerGallery, setBannerGallery] = useState(event?.banner_gallery_active ?? false);
+  const [bannerLeaderboard, setBannerLeaderboard] = useState(event?.banner_leaderboard_active ?? false);
   const [priority, setPriority] = useState(event?.priority ?? 0);
   const [pinned, setPinned] = useState(event?.pinned ?? false);
   const [noindex, setNoindex] = useState(event?.noindex ?? false);
@@ -64,7 +66,9 @@ export function EventEditor({ event }: { event: EventView | null }) {
     startsAt: startsAt || null,
     endsAt: endsAt || null,
     popupActive,
-    bannerActive,
+    bannerHomeActive: bannerHome,
+    bannerGalleryActive: bannerGallery,
+    bannerLeaderboardActive: bannerLeaderboard,
     priority,
     pinned,
     noindex,
@@ -330,14 +334,20 @@ export function EventEditor({ event }: { event: EventView | null }) {
         <div className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
           <span className="text-sm font-semibold text-zinc-500">노출 구좌</span>
           <p className="text-[11px] text-zinc-400">
-            활성 후보가 여러 개면 <b>우선순위(priority)가 가장 높은 1건만</b> 노출됩니다. 배너는 홈·랭킹·갤러리 공통 1건.
+            배너는 <b>홈·갤러리·랭킹 각각 독립</b>으로 켭니다. 한 지면에 활성 후보가 여러 개면 <b>우선순위(priority)가 가장 높은 1건만</b> 노출됩니다.
           </p>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="inline-flex items-center gap-2">
               <input type="checkbox" checked={popupActive} onChange={(e) => setPopupActive(e.target.checked)} /> 홈 팝업
             </label>
             <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={bannerActive} onChange={(e) => setBannerActive(e.target.checked)} /> 배너 구좌
+              <input type="checkbox" checked={bannerHome} onChange={(e) => setBannerHome(e.target.checked)} /> 홈 배너
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={bannerGallery} onChange={(e) => setBannerGallery(e.target.checked)} /> 갤러리 배너
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={bannerLeaderboard} onChange={(e) => setBannerLeaderboard(e.target.checked)} /> 랭킹 배너
             </label>
             <label className="inline-flex items-center gap-2">
               <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> 목록 상단 고정

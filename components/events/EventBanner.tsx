@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { EVENT_TYPE_LABEL } from "@/lib/events/types";
+import { EVENT_TYPE_LABEL, type BannerSurface } from "@/lib/events/types";
 import { useActiveEvents } from "./useActiveEvents";
 
 /**
- * 배너 구좌(c) — 홈·랭킹·갤러리 공통 1건. 활성 배너 이벤트의 summary 를 짧게, 클릭→/news/[id].
+ * 배너 구좌(c) — 지면별(홈·갤러리·랭킹) 독립. 해당 지면 활성 배너 이벤트의 summary 를 짧게, 클릭→/news/[id].
  * 없으면 미렌더. (기존 가입 배너 SignupBanner 와 별개 구좌로 공존.)
  */
-export function EventBanner() {
-  const { banner } = useActiveEvents();
+export function EventBanner({ surface }: { surface: BannerSurface }) {
+  const banner = useActiveEvents().banners[surface];
   if (!banner) return null;
   return (
     <Link

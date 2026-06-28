@@ -566,6 +566,13 @@ v0.50 (2026-06-28, 이벤트/공지 운영 — 소식 게시판·홈 팝업·배
 - **SEO**: `/news` + 발행·윈도우 active·noindex=false 상세를 `sitemap.ts` 동적 등재, 상세 `generateMetadata` OG(cover)·행별 robots noindex. **`/news` 는 public 이나 로그인 미동의자는 v0.49 글로벌 게이트(`proxy.ts`)로 `/consent`**(anon·동의완료는 정상). 만료/삭제/예약 상세는 `notFound`(404) — **만료 안 시킬 공지는 `ends_at=null`**(보드 영속). ⚠️ 만료 이벤트의 공유·북마크 링크는 404.
 - 검증: typecheck 0·신규 파일 lint 0. **이미지 orphan(미저장 업로드)=MVP 허용**(추후 cleanup). slug(`/news/[slug]`)·지면별 배너·만료 자동 purge cron·팝업 dismiss reset 은 추후.
 
+v0.51 (2026-06-28, 배너 지면별 분리 + 소식 상세 정리; Migration 0044):
+- **배너 구좌 지면별 독립화**: 단일 `banner_active`(3지면 일괄) → **`banner_home_active`/`banner_gallery_active`/`banner_leaderboard_active`** 3 독립 플래그. 에디터 체크박스 홈/갤러리/랭킹 각각, 한 이벤트가 임의 조합으로 지면 선택. **문구(summary)·우선순위(priority)는 공용**. `getActiveBanner(surface)` + `/api/events/active` 가 `banners.{home,gallery,leaderboard}` 반환 + `EventBanner surface` prop(홈/랭킹/갤러리 각 주입).
+- **소식 상세(`/news/[id]`) 정리**: 본문에서 **커버 이미지·요약 제거**(커버·요약은 목록 썸네일·팝업·배너·OG 메타 전용으로만 유지) + 약관/방침처럼 **오프화이트(`ui-surface`) 카드** + header border-b.
+- 검증: typecheck 0·신규 변경 파일 lint 0. 라이브(어드민 세션 주입 로컬) — 에디터 3체크박스·**per-surface 독립**(갤러리=테스트 배너, 홈/랭킹=기존 배너 동시 확인)·상세 오프화이트·커버 미노출 확인.
+
+**⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.
+
 **⚠️ Migration 0043 (이벤트/공지)** (`supabase/migrations/0043_events.sql`): `events`(공지/이벤트 게시판·팝업·배너 단일 소스, status+노출윈도우+플래그) + `events_audit`(details jsonb) + `admin_save/publish/unpublish/delete_event` RPC(하드닝·advisory lock·이미지 출처 검증·끝에 `notify pgrst`). **신규 public `events` 스토리지 버킷**은 별도 생성(Management API, 마이그 밖). additive·무중단(신규 테이블, 기존 무영향). **코드 배포 전 적용**(배포된 코드가 events 테이블 조회).
 
 **⚠️ Migration 0041 (프로덕션 적용 완료 2026-06-27)** (`supabase/migrations/0041_consent_unify.sql`): `create_or_update_member_consent` RPC — 통합 동의(insert[보너스·stamp]/update[필요 항목만] 원자 처리·`on conflict (user_id) do nothing`·`is_new` 반환, `security definer set search_path`·service_role only). **컬럼 변경 없음**(기존 0030/0031/0037 컬럼 사용) — 함수 추가만, 롤백=`drop function`. 코드 배포와 함께 적용.
