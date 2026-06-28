@@ -102,7 +102,8 @@ export default async function AdminEventsPage({
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    {/* 배지는 줄바꿈으로 흐르되 각 배지는 안 쪼개짐(모바일 글자단위 줄바꿈 방지) */}
+                    <div className="flex flex-wrap items-center gap-1.5 [&>span]:shrink-0">
                       <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold text-zinc-500">
                         {EVENT_TYPE_LABEL[e.type]}
                       </span>
