@@ -17,7 +17,7 @@ import { useState } from "react";
  * img 가 위에 불투명하게 그려지므로 cover 는 완전히 덮이고, contain 은 letterbox 에만 남는다.
  *
  * - `className`: wrapper 의 크기·모양·border·bg.
- * - `placeholder`: "gray"(정적) / "pulse"(스켈레톤).
+ * - `placeholder`: "gray"(정적 회색) / "pulse"(펄스) / "shimmer"(쓸어가는 스켈레톤, 캐릭터 이미지용).
  * - `fallbackSrc`: src 가 깨졌을 때 대체.
  */
 export function FadeImg({
@@ -33,7 +33,7 @@ export function FadeImg({
   alt?: string;
   className?: string;
   fit?: "cover" | "contain";
-  placeholder?: "gray" | "pulse";
+  placeholder?: "gray" | "pulse" | "shimmer";
   loading?: "lazy" | "eager";
   fallbackSrc?: string;
 }) {
@@ -46,8 +46,10 @@ export function FadeImg({
       {!loaded && (
         <span
           aria-hidden
-          className={`absolute inset-0 bg-foreground/10 ${
-            placeholder === "pulse" ? "animate-pulse" : ""
+          className={`absolute inset-0 ${
+            placeholder === "shimmer"
+              ? "ui-shimmer"
+              : `bg-foreground/10 ${placeholder === "pulse" ? "animate-pulse" : ""}`
           }`}
         />
       )}

@@ -106,7 +106,7 @@ export default async function HistoryDetailPage({
                 alt={`맞은 ${rlabel}`}
                 className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
                 fit="contain"
-                placeholder="pulse"
+                placeholder="shimmer"
                 fallbackSrc="/sprites/boss-default.png"
               />
               <table className="border-collapse text-center text-[10px]">

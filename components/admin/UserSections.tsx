@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FadeImg } from "@/components/FadeImg";
 import type { GenerationRow, DollRow } from "@/lib/admin-types";
 import { fmtKst, shortId } from "@/lib/admin-format";
 import { asRole } from "@/lib/roles";
@@ -95,11 +96,11 @@ export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
                   🗑️
                 </div>
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <FadeImg
                   src={d.image_url}
-                  alt=""
-                  className={`mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 object-cover ${
+                  placeholder="shimmer"
+                  fit="cover"
+                  className={`mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 ${
                     hidden ? "opacity-70" : ""
                   }`}
                 />

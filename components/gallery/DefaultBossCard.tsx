@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { FadeImg } from "@/components/FadeImg";
 import { MenuItem } from "@/components/gallery/MenuItem";
 import { HookToast } from "@/components/gallery/HookToast";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
@@ -24,7 +25,6 @@ const ROLE_HOOK = "다른 역할은 캐릭터를 만들어야 바꿀 수 있어�
  *   삭제 메뉴는 절대 없음. DB row 가 아니므로 shareDoll/PATCH/DELETE 호출 금지.
  */
 export function DefaultBossCard({ state }: { state: ViewerState }) {
-  const [imgLoaded, setImgLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -44,19 +44,15 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
   return (
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
-        {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse ui-surface" />
-        )}
         {/* 이미지 영역만 Link — 카드 전체를 Link 로 감싸지 않음(⋯ 버튼은 Link 밖) */}
         <Link href="/play" className="block h-full w-full">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <FadeImg
             src={DEFAULT_BOSS_SRC}
             alt="기본 부장님"
-            onLoad={() => setImgLoaded(true)}
-            className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
-              imgLoaded ? "opacity-100" : "opacity-0"
-            }`}
+            placeholder="shimmer"
+            loading="eager"
+            fit="cover"
+            className="h-full w-full transition duration-300 group-hover:scale-105"
           />
         </Link>
       </div>
