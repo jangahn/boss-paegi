@@ -103,6 +103,12 @@ export type RecoverResult = {
   /** ready: 복구 완료(후보 있음) / pending: fal 아직 처리 중(더 기다림) / failed: 복구 불가 */
   status: "ready" | "pending" | "failed";
   candidateUrls: string[];
+  /**
+   * failed 가 **결정적**(fal 이 전부 멈춤[COMPLETED/ERROR]인데 쓸 결과 0 → 재시도 무의미)인지.
+   * true 면 호출부가 30분 대기 없이 *즉시* failed 마킹 + 환불 + 유저 안내(보통 no-face).
+   * copy 실패 등 transient 는 false(=미설정) → 마감(30분)까지 더 기다림.
+   */
+  definitive?: boolean;
 };
 
 /**
@@ -121,7 +127,7 @@ export async function recoverQueuedGeneration(
   requestIds: string[],
   forceFinalize: boolean
 ): Promise<RecoverResult> {
-  if (requestIds.length === 0) return { status: "failed", candidateUrls: [] };
+  if (requestIds.length === 0) return { status: "failed", candidateUrls: [], definitive: true };
 
   // 1) 각 request 상태 조회 (결과 만료/없음이면 throw → ERROR 취급)
   const statuses = await Sentry.startSpan(
@@ -162,7 +168,8 @@ export async function recoverQueuedGeneration(
 
   // 여기 도달 = 전부 멈췄거나(완료/에러) 마감 도달 → 완료분으로 확정.
   if (completedIdx.length === 0) {
-    return { status: "failed", candidateUrls: [] };
+    // 도는 게 없는데 완료도 0 = 전부 ERROR(fal 측 실패) → 결정적.
+    return { status: "failed", candidateUrls: [], definitive: !stillRunning };
   }
 
   // 2) 완료분 결과 fetch
@@ -201,9 +208,9 @@ export async function recoverQueuedGeneration(
     )
   ).flat();
 
-  // COMPLETED 인데 결과를 못 받음(만료/404) → 실패 (재시도해도 동일)
+  // COMPLETED 인데 결과를 못 받음(facexlib no-face 400·result 만료/404) → 결정적 실패(재시도해도 동일).
   if (images.length === 0) {
-    return { status: "failed", candidateUrls: [] };
+    return { status: "failed", candidateUrls: [], definitive: true };
   }
 
   // 3) 후보 복사 + done 마킹. 복구는 durable storage url 만 사용

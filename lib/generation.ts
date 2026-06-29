@@ -65,4 +65,6 @@ export type PendingGeneration = {
   createdAt: string;
   /** 생성 시 선택한 롤 — resume/이어서 시 doll.role 복구용 (없으면 boss) */
   role?: string;
+  /** interrupted 사유 — "photo"(얼굴 미검출 등 사진 문제 → 다른 사진 안내). 없으면 일반(타임아웃·끊김). */
+  reason?: "photo";
 };
