@@ -117,7 +117,10 @@ export async function createGame(
   };
   app.ticker.add(onTick);
 
-  const ro = new ResizeObserver(() => {
+  // 컨테이너 크기 변화 → renderer/layout 동기화. 두 경로 병행(같은 dedup 경로라 중복 호출 무해):
+  //   ① ResizeObserver: 컨테이너 직접 변화(모바일 주소창 수축·레이아웃 시프트 — window resize 가 못 잡는 것)
+  //   ② window/visualViewport resize: PC 창 크기 조절(일부 환경/타이밍에서 RO 가 늦거나 미발화하는 경우 대비)
+  const applyResize = () => {
     const m = measure();
     if (m.w <= 0 || m.h <= 0) return;
     // 정수 dims 가 직전 적용값과 같으면 skip — 소수점 리플로우·스크롤바 oscillation 의 피드백 루프 차단.
@@ -126,8 +129,11 @@ export async function createGame(
     lastH = m.h;
     app.renderer.resize(m.w, m.h);
     scene.layout(m.w, m.h);
-  });
+  };
+  const ro = new ResizeObserver(applyResize);
   ro.observe(container);
+  window.addEventListener("resize", applyResize);
+  window.visualViewport?.addEventListener("resize", applyResize);
 
   // pixi 8.19 는 native pointercancel 을 display object 로 전달하지 않음 —
   // 브라우저가 제스처를 가로채 cancel 하면 진행 중이던 드래그 상태(fling 등)가
@@ -138,6 +144,8 @@ export async function createGame(
   return {
     destroy: () => {
       ro.disconnect();
+      window.removeEventListener("resize", applyResize);
+      window.visualViewport?.removeEventListener("resize", applyResize);
       app.canvas.removeEventListener("pointercancel", onPointerCancel);
       app.ticker.remove(onTick);
       scene.destroy();

@@ -364,10 +364,14 @@ function PlayInner() {
 
   return (
     <div
-      className="game-surface relative flex flex-1 flex-col overflow-hidden bg-zinc-900"
+      // h-[100dvh]: 뷰포트에 고정된 정의 높이 → 창 리사이즈/모바일 주소창에 즉시 추종(flex-1 은 body
+      //   min-h-full 체인이라 canvas content 가 컨테이너를 붙들어 축소 시 안 줄어들던 문제).
+      className="game-surface relative flex h-[100dvh] flex-col overflow-hidden bg-zinc-900"
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div ref={stageRef} className="flex-1 select-none" />
+      {/* min-h-0/min-w-0: flex item 이 canvas(고정 CSS 크기) content 이하로 축소되게 허용 →
+          ResizeObserver 가 창 축소도 포착(없으면 min-content=캔버스 크기에 묶여 미발화). */}
+      <div ref={stageRef} className="min-h-0 min-w-0 flex-1 select-none" />
       {!gameReady && (
         <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
           <Spinner className="h-8 w-8 text-white/80" />
