@@ -1,13 +1,38 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
-import { searchMembers, findWithdrawnByEmail } from "@/lib/admin-users";
+import { searchMembers, findWithdrawnByEmail, listMembers } from "@/lib/admin-users";
 import { MemberSearch } from "@/components/admin/MemberSearch";
+import { Pagination } from "@/components/Pagination";
 import { fmtKst, shortId, firstParam } from "@/lib/admin-format";
+import type { MemberInfo } from "@/lib/admin-types";
 
-// 회원 검색 — 실시간 운영이라 캐시 금지.
+// 회원 목록/검색 — 실시간 운영이라 캐시 금지.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+/** 활성 회원 행 — 전체 목록과 검색 결과가 동일 렌더. */
+function MemberLi({ c }: { c: MemberInfo }) {
+  return (
+    <li>
+      <Link
+        href={`/admin/users/${c.userId}`}
+        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl border border-foreground/10 ui-surface p-3 text-sm transition hover:bg-foreground/10"
+      >
+        <b>{c.displayName ?? "(닉네임 없음)"}</b>
+        {c.isAdmin && (
+          <span className="rounded-full border border-emerald-600/40 px-1.5 text-[10px] text-emerald-600">
+            admin
+          </span>
+        )}
+        <span className="text-zinc-500">{c.email ?? "—"}</span>
+        <span className="ml-auto text-xs text-zinc-400">
+          크레딧 {c.genCredits} · 가입 {fmtKst(c.memberSince)} · {shortId(c.userId)}
+        </span>
+      </Link>
+    </li>
+  );
+}
 
 export default async function AdminUsersPage({
   searchParams,
@@ -19,10 +44,13 @@ export default async function AdminUsersPage({
 
   const sp = await searchParams;
   const q = firstParam(sp.q)?.trim() || null;
-  // 활성 회원(search_members) + 탈퇴자 원본 이메일 매칭(0037 — 스크럽돼 search_members 가 못 찾음).
+  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+
+  // q 있으면 검색(부분일치 + 탈퇴 원본 이메일 0037), 없으면 전체 회원 페이징(기본 목록).
+  const all = q ? null : await listMembers(page);
   const [candidates, withdrawn] = q
     ? await Promise.all([searchMembers(q), findWithdrawnByEmail(q)])
-    : [[], []];
+    : [all!.rows, [] as Awaited<ReturnType<typeof findWithdrawnByEmail>>];
 
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
@@ -30,43 +58,33 @@ export default async function AdminUsersPage({
         <h1 className="text-2xl font-bold">회원 관리</h1>
         <MemberSearch q={q} />
 
-        {q === null ? (
-          <p className="text-sm text-zinc-500">
-            이메일·닉네임(부분 일치) 또는 userId(정확)로 검색하세요. 탈퇴 회원은 원본 이메일로 찾을 수 있어요.
-          </p>
-        ) : candidates.length === 0 && withdrawn.length === 0 ? (
+        {candidates.length === 0 && withdrawn.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-foreground/15 p-8 text-center text-sm text-zinc-500">
-            &ldquo;{q}&rdquo; 에 해당하는 회원이 없어요.
+            {q === null
+              ? "아직 회원이 없어요."
+              : `“${q}” 에 해당하는 회원이 없어요.`}
           </p>
         ) : (
           <>
             {candidates.length > 0 && (
               <>
                 <p className="text-xs text-zinc-500">
-                  활성 회원 {candidates.length}
-                  {candidates.length >= 30 ? "+" : ""}명
+                  {q === null
+                    ? `전체 회원 ${all!.total}명`
+                    : `활성 회원 ${candidates.length}${candidates.length >= 30 ? "+" : ""}명`}
                 </p>
                 <ul className="flex flex-col gap-1.5">
                   {candidates.map((c) => (
-                    <li key={c.userId}>
-                      <Link
-                        href={`/admin/users/${c.userId}`}
-                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl border border-foreground/10 ui-surface p-3 text-sm transition hover:bg-foreground/10"
-                      >
-                        <b>{c.displayName ?? "(닉네임 없음)"}</b>
-                        {c.isAdmin && (
-                          <span className="rounded-full border border-emerald-600/40 px-1.5 text-[10px] text-emerald-600">
-                            admin
-                          </span>
-                        )}
-                        <span className="text-zinc-500">{c.email ?? "—"}</span>
-                        <span className="ml-auto text-xs text-zinc-400">
-                          크레딧 {c.genCredits} · 가입 {fmtKst(c.memberSince)} · {shortId(c.userId)}
-                        </span>
-                      </Link>
-                    </li>
+                    <MemberLi key={c.userId} c={c} />
                   ))}
                 </ul>
+                {q === null && (
+                  <Pagination
+                    page={all!.page}
+                    totalPages={Math.max(1, Math.ceil(all!.total / all!.pageSize))}
+                    hrefFor={(pg) => `/admin/users?page=${pg}`}
+                  />
+                )}
               </>
             )}
 
