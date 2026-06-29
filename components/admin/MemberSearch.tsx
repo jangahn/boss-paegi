@@ -32,6 +32,20 @@ export function MemberSearch({ q }: { q: string | null }) {
       >
         {pending && <Spinner className="h-3.5 w-3.5" />}검색
       </button>
+      {q !== null && (
+        // 검색 중일 때만 — 필터 해제하고 전체 목록으로 초기화.
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            setQuery("");
+            startTransition(() => router.push("/admin/users"));
+          }}
+          className="rounded-lg border border-foreground/15 px-3 py-2 text-sm text-zinc-500 transition hover:bg-foreground/5 disabled:opacity-50"
+        >
+          전체
+        </button>
+      )}
     </form>
   );
 }

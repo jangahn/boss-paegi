@@ -121,6 +121,31 @@ export async function searchMembers(q: string): Promise<MemberInfo[]> {
   }));
 }
 
+/**
+ * 전체 활성 회원 목록 — 최신 가입순, 10/page(count:exact). 검색어 없을 때의 기본 목록.
+ * 탈퇴(profiles.deleted_at)는 제외 — search_members(활성만)와 동일 의미. 탈퇴자는 이메일 검색으로.
+ */
+export async function listMembers(page = 1): Promise<Paged<MemberInfo>> {
+  const p = Math.max(1, page);
+  const from = (p - 1) * USER_PAGE_SIZE;
+  const admin = createAdminClient();
+  const { data, count, error } = await admin
+    .from("member_accounts")
+    .select(
+      "user_id, gen_credits, member_since, email, is_admin, profiles!inner(display_name, deleted_at)",
+      { count: "exact" }
+    )
+    .is("profiles.deleted_at", null)
+    .order("member_since", { ascending: false })
+    .range(from, from + USER_PAGE_SIZE - 1);
+  if (error) {
+    log.warn("admin.list_members_fail", errInfo(error));
+    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
+  }
+  const rows = ((data ?? []) as unknown as MemberRow[]).map(toMemberInfo);
+  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+}
+
 /** 유저 결제(주문) 내역 — 10/page, count:exact. refund_state 포함(머니패스 액션용). */
 export async function getUserOrders(userId: string, page = 1): Promise<Paged<AdminOrder>> {
   const p = Math.max(1, page);

@@ -633,6 +633,11 @@ v0.62 (2026-06-29, 생성 진행률 UX #4 — 시간기반 바+단계 텍스트;
 - **후속(PR-3b)**: LoadingStage/no-face/진행 카피를 마케터 편집 config 도메인으로(현재 하드코딩, 카피 자체는 양호) — 별도 마이그레이션 PR.
 - 검증: typecheck 0·build 0.
 
+v0.63 (2026-06-29, 어드민 회원탭 전체 목록 — 검색 없이 전체 노출; 마이그레이션 없음):
+- 지금까진 **검색해야만 목록이 떠서** 전체 회원 보기가 불편 → **기본=전체 활성 회원 페이징(10/page 최신 가입순)** + 검색은 필터 + **"전체" 초기화 버튼**.
+- `lib/admin-users.ts` `listMembers(page)` 신규(`member_accounts` + `profiles!inner` `deleted_at is null` 활성만·count:exact·range). `app/admin/users/page.tsx` q 유무로 전체목록/검색 분기(행 렌더 공유, `Pagination` 재사용). `MemberSearch` 에 전체 초기화.
+- 검증: typecheck 0·build 0 + service_role 실측(활성 18명·10/page·임베드 필터 동작).
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.
