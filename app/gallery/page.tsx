@@ -16,6 +16,12 @@ import type { PendingGeneration } from "@/lib/generation";
 
 const GALLERY_PAGE = 12; // 무한스크롤 페이지 크기
 
+// 갤러리 썸네일 서명 URL 클라 캐시(id→{url,만료}). 갤러리 이탈→재진입 시 서명 재발급 대신 재사용
+// → FadeImg src 안정(브라우저 캐시 히트)으로 전 캐릭터 재페이드 방지. 서버 ttl(600s) 안쪽 보수값.
+// 모듈 레벨이라 컴포넌트 remount 를 넘어 세션 동안 유지(전체 새로고침 시 초기화).
+const signedUrlCache = new Map<string, { url: string; exp: number }>();
+const SIGNED_URL_CACHE_MS = 8 * 60 * 1000;
+
 export default function GalleryPage() {
   const mk = useMarketingCopy();
   const [profile, setProfile] = useState<MyProfile | null>(null);
@@ -41,20 +47,34 @@ export default function GalleryPage() {
     if (qErr) throw qErr;
     const rows = (data as Doll[] | null) ?? [];
     if (rows.length) {
-      try {
-        const r = await fetch("/api/doll/signed-urls", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: rows.map((d) => d.id), thumb: true }),
+      const now = Date.now();
+      // 캐시 미스/만료된 id 만 서명 재요청 — 재진입 시 같은 URL 재사용(브라우저 캐시 히트)으로 재페이드 방지.
+      const missIds = rows
+        .map((d) => d.id)
+        .filter((id) => {
+          const c = signedUrlCache.get(id);
+          return !c || c.exp <= now;
         });
-        const json = (await r.json().catch(() => null)) as {
-          urls?: Record<string, string | null>;
-        } | null;
-        const urls = json?.urls ?? {};
-        for (const d of rows) d.image_url = urls[d.id] ?? "/sprites/boss-default.png";
-      } catch {
-        for (const d of rows) d.image_url = "/sprites/boss-default.png";
+      if (missIds.length) {
+        try {
+          const r = await fetch("/api/doll/signed-urls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: missIds, thumb: true }),
+          });
+          const json = (await r.json().catch(() => null)) as {
+            urls?: Record<string, string | null>;
+          } | null;
+          const urls = json?.urls ?? {};
+          for (const id of missIds) {
+            const u = urls[id];
+            if (u) signedUrlCache.set(id, { url: u, exp: now + SIGNED_URL_CACHE_MS });
+          }
+        } catch {
+          /* 서명 실패 — 캐시 미스는 아래에서 기본 부장님으로 폴백 */
+        }
       }
+      for (const d of rows) d.image_url = signedUrlCache.get(d.id)?.url ?? "/sprites/boss-default.png";
     }
     return rows;
   }, []);
