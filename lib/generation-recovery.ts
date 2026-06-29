@@ -263,3 +263,31 @@ export async function recoverQueuedGeneration(
   });
   return { status: "ready", candidateUrls: urls };
 }
+
+/**
+ * 비동기 생성 실패를 **1회만** 처리 — `status` 전이 가드로 폴링(3.5s)·cron 스윕·동시요청에 멱등.
+ * status 가 아직 failed 가 아닐 때만 failed 마킹 → 그 전이가 일어난 호출에서만 생성권 환불(이중환불 방지).
+ * ops(테스트 계정)는 제출 시 차감을 안 했으니 환불 스킵. (generations 폴링 + gen-recover cron 공용.)
+ */
+export async function failGeneration(
+  admin: SupabaseClient,
+  genId: string,
+  userId: string,
+  isOps: boolean
+): Promise<void> {
+  const { data: flipped, error } = await admin
+    .from("ai_generations")
+    .update({ status: "failed" })
+    .eq("id", genId)
+    .neq("status", "failed")
+    .select("id");
+  if (error) {
+    log.warn("gen.fail_mark_error", { genId, ...errInfo(error) });
+    return;
+  }
+  if ((flipped?.length ?? 0) > 0 && !isOps) {
+    const { error: rErr } = await admin.rpc("refund_gen_credit", { p_user: userId });
+    if (rErr) log.error("gen.fail_refund_error", { genId, userId, ...errInfo(rErr) });
+    else log.info("gen.fail_refunded", { genId, userId });
+  }
+}
