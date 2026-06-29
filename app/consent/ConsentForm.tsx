@@ -99,7 +99,7 @@ export function ConsentForm({
         <div>
           <h1 className="text-2xl font-bold">{SERVICE_NAME}</h1>
           <p className="mt-2 text-sm text-zinc-500">
-            생성·결제 등 회원 기능을 이용하려면 아래에 동의해주세요.
+            서비스 이용을 위해 아래 약관에 동의해주세요.
           </p>
         </div>
 
