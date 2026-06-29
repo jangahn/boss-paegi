@@ -359,29 +359,6 @@ body:has(.game-surface) #sentry-feedback {
   display: none !important;
 }
 
-/* FadeImg — 이미지 pop-in 완화. 이 클래스는 FadeImg 가 **실제 로드(onLoad) 시점**에만 부여한다
- * (마운트가 아니라) → 정적/캐시된 빠른 이미지든 서명 URL·lazy 인 느린 이미지든 "도착하는 순간"
- * 페이드된다. 클래스가 없을 때 base opacity 는 1 이라 JS 미실행·하이드레이션 미스에도 이미지는
- * 투명하게 멈추지 않는다(FadeImg 가 fail-safe 보장). */
-@keyframes fade-in-img {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-/* fill-mode both: 시작 직전 from{opacity:0} 을 backwards 적용 → img base opacity 1 가 한 프레임
- * 번쩍였다 0 으로 떨어지던 깜빡임 제거. forwards 로 종료 후 1 유지(클래스가 빠지면 base 1 로 안전). */
-.fade-in-img {
-  animation: fade-in-img 0.35s ease both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .fade-in-img {
-    animation: none;
-  }
-}
-
 /* 이미지 로딩 placeholder — 쓸어가는 shimmer 스켈레톤. 고정 비율 박스 안에 깔려 '불러오는 중'을
  * 명확히 보여준다(기존 오프화이트 펄스는 카드와 동색이라 흰배경처럼 보이던 문제 해소).
  * base = 중립 슬레이트 회색(크림·다크 양쪽에서 보이는 plain rgba), sweep = 흰 하이라이트가 좌→우로 쓸려감.

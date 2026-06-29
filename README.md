@@ -598,6 +598,13 @@ v0.56 (2026-06-29, 갤러리 서명URL 클라 캐싱 — 재진입 재페이드 
 - **갤러리 이탈→재진입 시 전 캐릭터가 재페이드되던 문제 제거**. `fetchDollPage` 가 매 mount 마다 `/api/doll/signed-urls` 로 **모든 id 서명 재발급**(새 URL → FadeImg 재로드)하던 것을, 모듈 레벨 `signedUrlCache`(id→{url,만료}, 8분 < 서버 ttl 600s)로 **캐시 미스/만료 id 만 재요청** → 재진입 시 같은 URL 재사용(브라우저 캐시 히트)으로 재페이드 없음. 캐시 실패/만료는 기본 부장님 폴백 유지. 이미지 경로 불변이라 staleness 없음.
 - 검증: typecheck 0·build 0. (갤러리는 인증·본인 doll RLS 라 실데이터 확인은 실기기.) v0.54~0.56 으로 fade 깜빡임 ①②③④ 마무리.
 
+v0.57 (2026-06-29, 이미지 fade 제거 + 정적 캐싱 — 깜빡임 우회 대신 빠른 로딩; 마이그레이션 없음):
+- **방향 전환**: fade-in 효과를 걷어내고 *캐싱*으로 빠른 표시. fade 는 느린 첫 로드 pop-in 을 가리려던 우회책이라 모바일 깜빡임을 못 떨쳐냈음 → 제대로 캐싱되면 재방문 즉시 표시라 fade 불요.
+- **`FadeImg` fade 제거**: `fade` state·`fade-in-img` 클래스·`img.decode()` 게이팅·`settledRef` 삭제(+ globals.css `.fade-in-img`/keyframes 제거). **placeholder(회색/펄스/shimmer) + 캐시 fast-path(`useLayoutEffect` — complete 면 paint 전 즉시) + onError 폴백 유지** → 캐시 이미지 즉시, cold 로드만 placeholder→이미지(페이드 없음). base opacity 1 fail-safe.
+- **P0 정적 캐싱(`next.config` `headers()`)**: Next 가 `public/` 에 주던 `max-age=0, must-revalidate`(재방문마다 304 round-trip)가 진짜 원인(`_next/static` 은 immutable 인 게 증거). **sprites·bg·avatars=immutable 1년**(⚠ 교체 시 파일명 변경), **logo·og·icons=1일**(immutable 풋건 회피). `images.minimumCacheTTL`=31일(/_next/image). dev curl 로 적용 실측.
+- **캐시 전수 감사**: render/transform(이벤트썸네일·OG·doll썸네일)=`max-age=3600`+CDN 양호 · avatars 버킷=1년(기존) · event커버 원본=`no-cache`이나 화면은 transform 소비라 무영향 · **doll 서명URL=no-store 응답**이라 객체 cacheControl 무효(원천적으로 remount 시 재로드, placeholder 가 완화). **P1(업로드 cacheControl)은 실효 낮아 보류**(소비가 transform/서명). next/image 전면 전환 비권장(비용↑·P0 로 동일 이득).
+- 검증: typecheck 0·build 0(Sentry 래핑 headers 보존). dev 헤더 실측(sprites/avatars/bg=immutable, logo/icon/og=1일). fade 제거·캐싱 체감은 실기기.
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.
