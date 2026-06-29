@@ -7,7 +7,7 @@ import { log, errInfo } from "@/lib/log";
 // 신규 회원 생성 시 부수효과(프로필 시드 + 익명데이터 이전) — 콜백(로그인 시 생성)·consent API(복구) 공용.
 // 이전은 **신규 회원 생성(is_new) 경로에서만** 호출(I4 보수적 — 기존 회원은 자동 병합 안 함).
 
-/** 신규 가입자의 OAuth 닉/프사를 profiles 에 시드(빈 값은 생략 — 기존 값 유지). best-effort. */
+/** 신규 가입자의 OAuth 닉/프사를 profiles 에, 이메일을 member_accounts 에 시드(빈 값은 생략). best-effort. */
 export async function seedOAuthProfile(admin: SupabaseClient, user: User): Promise<void> {
   try {
     const { data: full } = await admin.auth.admin.getUserById(user.id);
@@ -17,6 +17,12 @@ export async function seedOAuthProfile(admin: SupabaseClient, user: User): Promi
     if (profile.avatarUrl) patch.avatar_url = profile.avatarUrl;
     if (Object.keys(patch).length > 0) {
       await admin.from("profiles").update(patch).eq("id", user.id);
+    }
+    // 신규 회원 이메일 시드 — RPC(create_or_update_member_consent)는 email 을 안 채워, 가입 직후
+    // member_accounts.email 이 null 로 남던 문제(콜백의 이메일 동기화는 member row 가 *이미 있을 때만*
+    // 동작 → 신규는 재로그인 전까지 비어 있었음). profile.email(콜백과 동일 추출·Kakao identity_data 대응)로 설정.
+    if (profile.email) {
+      await admin.from("member_accounts").update({ email: profile.email }).eq("user_id", user.id);
     }
   } catch (e) {
     log.warn("onboard.seed_profile_fail", { userId: user.id, ...errInfo(e) });
