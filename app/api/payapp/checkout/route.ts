@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as { productId?: string } | null;
   // 가격/개수/상품명은 서버 config 의 **active 상품**으로만 결정(클라 조작·비활성 상품 차단).
   const growth = await getGrowthLevers();
+  // 결제 노출 OFF(성장레버 creditsEnabled=false/미설정) → 준비중. 클라(/credits) UI 우회 방지로 서버에서도 차단.
+  if (!(growth.creditsEnabled ?? false)) {
+    return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
+  }
   const product = body?.productId
     ? activeCreditProducts(growth).find((p) => p.productId === body.productId) ?? null
     : null;
