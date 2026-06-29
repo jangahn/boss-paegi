@@ -6,7 +6,7 @@ import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
-import { detectGlasses } from "@/lib/fal";
+import { analyzeInputFace } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
 import { isRoleId } from "@/lib/roles";
@@ -114,13 +114,24 @@ export async function POST(req: NextRequest) {
     );
     facePath = uploaded.path;
 
-    // 입력에 안경이 있으면 캐릭터에도 반영 (PuLID 가 액세서리를 떨궈 누락되므로 조건부).
-    // 검출 실패 시 false 폴백(생성은 진행).
-    const wearsGlasses = await Sentry.startSpan(
-      { name: "gen.detect_glasses", op: "fal.vqa", attributes: { genId, userId: user.id } },
-      () => detectGlasses(uploaded.url)
+    // 얼굴 분석(1회 VLM) — 얼굴 존재 + 안경 여부. 안경은 PuLID 누락 보정용, 얼굴은 제출 전 게이트용.
+    const { faceVisible, wearsGlasses } = await Sentry.startSpan(
+      { name: "gen.analyze_face", op: "fal.vqa", attributes: { genId, userId: user.id } },
+      () => analyzeInputFace(uploaded.url)
     );
     if (wearsGlasses) log.info("gen.glasses_detected", { genId, userId: user.id });
+
+    // 제출 전 얼굴 게이트 — 확실한 no-face 면 차감·제출 없이 즉시 반려(no-face fal 낭비·30~60초 대기 방지).
+    if (!faceVisible) {
+      await admin.from("ai_generations").update({ status: "failed" }).eq("id", genId);
+      if (facePath) {
+        await deleteFaceTmp(facePath).catch((err) =>
+          log.warn("gen.face_cleanup_fail", { genId, ...errInfo(err) })
+        );
+      }
+      log.info("gen.no_face_rejected", { genId, userId: user.id });
+      return NextResponse.json({ error: "no_face" }, { status: 400 });
+    }
 
     // ── 생성권 차감 — 외부 비용(fal submit) 직전, 원자적 RPC(동시요청 안전) ──
     if (!isOps) {

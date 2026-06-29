@@ -89,25 +89,34 @@ export async function removeBackground(imageUrl: string): Promise<string> {
 type MoondreamResponse = { output?: string };
 
 /**
- * 입력 얼굴이 안경을 썼는지 VLM(Moondream)으로 판별 — 안경 있을 때만 프롬프트에 반영하기 위해.
- * PuLID 는 정체성 임베딩이 안경 같은 액세서리를 분리해 그냥 두면 안경이 누락되므로,
- * 생성 직전 검출해 조건부로 "wearing eyeglasses" 를 넣는다.
- * 실패/타임아웃 시 false (안경 미반영 = 기존 동작, 생성은 계속).
+ * 입력 얼굴 분석 — VLM(Moondream) **1회 호출**로 ① 얼굴이 또렷이 보이는지 ② 안경 착용 여부.
+ * - `faceVisible`: false 면 호출부가 *제출·차감 전* 반려해 no-face(fal facexlib 400)로 30~60초
+ *   낭비+실패하던 것을 막는다. **단 'face=no' 가 명시적으로 잡힐 때만 false** — 모호·파싱실패·예외는
+ *   true(fail-open)로 두어 정상 사진 과반려를 막는다(PR-1 의 no-face 즉시실패+환불이 안전망).
+ * - `wearsGlasses`: PuLID 가 액세서리(안경)를 떨궈 누락하므로 있을 때만 프롬프트에 조건부 반영.
  */
-export async function detectGlasses(imageUrl: string): Promise<boolean> {
+export async function analyzeInputFace(
+  imageUrl: string
+): Promise<{ faceVisible: boolean; wearsGlasses: boolean }> {
   try {
     const result = await fal.subscribe("fal-ai/moondream3-preview/query", {
       input: {
         image_url: imageUrl,
         prompt:
-          "Is the main person wearing eyeglasses or sunglasses? Answer only 'yes' or 'no'.",
+          "Answer two questions about this image. Reply EXACTLY in this format with no other text: " +
+          "'face=yes/no glasses=yes/no'. " +
+          "Question face: Is there a clearly visible human face in the image? " +
+          "Question glasses: Is the main person wearing eyeglasses or sunglasses?",
       },
       abortSignal: AbortSignal.timeout(8000),
     });
-    const answer = ((result.data as MoondreamResponse).output ?? "").toLowerCase();
-    return /\byes\b/.test(answer);
+    const ans = ((result.data as MoondreamResponse).output ?? "").toLowerCase();
+    return {
+      faceVisible: !/face\s*=\s*no\b/.test(ans), // 명시적 no 일 때만 반려, 그 외 통과(fail-open)
+      wearsGlasses: /glasses\s*=\s*yes\b/.test(ans),
+    };
   } catch (e) {
-    log.warn("gen.glasses_detect_fail", errInfo(e));
-    return false;
+    log.warn("gen.face_analyze_fail", errInfo(e));
+    return { faceVisible: true, wearsGlasses: false }; // fail-open — 검출 실패로 생성을 막지 않음
   }
 }
