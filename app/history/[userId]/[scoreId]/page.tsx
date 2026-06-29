@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
 import { fetchScoreDetail, clipSignedUrl } from "@/lib/score-detail";
 import { signedDollUrl } from "@/lib/storage";
@@ -73,7 +72,6 @@ export default async function HistoryDetailPage({
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col items-center px-4 py-8">
         <div className="w-full max-w-sm">
           <Link

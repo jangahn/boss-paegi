@@ -1,10 +1,8 @@
-import { AppNav } from "@/components/AppNav";
 
 /** /history 상세 진입 즉시 스켈레톤 (서버 fetch 대기 중 blank 방지). */
 export default function Loading() {
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col items-center px-4 py-8">
         <div className="w-full max-w-sm">
           <div className="mb-3 h-4 w-24 animate-pulse rounded bg-foreground/10" />

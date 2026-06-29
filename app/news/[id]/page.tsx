@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { AppNav } from "@/components/AppNav";
 import { Markdown } from "@/components/events/Markdown";
 import { getEventById } from "@/lib/events";
 import { EVENT_TYPE_LABEL } from "@/lib/events/types";
@@ -54,7 +53,6 @@ export default async function NewsDetailPage({
 
   return (
     <>
-      <AppNav />
       {/* 약관/방침 페이지처럼 오프화이트(ui-surface) 본문. 커버·요약은 목록/팝업/배너/OG 메타로만 쓰고 본문엔 미노출. */}
       <main className="flex flex-1 flex-col ui-surface px-5 py-10">
         <article className="mx-auto flex w-full max-w-2xl flex-col gap-6">

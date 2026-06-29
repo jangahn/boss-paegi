@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
 import { EventBanner } from "@/components/events/EventBanner";
 import { timeAgo } from "@/lib/report";
@@ -48,7 +47,6 @@ export default function LeaderboardPage() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center justify-between gap-3">

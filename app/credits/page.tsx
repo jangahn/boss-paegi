@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { perUnitPrice } from "@/lib/credit-products";
@@ -62,7 +61,6 @@ export default function CreditsPage() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-md flex-col gap-5">
           <div>

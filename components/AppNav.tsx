@@ -8,8 +8,16 @@ import { AccountMenu } from "@/components/AccountMenu";
  * 전역 네비게이션 — 홈/갤러리/랭킹 자유 이동 + 계정 메뉴(닉네임·로그인·아바타·로그아웃).
  * /play 는 몰입 화면이라 미장착 (게임 종료 보고서에서 이동 제공).
  */
-export function AppNav() {
+// AppNav 미노출 라우트 — 몰입 게임(play)·인증/동의 플로우(login·signup·consent·reconsent)·
+// 최소 공유 랜딩(share·doll). **/admin 도 root 에선 hide** — 어드민은 layout 이 theme-admin(다크)
+// 안에서 forceShow 로 직접 렌더(라이트색 누수·double-nav 방지). 그 외(홈·갤러리·랭킹·소식·약관/
+// 방침·계정 등)엔 root layout 에서 1회 렌더 → 내비 간 remount 제거; 여기서 라우트별 self-hide.
+const NAV_HIDDEN_PREFIXES = ["/play", "/login", "/signup", "/consent", "/reconsent", "/share", "/doll", "/admin"];
+
+// forceShow: 어드민 layout 이 theme-admin(다크) 안에서 직접 렌더할 때 hide 우회.
+export function AppNav({ forceShow = false }: { forceShow?: boolean }) {
   const pathname = usePathname();
+  if (!forceShow && NAV_HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return null;
 
   const links = [
     { href: "/", label: "홈" },

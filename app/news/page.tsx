@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { getPublishedEvents } from "@/lib/events";
@@ -48,7 +47,6 @@ export default async function NewsPage({
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
           <h1 className="text-2xl font-bold">소식</h1>

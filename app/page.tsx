@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { AppNav } from "@/components/AppNav";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
@@ -32,7 +31,6 @@ export default function Home() {
 
   return (
     <>
-      <AppNav />
       <EventPopup />
       <main className="flex flex-1 flex-col items-center px-6 py-12">
         <div className="flex w-full max-w-sm flex-col gap-6">

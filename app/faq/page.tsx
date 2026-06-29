@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AppNav } from "@/components/AppNav";
 import { JsonLd } from "@/components/JsonLd";
 import { getSiteContent } from "@/lib/config/getters";
 import { SERVICE_NAME } from "@/lib/policy";
@@ -35,7 +34,6 @@ export default async function FaqPage() {
 
   return (
     <>
-      <AppNav />
       <JsonLd data={faqLd} />
       <main className="flex flex-1 flex-col ui-surface px-5 py-10">
         <div className="mx-auto w-full max-w-2xl">

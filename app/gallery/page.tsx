@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { getMyProfile, formatCredits, type MyProfile } from "@/lib/profile";
-import { AppNav } from "@/components/AppNav";
 import { DefaultBossCard } from "@/components/gallery/DefaultBossCard";
 import { SignupBanner } from "@/components/gallery/SignupBanner";
 import { EventBanner } from "@/components/events/EventBanner";
@@ -180,7 +179,6 @@ export default function GalleryPage() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           {/* 헤더(제목·생성권·새로 만들기) — 정적이라 fetch 전에도 표시. 그리드만 스켈레톤. */}
