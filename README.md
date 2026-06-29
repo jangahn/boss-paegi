@@ -643,6 +643,13 @@ v0.64 (2026-06-29, 생성 메타 기록 — fail_reason + picked_index; **Migrat
 - `lib/generation-recovery.ts`: `RecoverResult.reason`(no_face/fal_error/no_requests) + `failGeneration(..., reason)`(+0046 미적용 fallback). `fal/route.ts` 3지점(no_face/no_credits/submit_error). `generations`/`gen-recover` 호출부에 사유(timeout/expired/rec.reason). `doll/route.ts` 픽 시 후보 경로에서 index 파싱(+fallback).
 - 검증: typecheck 0·build 0. **⚠ Migration 0046 (`0046_generation_meta.sql`)**: `ai_generations` 에 `fail_reason text`·`picked_index int` 추가(둘 다 nullable·additive·CHECK 없음). 대시보드 SQL 에디터로 적용. 코드는 fallback/self-heal 로 미적용 lag 도 견딤(적용 전 no-face 거부는 사유 미기록·30분 후 마킹).
 
+v0.65 (2026-06-29, 어드민 캐릭터 생성 현황 탭 — 신고탭 컨벤션; 마이그레이션 없음):
+- **신규 `/admin/generations`**(AdminNav "캐릭터 생성"). 생성 라이프사이클을 상태/회원/캐릭터로 조회 — **목록 + 행 인라인 펼침**(신고탭 모델), 페이징 10.
+- 상태(파생): 생성요청(queued)·선택 전(done)·선택완료(picked)·**거부(failed+no_face)**·기타 실패(failed 그 외). 상태칩 필터 + 회원/캐릭터 id 클릭→필터(+회원 상세 이동). 펼침에 후보 썸네일(선택 전 3장·선택완료 1장+픽 인덱스, 나머지 후보는 pick 시 삭제됨), 실패 사유, 메타.
+- `lib/admin-generations.ts`(`listGenerations` — 상태/owner/doll 필터·count·signed 썸네일·owner명/doll이미지 배치, **0046 미적용 fallback**: full 쿼리 에러에 fail_reason 포함→폴백). `GenStatusFilter`·`GenerationsTable` 컴포넌트.
+- **크레딧 표기는 status 기반 추정**(consumed/refunded/none) — 정확 변동은 PR-D(credit_ledger)에서.
+- 검증: typecheck 0·build 0 + service_role 실측(prod 116건·fallback 트리거 확인=`column fail_reason does not exist`·candidate_urls 배열).
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.

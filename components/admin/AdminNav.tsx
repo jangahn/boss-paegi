@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/admin/users", label: "회원" },
   { href: "/admin/ledger", label: "처리내역" },
   { href: "/admin/moderation", label: "신고" },
+  { href: "/admin/generations", label: "캐릭터 생성" },
   { href: "/admin/events", label: "이벤트/소식" },
   { href: "/admin/content", label: "콘텐츠" },
   { href: "/admin/analytics", label: "게임 분석" },
