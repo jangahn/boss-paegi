@@ -6,8 +6,10 @@ import {
   getUserOrders,
   getUserGenerations,
   getUserDolls,
+  getUserCreditLedger,
 } from "@/lib/admin-users";
 import { getLedger } from "@/lib/admin-ledger";
+import { CreditLedgerTable } from "@/components/admin/CreditLedgerTable";
 import { getRoleConfig } from "@/lib/config/getters";
 import { OrdersTable } from "@/components/admin/OrdersTable";
 import { LedgerTable } from "@/components/admin/LedgerTable";
@@ -40,6 +42,7 @@ export default async function AdminUserDetailPage({
   const pages = {
     ordersPage: pageOf(sp.ordersPage),
     adjPage: pageOf(sp.adjPage),
+    creditPage: pageOf(sp.creditPage),
     genPage: pageOf(sp.genPage),
     dollsPage: pageOf(sp.dollsPage),
   };
@@ -68,9 +71,10 @@ export default async function AdminUserDetailPage({
     );
   }
 
-  const [orders, adjustments, generations, dolls, roleCfg] = await Promise.all([
+  const [orders, adjustments, creditLedger, generations, dolls, roleCfg] = await Promise.all([
     getUserOrders(id, pages.ordersPage),
     getLedger({ targetUserId: id, page: pages.adjPage }),
+    getUserCreditLedger(id, pages.creditPage),
     getUserGenerations(id, pages.genPage),
     getUserDolls(id, pages.dollsPage),
     getRoleConfig(), // 어드민 유저표 역할 호칭 = DB 발행값(roleFrom)
@@ -79,6 +83,7 @@ export default async function AdminUserDetailPage({
   // overshoot(존재 행보다 큰 섹션 page) → 1페이지로(빈 화면·페이저 소실 방지). 한 번에 하나씩 수렴.
   if (orders.rows.length === 0 && pages.ordersPage > 1) redirect(hrefFor("ordersPage")(1));
   if (adjustments.rows.length === 0 && pages.adjPage > 1) redirect(hrefFor("adjPage")(1));
+  if (creditLedger.rows.length === 0 && pages.creditPage > 1) redirect(hrefFor("creditPage")(1));
   if (generations.rows.length === 0 && pages.genPage > 1) redirect(hrefFor("genPage")(1));
   if (dolls.rows.length === 0 && pages.dollsPage > 1) redirect(hrefFor("dollsPage")(1));
 
@@ -151,6 +156,16 @@ export default async function AdminUserDetailPage({
             page={adjustments.page}
             totalPages={pp(adjustments.total, adjustments.pageSize)}
             hrefFor={hrefFor("adjPage")}
+          />
+          <h2 className="mt-2 text-sm font-bold text-zinc-500">
+            크레딧 사용 내역 · 생성 차감/환불 ({creditLedger.total})
+          </h2>
+          <p className="-mt-1 text-[11px] text-zinc-400">충전(구매)은 위 결제 내역, 운영자 조정은 크레딧 조정 이력에 있어요.</p>
+          <CreditLedgerTable rows={creditLedger.rows} />
+          <Pagination
+            page={creditLedger.page}
+            totalPages={pp(creditLedger.total, creditLedger.pageSize)}
+            hrefFor={hrefFor("creditPage")}
           />
         </section>
 

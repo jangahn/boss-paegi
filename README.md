@@ -650,6 +650,12 @@ v0.65 (2026-06-29, 어드민 캐릭터 생성 현황 탭 — 신고탭 컨벤션
 - **크레딧 표기는 status 기반 추정**(consumed/refunded/none) — 정확 변동은 PR-D(credit_ledger)에서.
 - 검증: typecheck 0·build 0 + service_role 실측(prod 116건·fallback 트리거 확인=`column fail_reason does not exist`·candidate_urls 배열).
 
+v0.66 (2026-06-29, 크레딧 변동 원장 — 생성 차감/환불 기록; **Migration 0047**):
+- **갭**: 운영자 조정(admin_actions_ledger)·충전(payapp_orders)은 기록되나 **생성 차감(−1)·생성 환불(+1)은 어디에도 기록 안 됨**(member_accounts.gen_credits 만 +/-). → `credit_ledger`(gen_consume/gen_refund) + 회원상세 "크레딧 사용 내역 · 생성 차감/환불" 섹션(10/page).
+- **앱 레벨 로깅**(money/hot-path RPC 무수정·리스크 최소화): `lib/credit-ledger.ts` `logCreditEvent`(best-effort, 0047 미적용이면 무음 skip). 호출부 — `fal/route.ts`(consume `-1`·submit실패 refund `+1`, balance_after=RPC 반환), `generation-recovery.ts` `failGeneration`(폴링/cron 실패 refund `+1`). 모두 `ref_gen_id` 연결.
+- **충전(purchase)은 기록 안 함** — 이미 결제 내역(orders)에 보여 payment 라우트 무수정. credit_ledger/EVENT_META 는 purchase 지원(향후 통합 대비).
+- 검증: typecheck 0·build 0 + 실측(credit_ledger 부재 PGRST205 확인 → 로깅/조회 graceful skip). **⚠ Migration 0047 (`0047_credit_ledger.sql`)**: `credit_ledger` 신규(server-only RLS·additive). 대시보드 적용 후 신규 발생분부터 누적.
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.

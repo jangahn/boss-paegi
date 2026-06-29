@@ -227,3 +227,57 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
   }
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
 }
+
+export type CreditLedgerRow = {
+  id: string;
+  delta: number;
+  eventType: string;
+  balanceAfter: number | null;
+  refGenId: string | null;
+  refOrderUuid: string | null;
+  createdAt: string;
+};
+
+/**
+ * 유저 크레딧 변동(생성 차감/환불·충전) — 10/page, count:exact. credit_ledger(0047).
+ * 0047 미적용이면 쿼리 에러 → 빈 결과(섹션만 비고 페이지 안전). 운영자 조정/환불은 별도 '크레딧 조정' 섹션.
+ */
+export async function getUserCreditLedger(
+  userId: string,
+  page = 1
+): Promise<Paged<CreditLedgerRow>> {
+  const p = Math.max(1, page);
+  const from = (p - 1) * USER_PAGE_SIZE;
+  const admin = createAdminClient();
+  const { data, count, error } = await admin
+    .from("credit_ledger")
+    .select("id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, created_at", {
+      count: "exact",
+    })
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(from, from + USER_PAGE_SIZE - 1);
+  if (error) {
+    log.warn("admin.user_credit_ledger_fail", errInfo(error));
+    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
+  }
+  type Row = {
+    id: string;
+    delta: number;
+    event_type: string;
+    balance_after: number | null;
+    ref_gen_id: string | null;
+    ref_order_uuid: string | null;
+    created_at: string;
+  };
+  const rows = ((data ?? []) as Row[]).map((r) => ({
+    id: r.id,
+    delta: r.delta,
+    eventType: r.event_type,
+    balanceAfter: r.balance_after,
+    refGenId: r.ref_gen_id,
+    refOrderUuid: r.ref_order_uuid,
+    createdAt: r.created_at,
+  }));
+  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+}
