@@ -371,9 +371,10 @@ body:has(.game-surface) #sentry-feedback {
     opacity: 1;
   }
 }
-/* fill-mode 없음(default none) — 끝나면 base opacity 1 로 복귀(클래스가 빠져도 안전). 실행되면 0→1 페이드. */
+/* fill-mode both: 시작 직전 from{opacity:0} 을 backwards 적용 → img base opacity 1 가 한 프레임
+ * 번쩍였다 0 으로 떨어지던 깜빡임 제거. forwards 로 종료 후 1 유지(클래스가 빠지면 base 1 로 안전). */
 .fade-in-img {
-  animation: fade-in-img 0.35s ease;
+  animation: fade-in-img 0.35s ease both;
 }
 @media (prefers-reduced-motion: reduce) {
   .fade-in-img {

@@ -584,6 +584,11 @@ v0.53 (2026-06-29, 미디어 자산 어드민화 — 기본 OG·서비스 로고
 - **하드닝**: next/image `remotePatterns` 를 supabase storage 경로(render+object)로 제한(호스트 광역 개방 제거). media_config 발행 시 `revalidatePath('/','layout')·'/'·'/login'`(og:image·로고 즉시 반영). orphan(슬롯 교체분) MVP 미삭제(캐시·롤백 대비, cleanup 후속).
 - 검증: typecheck 0·build 0(정확한 exit 캡처). **배포 전: Migration 0045 적용 + `site-assets` public 버킷 수동 생성**.
 
+v0.54 (2026-06-29, 이미지 fade-in 모바일 깜빡임 수정 — `FadeImg`; 마이그레이션 없음):
+- **모바일에서 fade-in 이 '번쩍/깜빡'이던 문제 수정**(아바타·프로필·캐릭터·이벤트 썸네일 등 `FadeImg` 전체). 두 원인: ① `.fade-in-img` 에 `animation-fill-mode` 가 없어 onLoad 후 클래스 부착 직전 한 프레임 img base opacity 1 가 노출됐다 `from{opacity:0}` 로 뚝 떨어지던 번쩍 → **`fill-mode: both` 추가**(v0.45 의 'fill-mode 없음' 결정 갱신). ② `onLoad`(바이트 완료)가 디코드(래스터)보다 빨라 모바일서 미디코드 빈 프레임 노출 → **`img.decode()` 완료 후 표시**(catch→reveal graceful, lazy 는 onLoad 이후 호출이라 reject 안전) + 캐시 fast-path ↔ onLoad 경쟁 `settledRef` 가드.
+- **fail-safe 보존**: fade 클래스는 여전히 JS reveal 시에만 부착 → JS 미실행이면 클래스 없음=base opacity 1(투명 정지 없음). reduced-motion `animation:none` 그대로(fill-mode 무관). 캐시 이미지 1프레임 placeholder(`useLayoutEffect` P1)·AppNav remount(layout 승격)·갤러리 서명URL 클라 캐싱은 후속 후보.
+- 검증: typecheck 0·build 0. 로컬 dev(`--hostname 0.0.0.0`) 실기기 모바일 육안 확인.
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.
