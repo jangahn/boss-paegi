@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+// 캐시 fast-path(placeholder 제거)를 **paint 전**에 적용 → 캐시/정적 이미지에서 placeholder 가
+// 1프레임 깜빡였다 사라지던 것 제거. SSR 엔 useLayoutEffect 경고가 있어 브라우저에서만 사용
+// (서버는 effect 자체를 실행 안 하므로 useEffect 로 폴백해도 동작 동일·경고만 회피).
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
  * 이미지 로드 전 placeholder(정적 회색/펄스/shimmer) → 로드 시 부드럽게 채움. 페이지(텍스트·
@@ -51,7 +56,8 @@ export function FadeImg({
 
   // 캐시 hit / SSR 으로 하이드레이션 전에 이미 로드 완료된 경우: onLoad 가 안 와도 placeholder 를
   // 걷어낸다(이미 보이므로 fade 는 켜지 않음 → 깜빡임 없음). src 변경(fallback 포함) 시 재확인.
-  useEffect(() => {
+  // useLayoutEffect: placeholder 제거를 paint 전에 반영 → 캐시 이미지 1프레임 placeholder 깜빡 제거.
+  useIsoLayoutEffect(() => {
     settledRef.current = false;
     const img = ref.current;
     if (img && img.complete && img.naturalWidth > 0) {
