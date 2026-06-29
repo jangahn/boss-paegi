@@ -124,6 +124,12 @@ function GeneratePageInner() {
             "생성 요청이 많아 AI 캐릭터 만들기가 일시적으로 중단됐어요. 잠시 후 다시 시도해주세요. (기본 부장님으로는 계속 플레이할 수 있어요)"
           );
         }
+        if (err.error === "no_face") {
+          // 제출 전 얼굴 게이트(차감 없음) — 다른 사진으로 즉시 재시도 안내.
+          throw new Error(
+            "사진에서 얼굴을 찾지 못했어요. 얼굴이 정면으로 또렷하게 보이는 사진으로 다시 시도해주세요."
+          );
+        }
         throw new Error(err.error ?? "generation_failed");
       }
       // 비동기: 제출만 됨 → fal 이 생성 중. 폴링은 useGenerationPolling 이 담당.
