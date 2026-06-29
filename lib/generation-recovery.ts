@@ -4,6 +4,7 @@ import { fal } from "@fal-ai/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SERVER_ENV } from "@/lib/env.server";
 import { DOLLS_BUCKET, candidatePrefix } from "@/lib/generation";
+import { logCreditEvent } from "@/lib/credit-ledger";
 import { log, errInfo } from "@/lib/log";
 
 fal.config({ credentials: SERVER_ENV.FAL_KEY });
@@ -305,8 +306,18 @@ export async function failGeneration(
     return;
   }
   if ((flipped?.length ?? 0) > 0 && !isOps) {
-    const { error: rErr } = await admin.rpc("refund_gen_credit", { p_user: userId });
-    if (rErr) log.error("gen.fail_refund_error", { genId, userId, ...errInfo(rErr) });
-    else log.info("gen.fail_refunded", { genId, userId });
+    const { data: bal, error: rErr } = await admin.rpc("refund_gen_credit", { p_user: userId });
+    if (rErr) {
+      log.error("gen.fail_refund_error", { genId, userId, ...errInfo(rErr) });
+    } else {
+      log.info("gen.fail_refunded", { genId, userId });
+      await logCreditEvent(admin, {
+        userId,
+        delta: 1,
+        eventType: "gen_refund",
+        balanceAfter: typeof bal === "number" ? bal : null,
+        refGenId: genId,
+      });
+    }
   }
 }

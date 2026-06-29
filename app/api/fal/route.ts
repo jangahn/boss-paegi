@@ -10,6 +10,7 @@ import { analyzeInputFace } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
 import { isRoleId } from "@/lib/roles";
+import { logCreditEvent } from "@/lib/credit-ledger";
 import { log, errInfo } from "@/lib/log";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -158,6 +159,13 @@ export async function POST(req: NextRequest) {
       }
       creditConsumed = true;
       log.info("gen.credit_consumed", { userId: user.id, genId, remaining });
+      await logCreditEvent(admin, {
+        userId: user.id,
+        delta: -1,
+        eventType: "gen_consume",
+        balanceAfter: typeof remaining === "number" ? remaining : null,
+        refGenId: genId,
+      });
     }
 
     // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
@@ -211,7 +219,7 @@ export async function POST(req: NextRequest) {
     }
     // 차감했는데 제출 실패 → 생성권 환불(원자적). ops 는 차감 안 했으니 스킵.
     if (creditConsumed && !isOps) {
-      const { error: refundErr } = await admin.rpc("refund_gen_credit", {
+      const { data: bal, error: refundErr } = await admin.rpc("refund_gen_credit", {
         p_user: user.id,
       });
       if (refundErr) {
@@ -219,6 +227,14 @@ export async function POST(req: NextRequest) {
           genId,
           userId: user.id,
           ...errInfo(refundErr),
+        });
+      } else {
+        await logCreditEvent(admin, {
+          userId: user.id,
+          delta: 1,
+          eventType: "gen_refund",
+          balanceAfter: typeof bal === "number" ? bal : null,
+          refGenId: genId,
         });
       }
     }
