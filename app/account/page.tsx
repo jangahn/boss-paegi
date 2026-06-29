@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 import { AvatarEditor } from "@/components/AvatarEditor";
 import { FadeImg } from "@/components/FadeImg";
@@ -41,7 +40,6 @@ export default function AccountPage() {
   if (!profile) {
     return (
       <>
-        <AppNav />
         <main className="flex flex-1 items-center justify-center">
           <Spinner className="h-6 w-6" />
         </main>
@@ -75,7 +73,6 @@ export default function AccountPage() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-5 py-8">
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
           <h1 className="text-2xl font-bold text-foreground">회원정보</h1>

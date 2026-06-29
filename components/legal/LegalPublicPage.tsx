@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { AppNav } from "@/components/AppNav";
 import { LegalDocView } from "./LegalDocView";
 import {
   getCurrentLegal,
@@ -41,7 +40,6 @@ export async function LegalPublicPage({
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col ui-surface px-5 py-10">
         <div className="mx-auto w-full max-w-2xl">
           {!viewed ? (

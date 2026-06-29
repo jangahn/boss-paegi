@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AppNav } from "@/components/AppNav";
 import { Spinner } from "@/components/Spinner";
 
 type DoneState = "checking" | "paid" | "pending" | "error";
@@ -61,7 +60,6 @@ function CreditsDoneInner() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
         <div className="flex w-full max-w-sm flex-col items-center gap-4">
           {state === "checking" && (

@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PhotoCropper } from "@/components/PhotoCropper";
-import { AppNav } from "@/components/AppNav";
 import { UploadStage } from "@/components/generate/UploadStage";
 import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
@@ -163,7 +162,6 @@ function GeneratePageInner() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
       {stage === "checking" && <LoadingStage label="생성권 확인 중…" />}
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}

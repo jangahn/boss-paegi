@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
-import { AppNav } from "@/components/AppNav";
 import {
   familyGroups,
   activeBadges,
@@ -49,7 +48,6 @@ export default function BadgesPage() {
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-end justify-between gap-3">

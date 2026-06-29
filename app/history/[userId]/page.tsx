@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { AppNav } from "@/components/AppNav";
 import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -80,7 +79,6 @@ export default async function HistoryPage({
 
   return (
     <>
-      <AppNav />
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center gap-3">

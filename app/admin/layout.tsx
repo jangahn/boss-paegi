@@ -21,11 +21,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
   return (
     <div className="theme-admin flex flex-1 flex-col bg-background text-foreground">
+      {/* 어드민 전용 AppNav — root layout 의 AppNav 는 /admin 에서 hide, 여기서 theme-admin(다크) 안에 직접. */}
+      <AppNav forceShow />
       {/* 운영 모드 시그널 — 플레이(크림) 모드와 구분 */}
       <div className="border-b border-gold/30 bg-gold/10 px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">
         운영 모드 · ADMIN
       </div>
-      <AppNav />
       <AdminNav />
       {children}
     </div>
