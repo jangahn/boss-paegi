@@ -18,10 +18,10 @@ export type Stage =
 
 export type GeneratedImage = { url: string; width: number; height: number };
 
-type PendingRow = { id: string; kind: string; candidateUrls: string[]; role?: string };
+type PendingRow = { id: string; kind: string; candidateUrls: string[]; role?: string; reason?: string };
 type PollResult =
   | { status: "ready"; urls: string[]; role: RoleId }
-  | { status: "interrupted" }
+  | { status: "interrupted"; reason?: "photo" }
   | { status: "unauthorized" }
   | { status: "timeout" };
 
@@ -61,7 +61,8 @@ async function pollGeneration(
         if (g?.kind === "ready" && g.candidateUrls.length > 0) {
           return { status: "ready", urls: g.candidateUrls, role: asRole(g.role) };
         }
-        if (g?.kind === "interrupted") return { status: "interrupted" };
+        if (g?.kind === "interrupted")
+          return { status: "interrupted", reason: g.reason === "photo" ? "photo" : undefined };
         // generating / 아직 목록에 없음 → 계속 폴링
       } else if (res.status === 401) {
         // 세션 없음/다른 익명 세션 — 쿠키 지연일 수 있어 몇 번 관용 후 종료(무한 폴 방지).
@@ -123,7 +124,11 @@ export function useGenerationPolling(opts: {
           setSelectedRole(result.role); // 복귀/이어서 시 고른 롤 복구
           setStage("pick");
         } else if (result.status === "interrupted") {
-          setError("이어할 생성이 중단됐어요. 다시 만들어주세요.");
+          setError(
+            result.reason === "photo"
+              ? "사진에서 얼굴을 찾지 못했어요. 얼굴이 정면으로 또렷하게 보이는 사진으로 다시 시도해주세요."
+              : "이어할 생성이 중단됐어요. 다시 만들어주세요."
+          );
           setStage("upload");
         } else if (result.status === "unauthorized") {
           setError("다른 기기/세션에서 시작한 생성은 이어볼 수 없어요. 갤러리에서 확인해주세요.");

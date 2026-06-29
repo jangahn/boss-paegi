@@ -7,6 +7,7 @@ import { PhotoCropper } from "@/components/PhotoCropper";
 import { UploadStage } from "@/components/generate/UploadStage";
 import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
+import { GeneratingProgress } from "@/components/generate/GeneratingProgress";
 import { RoleSelectStage } from "@/components/generate/RoleSelectStage";
 import { getMyProfile } from "@/lib/profile";
 import { setSentryGenStage, setSentryLastAction } from "@/lib/sentry-context";
@@ -190,12 +191,7 @@ function GeneratePageInner() {
           }}
         />
       )}
-      {stage === "generating" && (
-        <LoadingStage
-          label="AI 가 캐릭터 만드는 중…"
-          sub={error ?? "보통 1분, 길면 2분까지 걸려요. 완료되면 자동으로 떠요."}
-        />
-      )}
+      {stage === "generating" && <GeneratingProgress />}
       {stage === "pick" && (
         <PickStage results={results} onPick={handlePick} error={error} />
       )}
