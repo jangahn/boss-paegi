@@ -18,7 +18,7 @@ import {
   getBadgeCatalog,
   getSiteContent,
 } from "@/lib/config/getters";
-import { activeCreditProducts } from "@/lib/config/domains/growth";
+import { creditsConfig } from "@/lib/config/domains/growth";
 import { SiteContentProvider } from "@/components/SiteContentProvider";
 import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
@@ -112,7 +112,7 @@ export default async function RootLayout({
           <RoleContentProvider value={roleConfig}>
             <ScoreConfigProvider value={scoreConfig}>
               <SessionLimitsProvider value={sessionLimits}>
-                <CreditProductsProvider value={activeCreditProducts(growthLevers)}>
+                <CreditProductsProvider value={creditsConfig(growthLevers)}>
                   <BadgeCatalogProvider value={badgeCatalog}>
                     {children}
                   </BadgeCatalogProvider>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Spinner } from "@/components/Spinner";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { perUnitPrice } from "@/lib/credit-products";
-import { useCreditProducts } from "@/components/CreditProductsProvider";
+import { useCreditsConfig } from "@/components/CreditProductsProvider";
 import { log, errInfo } from "@/lib/log";
 import { setSentryLastAction } from "@/lib/sentry-context";
 
@@ -14,7 +14,7 @@ import { setSentryLastAction } from "@/lib/sentry-context";
  * (회원 게이트는 proxy.ts 가 처리 — 비회원은 /login 으로.)
  */
 export default function CreditsPage() {
-  const products = useCreditProducts();
+  const { products, enabled, comingSoon } = useCreditsConfig();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +58,21 @@ export default function CreditsPage() {
       setPending(null);
     }
   };
+
+  // OFF(준비중) — 어드민이 성장레버에서 결제 노출을 끈 상태. 충전 UI 대신 안내 화면(서버 체크아웃도 차단됨).
+  if (!enabled) {
+    return (
+      <main className="flex flex-1 flex-col px-6 py-8">
+        <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 py-10 text-center">
+          <span className="text-4xl" aria-hidden>
+            🛠️
+          </span>
+          <h1 className="text-2xl font-bold">{comingSoon.title}</h1>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-500">{comingSoon.body}</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <>

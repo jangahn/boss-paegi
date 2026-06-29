@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { ModalShell } from "@/components/ModalShell";
 import { moveItem } from "@/lib/reorder";
-import type { GrowthLevers, GrowthProduct } from "@/lib/config/domains/growth";
+import { DEFAULT_COMING_SOON, type GrowthLevers, type GrowthProduct } from "@/lib/config/domains/growth";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -45,6 +45,9 @@ export function GrowthLeversEditor({
 }) {
   const router = useRouter();
   const [signup, setSignup] = useState(String(initial.signupBonusCredits));
+  const [creditsEnabled, setCreditsEnabled] = useState(initial.creditsEnabled ?? false);
+  const [comingTitle, setComingTitle] = useState(initial.comingSoon?.title ?? DEFAULT_COMING_SOON.title);
+  const [comingBody, setComingBody] = useState(initial.comingSoon?.body ?? DEFAULT_COMING_SOON.body);
   const [products, setProducts] = useState<Draft[]>(initial.products.map(toDraft));
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
@@ -69,6 +72,8 @@ export function GrowthLeversEditor({
     try {
       const value: GrowthLevers = {
         signupBonusCredits: Number(signup),
+        creditsEnabled,
+        comingSoon: { title: comingTitle.trim(), body: comingBody.trim() },
         products: products.map((p) => ({
           productId: p.productId.trim(),
           goodname: p.goodname.trim(),
@@ -125,6 +130,39 @@ export function GrowthLeversEditor({
           className="w-40 rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
         />
       </label>
+
+      {/* 생성권 충전(결제) 노출 on/off + off 시 준비중 안내. */}
+      <div className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={creditsEnabled}
+            onChange={(e) => setCreditsEnabled(e.target.checked)}
+          />
+          <span className="text-sm font-semibold">생성권 충전(결제) 노출</span>
+        </label>
+        <p className="text-[11px] leading-relaxed text-zinc-500">
+          끄면 <b>/credits 가 아래 &quot;준비중&quot; 안내로 바뀌고 결제(체크아웃)도 차단</b>돼요. 가입 보너스·기존 생성권으로 캐릭터 만들기는 그대로 동작해요.
+        </p>
+        <div className="mt-1 flex flex-col gap-2 border-t border-foreground/10 pt-2">
+          <span className="text-[11px] font-semibold text-zinc-400">준비중 안내 문구 (OFF일 때 /credits 에 표시)</span>
+          <input
+            value={comingTitle}
+            maxLength={80}
+            onChange={(e) => setComingTitle(e.target.value)}
+            placeholder="제목"
+            className="rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
+          />
+          <textarea
+            value={comingBody}
+            maxLength={1000}
+            rows={3}
+            onChange={(e) => setComingBody(e.target.value)}
+            placeholder="본문 (여러 줄 가능)"
+            className="rounded-lg border border-foreground/15 ui-field p-2 text-sm leading-relaxed outline-none focus:border-foreground/40"
+          />
+        </div>
+      </div>
 
       <div className="flex flex-col gap-3">
         <span className="text-sm font-semibold text-zinc-500">충전 상품</span>
