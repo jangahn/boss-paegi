@@ -123,7 +123,10 @@ export async function POST(req: NextRequest) {
 
     // 제출 전 얼굴 게이트 — 확실한 no-face 면 차감·제출 없이 즉시 반려(no-face fal 낭비·30~60초 대기 방지).
     if (!faceVisible) {
-      await admin.from("ai_generations").update({ status: "failed" }).eq("id", genId);
+      await admin
+        .from("ai_generations")
+        .update({ status: "failed", fail_reason: "no_face" })
+        .eq("id", genId);
       if (facePath) {
         await deleteFaceTmp(facePath).catch((err) =>
           log.warn("gen.face_cleanup_fail", { genId, ...errInfo(err) })
@@ -141,7 +144,10 @@ export async function POST(req: NextRequest) {
       );
       if (consumeErr || remaining === null) {
         // 차감 불가(소진/동시요청 경합 패배) → 만든 row·임시얼굴 정리 후 402.
-        await admin.from("ai_generations").update({ status: "failed" }).eq("id", genId);
+        await admin
+          .from("ai_generations")
+          .update({ status: "failed", fail_reason: "no_credits" })
+          .eq("id", genId);
         if (facePath) {
           await deleteFaceTmp(facePath).catch((err) =>
             log.warn("gen.face_cleanup_fail", { genId, ...errInfo(err) })
@@ -193,7 +199,10 @@ export async function POST(req: NextRequest) {
     // 즉시 반환 — 생성중. 클라는 generationId 로 /api/generations 폴링.
     return NextResponse.json({ generationId: genId, status: "generating" });
   } catch (e) {
-    await admin.from("ai_generations").update({ status: "failed" }).eq("id", genId);
+    await admin
+      .from("ai_generations")
+      .update({ status: "failed", fail_reason: "submit_error" })
+      .eq("id", genId);
     // 제출 실패 → fal 이 face 를 안 쓰므로 임시 얼굴 즉시 삭제(정책: 원본 폐기).
     if (facePath) {
       await deleteFaceTmp(facePath).catch((err) =>

@@ -109,6 +109,8 @@ export type RecoverResult = {
    * copy 실패 등 transient 는 false(=미설정) → 마감(30분)까지 더 기다림.
    */
   definitive?: boolean;
+  /** 실패 사유(어드민 fail_reason 기록용): no_face | fal_error | no_requests. transient 면 미설정. */
+  reason?: string;
 };
 
 /**
@@ -127,7 +129,8 @@ export async function recoverQueuedGeneration(
   requestIds: string[],
   forceFinalize: boolean
 ): Promise<RecoverResult> {
-  if (requestIds.length === 0) return { status: "failed", candidateUrls: [], definitive: true };
+  if (requestIds.length === 0)
+    return { status: "failed", candidateUrls: [], definitive: true, reason: "no_requests" };
 
   // 1) 각 request 상태 조회 (결과 만료/없음이면 throw → ERROR 취급)
   const statuses = await Sentry.startSpan(
@@ -169,7 +172,12 @@ export async function recoverQueuedGeneration(
   // 여기 도달 = 전부 멈췄거나(완료/에러) 마감 도달 → 완료분으로 확정.
   if (completedIdx.length === 0) {
     // 도는 게 없는데 완료도 0 = 전부 ERROR(fal 측 실패) → 결정적.
-    return { status: "failed", candidateUrls: [], definitive: !stillRunning };
+    return {
+      status: "failed",
+      candidateUrls: [],
+      definitive: !stillRunning,
+      reason: stillRunning ? undefined : "fal_error",
+    };
   }
 
   // 2) 완료분 결과 fetch
@@ -210,7 +218,7 @@ export async function recoverQueuedGeneration(
 
   // COMPLETED 인데 결과를 못 받음(facexlib no-face 400·result 만료/404) → 결정적 실패(재시도해도 동일).
   if (images.length === 0) {
-    return { status: "failed", candidateUrls: [], definitive: true };
+    return { status: "failed", candidateUrls: [], definitive: true, reason: "no_face" };
   }
 
   // 3) 후보 복사 + done 마킹. 복구는 durable storage url 만 사용
@@ -273,14 +281,25 @@ export async function failGeneration(
   admin: SupabaseClient,
   genId: string,
   userId: string,
-  isOps: boolean
+  isOps: boolean,
+  reason?: string
 ): Promise<void> {
-  const { data: flipped, error } = await admin
+  const patch = reason ? { status: "failed", fail_reason: reason } : { status: "failed" };
+  let { data: flipped, error } = await admin
     .from("ai_generations")
-    .update({ status: "failed" })
+    .update(patch)
     .eq("id", genId)
     .neq("status", "failed")
     .select("id");
+  // 0046(fail_reason) 미적용 환경 — 사유만 빼고 재시도(마킹/환불은 반드시 보존).
+  if (error && reason && error.message.includes("fail_reason")) {
+    ({ data: flipped, error } = await admin
+      .from("ai_generations")
+      .update({ status: "failed" })
+      .eq("id", genId)
+      .neq("status", "failed")
+      .select("id"));
+  }
   if (error) {
     log.warn("gen.fail_mark_error", { genId, ...errInfo(error) });
     return;

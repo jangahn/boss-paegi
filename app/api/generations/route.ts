@@ -104,7 +104,7 @@ export async function GET() {
         }
         // 결정적 실패(fal 전부 멈춤인데 결과 0 = facexlib no-face 등) → 30분 대기 없이 즉시 실패+환불+안내.
         if (rec.status === "failed" && rec.definitive) {
-          await failGeneration(admin, id, ownerId, isOps);
+          await failGeneration(admin, id, ownerId, isOps, rec.reason);
           await cleanupFace(id);
           log.info("gen.definitive_failed", { userId: ownerId, genId: id, ageMs: age });
           return { id, kind: "interrupted", reason: "photo", candidateUrls: [], createdAt };
@@ -126,7 +126,7 @@ export async function GET() {
         ageMs: age,
         hadRequestIds: requestIds.length,
       });
-      await failGeneration(admin, id, ownerId, isOps);
+      await failGeneration(admin, id, ownerId, isOps, "timeout");
       await cleanupFace(id);
       return { id, kind: "interrupted", candidateUrls: [], createdAt };
     }
@@ -188,7 +188,7 @@ export async function GET() {
       candidateCount: candidateUrls.length,
     });
     await cleanupCandidateStorage(admin, ownerId, id);
-    await failGeneration(admin, id, ownerId, isOps);
+    await failGeneration(admin, id, ownerId, isOps, "expired");
     await cleanupFace(id);
     return null;
   };
