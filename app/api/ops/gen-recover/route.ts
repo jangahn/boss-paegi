@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       if (rec.status === "ready") {
         recovered++;
       } else if (rec.status === "failed" && rec.definitive) {
-        await failGeneration(admin, r.id, r.owner_id, r.owner_id === opsId);
+        await failGeneration(admin, r.id, r.owner_id, r.owner_id === opsId, rec.reason);
         failed++;
       } else {
         pending++;

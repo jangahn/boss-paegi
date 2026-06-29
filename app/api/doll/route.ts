@@ -158,11 +158,22 @@ export async function POST(req: NextRequest) {
 
   // 이 doll 이 특정 generation 에서 골라진 거라면: picked 처리 + 안 고른 후보 정리
   if (body.generationId) {
-    const { error: pickErr } = await admin
+    // 고른 후보가 3장 중 몇 번째였는지 — 후보 경로(candidates/{genId}/{N}.jpg)에서 파싱(분석용). 못 찾으면 null.
+    const pm = /\/candidates\/[^/]+\/(\d+)\.jpg/.exec(body.imageUrl ?? "");
+    const pickedIndex = pm ? Number(pm[1]) : null;
+    let { error: pickErr } = await admin
       .from("ai_generations")
-      .update({ status: "picked", picked_doll_id: dollId })
+      .update({ status: "picked", picked_doll_id: dollId, picked_index: pickedIndex })
       .eq("id", body.generationId)
       .eq("owner_id", user.id);
+    // 0046(picked_index) 미적용 환경 — 인덱스만 빼고 재시도(picked 전이는 반드시 보존).
+    if (pickErr && pickErr.message.includes("picked_index")) {
+      ({ error: pickErr } = await admin
+        .from("ai_generations")
+        .update({ status: "picked", picked_doll_id: dollId })
+        .eq("id", body.generationId)
+        .eq("owner_id", user.id));
+    }
     if (pickErr) {
       // picked 전이 실패 → generation 이 done(미선택)으로 남아 24h 내 갤러리에
       // ready 후보로 다시 노출됨. '캐릭터는 저장됐는데 generation 이 안 닫힌' 케이스.
