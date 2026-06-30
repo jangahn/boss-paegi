@@ -18,13 +18,13 @@ export type HighlightClip = {
 export const HIGHLIGHT_MIN_MS = 3000;
 export const HIGHLIGHT_MAX_MS = 5000;
 
-/** 녹화 1회 길이(iOS 안전 위해 짧게) + 게임당 최대 녹화 시도 */
+/** 녹화 1회 길이(iOS 안전 위해 짧게) + 게임당 최대 녹화 시도(빡센 트리거로 의미있는 급상승만 ~10회) */
 export const RECORD_WINDOW_MS = 4000;
-export const MAX_RECORD_ATTEMPTS = 3;
+export const MAX_RECORD_ATTEMPTS = 10;
 
-/** 라이브 velocity 측정 윈도우 + 녹화 트리거 임계(이 window 동안 오른 점수) */
+/** 라이브 velocity 측정 윈도우 + 녹화 트리거 임계(이 window 동안 오른 점수). 빡세게 = 진짜 큰 버스트만. */
 export const VELOCITY_WINDOW_MS = 1000;
-export const VELOCITY_TRIGGER = 250;
+export const VELOCITY_TRIGGER = 1000;
 
 /** 서버 검증용 windowMs 허용 범위(녹화 ~4s 라 tolerance 포함) */
 export const WINDOW_MS_MIN = 2500;
