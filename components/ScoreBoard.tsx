@@ -39,7 +39,7 @@ export function ScoreBoard() {
           )}
           {varietyMult > 0 && (
             <span className="text-[10px] text-fuchsia-300 sm:text-xs">
-              · 저글링 ×{(1 + varietyMult).toFixed(2)}
+              · 무기변경 ×{(1 + varietyMult).toFixed(2)}
             </span>
           )}
         </div>
