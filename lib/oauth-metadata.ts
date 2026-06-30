@@ -4,6 +4,16 @@ import type { User } from "@supabase/supabase-js";
 
 const NICKNAME_MAX = 12;
 
+// 탈퇴(soft-delete) 시 auth.users.email 을 스크럽하는 marker. `.invalid` 는 예약 TLD(실제 도메인 아님).
+// 단일 소스 — delete 라우트(쓰기)·extractOAuthProfile/백필(판별)이 공유.
+export function deletedEmailMarker(userId: string): string {
+  return `deleted+${userId}@deleted.invalid`;
+}
+/** 탈퇴 스크럽 marker 이메일인지. marker 는 실 이메일이 아니므로 어디서도 이메일로 취급하면 안 됨. */
+export function isDeletedMarker(email: string | null | undefined): boolean {
+  return typeof email === "string" && /@deleted\.invalid$/i.test(email);
+}
+
 export type OAuthProfile = {
   /** OAuth 제공 닉네임 (12자 클램프). 없으면 null → 기존 display_name 유지(덮어쓰지 않음). */
   displayName: string | null;
@@ -40,7 +50,14 @@ export function extractOAuthProfile(user: User): OAuthProfile {
 
   const avatarUrl = firstString(m.avatar_url, m.picture, m.profile_image_url);
 
-  const email = firstString(user.email, m.email);
+  // 탈퇴 스크럽 marker 는 이메일에서 제외 — auth.users.email 이 marker 로 남은 재활성 계정에서
+  // marker 가 OAuth identity 의 실 이메일을 가리지 않게(member 재오염·email_required 게이트 오판 방지).
+  const rawUserEmail = typeof user.email === "string" ? user.email : null;
+  const rawIdEmail = typeof m.email === "string" ? m.email : null;
+  const email = firstString(
+    isDeletedMarker(rawUserEmail) ? null : rawUserEmail,
+    isDeletedMarker(rawIdEmail) ? null : rawIdEmail
+  );
 
   // 명시적 false 만 미검증으로 취급(키 부재 시 Supabase 의 verified-email linking 정책에 위임).
   const emailVerified =
