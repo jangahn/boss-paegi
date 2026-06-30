@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminRpcErrorCode } from "@/lib/admin-rpc";
+import { isDeletedMarker } from "@/lib/oauth-metadata";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -47,6 +48,18 @@ export async function POST(req: NextRequest) {
       { status: code === "action_failed" ? 500 : 400 }
     );
   }
+  // RPC 는 member_accounts.email 만 복원 — auth.users.email(탈퇴 스크럽 marker)도 실 이메일로 복원해야
+  // 재로그인 시 extractOAuthProfile 가 marker 를 집어 member 를 재오염하거나 Sentry 식별이 marker 로 남는 걸 막는다.
+  // GoTrue admin API 는 SQL RPC 에서 호출 불가 → 라우트에서 best-effort(실패해도 member 는 이미 복원됨).
+  const restoredEmail = (data as { email?: string } | null)?.email;
+  if (restoredEmail && !isDeletedMarker(restoredEmail)) {
+    try {
+      await admin.auth.admin.updateUserById(body.userId, { email: restoredEmail });
+    } catch (e) {
+      log.warn("admin.reactivate_auth_email_restore_fail", { userId: body.userId, ...errInfo(e) });
+    }
+  }
+
   log.info("admin.reactivate_success", { userId: body.userId, adminId: gate.user.id });
   return NextResponse.json({ ok: true, ...(data as Record<string, unknown>) });
 }

@@ -663,6 +663,13 @@ v0.67 (2026-06-30, 무료 플랜 사용량 절감 — Vercel ISR write + Sentry 
 - **Sentry `replaysSessionSampleRate` 0.2→0.1**(`instrumentation-client.ts`): 세션 리플레이가 월 147건으로 무료 ~50 초과 → 절반으로(에러 리플레이는 100% 유지).
 - 검증: typecheck 0·build 0.
 
+v0.68 (2026-06-30, 탈퇴→재활성→재가입 이메일 정상화 — marker 영구 오염 수정; **Migration 0048**):
+- **버그**: 탈퇴 후 어드민 재활성·재로그인하면 `auth.users.email` 과 `member_accounts.email` 이 실 이메일 대신 탈퇴 스크럽 marker(`deleted+<uid>@deleted.invalid`)로 영구 잔존. (어드민 회원검색·표시·Sentry 식별 오염; end-user 직접 노출은 없음.)
+- **근본 원인**: 탈퇴가 `updateUserById(email=marker)` 로 `auth.users.email` 스크럽 → GoTrue 가 marker 를 소유하는 confirmed `email` provider identity 생성(primary email 슬롯 잠금). 재활성 RPC(0037)는 `member_accounts.email` 만 복원하고 `auth.users.email` 미복원 → 재로그인 시 `extractOAuthProfile` 의 `firstString(user.email, m.email)` 이 marker 를 우선 → 콜백 이메일 동기화가 매 로그인마다 복원된 실 이메일을 marker 로 되덮음.
+- **수정**: (1) `lib/oauth-metadata.ts` — 공유 헬퍼 `deletedEmailMarker()`/`isDeletedMarker()` + `extractOAuthProfile` 가 marker 를 이메일에서 제외(OAuth identity 실 이메일 우선) → 콜백 재오염·`email_required` 게이트 오판 차단. (2) `app/api/admin/reactivate/route.ts` — RPC 후 `updateUserById` 로 `auth.users.email` 도 실 이메일 복원(F1, GoTrue API 는 SQL RPC 밖). (3) 재활성 RPC(0048) — identity 선택 정렬에 non-marker·OAuth-provider 우선 추가 + 최종값 marker 면 override 폴백(스크럽이 만든 email-identity 회피). (4) 기존 오염 **활성** 계정 보정 스크립트 `scripts/backfill-email-unscrub.mjs`(탈퇴 상태는 marker 유지 — PIPA 익명화 보존).
+- **PIPA**: marker 는 탈퇴 계정에선 정당 → 복원은 **재활성(=`deleted_at` 해제, 서비스 복귀)된 계정에 한해**서만(F1·백필 모두 활성만). 탈퇴 상태 익명화 불변.
+- 검증: typecheck/lint/build 0. 가드 유닛테스트 8/8(실제 소스 — marker user→실 이메일·정상 user 불변·all-marker→null). **라이브 E2E 14/14**(테스트 계정 brian: email-scoped 탈퇴→0048 RPC marker-회피 real 복원→F1 auth 복원→A/B/E 전부 real 확인→consent 원복, prod 원상태 복귀). 백필 prod 적용(오염 활성 1건 복원). **⚠ Migration 0048 적용 완료**(`0048_reactivate_email_marker_guard.sql`, `admin_reactivate_account` create-or-replace·additive·컬럼 무변경, Management API). 0045~0047 과 번호 겹치지 않게 0048.
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.

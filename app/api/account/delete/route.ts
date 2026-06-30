@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuthedNonDeleted, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deletedEmailMarker } from "@/lib/oauth-metadata";
 import { DOLLS_BUCKET } from "@/lib/generation";
 import { dollPath } from "@/lib/storage-path";
 import { log, errInfo } from "@/lib/log";
@@ -117,7 +118,7 @@ export async function POST(req: Request) {
   // 4) auth.users 식별정보 스크럽 — best-effort. **deleteUser 금지**(CASCADE 파괴).
   try {
     await admin.auth.admin.updateUserById(userId, {
-      email: `deleted+${userId}@deleted.invalid`,
+      email: deletedEmailMarker(userId),
       user_metadata: {},
     });
   } catch (e) {
