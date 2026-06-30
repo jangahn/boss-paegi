@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/admin/events", label: "이벤트/소식" },
   { href: "/admin/content", label: "콘텐츠" },
   { href: "/admin/analytics", label: "게임 분석" },
+  { href: "/admin/acquisition", label: "공유·유입" },
 ];
 
 export function AdminNav() {

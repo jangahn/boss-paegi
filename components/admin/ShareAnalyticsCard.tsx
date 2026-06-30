@@ -1,4 +1,4 @@
-import type { ShareStats } from "@/lib/admin-analytics";
+import type { ShareStats } from "@/lib/admin-acquisition";
 
 // 공유 분석 카드 — 게임오버 전환 퍼널(무식별 근사) + 표면/대상/점수대/회원여부 분포.
 // 메인 지표는 '공유 시도'(클릭). 성공/취소는 미집계(MVP).
