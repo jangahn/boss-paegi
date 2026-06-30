@@ -5,6 +5,11 @@ import { useEffect, useState } from "react";
 import { clampForSubmit } from "@/lib/score-limits";
 import type { GameplayStats } from "@/lib/stats";
 import { log, errInfo } from "@/lib/log";
+import {
+  firstTouchSourceForConversion,
+  shouldSendPlayConversion,
+  markPlayConversionSent,
+} from "@/lib/acquisition";
 
 /**
  * 게임 결과 점수 자동 제출 — 모달이 열리는 순간 1회 등록(중복/0점/0초 가드).
@@ -64,6 +69,10 @@ export function useScoreSubmission(opts: {
     setSubmitting(true);
     // 서버 검증과 동일 공식으로 클램프 — 한도 초과 저장 실패 방지
     const clamped = clampForSubmit(score, durationMs);
+    // 방문→플레이 전환(분석) — first-touch 당 1회. source 동봉(분석 off 면 null → 서버 미적재).
+    const sendPlayConv = shouldSendPlayConversion();
+    const acqSource = sendPlayConv ? firstTouchSourceForConversion() : null;
+    const trackFirstTouchPlay = sendPlayConv && !!acqSource;
     // 점수 제출 trace(score/maxCombo/weapon/durationMs attribute) → Explore 에서 분석.
     void Sentry.startSpan(
       {
@@ -90,12 +99,15 @@ export function useScoreSubmission(opts: {
             gameplayStats,
             endReason,
             telemetrySessionId,
+            trackFirstTouchPlay,
+            acqSource,
           }),
         })
           .then(async (r) => {
             const data = await r.json();
             if (!r.ok) throw new Error(data.error ?? "submit_failed");
             setScoreId(data.scoreId);
+            if (trackFirstTouchPlay) markPlayConversionSent();
             // 부가 리포트(best-effort) — 없으면 기본값 유지
             if (typeof data.percentile === "number") setPercentile(data.percentile);
             if (Array.isArray(data.newBadges)) setNewBadges(data.newBadges);

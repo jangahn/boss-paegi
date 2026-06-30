@@ -6,6 +6,7 @@ import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { MenuItem } from "@/components/gallery/MenuItem";
 import { shareDoll } from "@/lib/doll-share";
+import { trackShare } from "@/lib/acquisition";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
@@ -53,6 +54,8 @@ export function DollCard({
     closeMenu();
     if (sharing) return;
     setSharing(true);
+    // 공유 시도(분석) — 갤러리 캐릭터. (surface×target×session) 3초 디바운스.
+    trackShare({ surface: "gallery", target: "doll" });
     try {
       const result = await shareDoll(doll.image_url, doll.id, role, undefined, mk);
       if (result === "copied") flash("링크 복사됨");

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { log, errInfo } from "@/lib/log";
+import { trackShare } from "@/lib/acquisition";
 
 /**
  * /share 의 하이라이트 영상 블록 (client) — 네이티브 컨트롤 video + 캡션 +
@@ -48,6 +49,8 @@ export function HighlightPlayer({
     if (busy) return;
     setBusy(true);
     setMsg(null);
+    // 공유 시도(분석) — 하이라이트 뷰어(/share). (surface×target×session) 3초 디바운스.
+    trackShare({ surface: "highlight_viewer", target: "highlight" });
     try {
       if (typeof navigator !== "undefined" && navigator.canShare) {
         try {

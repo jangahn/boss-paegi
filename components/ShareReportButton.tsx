@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { shareGameResult } from "@/lib/share";
 import { isMobileOS } from "@/lib/device";
+import { scoreTier } from "@/lib/report";
+import { trackShare } from "@/lib/acquisition";
 
 /**
  * 결과 보고서 공유 버튼 — 이전 게임 상세(history)에서 사용. 라벨·문구는 어드민 발행 config.
@@ -36,6 +38,8 @@ export function ShareReportButton({
     if (busy) return;
     setBusy(true);
     setMsg(null);
+    // 공유 시도(분석) — 이전기록 상세. (surface×target×session) 3초 디바운스.
+    trackShare({ surface: "history", target: "score", scoreTier: scoreTier(score) });
 
     // 모바일 + 하이라이트 영상 있을 때만 영상 첨부(데스크톱은 문구+링크).
     let file: File | null = null;

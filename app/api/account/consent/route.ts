@@ -6,6 +6,8 @@ import { getCurrentLegalVersions } from "@/lib/legal";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { seedOAuthProfile, migrateAnonData } from "@/lib/account-onboard";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
+import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
+import type { RawSource } from "@/lib/analytics/core";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -47,6 +49,8 @@ export async function POST(req: NextRequest) {
     age?: boolean;
     terms?: boolean;
     privacy?: boolean;
+    /** 방문→가입 전환 분석 — first-touch source(있을 때만 적재). */
+    acqSource?: unknown;
   };
   if (!required.every((item) => body[item] === true)) {
     return NextResponse.json({ error: "consent_required" }, { status: 400 });
@@ -79,6 +83,10 @@ export async function POST(req: NextRequest) {
   if (isNewData === true) {
     await seedOAuthProfile(admin, user);
     await migrateAnonData(admin, req.cookies.get(MIGRATE_COOKIE)?.value, user.id);
+    // 방문→가입 전환(분석, best-effort) — 신규 회원 1회. acqSource 있을 때만(분석 off 면 미적재).
+    if (body.acqSource) {
+      await recordConversion("signup", body.acqSource as RawSource, memberStateFromUser(user));
+    }
   }
 
   log.info("account.consent_success", { userId: user.id, isNew: isNewData === true });
