@@ -3,7 +3,7 @@ import { PlayScene, HitInfo } from "@/game/scenes/PlayScene";
 import { Weapon } from "@/lib/weapons";
 
 export type GameEvents = {
-  onHit?: (info: HitInfo) => void;
+  onHit?: (info: HitInfo) => number | void;
   /** 낙서 비어있음 ↔ 있음 전이 시 호출 — picker 의 펜/지우개 토글용 */
   onDrawingChange?: (hasDrawing: boolean) => void;
 };

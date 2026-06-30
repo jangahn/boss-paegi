@@ -69,7 +69,7 @@ type PlaySceneOptions = {
   dollTexture?: Texture;
   bgTexture?: Texture;
   weapon?: Weapon;
-  onHit?: (info: HitInfo) => void;
+  onHit?: (info: HitInfo) => number | void;
   /** 낙서 비어있음 ↔ 있음 전이 시 호출 — picker 의 펜/지우개 토글용 */
   onDrawingChange?: (hasDrawing: boolean) => void;
 };
@@ -82,7 +82,7 @@ export class PlayScene extends Container {
   private bg?: Sprite;
   private doll: Doll;
   private fx: HitEffect;
-  private onHit?: (info: HitInfo) => void;
+  private onHit?: (info: HitInfo) => number | void;
   private weapon: Weapon;
 
   // physics
@@ -245,12 +245,16 @@ export class PlayScene extends Container {
     strength: number,
     weapon: Weapon["key"],
     charge = true
-  ) {
+  ): number {
     const local = this.doll.bodyWrap.toLocal({ x, y }, this);
     this.damageLayer.noteHit(local.x, local.y);
     // 궁극기 연출 중 어떤 타격(난타·비행 중이던 투척물/비비탄 명중 포함)도
     // 게이지를 재충전하지 않음 — ultActive 면 charge 강제 false.
-    this.onHit?.({ x, y, strength, weapon, chargeUlt: charge && !this.ultActive });
+    // 반환 = 화면 데미지 팝업 값(콤보×무기변경 배율 적용). onHit 미설정 시 strength 폴백.
+    return (
+      this.onHit?.({ x, y, strength, weapon, chargeUlt: charge && !this.ultActive }) ??
+      strength
+    );
   }
 
   /** 게임 종료/중단 시 궁극기 난타 즉시 정지 + 화면 흔들림 복원 */
@@ -307,8 +311,8 @@ export class PlayScene extends Container {
     playHitSound(w.sound, 1.0);
     // 난타 한 타격당 점수 — 기존(40~85)의 절반 수준
     const pts = 20 + Math.floor(Math.random() * 22);
-    this.fx.scorePop(x, y - 20, pts, w.color);
-    this.reportHit(x, y, pts, w.key, false);
+    const gain = this.reportHit(x, y, pts, w.key, false);
+    this.fx.scorePop(x, y - 20, gain, w.color);
   }
 
   /** 난사타 마무리 — 큰 임팩트 + 화면 플래시 */
@@ -454,10 +458,10 @@ export class PlayScene extends Container {
       const points = 15;
       this.fx.shockwave(impactX, impactY, 22, 100, 0xffd166);
       this.fx.burst(impactX, impactY, 10, 0xffd166);
-      this.fx.scorePop(impactX, impactY - 30, points, 0xffd166);
       this.doll.triggerHit(1.4);
       playHitSound("thud");
-      this.reportHit(impactX, impactY, points, this.weapon.key);
+      const gain = this.reportHit(impactX, impactY, points, this.weapon.key);
+      this.fx.scorePop(impactX, impactY - 30, gain, 0xffd166);
     };
     if (!this.wallState.L && newL) fire(0, y);
     if (!this.wallState.R && newR) fire(this.viewW, y);
@@ -518,18 +522,18 @@ export class PlayScene extends Container {
         100 + power * 80,
         0xef476f
       );
-      this.fx.scorePop(
-        this.dollBody.position.x,
-        this.dollBody.position.y - 40,
-        points,
-        0xef476f
-      );
       this.doll.triggerHit(1 + power);
-      this.reportHit(
+      const gain = this.reportHit(
         this.dollBody.position.x,
         this.dollBody.position.y,
         points,
         this.weapon.key
+      );
+      this.fx.scorePop(
+        this.dollBody.position.x,
+        this.dollBody.position.y - 40,
+        gain,
+        0xef476f
       );
     }
     this.flingHistory = [];
@@ -582,8 +586,8 @@ export class PlayScene extends Container {
       x: (dx / len) * push,
       y: (dy / len) * push,
     });
-    this.fx.scorePop(x, y - 30, w.strength, w.color);
-    this.reportHit(x, y, w.strength, w.key);
+    const gain = this.reportHit(x, y, w.strength, w.key);
+    this.fx.scorePop(x, y - 30, gain, w.color);
   }
 
   // ── swipe (싸대기) ──────────────────────────────────────────────────
@@ -608,14 +612,14 @@ export class PlayScene extends Container {
     this.doll.triggerHit(weapon.shake * factor);
     this.fx.burst(x, y, Math.round(weapon.particleCount * factor), weapon.color);
     this.fx.shockwave(x, y, 16, 60 + 50 * factor, weapon.color);
-    this.fx.scorePop(x, y - 30, points, weapon.color);
     playHitSound("slap", 0.6 + factor * 0.5);
     // 손이 움직인 방향으로 캐릭터 밀치기
     Body.applyForce(this.dollBody, this.dollBody.position, {
       x: dirX * 0.012 * factor,
       y: dirY * 0.012 * factor,
     });
-    this.reportHit(x, y, points, weapon.key);
+    const gain = this.reportHit(x, y, points, weapon.key);
+    this.fx.scorePop(x, y - 30, gain, weapon.color);
   };
 
   // ── stage pointer 라우팅 ────────────────────────────────────────────
@@ -727,9 +731,9 @@ export class PlayScene extends Container {
         const w = p.weapon;
         this.doll.triggerHit(w.shake);
         this.fx.burst(p.x, p.y, w.particleCount, w.color);
-        this.fx.scorePop(p.x, p.y - 20, w.strength, w.color);
         playHitSound("pop", 0.9);
-        this.reportHit(p.x, p.y, w.strength, w.key);
+        const gain = this.reportHit(p.x, p.y, w.strength, w.key);
+        this.fx.scorePop(p.x, p.y - 20, gain, w.color);
       } else if (!out) {
         continue;
       }
@@ -791,8 +795,8 @@ export class PlayScene extends Container {
         y: this.dollBody.velocity.y + v.y * k,
       });
     }
-    this.fx.scorePop(hx, hy - 30, points, w.color);
-    this.reportHit(hx, hy, points, w.key);
+    const gain = this.reportHit(hx, hy, points, w.key);
+    this.fx.scorePop(hx, hy - 30, gain, w.color);
   };
 
   update(deltaSec: number) {
