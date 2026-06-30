@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SessionBootstrap } from "@/components/SessionBootstrap";
+import { AnalyticsVisitTracker } from "@/components/AnalyticsVisitTracker";
 import { AppNav } from "@/components/AppNav";
 import { MarketingCopyProvider } from "@/components/MarketingCopyProvider";
 import { RoleContentProvider } from "@/components/RoleContentProvider";
@@ -104,6 +105,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <JsonLd data={jsonLd} />
         <SessionBootstrap />
+        <AnalyticsVisitTracker />
         {/* 전역 내비 — root layout 에서 1회 렌더(내비 간 remount 제거). 라우트별 self-hide 는 AppNav 내부. */}
         <AppNav />
         <SiteContentProvider value={siteContent}>

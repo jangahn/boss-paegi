@@ -9,6 +9,7 @@ import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { SERVICE_NAME } from "@/lib/policy";
 import { getMyProfile, writeCachedProfile, clearProfileCache } from "@/lib/profile";
 import { signOut } from "@/lib/auth-oauth";
+import { firstTouchSourceForConversion } from "@/lib/acquisition";
 import type { ConsentItem } from "@/lib/consent";
 import type { LegalSection } from "@/lib/legal/types";
 
@@ -64,7 +65,7 @@ export function ConsentForm({
       const res = await fetch("/api/account/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, acqSource: firstTouchSourceForConversion() }),
       });
       if (res.ok) {
         // 동의 완료 → 프로필 캐시 갱신 후 원래 목적지로(proxy 가 통과시킴).

@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
-import { bossReaction, gradeFor, reportNo } from "@/lib/report";
+import { bossReaction, gradeFor, reportNo, scoreTier } from "@/lib/report";
+import { trackShare } from "@/lib/acquisition";
 import { type RoleId } from "@/lib/roles";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { useScoreConfig } from "@/components/ScoreConfigProvider";
@@ -172,6 +173,8 @@ export function GameOverModal({
     if (!scoreId) return;
     const sid = scoreId;
     setShareMsg(null);
+    // 공유 시도(분석) — 게임오버 결과화면당 1회(onceKey=scoreId). scoreId 는 키로만, analytics 엔 미저장.
+    trackShare({ surface: "game_over", target: "score", scoreTier: scoreTier(score), onceKey: sid });
     // 클립 업로드/카드 저장은 1회만(중복 업로드 차단). 즉시 링크 공유는 매 탭 가능.
     if (!uploadStartedRef.current) {
       uploadStartedRef.current = true;

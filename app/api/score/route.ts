@@ -15,6 +15,8 @@ import { matchPersona } from "@/lib/persona";
 import { getBadgeCatalog } from "@/lib/config/getters";
 import { evaluateBadges, knownSlugs } from "@/lib/config/domains/badges";
 import { log, errInfo } from "@/lib/log";
+import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
+import type { RawSource } from "@/lib/analytics/core";
 
 export const runtime = "nodejs";
 
@@ -39,6 +41,9 @@ export async function POST(req: NextRequest) {
     endReason?: string;
     /** 텔레메트리 세션 링크(scores.telemetry_session_id, additive·분석용). */
     telemetrySessionId?: string | null;
+    /** 방문→플레이 전환 분석(first-touch 당 1회) — source 동봉 시 conversion:play 적재(best-effort). */
+    trackFirstTouchPlay?: boolean;
+    acqSource?: unknown;
   } | null;
 
   if (
@@ -181,6 +186,11 @@ export async function POST(req: NextRequest) {
     durationMs: Math.round(body.durationMs),
     hasDoll: !!dollId,
   });
+
+  // 방문→플레이 전환(분석, best-effort) — first-touch source 동봉 시 1회. 점수 저장과 완전 분리(실패 무영향).
+  if (body.trackFirstTouchPlay === true && body.acqSource) {
+    await recordConversion("play", body.acqSource as RawSource, memberStateFromUser(user));
+  }
 
   // ── 부가 리포트(스탯·페르소나·뱃지·백분위) — best-effort. 점수 저장과 완전 분리. ──
   let personaId: string | null = null;
