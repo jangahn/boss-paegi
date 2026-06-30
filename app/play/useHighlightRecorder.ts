@@ -25,7 +25,7 @@ const MONITOR_INTERVAL_MS = 100;
 /** ~4s 클립 ≤~2MB 목표 */
 const VIDEO_BITRATE = 3_500_000;
 const AUDIO_BITRATE = 96_000;
-const COMBO_MILESTONE = 10;
+const COMBO_MILESTONE = 100;
 
 /** 인앱 webview — 녹화/공유 불안정 → skip (카드 공유로 폴백). */
 function knownBadWebView(): boolean {
@@ -210,7 +210,6 @@ export function useHighlightRecorder(opts: {
   const earlyStopRef = useRef<(() => void) | null>(null);
   const attemptsRef = useRef(0);
   const lastComboRef = useRef(0);
-  const lastUltReadyRef = useRef(false);
   const cancelledRef = useRef(false);
 
   const consider = useCallback(
@@ -308,7 +307,6 @@ export function useHighlightRecorder(opts: {
     attemptsRef.current = 0;
     bestRef.current = null;
     lastComboRef.current = 0;
-    lastUltReadyRef.current = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setBestClip(null);
 
@@ -318,10 +316,10 @@ export function useHighlightRecorder(opts: {
       const comboCrossed =
         Math.floor(st.combo / COMBO_MILESTONE) >
         Math.floor(lastComboRef.current / COMBO_MILESTONE);
-      const ultRose = st.ultReady && !lastUltReadyRef.current;
       lastComboRef.current = st.combo;
-      lastUltReadyRef.current = st.ultReady;
-      if (velocity >= VELOCITY_TRIGGER || comboCrossed || ultRose) startAttempt();
+      // 트리거 = 진짜 점수 급상승(velocity≥VELOCITY_TRIGGER) 또는 콤보 100단위 돌파.
+      // 궁극은 별도 트리거 없음 — 궁극 난타로 점수가 실제 폭발하면 velocity 가 잡는다.
+      if (velocity >= VELOCITY_TRIGGER || comboCrossed) startAttempt();
     }, MONITOR_INTERVAL_MS);
 
     return () => {
