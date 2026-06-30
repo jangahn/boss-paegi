@@ -101,7 +101,7 @@ boss-paegi/
 | `NEXT_PUBLIC_SITE_URL` | 공유 링크 / OG 이미지 / **페이앱 결제 콜백(feedback·return)**용. ⚠️ Vercel prod 에 실제 도메인 필수 (미설정 시 콜백이 localhost → 결제 깨짐) |
 | `PAYAPP_USERID` / `PAYAPP_LINKVAL` | 페이앱(무사업자) 결제 — 판매자 아이디 / 연동VALUE(웹훅 위변조 차단). 미설정 시 결제 비활성(503). **서버 전용** |
 | `PAYAPP_LINKKEY` | 페이앱 연동KEY — 어드민 자동환불(`paycancel`)용. 미설정 시 환불 자동연동 비활성(503). **서버 전용** |
-| `CRON_SECRET` | ops cron(`/api/ops/reconcile`·`telemetry-maintain`·`content-maintain`) 보호 시크릿. cron-job.org 가 `x-cron-secret` 헤더로 전달. 미설정 시 해당 cron 비활성(503). **서버 전용** |
+| `CRON_SECRET` | ops cron(`/api/ops/reconcile`·`telemetry-maintain`·`content-maintain`·`analytics-maintain`) 보호 시크릿. cron-job.org 가 `x-cron-secret` 헤더로 전달. 미설정 시 해당 cron 비활성(503). **서버 전용** |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
 
@@ -144,7 +144,7 @@ boss-paegi/
 
 관리자 전용 운영 대시보드 + 결제 대사. 권한은 `member_accounts.is_admin`(service_role 만 쓰기 → 자가부여 불가, 0020). `proxy.ts` 가 `/admin` 로그인 게이트, 페이지·`/api/admin/*` 는 **`requireAdmin()`** 으로 최종 판정 — is_admin 을 **별도·관용 조회**(0020 미적용/비admin 이면 안전 차단, 기존 회원 흐름 무영향).
 
-- **멀티 라우트**(공통 `app/admin/layout.tsx` = `requireAdmin` 1회 + `AppNav`+`AdminNav`): `/admin`(대시보드) · `/admin/orders`(전체 주문) · `/admin/users`(회원) · `/admin/ledger`(처리내역) · `/admin/moderation`(신고) · `/admin/events`(이벤트/소식 — 공지·이벤트 작성/발행·홈 팝업·배너 운영, v0.50) · `/admin/content`(콘텐츠) · `/admin/analytics`(게임 분석).
+- **멀티 라우트**(공통 `app/admin/layout.tsx` = `requireAdmin` 1회 + `AppNav`+`AdminNav`): `/admin`(대시보드) · `/admin/orders`(전체 주문) · `/admin/users`(회원) · `/admin/ledger`(처리내역) · `/admin/moderation`(신고) · `/admin/events`(이벤트/소식 — 공지·이벤트 작성/발행·홈 팝업·배너 운영, v0.50) · `/admin/content`(콘텐츠) · `/admin/analytics`(게임 분석) · `/admin/acquisition`(공유·유입 — 게임 분석과 격리).
 - **`/admin`**(대시보드, RSC `force-dynamic`): 매출·주문(오늘=KST 자정 / 7d·30d rolling, 상태별) · 가입·구매 퍼널(방문→플레이→가입→첫생성→첫구매) · **오래된 결제요청(확인 필요)**. CS 조정·환불은 **회원 관리(유저 상세)로 이전**. 정확 수치는 DB(`lib/admin-data` + `get_admin_funnel`/`get_admin_order_summary` RPC), Sentry 아님.
 - **`/admin/orders`**(전체 주문, RSC): 상태 필터 + 주문ID/mul_no 부분검색 + 10건/page. `search_orders` RPC(`order_uuid::text`/`mul_no` prefix·window `total_count`, `lib/admin-orders.ts`).
 - **`/admin/users`**(회원, RSC): 이메일·닉네임 부분검색(`search_members` RPC, ID exact) → 후보 → **유저 상세 `/admin/users/[id]`**: 결제·크레딧(주문 + 조정/환불 이력) · 콘텐츠(AI 생성내역[상태]·보유 캐릭터) · 회원정보 + 플레이내역 링크, 각 섹션 10/page. **CS 크레딧 조정**(범위초과 명시·이중 방어) 통합. `lib/admin-users.ts`.
@@ -196,7 +196,7 @@ boss-paegi/
 - **수신**(`app/api/telemetry`): **공개 라우트**(익명 포착 — `requireMember` 안 씀). parse → member 판별(`member_accounts` 기준, 서버 결정) → deep validation(key allowlist·clamp·이벤트 cap) → `ingest_telemetry_delta` RPC(원자: budget+row lock·seq 멱등·clamp). 회원=풀 timeline, **비회원/익명=요약만(timeline null)**.
 - **저장**(`supabase/migrations/0027_play_telemetry.sql`): `telemetry_sessions`(세션 1행) · `telemetry_rollups`(대시보드 사전집계) · `telemetry_budget`(운영 degrade 상태). `scores.telemetry_session_id`(점수↔세션 링크, 부분 unique·additive — `/api/score` 가 UUID 검증 후 저장, 중복 제출은 본인 score면 graceful 반환·타인이면 409). 전부 **server-only**(anon/authenticated revoke + service_role grant), 쓰기는 ingest RPC(security definer)로만.
 - **용량 가드**: 30MB 운영 target budget(Supabase 500MB 한계 아님). **env kill-switch·자동 샘플링 없음** → budget DB row 기준 자동 degrade(full/summary/off).
-- **유지보수**(`app/api/ops/telemetry-maintain`, `x-cron-secret`=`CRON_SECRET`, cron-job.org **일1회 등록 필요**): `telemetry_rollup_days(3)`(KST·최근3일 delete-재계산, 익명+회원 summary 집계) → 성공 시 `telemetry_prune()`(30일 timeline NULL·target 초과 시 우선순위 삭제) → `telemetry_budget_refresh()`(`pg_total_relation_size` 기준 degrade) → ④ `maintain_analytics_rollups(7)`+`prune_analytics_events(90)`(공유·유입 분석 — 격리 도메인·try/catch 로 실패 무영향).
+- **유지보수**(`app/api/ops/telemetry-maintain`, `x-cron-secret`=`CRON_SECRET`, cron-job.org **일1회 등록 필요**): `telemetry_rollup_days(3)`(KST·최근3일 delete-재계산, 익명+회원 summary 집계) → 성공 시 `telemetry_prune()`(30일 timeline NULL·target 초과 시 우선순위 삭제) → `telemetry_budget_refresh()`(`pg_total_relation_size` 기준 degrade). (공유·유입 analytics 롤업은 **별도 cron** `/api/ops/analytics-maintain` — 도메인 격리.)
 - **대시보드**(`/admin/analytics`, AdminNav '게임 분석' 탭): **무기 편중·다양성**(단일무기율·메인무기분포·tap카테고리·세션평균집중도) · **무기 효율·파워**(메인무기 점수/초 중앙값, 단일무기 세션 우선) · **맵 고착·전환**(단일맵율·시작맵분포·전환율) — 이 셋은 `telemetry_sessions` 윈도우 직접 집계(세션 단위 facts). + 무기·맵 밸런스(타격·점수 비중·갭 — 빈도 교란되는 "점/타" 폐기) · 펀널·이탈 · 회원 활동(코호트·재방문 — 익명 ephemeral) · 세션 인스펙터(`/admin/analytics/sessions/[id]` 타임라인 재생). 밸런스/펀널은 `telemetry_rollups` 윈도우 합산(7/30일), 세션단위 지표는 sessions 직접(limit 5,000·표본 메타 동봉). 차트 라이브러리 없이 CSS 바. `lib/admin-analytics.ts`.
   - **지표 정의**: `동시터치`=세션 중 관측된 최대 active pointer 수(터치/마우스/펜 공통). `단일무기율`/`단일맵율`=한 세션에서 무기/맵 1개만 쓴 비율. `메인무기`=세션 내 hits 최다(동률 시 score→고정순서). `메인무기 점수/초`=세션 score/sec를 메인무기로 그룹핑한 중앙값(근사 — 콤보·맵·숙련도 혼재, 정확한 무기 DPS 아님; 완료·유효 duration 세션). `세션 평균 집중도`=세션별 무기 hit-share Herfindahl(Σshare²) 평균. 밸런스 `gap`=점수비중−타격비중(빈도 대비 점수 기여 불균형 신호, 확정 아님). `dpr`/`refresh_hz`/`avg_frame_ms`/`p95_frame_ms`=렉 진단(게임 ticker 프레임타임 표본·종료 시 저장, SQL 쿼리 가능). 렌더 최적화로 `BossPaegiGame` `app.init` **DPR 캡(≤2, 고DPI fill-rate 완화)**.
 - **프라이버시**: 익명 id = 세션 한정 ephemeral(`crypto.randomUUID`, 쿠키 지속·재방문 추적 없음), PII 미수집, coarse `device_class`만(핑거프린팅 아님). 개인정보 고지/정책은 후속(어드민 연동).
@@ -210,8 +210,8 @@ boss-paegi/
 - **source 분리**: `current`(현재 진입·매 탭세션 1회) vs `first_touch`(획득·localStorage 90일 TTL·sticky). 우선순위 `utm_source` → `/share/*` viral(score) → `/doll/*` viral(doll) → 외부 referrer 도메인 → direct. **viral 판정은 referrer 아닌 현재 landing pathname**(공유 수신자 referrer 는 카카오/인스타/빈값이라 부정확). 무효/PII source 는 direct fallback(이벤트 drop 안 함).
 - **공유**(`runShare` 진입 4곳): `share_attempt`(클릭 의도) — GameOverModal(game_over·**결과화면당 1회**)·ShareReportButton(history)·HighlightPlayer(highlight_viewer)·DollCard(gallery). 비-게임오버 3초 디바운스. success/cancel 미집계(MVP — "공유 시도").
 - **전환**(conversion 이벤트, 항상 source_scope=`first_touch`): `/api/score` 첫 점수 성공 시 `conversion:play`(클라 `playConversionSent` 1회 게이트) · consent 신규회원(`isNew`) 시 `conversion:signup`. 둘 다 **best-effort**(insert 실패가 점수저장/회원가입 무영향). 클라가 source 동봉할 때만 적재(분석 off 면 미적재).
-- **유지보수**: `telemetry-maintain` 크론 ④단계 — `maintain_analytics_rollups(7)`(idempotent: 대상일 delete-재계산 + `pg_advisory_xact_lock`; `score_submit`/`play_session` 은 `scores` 읽기집계) → `prune_analytics_events(90)`(당일 제외). try/catch 격리(텔레 결과·응답 무영향).
-- **대시보드**(`/admin/analytics` 공유 분석·유입 분석 카드, `lib/admin-analytics.ts`·`analytics_rollups` 윈도우 합산 7/30일): **공유** = 게임오버 전환 퍼널(점수제출→공유 시도·무식별 근사) + 표면/대상/점수대/회원여부 분포. **유입** = 방문 현황(current) + source별 방문→플레이→가입 전환(first-touch) + 바이럴 루프(공유 N → viral 유입 M, 윈도우 근사·causal 아님). source top-N+기타, score_tier→`score_config` 라벨 매핑. metric별 dim 의미는 0049 마이그 주석·getter 와 일치.
+- **유지보수**: **별도 cron `/api/ops/analytics-maintain`**(`x-cron-secret`=`CRON_SECRET`, cron-job.org **일1회 등록 필요** — 텔레메트리와 별도 잡) — `maintain_analytics_rollups(7)`(idempotent: 대상일 delete-재계산 + `pg_advisory_xact_lock`; `score_submit`/`play_session` 은 `scores` 읽기집계) → 성공 시 `prune_analytics_events(90)`(당일 제외).
+- **대시보드**(**별도 탭 `/admin/acquisition` "공유·유입"** — 게임 분석과 성격이 달라 분리, `lib/admin-acquisition.ts`·`analytics_rollups` 윈도우 합산 7/30일): **공유** = 게임오버 전환 퍼널(점수제출→공유 시도·무식별 근사) + 표면/대상/점수대/회원여부 분포. **유입** = 방문 현황(current) + source별 방문→플레이→가입 전환(first-touch) + 바이럴 루프(공유 N → viral 유입 M, 윈도우 근사·causal 아님). source top-N+기타, score_tier→`score_config` 라벨 매핑. metric별 dim 의미는 0049 마이그 주석·getter 와 일치.
 - **프라이버시**: 무식별·집계·무PII·persistent visitor id 없음. 봇은 클라 JS 캡처라 자연 필터. ⚠️ **개인정보처리방침에 "집계형 유입/이용 분석(referrer 도메인·UTM)" 수집 고지 추가 필요** — 배포 전 체크, 법률 문구 최종 확인.
 
 ## npm scripts

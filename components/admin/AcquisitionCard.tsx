@@ -1,4 +1,4 @@
-import type { AcquisitionStats } from "@/lib/admin-analytics";
+import type { AcquisitionStats } from "@/lib/admin-acquisition";
 
 // 유입 분석 카드 — 방문 현황(current) + source별 전환(first-touch·무식별 근사) + 바이럴 루프.
 // 전환율은 세션/점수제출/계정 단위가 섞인 근사. 무식별이라 100% 보장/캡 안 함, 분모 0이면 "—".
