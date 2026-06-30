@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { comboMultiplier, useGameStore } from "@/store/gameStore";
 
 export function ScoreBoard() {
@@ -7,7 +8,20 @@ export function ScoreBoard() {
   const combo = useGameStore((s) => s.combo);
   const ultProgress = useGameStore((s) => s.ultProgress);
   const ultReady = useGameStore((s) => s.ultReady);
+  const varietyMult = useGameStore((s) => s.varietyMult);
+  const lastFreshWeaponBonus = useGameStore((s) => s.lastFreshWeaponBonus);
   const multiplier = comboMultiplier(combo);
+
+  // 새 무기 보너스 토스트 — at 변경마다 1.5초 노출 후 숨김. 타격 멈춰도(재렌더 없음) 로컬 타이머로
+  // 사라지게. dep 을 .at 으로 → 두 번째 보너스가 첫 timeout 에 바로 사라지는 버그 방지(타이머 리셋).
+  const [freshVisible, setFreshVisible] = useState(false);
+  const freshAt = lastFreshWeaponBonus?.at;
+  useEffect(() => {
+    if (freshAt == null) return;
+    setFreshVisible(true);
+    const t = setTimeout(() => setFreshVisible(false), 1500);
+    return () => clearTimeout(t);
+  }, [freshAt]);
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex flex-col items-center gap-0.5 px-4 text-white sm:gap-1 sm:px-6 sm:pt-2">
@@ -23,6 +37,16 @@ export function ScoreBoard() {
               ({multiplier.toFixed(1)}×)
             </span>
           )}
+          {varietyMult > 0 && (
+            <span className="text-[10px] text-fuchsia-300 sm:text-xs">
+              · 저글링 ×{(1 + varietyMult).toFixed(2)}
+            </span>
+          )}
+        </div>
+      )}
+      {lastFreshWeaponBonus && freshVisible && (
+        <div className="text-[11px] font-bold tabular-nums text-emerald-300 drop-shadow sm:text-sm">
+          ✨ 새 무기 +{lastFreshWeaponBonus.amount}
         </div>
       )}
 
