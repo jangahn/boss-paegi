@@ -10,6 +10,8 @@ import {
   getWeaponThroughput,
   getMapStickiness,
   getDevicePerf,
+  getShareStats,
+  getAcquisitionStats,
 } from "@/lib/admin-analytics";
 import {
   BalanceBars,
@@ -19,6 +21,9 @@ import {
   MapStickinessCard,
 } from "@/components/admin/analytics/AnalyticsViews";
 import { DevicePerfPanel } from "@/components/admin/DevicePerfPanel";
+import { ShareAnalyticsCard } from "@/components/admin/ShareAnalyticsCard";
+import { AcquisitionCard } from "@/components/admin/AcquisitionCard";
+import { getScoreConfig } from "@/lib/config/getters";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,7 +39,7 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const days = sp.days === "30" ? 30 : 7;
 
-  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf] =
+  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf, shareStats, acqStats, scoreConfig] =
     await Promise.all([
       getWeaponBalance(days),
       getMapBalance(days),
@@ -44,7 +49,11 @@ export default async function AnalyticsPage({
       getWeaponThroughput(days),
       getMapStickiness(days),
       getDevicePerf(days),
+      getShareStats(days),
+      getAcquisitionStats(days),
+      getScoreConfig(),
     ]);
+  const tierLabels = scoreConfig.grades.map((g) => g.label);
 
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
@@ -70,6 +79,20 @@ export default async function AnalyticsPage({
           <br />
           무기·맵 밸런스와 퍼널은 일 1회 집계라 당일 수치가 최대 ~1일 지연될 수 있어요.
         </p>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">
+            공유 분석 <span className="font-normal text-zinc-400">(누가·어디서·얼마나 — 공유 시도)</span>
+          </h2>
+          <ShareAnalyticsCard stats={shareStats} tierLabels={tierLabels} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">
+            유입 분석 <span className="font-normal text-zinc-400">(경로·전환·바이럴 루프 — 무식별 집계)</span>
+          </h2>
+          <AcquisitionCard stats={acqStats} />
+        </section>
 
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">
