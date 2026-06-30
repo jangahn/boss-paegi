@@ -7,14 +7,19 @@
  * 라이브 config화는 후속(이번엔 하드코딩). `store/gameStore.ts` `hit()` 가 소비.
  */
 
-/** 다양성 배율 산정 윈도우 — 최근 N charge 타격의 고유 무기 수. */
-export const VARIETY_WINDOW_SIZE = 5;
-/** 다양성 배율 상한. 5종 저글링 = ×(1+1.0)=×2. 750/sec×2=1500<2000 cap → 안전. */
+/**
+ * 보너스 *지속* 윈도우 — 최근 N charge 타격 안의 고유 무기 수로 배율 산정.
+ * 100 = 한 번 여러 무기를 쓰면 ~100타 동안 보너스 유지(자주 안 바꿔도 됨). 윈도우 밖이면 점진 감쇠.
+ */
+export const VARIETY_WINDOW_SIZE = 100;
+/** 배율 최대 도달에 필요한 고유 무기 수(지속 윈도우와 분리). 5종 = 최대(×2). */
+export const VARIETY_FULL_AT = 5;
+/** 다양성 배율 상한. 최대 = ×(1+1.0)=×2. 750/sec×2=1500<2000 cap → 안전. */
 export const VARIETY_CAP = 1.0;
 /** 세션 첫 사용 무기의 일회 플랫 보너스(콤보·다양성 배율 미적용). */
 export const FRESH_WEAPON_BONUS = 300;
 /** 전환 시 궁극 게이지(0~1 스케일) 가속분. */
-export const SWITCH_ULT_BONUS_RATIO = 0.03;
+export const SWITCH_ULT_BONUS_RATIO = 0.1;
 /** 전환 궁극보너스 쿨다운 — 2무기 왕복 과충전 방지. */
 export const SWITCH_ULT_COOLDOWN_MS = 300;
 /** 전환 타격의 콤보 판정창 완화(1500→1800ms) — 느린 무기(throw/grab) 전환 마찰 보정. */

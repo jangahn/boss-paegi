@@ -684,6 +684,12 @@ v0.70 (2026-06-30, 무기 다양성 게임성 — 저글링 보상; 마이그레
 - **점수천장 무변경**: ×2 max라 750/sec×2=1,500 < `MAX_AVG_SCORE_PER_SEC=2000` → 서버 cap·리더보드 무영향. telemetry/서버/마이그 변경 0. 맵은 효과 0이라 제외.
 - 검증: typecheck/build 0 + **로직 실측 16/16**(시간 제어로 store 직접 구동 — 배율 1→5종 ×2.00·감쇠·쿨다운·grace·fresh 1회·reset). **배포 후**: `/admin/analytics` 무기탭 before/after(`distinct_weapons=1`·`first_switch_ms` null·fist share·HHI·max_combo p50).
 
+v0.71 (2026-06-30, 저글링 튜닝 — 보너스 지속↑·전환 궁극↑·표현 친화화; 마이그레이션 없음):
+- **보너스 지속 윈도우 5→100타**: 윈도우(`VARIETY_WINDOW_SIZE`)와 최대도달 무기수(`VARIETY_FULL_AT=5`)를 분리. 5종 쓰면 ×2.00 도달은 동일하되 이후 **~100타 동안 유지**(자주 안 바꿔도 됨), 윈도우 밖이면 점진 감쇠. 공식 `min(CAP, (distinct-1)/(FULL_AT-1)*CAP)`(6종+도 ×2 clamp). 배율 범위 2종 ×1.25 ~ 5종 ×2.00 불변 → 점수천장 무영향.
+- **전환 궁극 가속 +3%→+10%**(`SWITCH_ULT_BONUS_RATIO` 0.1, 300ms 쿨다운 유지).
+- **HUD "저글링"→"무기변경"**(`ScoreBoard`) — 플레이어 친화 표현.
+- 검증: typecheck/build 0 + 로직 실측(5종 후 동일무기 10연타 ×2.00 유지·9종 clamp·전환 궁극 +0.10·쿨다운).
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.

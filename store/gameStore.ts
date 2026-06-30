@@ -3,6 +3,7 @@ import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
 import type { ScoreSample } from "@/lib/highlight";
 import {
   VARIETY_WINDOW_SIZE,
+  VARIETY_FULL_AT,
   VARIETY_CAP,
   FRESH_WEAPON_BONUS,
   SWITCH_ULT_BONUS_RATIO,
@@ -156,7 +157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       : weaponWindow;
     const distinct = new Set(nextWindow).size;
     const nextVarietyMult = weaponKey
-      ? ((distinct - 1) / (VARIETY_WINDOW_SIZE - 1)) * VARIETY_CAP
+      ? Math.min(VARIETY_CAP, ((distinct - 1) / (VARIETY_FULL_AT - 1)) * VARIETY_CAP)
       : prevVarietyMult;
 
     // 8~10: 점수 — base(콤보×다양성) + fresh 플랫(배율 미적용).
