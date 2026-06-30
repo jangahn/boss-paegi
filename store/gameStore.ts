@@ -63,8 +63,11 @@ type GameState = {
   /** 새 무기 첫 타격 보너스 — ScoreBoard 토스트용(시간기반 자동 숨김) */
   lastFreshWeaponBonus: FreshWeaponBonus | null;
 
-  /** charge=false 면 점수만 올리고 게이지는 충전 안 함 (궁극기 난타 중 타격) */
-  hit: (strength: number, weaponKey?: string, charge?: boolean) => void;
+  /**
+   * charge=false 면 점수만 올리고 게이지는 충전 안 함 (궁극기 난타 중 타격).
+   * **반환값 = 화면 데미지 팝업에 찍을 값**(콤보×무기변경 배율 적용된 baseGain, fresh 보너스 제외 — 별도 토스트).
+   */
+  hit: (strength: number, weaponKey?: string, charge?: boolean) => number;
   /** 현재 점수를 timeline 에 1샘플 추가 (recorder 가 100ms 마다 호출) */
   pushScoreSample: () => void;
   /** 궁극기 발동 — 게이지 소진 */
@@ -115,7 +118,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const s = get();
       const gain = Math.round(strength * comboMultiplier(s.combo));
       set({ score: s.score + gain, ultScore: s.ultScore + gain, lastHitAt: now });
-      return;
+      return gain; // 난타 팝업도 콤보배율 반영
     }
     const {
       combo,
@@ -210,6 +213,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? { weaponKey, amount: FRESH_WEAPON_BONUS, at: now }
           : lastFreshWeaponBonus,
     });
+    return baseGain; // 화면 데미지 팝업용(콤보×무기변경 적용, fresh 제외)
   },
 
   // 궁극기 발동 — 게이지 소진 + 발동 횟수 누적
