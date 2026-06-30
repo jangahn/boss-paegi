@@ -1,27 +1,196 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import { useGameStore } from "@/store/gameStore";
-import { TIMESLICE_MS, EVAL_INTERVAL_MS, type HighlightClip } from "@/lib/highlight";
 import {
-  recordingSupported,
-  buildRecorder,
-  assembleClipBlob,
-  validateClip,
-  type RecChunk,
-  type MimeSel,
-} from "./highlight-clip";
-import { HighlightTracker } from "./highlight-tracker";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
+import { useGameStore } from "@/store/gameStore";
+import {
+  recentVelocity,
+  RECORD_WINDOW_MS,
+  MAX_RECORD_ATTEMPTS,
+  VELOCITY_TRIGGER,
+  type HighlightClip,
+} from "@/lib/highlight";
 import { getRecordingStream } from "@/lib/sound";
 import { log } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
 
 export type { HighlightClip };
 
+const MONITOR_INTERVAL_MS = 100;
+/** ~4s 클립 ≤~2MB 목표 */
+const VIDEO_BITRATE = 3_500_000;
+const AUDIO_BITRATE = 96_000;
+const COMBO_MILESTONE = 10;
+
+/** 인앱 webview — 녹화/공유 불안정 → skip (카드 공유로 폴백). */
+function knownBadWebView(): boolean {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  return /KAKAOTALK|Instagram|FBAN|FBAV|Line\/|NAVER|wv\)/i.test(ua);
+}
+
+type MimeSel = { mime: string; ext: "mp4" | "webm"; audio: boolean };
+
+// audio 포함 우선 → 안 되면 video-only. (audio track 들어가면 codec 조합 실패 가능성 ↑)
+const AUDIO_MIMES: MimeSel[] = [
+  { mime: "video/mp4;codecs=avc1.42E01E,mp4a.40.2", ext: "mp4", audio: true },
+  { mime: "video/mp4", ext: "mp4", audio: true },
+  { mime: "video/webm;codecs=vp9,opus", ext: "webm", audio: true },
+  { mime: "video/webm;codecs=vp8,opus", ext: "webm", audio: true },
+  { mime: "video/webm", ext: "webm", audio: true },
+];
+const VIDEO_MIMES: MimeSel[] = [
+  { mime: "video/mp4;codecs=avc1", ext: "mp4", audio: false },
+  { mime: "video/mp4", ext: "mp4", audio: false },
+  { mime: "video/webm;codecs=vp9", ext: "webm", audio: false },
+  { mime: "video/webm;codecs=vp8", ext: "webm", audio: false },
+  { mime: "video/webm", ext: "webm", audio: false },
+];
+
+function anySupportedMime(): boolean {
+  return [...AUDIO_MIMES, ...VIDEO_MIMES].some((m) => {
+    try {
+      return MediaRecorder.isTypeSupported(m.mime);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function recordingSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.isSecureContext &&
+    typeof MediaRecorder !== "undefined" &&
+    typeof HTMLCanvasElement !== "undefined" &&
+    typeof HTMLCanvasElement.prototype.captureStream === "function" &&
+    anySupportedMime() &&
+    !knownBadWebView()
+  );
+}
+
+/** isTypeSupported 뿐 아니라 combined stream 으로 실제 생성까지 성공하는 첫 후보. audio 실패 시 video-only. */
+function buildRecorder(
+  stream: MediaStream,
+  hasAudioTrack: boolean
+): { mr: MediaRecorder; sel: MimeSel } | null {
+  const candidates = hasAudioTrack ? [...AUDIO_MIMES, ...VIDEO_MIMES] : VIDEO_MIMES;
+  for (const sel of candidates) {
+    try {
+      if (!MediaRecorder.isTypeSupported(sel.mime)) continue;
+      const mr = new MediaRecorder(stream, {
+        mimeType: sel.mime,
+        videoBitsPerSecond: VIDEO_BITRATE,
+        ...(sel.audio ? { audioBitsPerSecond: AUDIO_BITRATE } : {}),
+      });
+      return { mr, sel };
+    } catch {
+      /* 다음 후보 */
+    }
+  }
+  return null;
+}
+
 /**
- * 게임 전체를 **연속 녹화**(롤링버퍼)하며 Δscore 최대 [3~5s] 윈도우를 **포함**하는 구간을
- * 사후 스냅샷해 best clip 1개로 보관. forward-only MediaRecorder 가 "이미 시작된 급상승을 못 잡는"
- * 한계를 롤링버퍼 + 증분 추적(HighlightTracker) + pending 스냅샷으로 해결. 미지원/실패 시 카드 폴백.
+ * 클립 1프레임을 디코드해 "확실히 검정"인지 판정(fail-open).
+ * preserveDrawingBuffer 미설정 등으로 captureStream 이 검은 프레임을 잡으면 blob 은 non-empty 라
+ * size 체크를 통과 → 검은 영상이 채택/공유되던 문제 방어. **디코드/seek 실패는 false(=정상 채택 유지)**
+ * 로 폴백해 정상 영상이 분석 실패로 카드로 떨어지지 않게 한다(confident black 만 reject).
+ */
+function isConfidentBlack(blob: Blob): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined") return resolve(false);
+    let settled = false;
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement("video");
+    const finish = (v: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* */
+      }
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(false), 1500); // 타임아웃 → fail-open
+    video.muted = true;
+    video.preload = "auto";
+    video.onloadeddata = () => {
+      try {
+        video.currentTime = Math.min(0.1, (video.duration || 1) / 2);
+      } catch {
+        clearTimeout(timer);
+        finish(false);
+      }
+    };
+    video.onseeked = () => {
+      clearTimeout(timer);
+      try {
+        const w = 32;
+        const h = 32;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const c = canvas.getContext("2d", { willReadFrequently: true });
+        if (!c) return finish(false);
+        c.drawImage(video, 0, 0, w, h);
+        const data = c.getImageData(0, 0, w, h).data;
+        const n = w * h;
+        let sum = 0;
+        let sumSq = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          sum += lum;
+          sumSq += lum * lum;
+        }
+        const mean = sum / n;
+        const variance = sumSq / n - mean * mean;
+        // confident black: 매우 어둡고(평균휘도<8/255) 거의 균일(분산<10)일 때만 reject
+        finish(mean < 8 && variance < 10);
+      } catch {
+        finish(false);
+      }
+    };
+    video.onerror = () => {
+      clearTimeout(timer);
+      finish(false); // 디코드 실패 → fail-open(정상 채택 유지)
+    };
+    video.src = url;
+  });
+}
+
+/** onstop 미발화(iOS) 대비 — requestData 후 stop, 600ms 안에 안 끝나면 수집 청크로 조립. */
+function finishRecording(mr: MediaRecorder, chunks: Blob[]): Promise<Blob> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve(new Blob(chunks, { type: mr.mimeType }));
+    };
+    mr.onstop = finish;
+    try {
+      mr.requestData();
+    } catch {
+      /* */
+    }
+    try {
+      mr.stop();
+    } catch {
+      finish();
+    }
+    setTimeout(finish, 600);
+  });
+}
+
+/**
+ * 점수 급상승 구간을 짧게(≈4초) 녹화해 best clip 1개만 보관(영상+게임 효과음).
+ * 샘플링은 useScoreTimeline 이 담당 — 여긴 supported 환경에서 트리거/녹화만.
  */
 export function useHighlightRecorder(opts: {
   gameRef: MutableRefObject<GameHandle | null>;
@@ -35,97 +204,51 @@ export function useHighlightRecorder(opts: {
   const [supported] = useState(() => recordingSupported());
   const [bestClip, setBestClip] = useState<HighlightClip | null>(null);
 
-  const mrRef = useRef<MediaRecorder | null>(null);
-  const videoStreamRef = useRef<MediaStream | null>(null);
-  const selRef = useRef<MimeSel | null>(null);
-  const trackerRef = useRef<HighlightTracker | null>(null);
-
-  const seqRef = useRef(0);
-  const recordingStartPerfRef = useRef(0);
-  const prevChunkEndPerfRef = useRef<number | null>(null);
-
-  const startedRef = useRef(false);
-  const isFinalizingRef = useRef(false);
-  const isFinalizedRef = useRef(false);
-  const isRecordingDisabledRef = useRef(false);
   const bestRef = useRef<HighlightClip | null>(null);
-  const evalTimerRef = useRef<number | null>(null);
-  const unsubRef = useRef<(() => void) | null>(null);
+  const activeMrRef = useRef<MediaRecorder | null>(null);
+  const activeFinishRef = useRef<Promise<void> | null>(null);
+  const earlyStopRef = useRef<(() => void) | null>(null);
+  const attemptsRef = useRef(0);
+  const lastComboRef = useRef(0);
+  const lastUltReadyRef = useRef(false);
+  const cancelledRef = useRef(false);
 
-  /** ondataavailable — 청크 메타(timecode 우선) 만들어 tracker 에 push. */
-  const onData = useCallback((e: BlobEvent) => {
-    const tracker = trackerRef.current;
-    if (!tracker || !e.data || e.data.size === 0) return;
-    const seq = seqRef.current++;
-    const startPerf = prevChunkEndPerfRef.current ?? recordingStartPerfRef.current;
-    const tc = e.timecode;
-    let endPerf =
-      typeof tc === "number" && Number.isFinite(tc)
-        ? recordingStartPerfRef.current + tc // 인코딩/메인스레드 지연 보정
-        : performance.now();
-    if (!(endPerf > startPerf)) {
-      // 0/음수 폭(첫 청크 tc=0 등) → emit 시각으로 보정(monotonic 보장).
-      endPerf = Math.max(performance.now(), startPerf + TIMESLICE_MS);
-    }
-    prevChunkEndPerfRef.current = endPerf;
-    const chunk: RecChunk = { seq, startPerf, endPerf, blob: e.data };
-    tracker.pushChunk(chunk);
-  }, []);
-
-  const maybeEvaluate = useCallback(() => {
-    if (isRecordingDisabledRef.current) return;
-    trackerRef.current?.evaluate(useGameStore.getState().scoreSamples);
-  }, []);
-
-  /** MR/스트림/타이머 정리(audio recordDest 는 재사용이라 stop 금지). idempotent. */
-  const cleanup = useCallback(() => {
-    if (evalTimerRef.current != null) {
-      window.clearInterval(evalTimerRef.current);
-      evalTimerRef.current = null;
-    }
-    if (unsubRef.current) {
-      unsubRef.current();
-      unsubRef.current = null;
-    }
-    const mr = mrRef.current;
-    if (mr && mr.state !== "inactive") {
-      try {
-        mr.stop();
-      } catch {
-        /* */
+  const consider = useCallback(
+    async (blob: Blob, sel: MimeSel, startScore: number, startedAt: number) => {
+      const delta = Math.max(0, useGameStore.getState().score - startScore);
+      const windowMs = Math.round(performance.now() - startedAt);
+      if (blob.size === 0) {
+        log.warn("highlight.empty_blob", {});
+        return;
       }
-    }
-    mrRef.current = null;
-    videoStreamRef.current?.getVideoTracks().forEach((t) => {
-      try {
-        t.stop();
-      } catch {
-        /* */
+      // 새 best 후보일 때만 검정 검사(불필요한 디코드 회피)
+      if (bestRef.current && delta <= bestRef.current.delta) return;
+      // 검은 프레임이면 채택 거부 → 카드 폴백(fail-open: 분석 실패 시 정상 채택 유지)
+      if (await isConfidentBlack(blob)) {
+        log.warn("highlight.black_frame", { sizeBytes: blob.size, mime: sel.mime });
+        return;
       }
-    });
-    videoStreamRef.current = null;
-    startedRef.current = false; // 재플레이 시 재시작 가능
-  }, []);
+      bestRef.current = { blob, mime: sel.mime, ext: sel.ext, delta, windowMs };
+      setBestClip(bestRef.current);
+      log.info("highlight.record_success", {
+        delta,
+        windowMs,
+        sizeBytes: blob.size,
+        audio: sel.audio,
+      });
+    },
+    []
+  );
 
-  useEffect(() => {
-    if (!recording || !supported || startedRef.current) return;
-    // 새 게임 — 상태 초기화
-    trackerRef.current = new HighlightTracker();
-    seqRef.current = 0;
-    recordingStartPerfRef.current = 0;
-    prevChunkEndPerfRef.current = null;
-    isFinalizingRef.current = false;
-    isFinalizedRef.current = false;
-    isRecordingDisabledRef.current = false;
-    bestRef.current = null;
-    setBestClip(null);
-
-    const videoStream = gameRef.current?.captureStream(30);
-    if (!videoStream || videoStream.getVideoTracks().length === 0) {
-      isRecordingDisabledRef.current = true;
-      log.info("highlight.record_unavailable", {});
+  const startAttempt = useCallback(() => {
+    if (
+      cancelledRef.current ||
+      activeMrRef.current ||
+      attemptsRef.current >= MAX_RECORD_ATTEMPTS
+    )
       return;
-    }
+    const videoStream = gameRef.current?.captureStream(30);
+    if (!videoStream) return;
     const audioStream = getRecordingStream();
     const tracks: MediaStreamTrack[] = [...videoStream.getVideoTracks()];
     let hasAudio = false;
@@ -136,109 +259,90 @@ export function useHighlightRecorder(opts: {
         hasAudio = true;
       }
     }
-    const built = buildRecorder(new MediaStream(tracks), hasAudio);
+    const combined = new MediaStream(tracks);
+    const built = buildRecorder(combined, hasAudio);
     if (!built) {
       videoStream.getVideoTracks().forEach((t) => t.stop());
-      isRecordingDisabledRef.current = true;
       return;
     }
     const { mr, sel } = built;
-    startedRef.current = true;
-    selRef.current = sel;
-    mrRef.current = mr;
-    videoStreamRef.current = videoStream;
-    recordingStartPerfRef.current = performance.now();
-    mr.ondataavailable = onData;
-    mr.onerror = () => {
-      // 추가 녹화만 중단 — 이미 확보한 candidates 는 finalize 에서 검증(background/일시stop 보존).
-      isRecordingDisabledRef.current = true;
-      log.warn("highlight.recorder_error", {});
+    log.info(
+      sel.audio ? "highlight.record_audio_attached" : "highlight.record_audio_missing",
+      {}
+    );
+    attemptsRef.current += 1;
+    activeMrRef.current = mr;
+    const startScore = useGameStore.getState().score;
+    const startedAt = performance.now();
+    const chunks: Blob[] = [];
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
     };
-    try {
-      mr.start(TIMESLICE_MS);
-    } catch {
-      isRecordingDisabledRef.current = true;
-      cleanup();
-      return;
-    }
-    log.info("highlight.record_started_continuous", { audio: hasAudio, mime: sel.mime });
+    mr.start(250);
+    log.info("highlight.record_started", { attempt: attemptsRef.current });
 
-    // 평가: scoreSamples 변경(=score 갱신) 직후 + 폴백 interval.
-    evalTimerRef.current = window.setInterval(maybeEvaluate, EVAL_INTERVAL_MS);
-    unsubRef.current = useGameStore.subscribe((s, prev) => {
-      if (s.scoreSamples !== prev.scoreSamples) maybeEvaluate();
-    });
+    const finish = (async () => {
+      // window 만큼 대기하되 finalize/cleanup 이 부르면 즉시 진행
+      await new Promise<void>((res) => {
+        const timer = window.setTimeout(res, RECORD_WINDOW_MS);
+        earlyStopRef.current = () => {
+          window.clearTimeout(timer);
+          res();
+        };
+      });
+      earlyStopRef.current = null;
+      const blob = await finishRecording(mr, chunks);
+      if (activeMrRef.current === mr) activeMrRef.current = null;
+      // canvas video track 만 stop — audio track(recordDest)은 재사용하므로 stop 금지(다음 녹화 무음 방지)
+      videoStream.getVideoTracks().forEach((t) => t.stop());
+      await consider(blob, sel, startScore, startedAt);
+    })();
+    activeFinishRef.current = finish;
+  }, [gameRef, consider]);
+
+  useEffect(() => {
+    if (!recording || !supported) return;
+    cancelledRef.current = false;
+    log.info("highlight.record_supported", { supported: true });
+    // 새 게임 리셋
+    attemptsRef.current = 0;
+    bestRef.current = null;
+    lastComboRef.current = 0;
+    lastUltReadyRef.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBestClip(null);
+
+    const id = window.setInterval(() => {
+      const st = useGameStore.getState();
+      const velocity = recentVelocity(st.scoreSamples, performance.now());
+      const comboCrossed =
+        Math.floor(st.combo / COMBO_MILESTONE) >
+        Math.floor(lastComboRef.current / COMBO_MILESTONE);
+      const ultRose = st.ultReady && !lastUltReadyRef.current;
+      lastComboRef.current = st.combo;
+      lastUltReadyRef.current = st.ultReady;
+      if (velocity >= VELOCITY_TRIGGER || comboCrossed || ultRose) startAttempt();
+    }, MONITOR_INTERVAL_MS);
 
     return () => {
-      cleanup();
+      cancelledRef.current = true;
+      window.clearInterval(id);
+      earlyStopRef.current?.(); // 진행 중 녹화 즉시 마감(in-flight 처리 → consider 반영)
     };
-  }, [recording, supported, gameRef, onData, maybeEvaluate, cleanup]);
+  }, [recording, supported, startAttempt]);
 
-  /**
-   * 게임 종료 시 호출(over 플립 전 await) — 마지막 청크 flush → tracker.finalize →
-   * 후보 delta 순 검증 → 첫 통과를 bestClip 으로. idempotent.
-   */
-  const finalize = useCallback(async (): Promise<HighlightClip | null> => {
-    if (isFinalizedRef.current || isFinalizingRef.current) return bestRef.current;
-    isFinalizingRef.current = true;
-    try {
-      const mr = mrRef.current;
-      if (mr && mr.state !== "inactive") {
-        await new Promise<void>((resolve) => {
-          let done = false;
-          const finish = () => {
-            if (done) return;
-            done = true;
-            resolve();
-          };
-          mr.onstop = finish;
-          try {
-            mr.requestData();
-          } catch {
-            /* */
-          }
-          try {
-            mr.stop();
-          } catch {
-            finish();
-          }
-          setTimeout(finish, 600); // iOS onstop 미발화 대비
-        });
+  /** 게임 종료 시 호출 — 진행 중 녹화를 즉시 마감하고 best 비교 완료까지 대기. */
+  const finalize = useCallback(async () => {
+    earlyStopRef.current?.();
+    if (activeFinishRef.current) {
+      try {
+        await activeFinishRef.current;
+      } catch {
+        /* */
       }
-
-      const tracker = trackerRef.current;
-      const sel = selRef.current;
-      if (tracker && sel) {
-        tracker.finalize(useGameStore.getState().scoreSamples); // 마지막 구간 강제 스냅샷
-        const initChunk = tracker.initChunk;
-        const initSeq = tracker.initSeq;
-        const ordered = tracker.orderedCandidates();
-        if (initChunk && initSeq != null && ordered.length) {
-          const bySeq = tracker.chunkMap();
-          for (const cand of ordered) {
-            const blob = assembleClipBlob(bySeq, cand.chunkSeqs, initChunk, initSeq, sel.mime);
-            if (!blob || blob.size === 0) continue;
-            if (!(await validateClip(blob))) continue;
-            const windowMs = Math.round(cand.winEndAt - cand.winStartAt);
-            bestRef.current = { blob, mime: sel.mime, ext: sel.ext, delta: cand.delta, windowMs };
-            log.info("highlight.snapshot_success", {
-              delta: cand.delta,
-              windowMs,
-              sizeBytes: blob.size,
-            });
-            break;
-          }
-        }
-        if (!bestRef.current) log.info("highlight.no_clip", { candidates: ordered.length });
-      }
-    } finally {
-      isFinalizedRef.current = true;
-      isFinalizingRef.current = false;
-      cleanup();
     }
-    setBestClip(bestRef.current);
     return bestRef.current;
-  }, [cleanup]);
+  }, []);
 
   return { supported, bestClip, finalize };
 }
