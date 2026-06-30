@@ -15,8 +15,8 @@ import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { ReportButton } from "@/components/ReportButton";
 
-// signed doll/clip URL(TTL 600/900) 박히는 페이지 — ISR ≤60s 로 만료/삭제 staleness 최소화.
-export const revalidate = 60;
+// signed doll/clip URL(TTL 600/900) 박히는 페이지 — revalidate 480s(TTL 600 안, 120s 마진). 크롤러 차단 후 ISR write 감소.
+export const revalidate = 480;
 
 export async function generateMetadata({
   params,

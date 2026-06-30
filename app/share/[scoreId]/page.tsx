@@ -27,9 +27,9 @@ import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
 
-// signed doll/clip URL(TTL 600/900) 박히는 페이지 — ISR ≤60s 로 만료/삭제(takedown) staleness 최소화.
-//   takedown/restore/permanent 라우트가 이 doll 을 쓰는 share path 들을 명시 revalidatePath(즉시).
-export const revalidate = 60;
+// signed doll/clip URL(TTL 600/900) 박히는 페이지 — revalidate 는 짧은 TTL(600) 안쪽이어야 만료 URL 안 박힘.
+//   60→480s(TTL 600 안, 120s 마진): 크롤러 차단(robots) 후 ISR write 대폭 감소. takedown 등 변경은 명시 revalidatePath(즉시).
+export const revalidate = 480;
 
 export async function generateMetadata({
   params,

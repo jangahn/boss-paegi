@@ -19,10 +19,10 @@ if (dsn) {
     tracesSampleRate: isProd ? 0.1 : 0,
     // IP·헤더·쿠키 미수집(PIPA). 게임데이터·userKey·닉네임은 별도로 명시 부착(lib/sentry-context).
     sendDefaultPii: false,
-    // Session Replay (prod 한정) — 에러 세션 100% + 일반 20%(무료 50/월 한도 내).
-    // dev/preview 는 0 → 공용 리플레이 한도 미소모.
+    // Session Replay (prod 한정) — 에러 세션 100% + 일반 10%.
+    // (0.2 일 때 월 147건으로 무료 ~50/월 초과 → 0.1 로 축소. dev/preview 는 0 → 공용 한도 미소모.)
     replaysOnErrorSampleRate: isProd ? 1.0 : 0,
-    replaysSessionSampleRate: isProd ? 0.2 : 0,
+    replaysSessionSampleRate: isProd ? 0.1 : 0,
     integrations: [
       // 게임 UI/텍스트는 비민감이라 언마스크. 단 업로드 얼굴 크롭(.sentry-block-face)만 차단.
       // (PixiJS 캔버스 녹화 replayCanvasIntegration 는 미사용 — 모바일 perf.)
