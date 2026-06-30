@@ -1,6 +1,6 @@
 import "server-only";
 import * as Sentry from "@sentry/nextjs";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
@@ -184,17 +184,19 @@ export async function POST(req: NextRequest) {
         ...errInfo(pickErr),
       });
     }
-    await cleanupCandidateStorage(admin, user.id, body.generationId);
-    // 정책 #1(원본 즉시 폐기) 확정 정리 — pick 은 "생성 완료" 확정 시점이고
-    // picked 행은 /api/generations 쿼리에서 제외되므로 폴링 정리 재시도가 사라진다.
-    // 여기서 awaited 로 임시 얼굴을 반드시 폐기(폴링의 best-effort 정리에 의존하지 않음).
-    await deleteFaceTmp(tmpFacePath(user.id, body.generationId)).catch((e) =>
-      log.warn("gen.face_cleanup_fail", {
-        userId: user.id,
-        genId: body.generationId,
-        ...errInfo(e),
-      })
-    );
+    // 정리(후보 스토리지 + 임시 얼굴 삭제)는 사용자 응답 critical path 에서 제거 — `after()` 로
+    // **응답 직후·같은 요청 수명 내** 실행(저장 체감 ~0.5s+ 단축, 정리 실패가 저장 응답을 깨던
+    // 잠재 500도 해소). 정책 #1(원본 즉시 폐기)은 유지 — after 는 함수 종료 전 완료되고, picked
+    // 행은 /api/generations 정리 쿼리에서 제외돼 폴링 backstop 재시도도 누락 없음.
+    const gid = body.generationId;
+    after(async () => {
+      await cleanupCandidateStorage(admin, user.id, gid).catch((e) =>
+        log.warn("gen.candidate_cleanup_fail", { userId: user.id, genId: gid, ...errInfo(e) })
+      );
+      await deleteFaceTmp(tmpFacePath(user.id, gid)).catch((e) =>
+        log.warn("gen.face_cleanup_fail", { userId: user.id, genId: gid, ...errInfo(e) })
+      );
+    });
   }
 
   log.info("doll.save_success", { userId: user.id, genId, dollId });

@@ -670,6 +670,13 @@ v0.68 (2026-06-30, 탈퇴→재활성→재가입 이메일 정상화 — marker
 - **PIPA**: marker 는 탈퇴 계정에선 정당 → 복원은 **재활성(=`deleted_at` 해제, 서비스 복귀)된 계정에 한해**서만(F1·백필 모두 활성만). 탈퇴 상태 익명화 불변.
 - 검증: typecheck/lint/build 0. 가드 유닛테스트 8/8(실제 소스 — marker user→실 이메일·정상 user 불변·all-marker→null). **라이브 E2E 14/14**(테스트 계정 brian: email-scoped 탈퇴→0048 RPC marker-회피 real 복원→F1 auth 복원→A/B/E 전부 real 확인→consent 원복, prod 원상태 복귀). 백필 prod 적용(오염 활성 1건 복원). **⚠ Migration 0048 적용 완료**(`0048_reactivate_email_marker_guard.sql`, `admin_reactivate_account` create-or-replace·additive·컬럼 무변경, Management API). 0045~0047 과 번호 겹치지 않게 0048.
 
+v0.69 (2026-06-30, 캐릭터 저장 단계 진행률 UI + 정리 오프패스 — 체감 개선; 마이그레이션 없음):
+- **배경(Sentry 실측, prod 30일)**: 후보 선택 후 "저장 중…"(`POST /api/doll`) 이 **p50 ~8s·p95 ~12s·최대 ~20s**. 내역 = birefnet 누끼(`doll.bg_removal`) **p50 ~4.4s(최대 10.4s, 최대 병목)** + fal.media fetch ~1.8s + Supabase 업로드 ~1.9s + normalize ~0.4s. 생성 단계는 `GeneratingProgress` 진행바가 있는데 **저장 단계는 맨 스피너뿐**이라 더 짧은데도 더 답답하게 체감됐음.
+- **진행률 UI**: `GeneratingProgress` 를 공유 `TimedProgress`(stages·tau·footer 파라미터)로 일반화 + **`SavingProgress`** 추가(단계 "배경 정리→캐릭터 저장→게임 준비", tau=7). `app/generate` saving 스테이지의 `LoadingStage "저장 중…"` → `SavingProgress` 로 교체. 생성 동작은 불변(동일 stages·tau=60).
+- **정리 오프패스**: `POST /api/doll` 의 후보 스토리지·임시 얼굴 정리를 `next/server` **`after()`** 로 응답 직후 실행 → critical path 에서 제거(~0.5s+ 단축, 정리 실패가 저장 응답을 깨던 잠재 500 도 해소). 정책 #1(원본 즉시 폐기)은 유지 — after 는 함수 종료 전 같은 요청 수명 내 완료, picked 행은 폴링 정리 대상서 제외.
+- birefnet 누끼(4.4s) 자체는 fal 모델 지연이라 미변경(필요 시 생성 단계 사전계산은 fal 비용 ~3× 트레이드오프로 후속). fal 비용 변화 없음.
+- 검증: typecheck/lint/build 0. 프리뷰 임시 라우트로 `SavingProgress` 렌더 확인(단계 텍스트·진행바·푸터·콘솔 0) 후 라우트 삭제. `after()` 는 Next 16.2.7 `next/server` stable export 확인.
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.

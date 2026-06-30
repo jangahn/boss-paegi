@@ -7,7 +7,7 @@ import { PhotoCropper } from "@/components/PhotoCropper";
 import { UploadStage } from "@/components/generate/UploadStage";
 import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
-import { GeneratingProgress } from "@/components/generate/GeneratingProgress";
+import { GeneratingProgress, SavingProgress } from "@/components/generate/GeneratingProgress";
 import { RoleSelectStage } from "@/components/generate/RoleSelectStage";
 import { getMyProfile } from "@/lib/profile";
 import { setSentryGenStage, setSentryLastAction } from "@/lib/sentry-context";
@@ -195,7 +195,7 @@ function GeneratePageInner() {
       {stage === "pick" && (
         <PickStage results={results} onPick={handlePick} error={error} />
       )}
-      {stage === "saving" && <LoadingStage label="저장 중…" />}
+      {stage === "saving" && <SavingProgress />}
       {stage === "no_credits" && (
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-amber-500/40 bg-amber-500/5 p-10 text-center">
           <span className="text-3xl" aria-hidden>
