@@ -656,6 +656,13 @@ v0.66 (2026-06-29, 크레딧 변동 원장 — 생성 차감/환불 기록; **Mi
 - **충전(purchase)은 기록 안 함** — 이미 결제 내역(orders)에 보여 payment 라우트 무수정. credit_ledger/EVENT_META 는 purchase 지원(향후 통합 대비).
 - 검증: typecheck 0·build 0 + 실측(credit_ledger 부재 PGRST205 확인 → 로깅/조회 graceful skip). **⚠ Migration 0047 (`0047_credit_ledger.sql`)**: `credit_ledger` 신규(server-only RLS·additive). 대시보드 적용 후 신규 발생분부터 누적.
 
+v0.67 (2026-06-30, 무료 플랜 사용량 절감 — Vercel ISR write + Sentry replay; 마이그레이션 없음):
+- **배경(실측)**: Vercel 무료 ISR Writes 200k 중 ~75% 도달(100%=프로젝트 자동정지). 원인 = per-id ISR 페이지(`/share`·`/history`·`/doll` + OG ≈ **1,178개**, `revalidate=60`)를 **robots 가 크롤 허용**(noindex·follow) → GSC·네이버 등록 후 크롤러가 반복 fetch → 60초마다 재생성. (Supabase DB 17MB/500MB·스토리지 106MB/1GB, Sentry error 182·span 93k 는 전부 여유.)
+- **`app/robots.ts`**: `/share`·`/doll`·`/history` **크롤 차단**(noindex·sitemap 미등재라 색인 손실 0 — 크롤러발 ISR write 제거가 핵심).
+- **`revalidate` 60→480s**(share/doll/history): 서명 URL TTL 600 안쪽(120s 마진). 남는 실유저/소셜 트래픽분 ~8배 감소. takedown 등 변경은 기존 명시 `revalidatePath` 유지.
+- **Sentry `replaysSessionSampleRate` 0.2→0.1**(`instrumentation-client.ts`): 세션 리플레이가 월 147건으로 무료 ~50 초과 → 절반으로(에러 리플레이는 100% 유지).
+- 검증: typecheck 0·build 0.
+
 **⚠️ Migration 0045 (미디어 자산)** (`supabase/migrations/0045_media_config_domain.sql`): `app_settings` key CHECK + `admin_update_app_setting` RPC allowlist 에 `media_config` 추가(0040 패턴, CAS·감사 동일). **신규 public `site-assets` 스토리지 버킷**은 별도 생성(대시보드/Management API, 마이그 밖 — events 버킷과 동일). additive·무중단. **코드 배포 전 적용**.
 
 **⚠️ Migration 0044 (배너 지면별)** (`supabase/migrations/0044_events_banner_surfaces.sql`): `events`에 `banner_home/gallery/leaderboard_active` 3컬럼 + backfill(기존 `banner_active=true`→3지면 true) + 부분 인덱스 3 + `admin_save_event` **17-arg 오버로드**(3 배너 파라미터). **구 15-arg RPC·`banner_active` 컬럼은 보존**(롤아웃 윈도우 중 구코드 read/call 호환 — 페이지 read 무영향; 후속 정리 마이그에서 제거). additive·무중단. **코드 배포 전 적용**.
