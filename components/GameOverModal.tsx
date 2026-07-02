@@ -126,7 +126,7 @@ export function GameOverModal({
   }, [open]);
 
   // 점수 자동 제출(중복/0점 가드·클램프·trace 는 hook 내부)
-  const { scoreId, submitting, submitError, percentile, newBadges, collectedCount } =
+  const { scoreId, submitting, submitError, percentile, newBadges, collectedCount, reviewStatus } =
     useScoreSubmission({
       open,
       score,
@@ -166,6 +166,11 @@ export function GameOverModal({
   const mainWeapon = topWeapon(weaponCounts) ?? weapon;
   const reaction = bossReaction(score, scoreId ?? String(score), role, roleCfg);
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
+  // 어뷰징 의심(pending/voided) — 랭킹 미반영·공유 차단·뱃지 미노출·검토 안내.
+  const isPending = !!reviewStatus && reviewStatus !== "registered";
+  const pendingNotice = isPending
+    ? { notice: mk.share.pendingReviewNotice, warning: mk.share.pendingReviewWarning }
+    : null;
 
   // gesture 안에서 URL 즉시 공유(친구는 보통 수 초+ 뒤 열어 그때면 attach 완료).
   // 클립 업로드/카드 저장은 같은 탭의 백그라운드 — 실패해도 링크 공유는 이미 됨(불변 원칙).
@@ -242,14 +247,15 @@ export function GameOverModal({
           nickname={nickname}
           dollImageUrl={dollImageUrl}
           roleLabel={roleLabel}
-          persona={persona}
+          persona={isPending ? undefined : persona}
           percentile={percentile}
-          badges={earnedBadges}
-          newBadges={newBadges}
+          badges={isPending ? [] : earnedBadges}
+          newBadges={isPending ? [] : newBadges}
           collectedCount={collectedCount}
           badgeCatalog={badgeCatalog}
           submitting={submitting}
           submitError={submitError}
+          pending={pendingNotice}
         />
 
         {/* ── 하이라이트 클립 프리뷰 (녹화 성공 시) ───────── */}
@@ -271,13 +277,15 @@ export function GameOverModal({
 
         {/* ── CTA ────────────────────────────────────────── */}
         <div className="mt-4 flex flex-col gap-2.5">
-          <button
-            onClick={handleShare}
-            disabled={!scoreId}
-            className="rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-40"
-          >
-            {clipUrl ? mk.share.gameoverShareBtnHighlight : mk.share.gameoverShareBtn}
-          </button>
+          {!isPending && (
+            <button
+              onClick={handleShare}
+              disabled={!scoreId}
+              className="rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-40"
+            >
+              {clipUrl ? mk.share.gameoverShareBtnHighlight : mk.share.gameoverShareBtn}
+            </button>
+          )}
           <button
             onClick={onRestart}
             className="rounded-full border border-white/25 py-3 font-medium text-white transition hover:bg-white/10"
