@@ -214,6 +214,14 @@ boss-paegi/
 - **대시보드**(**별도 탭 `/admin/acquisition` "공유·유입"** — 게임 분석과 성격이 달라 분리, `lib/admin-acquisition.ts`·`analytics_rollups` 윈도우 합산 7/30일): **공유** = 게임오버 전환 퍼널(점수제출→공유 시도·무식별 근사) + 표면/대상/점수대/회원여부 분포. **유입** = 방문 현황(current) + source별 방문→플레이→가입 전환(first-touch) + 바이럴 루프(공유 N → viral 유입 M, 윈도우 근사·causal 아님). source top-N+기타, score_tier→`score_config` 라벨 매핑. metric별 dim 의미는 0049 마이그 주석·getter 와 일치.
 - **프라이버시**: 무식별·집계·무PII·persistent visitor id 없음. 봇은 클라 JS 캡처라 자연 필터. ⚠️ **개인정보처리방침에 "집계형 유입/이용 분석(referrer 도메인·UTM)" 수집 고지 추가 필요** — 배포 전 체크, 법률 문구 최종 확인.
 
+## 점수 어뷰징 방지 (Anti-Abuse)
+
+오토클리커/직접 API 제출로 만든 조작 점수가 공개면(리더보드·백분위·공유·OG·히스토리)에 노출되는 것을 차단. 설계 전체: `docs/anti-abuse-design.md`. (다단계 롤아웃 — 이 항목은 **PR1: 가시성 토대**.)
+
+- **가시성 SoT**(`supabase/migrations/0050_anti_abuse.sql`): `scores.review_status`(`registered`|`pending`|`cleared`|`voided`) 가 공개 노출의 단일 기준. 공개면은 `registered`·`cleared` 만 노출(`lib/score-visibility.ts` `isVisibleReviewStatus`/`SCORE_VISIBLE_STATUSES`). `get_leaderboard`·`get_score_percentile` RPC 에 `review_status in ('registered','cleared')` 필터, `lib/score-detail.ts`(공유/OG/history 상세, 기본 hidden 차단·`includeHidden` 옵트인)·공개 히스토리 목록에도 적용.
+- **리뷰/감사 테이블**(server-only, anon/auth revoke): `score_flags`(score_id PK·signals·evidence·abuse_score·rules_version·status, `set_updated_at_and_version` 트리거) + 전용 `integrity_actions_ledger`(score/member 조치 감사, meta 는 allowlist·PII 금지). `member_accounts.abuse_status`(`clean`|`flagged`|`banned`). `telemetry_sessions.interval_cv`(타격간격 CV, PR6).
+- **판정·제출 로직**(원자 RPC `submit_score_with_review`·서버 신호 S1~S10·cron 백스톱·어드민 `/admin/integrity`·클라 jitter/CV)은 후속 PR. 기존 오토클리커 조작 3건은 `voided` 처리(전수조사 2026-07-02).
+
 ## npm scripts
 
 ```bash

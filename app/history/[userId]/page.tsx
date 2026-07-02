@@ -6,6 +6,7 @@ import { Pagination } from "@/components/Pagination";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDuration, gradeFor, timeAgo, weaponLabel } from "@/lib/report";
 import { getScoreConfig } from "@/lib/config/getters";
+import { SCORE_VISIBLE_STATUSES } from "@/lib/score-visibility";
 
 const DEFAULT_AVATAR = "/avatars/default.png";
 const PAGE_SIZE = 10;
@@ -36,12 +37,14 @@ async function fetchGames(userId: string, page: number) {
   const admin = createAdminClient();
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
+  // 공개 히스토리 — visible(registered|cleared)만. pending/voided(어뷰징 의심·무효)는 공개 목록에서 제외(0050).
   const { data, count } = await admin
     .from("scores")
     .select("id, score, weapon, duration_ms, max_combo, created_at", {
       count: "exact",
     })
     .eq("owner_id", userId)
+    .in("review_status", SCORE_VISIBLE_STATUSES as unknown as string[])
     .order("created_at", { ascending: false })
     .range(from, to);
   return { rows: (data ?? []) as Row[], total: count ?? 0 };
