@@ -70,6 +70,8 @@ export type MemberInfo = {
   isAdmin: boolean;
   /** 탈퇴(soft-delete) 시각. null=활성. 있으면 어드민 재활성 대상(0037). */
   deletedAt: string | null;
+  /** 어뷰징 상태(0050): clean|flagged|banned. banned=공개 등록 차단. */
+  abuseStatus: string;
 };
 
 /** 탈퇴자 원본 이메일 검색 결과(스크럽돼 search_members 가 못 찾는 계정). */

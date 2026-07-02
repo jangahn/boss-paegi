@@ -48,7 +48,8 @@ type FlagJoinRow = {
 
 export async function getIntegrityQueue(
   state: IntegrityState,
-  page: number
+  page: number,
+  ownerId?: string | null
 ): Promise<IntegrityQueuePage> {
   const admin = createAdminClient();
   const from = (page - 1) * INTEGRITY_PAGE_SIZE;
@@ -60,6 +61,7 @@ export async function getIntegrityQueue(
       { count: "exact" }
     );
   if (state !== "all") q = q.eq("status", state);
+  if (ownerId) q = q.eq("scores.owner_id", ownerId); // 특정 유저 필터(?ownerId=)
   const { data, count } = await q
     .order("abuse_score", { ascending: false })
     .order("created_at", { ascending: false })

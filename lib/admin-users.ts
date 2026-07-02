@@ -31,6 +31,7 @@ type MemberRow = {
   member_since: string;
   email: string | null;
   is_admin: boolean;
+  abuse_status: string | null;
   profiles: Embed;
 };
 const toMemberInfo = (m: MemberRow): MemberInfo => ({
@@ -41,10 +42,11 @@ const toMemberInfo = (m: MemberRow): MemberInfo => ({
   memberSince: m.member_since,
   isAdmin: m.is_admin,
   deletedAt: emb(m.profiles)?.deleted_at ?? null,
+  abuseStatus: m.abuse_status ?? "clean",
 });
 
 const MEMBER_SELECT =
-  "user_id, gen_credits, member_since, email, is_admin, profiles(display_name, deleted_at)";
+  "user_id, gen_credits, member_since, email, is_admin, abuse_status, profiles(display_name, deleted_at)";
 
 /** 단일 회원 정보(UUID). 비회원/미존재면 null. */
 export async function getUserMemberInfo(userId: string): Promise<MemberInfo | null> {
@@ -118,6 +120,7 @@ export async function searchMembers(q: string): Promise<MemberInfo[]> {
     memberSince: r.member_since,
     isAdmin: r.is_admin,
     deletedAt: null, // search_members 는 활성 회원 검색 경로 — 탈퇴 상태는 상세에서 재조회.
+    abuseStatus: "clean", // 검색 결과엔 없음 — 정지 여부는 상세(getUserMemberInfo)에서 재조회.
   }));
 }
 
@@ -132,7 +135,7 @@ export async function listMembers(page = 1): Promise<Paged<MemberInfo>> {
   const { data, count, error } = await admin
     .from("member_accounts")
     .select(
-      "user_id, gen_credits, member_since, email, is_admin, profiles!inner(display_name, deleted_at)",
+      "user_id, gen_credits, member_since, email, is_admin, abuse_status, profiles!inner(display_name, deleted_at)",
       { count: "exact" }
     )
     .is("profiles.deleted_at", null)
