@@ -27,6 +27,8 @@ export type GameplayStats = {
   firstHitMs: number | null;
   /** 플레이 중 들른 배경 key 목록 */
   bgVisits: string[];
+  /** 타격 간격 변동계수(CV=σ/μ) — 어뷰징 jitter 신호(S5). 봇≈0. 표본부족/구데이터면 null/undefined. */
+  intervalCV?: number | null;
 };
 
 /** 원시 스냅샷(스토어 + 페이지) → GameplayStats. categoryCounts 는 weaponCounts 에서 파생. */
@@ -40,6 +42,7 @@ export function buildGameplayStats(input: {
   ultimateCount: number;
   firstHitMs: number | null;
   bgVisits: string[];
+  intervalCV?: number | null;
 }): GameplayStats {
   const categoryCounts: Record<string, number> = {};
   for (const [k, n] of Object.entries(input.weaponCounts)) {
@@ -58,6 +61,7 @@ export function buildGameplayStats(input: {
     ultimateCount: input.ultimateCount,
     firstHitMs: input.firstHitMs,
     bgVisits: input.bgVisits,
+    intervalCV: input.intervalCV ?? null,
   };
 }
 

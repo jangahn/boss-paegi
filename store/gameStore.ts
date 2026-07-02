@@ -25,6 +25,22 @@ export function comboMultiplier(combo: number): number {
   return Math.min(MAX_COMBO_MULTIPLIER, 1 + Math.floor(combo / 5) * 0.5);
 }
 
+/**
+ * 타격 간격 변동계수(CV=σ/μ). 어뷰징 jitter 신호(S5/C3) — 봇/매크로는 거의 등간격이라 CV≈0.
+ * 표본 부족(<20)이면 null(신뢰 불가). 러닝 통계에서 지연 계산(핫패스엔 누적만).
+ */
+export function selectIntervalCV(s: {
+  ivN: number;
+  ivSum: number;
+  ivSumSq: number;
+}): number | null {
+  if (s.ivN < 20) return null;
+  const mean = s.ivSum / s.ivN;
+  if (mean <= 0) return null;
+  const variance = Math.max(0, s.ivSumSq / s.ivN - mean * mean);
+  return Math.sqrt(variance) / mean;
+}
+
 type GameState = {
   score: number;
   combo: number;
@@ -46,6 +62,10 @@ type GameState = {
   /** 게이지 풀 충전 — 궁극기 발동 가능 */
   ultReady: boolean;
   lastHitAt: number;
+  /** 타격 간격 러닝 통계(어뷰징 jitter/CV 산출용, charge 연속타격만). CV=σ/μ 는 selectIntervalCV 로 지연계산. */
+  ivN: number;
+  ivSum: number;
+  ivSumSq: number;
   isPlaying: boolean;
   startedAt: number;
   endedAt: number | null;
@@ -104,6 +124,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   ultProgress: 0,
   ultReady: false,
   lastHitAt: 0,
+  ivN: 0,
+  ivSum: 0,
+  ivSumSq: 0,
   isPlaying: false,
   startedAt: 0,
   endedAt: null,
@@ -138,7 +161,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastChargeWeaponKey,
       lastSwitchBonusAt,
       lastFreshWeaponBonus,
+      ivN,
+      ivSum,
+      ivSumSq,
     } = get();
+
+    // 타격 간격 CV(어뷰징 jitter) — 연속 간격(idle/decay 제외)만 러닝 누적. 봇=거의 등간격(CV≈0).
+    const iv = lastHitAt > 0 ? now - lastHitAt : -1;
+    const ivHit = iv > 0 && iv < COMBO_DECAY_MS;
 
     // 1~4: fresh/switch 판정은 전부 *이전 상태* 기준 (weaponCounts 증가·lastChargeWeaponKey 변경 전).
     const prevCount = weaponKey ? weaponCounts[weaponKey] ?? 0 : 0;
@@ -204,6 +234,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ultProgress: nextProgress,
       ultReady: nextReady,
       lastHitAt: now,
+      ivN: ivHit ? ivN + 1 : ivN,
+      ivSum: ivHit ? ivSum + iv : ivSum,
+      ivSumSq: ivHit ? ivSumSq + iv * iv : ivSumSq,
       weaponWindow: nextWindow,
       varietyMult: nextVarietyMult,
       lastChargeWeaponKey: weaponKey ?? lastChargeWeaponKey,
@@ -249,6 +282,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ultProgress: 0,
       ultReady: false,
       lastHitAt: 0,
+    ivN: 0,
+    ivSum: 0,
+    ivSumSq: 0,
       isPlaying: true,
       startedAt: performance.now(),
       endedAt: null,
@@ -275,6 +311,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ultProgress: 0,
       ultReady: false,
       lastHitAt: 0,
+    ivN: 0,
+    ivSum: 0,
+    ivSumSq: 0,
       isPlaying: false,
       startedAt: 0,
       endedAt: null,

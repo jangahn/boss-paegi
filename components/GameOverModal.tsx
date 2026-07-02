@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { topWeapon, useGameStore } from "@/store/gameStore";
+import { topWeapon, useGameStore, selectIntervalCV } from "@/store/gameStore";
 import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/share";
 import { bossReaction, gradeFor, reportNo, scoreTier } from "@/lib/report";
 import { trackShare } from "@/lib/acquisition";
@@ -72,6 +72,8 @@ export function GameOverModal({
   const firstHitMs = useGameStore((s) => s.firstHitMs);
   const startedAt = useGameStore((s) => s.startedAt);
   const endedAt = useGameStore((s) => s.endedAt);
+  // 타격 간격 CV(어뷰징 jitter, S5) — 러닝 통계에서 지연 계산. 표본부족이면 null.
+  const intervalCV = useGameStore((s) => selectIntervalCV(s));
 
   // 플레이 해석 스탯 + 페르소나 — 룰베이스 즉시 계산(서버 대기 0). 저장도 같은 객체 제출.
   const gameplayStats = useMemo(
@@ -86,6 +88,7 @@ export function GameOverModal({
         ultimateCount,
         firstHitMs,
         bgVisits: bgVisits ?? [],
+        intervalCV,
       }),
     [
       hitCount,
@@ -98,6 +101,7 @@ export function GameOverModal({
       ultimateCount,
       firstHitMs,
       bgVisits,
+      intervalCV,
     ]
   );
   const persona = useMemo(() => matchPersona(gameplayStats), [gameplayStats]);

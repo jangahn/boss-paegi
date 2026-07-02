@@ -35,6 +35,10 @@ export const SCORE_PER_SEC_MAX = 1_400;
 export const S2_MIN_HITS = 20;
 /** S2 이론상한 대비 허용 배수. */
 export const S2_MARGIN = 1.15;
+/** S5 타격간격 CV 하한 — 이 미만이면 거의 등간격(봇/매크로). 인간은 편차가 커 훨씬 높음.
+ *  ⚠ 클라 CV 계측이 실플레이로 아직 보정 안 됨 → 오탐(정상 유저 숨김) 방지 위해 **보수적 0.08**
+ *  (확실한 봇 영역)으로 시작. 어드민 interval_cv 분포로 인간 CV 확인 후 0.15 까지 상향 검토. */
+export const INTERVAL_CV_MIN = 0.08;
 
 export type ReviewDecision = "registered" | "pending" | "voided";
 
@@ -119,6 +123,11 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (scorePerSec > SCORE_PER_SEC_MAX)
     signals.push({ id: "S3_SCORE_PER_SEC", value: round1(scorePerSec), threshold: SCORE_PER_SEC_MAX, source: "submit" });
 
+  // ── S5: 타격 간격 규칙성(CV) — 봇/매크로는 거의 등간격(CV≈0). 표본 충분(hitCount≥100)일 때만. ──
+  const intervalCV = stats?.intervalCV;
+  if (typeof intervalCV === "number" && (hitCount ?? 0) >= 100 && intervalCV < INTERVAL_CV_MIN)
+    signals.push({ id: "S5_INTERVAL_CV", value: round2(intervalCV), threshold: INTERVAL_CV_MIN, source: "submit" });
+
   // ── S6: notable 점수인데 텔레메트리 링크 없음 ──
   if (score >= NOTABLE_SCORE && !telemetrySessionId)
     signals.push({ id: "S6_NOTABLE_NO_TELEMETRY", value: score, threshold: NOTABLE_SCORE, source: "submit" });
@@ -172,7 +181,7 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
     hitCount,
     scorePerSec: round1(scorePerSec),
     hitRate: hitsPerSec != null ? round1(hitsPerSec) : null,
-    intervalCV: null, // PR6
+    intervalCV: typeof intervalCV === "number" ? round2(intervalCV) : null,
     weaponCounts: stats?.weaponCounts ?? null,
     weaponScores: stats?.weaponScores ?? null,
     ultScore: stats?.ultScore ?? null,

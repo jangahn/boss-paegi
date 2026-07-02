@@ -139,6 +139,10 @@ export async function POST(req: NextRequest) {
           : 0,
       firstHitMs: typeof raw.firstHitMs === "number" ? raw.firstHitMs : null,
       bgVisits: Array.isArray(raw.bgVisits) ? raw.bgVisits.slice(0, 12) : [],
+      intervalCV:
+        typeof raw.intervalCV === "number" && Number.isFinite(raw.intervalCV)
+          ? raw.intervalCV
+          : null,
     });
   }
 
@@ -223,6 +227,16 @@ export async function POST(req: NextRequest) {
     abuseScore: decision.abuseScore,
     signals: decision.signals.map((s) => s.id),
   });
+
+  // 타격 간격 CV 를 연결 텔레메트리에 persist(어드민 지표·S5 evidence 는 이미 반영). best-effort.
+  //   (ingest RPC 재정의 회피 — 값은 gameplayStats 와 동일 클라 계측. C3 는 S5 와 동일소스라 생략.)
+  if (telemetrySessionId && canonicalStats && typeof canonicalStats.intervalCV === "number") {
+    await admin
+      .from("telemetry_sessions")
+      .update({ interval_cv: canonicalStats.intervalCV })
+      .eq("id", telemetrySessionId)
+      .then(undefined, () => {});
+  }
 
   // 중복 제출(본인) — graceful. 부가 리포트 스킵.
   if (result.duplicate) {
