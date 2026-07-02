@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signedHighlightUrl } from "@/lib/storage";
 import type { GameplayStats } from "@/lib/stats";
+import { isVisibleReviewStatus, type ReviewStatus } from "@/lib/score-visibility";
 
 /**
  * 한 게임 결과 상세 — `/share/[scoreId]` 와 `/history/[userId]/[scoreId]` 공용.
@@ -21,6 +22,8 @@ export type Score = {
   duration_ms: number;
   max_combo: number | null;
   created_at: string;
+  /** 공개 가시성 — 어뷰징 판정(0050). registered|cleared 만 공개면 노출. */
+  review_status: ReviewStatus;
   profiles: { display_name: string } | null;
   dolls: { id: string; image_url: string | null; role: string | null } | null;
   highlight_clip_path: string | null;
@@ -102,18 +105,31 @@ function flattenScore(row: Record<string, unknown>): Score {
   } as unknown as Score;
 }
 
-/** scoreId → 상세 Score (join + 구 스키마 fallback). null = 없음. */
-export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
+/**
+ * scoreId → 상세 Score (join + 구 스키마 fallback). null = 없음/비공개.
+ *
+ * 기본은 **공개면 안전**: review_status 가 registered|cleared 가 아니면(pending/voided)
+ * null 을 반환한다(공유·OG·히스토리 등 공개 경로에서 조작/검토중 점수 노출 차단, 0050).
+ * 어드민/소유자 컨텍스트는 `opts.includeHidden` 로 숨김 행까지 조회한다.
+ */
+export async function fetchScoreDetail(
+  scoreId: string,
+  opts?: { includeHidden?: boolean }
+): Promise<Score | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("scores")
     .select(
-      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, profiles(display_name), dolls(id, image_url, role, deleted_at), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
+      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, review_status, profiles(display_name), dolls(id, image_url, role, deleted_at), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
     )
     .eq("id", scoreId)
     .single();
-  if (data) return flattenScore(data as Record<string, unknown>);
-  // 구 스키마(migration 미적용) fallback — highlight/stats 없이.
+  if (data) {
+    const s = flattenScore(data as Record<string, unknown>);
+    if (!opts?.includeHidden && !isVisibleReviewStatus(s.review_status)) return null;
+    return s;
+  }
+  // 구 스키마(migration 미적용) fallback — highlight/stats/review_status 없이(기존 행=registered).
   const { data: legacy } = await admin
     .from("scores")
     .select(
@@ -125,6 +141,7 @@ export async function fetchScoreDetail(scoreId: string): Promise<Score | null> {
     ? ({
         ...legacy,
         max_combo: null,
+        review_status: "registered",
         gameplay_stats: null,
         badge_ids: null,
         percentile: null,

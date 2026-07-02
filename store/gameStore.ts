@@ -10,12 +10,13 @@ import {
   SWITCH_ULT_COOLDOWN_MS,
   SWITCH_COMBO_GRACE_MS,
   JUGGLE_INITIAL_STATE,
+  ULT_HITS,
   type FreshWeaponBonus,
 } from "@/lib/game-tuning";
 
 const COMBO_DECAY_MS = 1500;
-/** 궁극기 게이지 풀 충전에 필요한 명중 횟수 */
-export const ULT_HITS = 100;
+/** 궁극기 게이지 풀 충전에 필요한 명중 횟수 — 단일 출처는 game-tuning. */
+export { ULT_HITS };
 /** score timeline ring buffer 상한 (100ms 샘플 → 60s≈600) */
 const SCORE_SAMPLE_CAP = 600;
 
