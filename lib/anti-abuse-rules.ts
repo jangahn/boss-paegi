@@ -132,14 +132,12 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (score >= NOTABLE_SCORE && !telemetrySessionId)
     signals.push({ id: "S6_NOTABLE_NO_TELEMETRY", value: score, threshold: NOTABLE_SCORE, source: "submit" });
 
-  // ── S7: duration plausibility(magnitude + 텔레 duration 즉시 대조) ──
+  // ── S7: duration plausibility(magnitude만) ──
+  // ⚠ 텔레메트리 duration 즉시 대조는 하지 않는다: 텔레메트리는 delta 스트리밍이라 점수 제출 시점엔
+  //   미확정(부분값)이라 정상 플레이도 큰 "불일치"로 오탐됨(실측: 손 게임 dur 17.5s vs 미확정 텔레 10s).
+  //   duration/score 정합은 텔레메트리 확정 후 cron(C1b, integrity_scan_recent)만 담당(설계 원안).
   if (durationMs > MAX_REASONABLE_DURATION_MS)
     signals.push({ id: "S7_DURATION_LONG", value: durationMs, threshold: MAX_REASONABLE_DURATION_MS, source: "submit" });
-  if (telemetry?.durationMs && telemetry.durationMs > 0) {
-    const diff = Math.abs(durationMs - telemetry.durationMs) / telemetry.durationMs;
-    if (diff > 0.2)
-      signals.push({ id: "S7_DURATION_MISMATCH", value: round2(diff), threshold: 0.2, source: "submit" });
-  }
 
   // ── S8: 연결 텔레메트리가 이미 suspicious(단조 → 오토클리커는 제출시 true) ──
   if (telemetry?.suspicious)
