@@ -106,6 +106,11 @@ export default async function AdminUserDetailPage({
                 탈퇴함 · {fmtKst(member.deletedAt)}
               </span>
             )}
+            {member.abuseStatus === "banned" && (
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
+                정지된 유저
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
             <span>{member.email ?? "이메일 없음"}</span>

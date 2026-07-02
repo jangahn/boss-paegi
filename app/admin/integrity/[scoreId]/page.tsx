@@ -36,21 +36,37 @@ export default async function AdminIntegrityDetailPage({
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-6">
-      <Link href="/admin/integrity" className="text-sm text-zinc-400 underline-offset-4 hover:underline">
+      <Link href="/admin/integrity" className="text-sm text-sky-600 underline-offset-4 hover:underline">
         ← 리뷰 큐
       </Link>
 
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold tabular-nums">{d.score.toLocaleString()}점</h1>
-        <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">{STATUS_LABEL[d.reviewStatus] ?? d.reviewStatus}</span>
+        <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-xs text-zinc-400">
+          {STATUS_LABEL[d.reviewStatus] ?? d.reviewStatus}
+        </span>
         {d.abuseStatus === "banned" && (
           <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">정지된 유저</span>
         )}
-        {d.flag && <span className="text-sm text-amber-400">위험도 {d.flag.abuseScore}</span>}
+        {d.flag && <span className="text-sm font-semibold text-red-500">위험도 {d.flag.abuseScore}</span>}
       </div>
-      <p className="mt-1 text-sm text-zinc-400">
-        {d.ownerName} {d.email ? `· ${d.email}` : ""} · {new Date(d.createdAt).toLocaleString("ko-KR")}
-      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500">
+        <Link
+          href={`/admin/users/${d.ownerId}`}
+          className="text-sky-600 underline-offset-2 hover:underline"
+          title="회원 상세로 이동"
+        >
+          {d.ownerName} {d.email ? `· ${d.email}` : ""} →
+        </Link>
+        <Link
+          href={`/admin/integrity?ownerId=${d.ownerId}`}
+          className="rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] transition hover:bg-foreground/10"
+          title="이 유저의 다른 flag만 필터"
+        >
+          이 유저 flag 모아보기
+        </Link>
+        <span className="text-[11px] text-zinc-400">· {new Date(d.createdAt).toLocaleString("ko-KR")}</span>
+      </div>
 
       {/* 종합 지표 */}
       <Section title="점수 지표">
@@ -69,18 +85,18 @@ export default async function AdminIntegrityDetailPage({
         <Section title="발화 신호">
           <ul className="space-y-1 text-sm">
             {d.flag.signals.map((s, i) => (
-              <li key={i} className="flex flex-wrap gap-2 text-zinc-300">
-                <span className="font-mono text-amber-400">{s.id}</span>
+              <li key={i} className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-red-500">{s.id}</span>
                 {s.value != null && (
-                  <span className="text-zinc-400">
+                  <span className="text-zinc-500">
                     값 {s.value}{s.threshold != null ? ` / 임계 ${s.threshold}` : ""}
                   </span>
                 )}
-                <span className="text-[11px] text-zinc-500">({s.source})</span>
+                <span className="text-[11px] text-zinc-400">({s.source})</span>
               </li>
             ))}
           </ul>
-          {d.flag.reason && <p className="mt-2 text-xs text-zinc-400">사유: {d.flag.reason}</p>}
+          {d.flag.reason && <p className="mt-2 text-xs text-zinc-500">사유: {d.flag.reason}</p>}
         </Section>
       )}
 
@@ -93,7 +109,7 @@ export default async function AdminIntegrityDetailPage({
               <Field label="tap 비율" value={t.tapShare != null ? t.tapShare.toFixed(2) : "—"} />
               <Field label="max touch" value={t.maxTouch?.toString() ?? "—"} />
               <Field label="무기 종류" value={t.distinctWeapons?.toString() ?? "—"} />
-              <Field label="간격 CV" value={t.intervalCv != null ? t.intervalCv.toFixed(3) : "—(PR6)"} warn={t.intervalCv != null && t.intervalCv < 0.15} />
+              <Field label="간격 CV" value={t.intervalCv != null ? t.intervalCv.toFixed(3) : "—"} warn={t.intervalCv != null && t.intervalCv < 0.08} />
               <Field label="기기/주사율" value={`${t.deviceClass ?? "—"} / ${t.refreshHz ?? "—"}Hz`} />
               <Field
                 label="텔레↔점수 정합"
@@ -114,10 +130,10 @@ export default async function AdminIntegrityDetailPage({
         <Section title="이 유저의 다른 점수">
           <ul className="space-y-1 text-sm">
             {d.otherScores.map((o) => (
-              <li key={o.id} className="flex gap-3 text-zinc-300">
-                <span className="tabular-nums">{o.score.toLocaleString()}점</span>
+              <li key={o.id} className="flex items-center gap-3">
+                <span className="tabular-nums text-foreground">{o.score.toLocaleString()}점</span>
                 <span className="text-xs text-zinc-500">{STATUS_LABEL[o.reviewStatus] ?? o.reviewStatus}</span>
-                <span className="text-[11px] text-zinc-600">{new Date(o.createdAt).toLocaleDateString("ko-KR")}</span>
+                <span className="text-[11px] text-zinc-400">{new Date(o.createdAt).toLocaleDateString("ko-KR")}</span>
               </li>
             ))}
           </ul>
@@ -155,13 +171,15 @@ function ApmSparkline({ data }: { data: number[] }) {
   const ceilingY = y(HUMAN_APM_CEILING).toFixed(1);
   return (
     <div className="mt-3">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-white/10 bg-black/30">
-        {/* 인간 지속 apm 상한 참조선 */}
-        <line x1={pad} y1={ceilingY} x2={W - pad} y2={ceilingY} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth="1" opacity="0.7" />
-        <text x={pad + 2} y={Number(ceilingY) - 3} fill="#f59e0b" fontSize="10">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-foreground/10 bg-foreground/5">
+        <line
+          x1={pad} y1={ceilingY} x2={W - pad} y2={ceilingY}
+          className="stroke-amber-500" strokeDasharray="4 3" strokeWidth="1" opacity="0.7"
+        />
+        <text x={pad + 2} y={Number(ceilingY) - 3} className="fill-amber-500" fontSize="10">
           인간 지속 상한 ~{HUMAN_APM_CEILING}
         </text>
-        <polyline points={pts} fill="none" stroke="#ef4444" strokeWidth="1.5" />
+        <polyline points={pts} fill="none" className="stroke-red-500" strokeWidth="1.5" />
       </svg>
       <p className="mt-1 text-[11px] text-zinc-500">
         버킷별 APM. 봇/매크로는 천장에 고정된 평평한 직선, 사람은 들쭉날쭉하며 대부분 주황 참조선 아래.
@@ -172,8 +190,8 @@ function ApmSparkline({ data }: { data: number[] }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <h2 className="mb-2 text-sm font-semibold text-zinc-200">{title}</h2>
+    <section className="mt-5 rounded-2xl border border-foreground/10 ui-surface p-4">
+      <h2 className="mb-2 text-sm font-semibold text-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -185,7 +203,7 @@ function Field({ label, value, warn }: { label: string; value: string; warn?: bo
   return (
     <div>
       <div className="text-[11px] text-zinc-500">{label}</div>
-      <div className={`text-sm ${warn ? "font-bold text-red-400" : "text-zinc-200"}`}>{value}</div>
+      <div className={`text-sm ${warn ? "font-bold text-red-500" : "text-foreground"}`}>{value}</div>
     </div>
   );
 }
