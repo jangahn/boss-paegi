@@ -8,7 +8,7 @@ import {
   type IntegrityState,
 } from "@/lib/admin-integrity";
 import { Pagination } from "@/components/Pagination";
-import { firstParam, shortId } from "@/lib/admin-format";
+import { firstParam, shortId, fmtKst } from "@/lib/admin-format";
 
 // 실시간 운영 큐 — 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -19,14 +19,6 @@ const STATE_META: Record<string, { label: string; cls: string }> = {
   cleared: { label: "정상 확인", cls: "bg-emerald-500/15 text-emerald-600" },
   voided: { label: "무효", cls: "bg-red-500/15 text-red-500" },
 };
-
-function timeShort(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
-}
 
 export default async function AdminIntegrityPage({
   searchParams,
@@ -119,7 +111,7 @@ export default async function AdminIntegrityPage({
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.cls}`}>
                         {st.label}
                       </span>
-                      <span className="text-[11px] text-zinc-400">· {timeShort(r.scoreCreatedAt)}</span>
+                      <span className="text-[11px] text-zinc-400">· {fmtKst(r.scoreCreatedAt)}</span>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       <Link

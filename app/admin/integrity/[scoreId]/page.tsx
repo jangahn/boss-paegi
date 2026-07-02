@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth-server";
 import { getIntegrityDetail } from "@/lib/admin-integrity";
 import { IntegrityActions } from "@/components/admin/IntegrityActions";
 import { formatDuration, weaponLabel } from "@/lib/report";
+import { fmtKst } from "@/lib/admin-format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -65,7 +66,7 @@ export default async function AdminIntegrityDetailPage({
         >
           이 유저 flag 모아보기
         </Link>
-        <span className="text-[11px] text-zinc-400">· {new Date(d.createdAt).toLocaleString("ko-KR")}</span>
+        <span className="text-[11px] text-zinc-400">· {fmtKst(d.createdAt)}</span>
       </div>
 
       {/* 종합 지표 */}
@@ -133,7 +134,7 @@ export default async function AdminIntegrityDetailPage({
               <li key={o.id} className="flex items-center gap-3">
                 <span className="tabular-nums text-foreground">{o.score.toLocaleString()}점</span>
                 <span className="text-xs text-zinc-500">{STATUS_LABEL[o.reviewStatus] ?? o.reviewStatus}</span>
-                <span className="text-[11px] text-zinc-400">{new Date(o.createdAt).toLocaleDateString("ko-KR")}</span>
+                <span className="text-[11px] text-zinc-400">{fmtKst(o.createdAt)}</span>
               </li>
             ))}
           </ul>
