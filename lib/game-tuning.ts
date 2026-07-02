@@ -18,6 +18,8 @@ export const VARIETY_FULL_AT = 5;
 export const VARIETY_CAP = 1.0;
 /** 세션 첫 사용 무기의 일회 플랫 보너스(콤보·다양성 배율 미적용). */
 export const FRESH_WEAPON_BONUS = 300;
+/** 궁극 게이지 완충에 필요한 명중 수(1/ULT_HITS 씩 누적). 어뷰징 판정(S10)도 참조. */
+export const ULT_HITS = 100;
 /** 전환 시 궁극 게이지(0~1 스케일) 가속분. */
 export const SWITCH_ULT_BONUS_RATIO = 0.1;
 /** 전환 궁극보너스 쿨다운 — 2무기 왕복 과충전 방지. */
