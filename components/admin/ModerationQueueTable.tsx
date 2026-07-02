@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
-import { shortId } from "@/lib/admin-format";
+import { shortId, fmtKst } from "@/lib/admin-format";
 import type { ModerationRow, ModState, ModReport } from "@/lib/admin-moderation";
 
 const REASON_KO: Record<string, string> = {
@@ -67,13 +67,6 @@ const ACTIONS_BY_STATE: Record<ModState, ActionMode[]> = {
   dismissed: ["hide"],
 };
 
-function timeShort(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
-}
 
 export function ModerationQueueTable({ rows }: { rows: ModerationRow[] }) {
   return (
@@ -167,7 +160,7 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
               </button>
             )}
             {row.latest_report_at && (
-              <span className="text-[11px] text-zinc-400">· {timeShort(row.latest_report_at)}</span>
+              <span className="text-[11px] text-zinc-400">· {fmtKst(row.latest_report_at)}</span>
             )}
           </div>
 
@@ -300,7 +293,7 @@ function ReportDetail({ rep }: { rep: ModReport }) {
           {REASON_KO[rep.reason] ?? rep.reason}
         </span>
         <span className="text-zinc-400">{stLabel}</span>
-        <span className="text-zinc-400">· {timeShort(rep.created_at)}</span>
+        <span className="text-zinc-400">· {fmtKst(rep.created_at)}</span>
         {rep.contact && <span className="text-zinc-400">· 연락처: {rep.contact}</span>}
       </div>
       {rep.detail && (

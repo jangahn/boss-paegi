@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { FadeImg } from "@/components/FadeImg";
-import { shortId } from "@/lib/admin-format";
+import { shortId, fmtKst } from "@/lib/admin-format";
 import type { AdminGeneration, AdminGenStatus } from "@/lib/admin-generations";
 
 const STATUS_META: Record<AdminGenStatus, { label: string; cls: string; icon: string }> = {
@@ -30,13 +30,6 @@ const FAIL_KO: Record<string, string> = {
   expired: "후보 만료",
 };
 
-function timeShort(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
-}
 
 export function GenerationsTable({ rows }: { rows: AdminGeneration[] }) {
   return (
@@ -72,7 +65,7 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
               {st.label}
             </span>
             <span className={`text-[11px] ${credit.cls}`}>{credit.label}</span>
-            <span className="text-[11px] text-zinc-400">· {timeShort(row.createdAt)}</span>
+            <span className="text-[11px] text-zinc-400">· {fmtKst(row.createdAt)}</span>
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -172,8 +165,8 @@ function GenDetail({ row }: { row: AdminGeneration }) {
         {row.pickedDollId && (
           <span>캐릭터 id: <span className="font-mono">{row.pickedDollId}</span></span>
         )}
-        <span>생성: {timeShort(row.createdAt)}</span>
-        {row.updatedAt && <span>갱신: {timeShort(row.updatedAt)}</span>}
+        <span>생성: {fmtKst(row.createdAt)}</span>
+        {row.updatedAt && <span>갱신: {fmtKst(row.updatedAt)}</span>}
       </div>
     </div>
   );
