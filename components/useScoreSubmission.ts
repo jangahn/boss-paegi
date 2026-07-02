@@ -40,6 +40,8 @@ export function useScoreSubmission(opts: {
   newBadges: string[];
   /** 누적 수집 뱃지 수 */
   collectedCount: number;
+  /** 서버 판정 — registered(정상 반영) | pending | voided. null=응답 전. 어뷰징 의심이면 pending/voided. */
+  reviewStatus: string | null;
 } {
   const {
     open,
@@ -59,6 +61,7 @@ export function useScoreSubmission(opts: {
   const [percentile, setPercentile] = useState<number | null>(null);
   const [newBadges, setNewBadges] = useState<string[]>([]);
   const [collectedCount, setCollectedCount] = useState(0);
+  const [reviewStatus, setReviewStatus] = useState<string | null>(null);
 
   // 모달 열리는 순간 점수 자동 등록
   useEffect(() => {
@@ -107,6 +110,7 @@ export function useScoreSubmission(opts: {
             const data = await r.json();
             if (!r.ok) throw new Error(data.error ?? "submit_failed");
             setScoreId(data.scoreId);
+            if (typeof data.reviewStatus === "string") setReviewStatus(data.reviewStatus);
             if (trackFirstTouchPlay) markPlayConversionSent();
             // 부가 리포트(best-effort) — 없으면 기본값 유지
             if (typeof data.percentile === "number") setPercentile(data.percentile);
@@ -126,5 +130,5 @@ export function useScoreSubmission(opts: {
     // gameplayStats 는 제출 1회 가드(scoreId/submitting) 안에서만 쓰이므로 identity 변동 무해.
   }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats, endReason]);
 
-  return { scoreId, submitting, submitError, percentile, newBadges, collectedCount };
+  return { scoreId, submitting, submitError, percentile, newBadges, collectedCount, reviewStatus };
 }

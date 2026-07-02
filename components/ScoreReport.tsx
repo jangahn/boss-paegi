@@ -30,6 +30,7 @@ export function ScoreReport({
   badgeCatalog,
   submitting,
   submitError,
+  pending,
 }: {
   docNo: string;
   score: number;
@@ -56,6 +57,8 @@ export function ScoreReport({
   badgeCatalog: BadgeCatalog;
   submitting: boolean;
   submitError: string | null;
+  /** 어뷰징 의심으로 운영자 검토 대기(pending/voided) — 안내+경고 문구. null=정상. */
+  pending?: { notice: string; warning: string } | null;
 }) {
   return (
     <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
@@ -160,6 +163,15 @@ export function ScoreReport({
         <p className="mt-3 rounded-md bg-red-500/10 p-2 text-xs text-red-500">
           점수 등록 실패: {submitError}
         </p>
+      )}
+      {pending && !submitting && (
+        <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-center">
+          <p className="text-xs font-semibold text-amber-700">⏳ 랭킹 검토 중</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{pending.notice}</p>
+          <p className="mt-1 text-[11px] font-medium leading-relaxed text-red-600">
+            {pending.warning}
+          </p>
+        </div>
       )}
     </div>
   );

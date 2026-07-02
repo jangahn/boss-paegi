@@ -71,6 +71,13 @@ export const marketingCopySchema = z.object({
     historyShareBtnHighlight: tpl(30).default("🔥 하이라이트 공유"),
     historyShareText: tplNoUrl(60).default("{제작자}님 {호칭} {점수}점 패기 결과 🥊"),
     scoreRankLink: tpl(40).default("이 점수, 랭킹 몇 등인지 보기"),
+    // 어뷰징 의심 점수 — 운영자 검토 대기 안내 + 정지 경고(발행행 무중단 .default()).
+    pendingReviewNotice: tpl(160).default(
+      "비정상 플레이 패턴이 감지되어 운영자 확인 후 랭킹에 반영됩니다."
+    ),
+    pendingReviewWarning: tpl(160).default(
+      "매크로 등 부정한 방법으로 점수를 조작하면 계정이 정지될 수 있습니다."
+    ),
   }),
 });
 
@@ -114,6 +121,8 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     historyShareBtnHighlight: "🔥 하이라이트 공유",
     historyShareText: "{제작자}님 {호칭} {점수}점 패기 결과 🥊",
     scoreRankLink: "이 점수, 랭킹 몇 등인지 보기",
+    pendingReviewNotice: "비정상 플레이 패턴이 감지되어 운영자 확인 후 랭킹에 반영됩니다.",
+    pendingReviewWarning: "매크로 등 부정한 방법으로 점수를 조작하면 계정이 정지될 수 있습니다.",
   },
 };
 
