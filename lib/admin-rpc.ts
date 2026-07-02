@@ -25,6 +25,8 @@ const KNOWN_ADMIN_ERRORS = [
   "not_withdrawn",
   "email_conflict",
   "identity_email_missing",
+  // 무결성 조치(0052)
+  "score_not_found",
 ];
 
 /** RPC 에러 → 안전한 코드(화이트리스트 매칭, 아니면 action_failed). */
