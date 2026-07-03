@@ -1,7 +1,7 @@
 # 점수 어뷰징 방지 설계 (Anti-Abuse Design)
 
-> 상태: **설계 초안 (미구현)** · 작성: 2026-07-02 · 근거: 프로덕션 전수조사
-> 이 문서는 구현 전 합의용 스펙이다. 구현은 하단 "구현 계획"의 PR 단위로 진행한다.
+> 상태: **구현 완료**(PR1~6, 2026-07-02) + **S2 임계 교정 v2**(2026-07-03) · 작성: 2026-07-02 · 근거: 프로덕션 전수조사
+> 구현은 하단 "구현 계획"의 PR 단위로 진행했다. 신호별 최신 임계의 SoT 는 `lib/anti-abuse-rules.ts`.
 
 ## 1. 배경 — 무엇이 일어났나
 
@@ -62,11 +62,11 @@ APM은 세션이 길수록 상한이 급락한다(짧은 세션은 버스트로 
 | ID | 신호 | 플래그 조건 | 근거 |
 |---|---|---|---|
 | S1 | **지속 타격속도** `hitCount/durationSec` | ≥60초에서 > 18/s, 또는 임의 길이에서 > 25/s | 인간 지속 최대 ~15/s. REC2=23/s → 잡힘. REC1=57/s → 잡힘. |
-| S2 | **무기별 점수 타당성** | 어떤 무기 w에서 `weaponScores[w]/weaponCounts[w] > strength(w)×8` | 타당 상한 = strength × 콤보캡4 × 다양성캡2. "적은 타격·거대 점수" 위조 차단. |
+| S2 | **무기별 점수 타당성** | 어떤 무기 w(≥20타)에서 `(weaponScores[w]−300)/weaponCounts[w] > 실효maxBase(w)×8×1.05` | 타당 상한 = **실효 max base**(속도 배율 상한 반영: swipe ×2.0·throw ×2.2·grab fling strength+30, 고정무기는 strength) × 콤보캡4 × 다양성캡2. fresh 300 은 무기당 1회 weaponScores 귀속이라 정확 차감. "적은 타격·거대 점수" 위조 차단. ⚠ v1 산식(strength×8×1.15, fresh 미차감)은 정상 플레이와 충돌(실측 grab 271.8/타 > 184 — 오탐 2건) → 2026-07-03 교정, 클린 v2 535튜플 전수 FP 0 검증. |
 | S3 | **평균 점수/초** `score/durationSec` | > 1,400 | 인간 검증 최대 1,267. |
 | S4 | **stats 누락/검증실패** | gameplayStats 없음 또는 `validateGameplayStats` 실패 | REC1의 "stats 없이 조용히 저장" 구멍을 닫음 → pending 처리. |
 
-S1·S2가 **직접 제출형(B)** 을 payload만으로 잡는 열쇠다. 위조자가 hitCount를 낮추면 avg-per-hit이 올라 S2에 걸리고, 높이면 S1에 걸린다(닫힌 박스).
+S1·S2가 **직접 제출형(B)** 을 payload만으로 잡는 열쇠다. 위조자가 hitCount를 낮추면 avg-per-hit이 올라 S2에 걸리고, 높이면 S1에 걸린다(닫힌 박스). 봉투의 실질 바인딩은 **S3**(S2×S1 최대 ≈ 420×18 ≈ 7,560/s ≫ S3 1,400/s) — S2 교정으로 무기별 임계가 올라도 무플래그 위조 상한(1,400/s × 900s ≈ 126만점)은 불변이다. S2 의 역할은 총량이 아니라 "특정 무기에 점수를 몰아넣은 비정합 payload" 탐지.
 
 ### 5.2 cron 백스톱 신호 (텔레메트리 확정 후 — `/api/ops/integrity-scan`)
 
@@ -149,7 +149,7 @@ alter table member_accounts add column abuse_status text not null default 'clean
 - 지속 타격속도(타/초) · score/초(제출 vs 텔레메트리) · hit_count · duration
 - tap_share · max_touch · distinct_weapons · device_class · refresh_hz · dpr
 - **텔레메트리↔점수 정합 배지** (일치 / N배 불일치 / 세션없음)
-- 무기별 점수 타당성 (avg/hit vs 이론상한)
+- 무기별 점수 타당성 (fresh 차감 avg/hit vs 실효 이론상한)
 - **이 유저의 다른 세션·점수 이력** (첫 정상판 대비 이상치 — 치터도 초기엔 정상 75K였음)
 - 발화 신호 목록 + abuse_score + 정상분포 대비 위치(percentile)
 
@@ -185,3 +185,19 @@ alter table member_accounts add column abuse_status text not null default 'clean
 - **회색지대 정책**: 고주사율+터보마우스 정상 유저가 임계 근접 시 오탐 가능성 → flag→리뷰(가역)로 흡수. 데이터 쌓이면 임계 재조정.
 - **레코드2 텔레메트리 오링크 원인**: 제출 시 세션ID 오첨부인지 백그라운드 누적인지 미확정(자동화 결론엔 무영향). C1이 어차피 잡음.
 - **임계값 튜닝**: 5번 값은 현재 표본(비치터 155세션) 기반. 트래픽 증가 시 p99 재측정 권장.
+- **S2 임계 교정 이력(2026-07-03)**: v1 산식(strength×8×1.15)이 속도 배율 경로·fresh 300 을 미반영해 오탐 2건(grab 247.8·214.9/타, 손 플레이) 발생 → 실효 max base 유도 + fresh 정확 차감 + margin 1.05 로 교정(`ANTI_ABUSE_RULES_VERSION=2026-07-anti-abuse-v2`). 검증: 클린 v2 251게임 535튜플 전수 FP 0(구 산식은 동일 데이터에서 19건 충돌), 실측 극값이 캡에 정확 안착(fist 96.0/gun 32.0/pen 24.0 = 캡). 임계가 캡×1.05 > 캡(per-hit gain 의 정수 하드 상한)이라 **모델이 유효한 한 오탐 불가**. ⚠ v1 stats(6/21 이전 5게임)는 ultScore 가 weaponScores 혼입이라 실측 기준선에서 제외해야 함.
+- **S2 분포 모니터링 쿼리**(재보정·튜닝 변경 시 실행 — 무기별 fresh 차감 avg 분포):
+  ```sql
+  select k.key as weapon, count(*) as n,
+         round(max(((st.gameplay_stats->'weaponScores'->>k.key)::numeric - 300) / w.cnt), 1) as adj_max,
+         round((percentile_cont(0.99) within group (
+           order by ((st.gameplay_stats->'weaponScores'->>k.key)::numeric - 300) / w.cnt))::numeric, 1) as adj_p99
+  from public.scores s
+  join public.score_stats st on st.score_id = s.id,
+  lateral jsonb_object_keys(st.gameplay_stats->'weaponCounts') k(key),
+  lateral (select (st.gameplay_stats->'weaponCounts'->>k.key)::numeric as cnt) w
+  where s.review_status in ('registered','cleared')
+    and st.gameplay_stats->>'v' = '2' and w.cnt >= 10
+  group by k.key order by k.key;
+  ```
+- **S2b(후속 검토)**: 무기당 19타 이하로 분산하면 S2 가 전면 침묵(S2_MIN_HITS 게이트) — S3 가 총량을 막지만, 게임 전체 보정 avg `(score−ultScore−Σfresh)/hitCount` 를 보는 게이트 무관 전역 신호를 백로그로.

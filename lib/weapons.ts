@@ -65,6 +65,18 @@ export type Weapon = {
   strokeWidth?: number;
 };
 
+/**
+ * 씬(PlayScene) 속도 배율/보너스 상한 — 무기 1타의 실효 최대 base 를 결정.
+ * 어뷰징 S2 임계(lib/anti-abuse-rules.ts effectiveMaxBase)가 여기서 유도되므로,
+ * PlayScene 점수식 구조(factor 분모·fling 식)를 바꾸면 S2 재점검 + RULES_VERSION 상향.
+ */
+/** swipe 속도 배율 상한 — PlayScene handleSwipeHit `clamp(speed/1100, 0.6, MAX)`. */
+export const SWIPE_FACTOR_MAX = 2.0;
+/** 투척 충돌 속도 배율 상한 — PlayScene handleCollision `clamp(impactSpeed/18, 0.6, MAX)`. */
+export const THROW_FACTOR_MAX = 2.2;
+/** grab fling 릴리즈 속도 보너스 상한 — base = strength + power×BONUS, power=min(1, speed/1500). */
+export const GRAB_FLING_POWER_BONUS = 30;
+
 export const WEAPONS: readonly Weapon[] = [
   // ── tap (2) ────────────────────────────────────────────────────────
   {
