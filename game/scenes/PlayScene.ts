@@ -37,7 +37,14 @@ import { ThrowInput } from "@/game/input/ThrowInput";
 import { SwipeInput } from "@/game/input/SwipeInput";
 import { ShootInput } from "@/game/input/ShootInput";
 import { DrawInput } from "@/game/input/DrawInput";
-import { Weapon, WeaponCategory, WEAPONS } from "@/lib/weapons";
+import {
+  Weapon,
+  WeaponCategory,
+  WEAPONS,
+  SWIPE_FACTOR_MAX,
+  THROW_FACTOR_MAX,
+  GRAB_FLING_POWER_BONUS,
+} from "@/lib/weapons";
 import { playHitSound, unlockAudio } from "@/lib/sound";
 
 type Pellet = {
@@ -514,7 +521,9 @@ export class PlayScene extends Container {
     const power = Math.min(1, speed / 1500);
     if (power > 0.08) {
       playHitSound("whoosh", 0.5 + power * 0.7);
-      const points = Math.round(20 + power * 30);
+      const points = Math.round(
+        this.weapon.strength + power * GRAB_FLING_POWER_BONUS
+      );
       this.fx.shockwave(
         this.dollBody.position.x,
         this.dollBody.position.y,
@@ -606,8 +615,8 @@ export class PlayScene extends Container {
     dirY: number;
     weapon: Weapon;
   }) => {
-    // 속도 비례 데미지 (0.6×~2×) + 볼륨
-    const factor = Math.min(2, Math.max(0.6, speed / 1100));
+    // 속도 비례 데미지 (0.6×~상한) + 볼륨
+    const factor = Math.min(SWIPE_FACTOR_MAX, Math.max(0.6, speed / 1100));
     const points = Math.round(weapon.strength * factor);
     this.doll.triggerHit(weapon.shake * factor);
     this.fx.burst(x, y, Math.round(weapon.particleCount * factor), weapon.color);
@@ -769,7 +778,7 @@ export class PlayScene extends Container {
     const hy = projBody.position.y;
     // 충돌 속도 비례 데미지 (px/step 기준: 1200px/s ≈ 20)
     const impactSpeed = projBody.speed;
-    const factor = Math.min(2.2, Math.max(0.6, impactSpeed / 18));
+    const factor = Math.min(THROW_FACTOR_MAX, Math.max(0.6, impactSpeed / 18));
     const points = Math.round(w.strength * factor);
 
     if (w.impact === "scatter") {

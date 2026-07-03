@@ -119,7 +119,7 @@ export function validateGameplayStats(
   if (!stats || (stats.v !== 1 && stats.v !== 2)) return false;
   const ultScore = stats.v >= 2 ? Math.max(0, stats.ultScore ?? 0) : 0;
   const hitsSum = sumValues(stats.weaponCounts);
-  // 타격수 정합 (작은 오차 허용 — grab fling/wall hit 등 weaponKey 없는 경로 소수 존재 가능)
+  // 타격수 정합 (작은 오차 허용 — 현행 전 득점 경로는 weaponKey 전달 확인(2026-07-03), 관용은 구버전/미래 경로 방어용)
   if (Math.abs(hitsSum - stats.hitCount) > Math.max(5, stats.hitCount * 0.1))
     return false;
   // 점수 정합 — 무기별 final gain 합 ≈ (제출 score − 궁극기 점수). v1 은 ultScore=0.

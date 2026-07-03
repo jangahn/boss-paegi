@@ -1,8 +1,13 @@
 import "server-only";
 
-import { resolveWeapon } from "@/lib/weapons";
+import {
+  resolveWeapon,
+  SWIPE_FACTOR_MAX,
+  THROW_FACTOR_MAX,
+  GRAB_FLING_POWER_BONUS,
+} from "@/lib/weapons";
 import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
-import { VARIETY_CAP, ULT_HITS } from "@/lib/game-tuning";
+import { VARIETY_CAP, ULT_HITS, FRESH_WEAPON_BONUS } from "@/lib/game-tuning";
 import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
 
 /**
@@ -16,8 +21,14 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  *  - 인간 지속 타격속도 ≤ ~15타/초(60s+), 버스트 ~19타/초. 봇 55~62타/초.
  *  - 인간 검증 최대 score/초 1,267. 정상 고득점 duration ≤ 12.2분.
  * 튜닝 변경 시 임계 재점검 + RULES_VERSION 상향.
+ *
+ * v2(2026-07-03, S2 교정): strength 를 1타 base 로 가정한 v1 산식이 속도 배율 경로
+ * (swipe ×2.0 / throw ×2.2 / grab fling strength+30)와 fresh +300(weaponScores 귀속)을
+ * 미반영해 정상 플레이를 flag(실측 grab 271.8/타 > 구 임계 184, 오탐 2건).
+ * → 실효 max base 유도 + fresh 정확 차감 + margin 1.05. 클린 v2 535튜플 전수 FP 0 검증.
+ * 위조 봉투는 S3(1,400/s)가 계속 바인딩이라 불변, 고정 데미지 무기는 오히려 강화.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v1";
+export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v2";
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
@@ -31,10 +42,11 @@ export const HITS_PER_SEC_SUSTAINED = 18;
 export const HITS_PER_SEC_BURST = 25;
 /** 최대 평균 score/초. 인간 검증 최대 1,267. */
 export const SCORE_PER_SEC_MAX = 1_400;
-/** S2 무기별 타당성 최소 타격수(fresh 보너스·소량 타격 FP 방지). */
+/** S2 무기별 타당성 최소 타격수(소량 표본 노이즈 방지 — fresh 는 정확 차감으로 별도 처리). */
 export const S2_MIN_HITS = 20;
-/** S2 이론상한 대비 허용 배수. */
-export const S2_MARGIN = 1.15;
+/** S2 실효 이론상한 대비 허용 배수 — 상한이 정확한 supremum(실측 극값이 캡에 정확 안착)이라
+ *  구현 드리프트 보험만. 클린 v2 535튜플 전수에서 FP 0 (2026-07-03). */
+export const S2_MARGIN = 1.05;
 /** S5 타격간격 CV 하한 — 이 미만이면 거의 등간격(봇/매크로). 인간은 편차가 커 훨씬 높음.
  *  ⚠ 클라 CV 계측이 실플레이로 아직 보정 안 됨 → 오탐(정상 유저 숨김) 방지 위해 **보수적 0.08**
  *  (확실한 봇 영역)으로 시작. 어드민 interval_cv 분포로 인간 CV 확인 후 0.15 까지 상향 검토. */
@@ -75,9 +87,26 @@ export type EvaluateResult = {
   evidence: Record<string, unknown>;
 };
 
-/** 무기 1타 이론 최대 점수 = strength × 콤보캡 × 다양성캡. */
+/** 무기 1타 실효 최대 base — PlayScene 득점 경로의 배율 상한에서 유도(전 경로 확인 2026-07-03).
+ *  tap(fist/hammer)·shoot(gun)·draw(pen)는 strength 고정(배율 경로 없음).
+ *  grab 은 fling 릴리즈(strength + power×30)가 상한 — 벽히트(15 고정)는 avg 를 낮추는 방향. */
+function effectiveMaxBase(weaponKey: string): number {
+  const w = resolveWeapon(weaponKey);
+  switch (w.category) {
+    case "swipe":
+      return Math.round(w.strength * SWIPE_FACTOR_MAX);
+    case "throw":
+      return Math.round(w.strength * THROW_FACTOR_MAX);
+    case "grab":
+      return w.strength + GRAB_FLING_POWER_BONUS;
+    default:
+      return w.strength; // tap · shoot · draw — 고정 데미지
+  }
+}
+
+/** 무기 1타 이론 최대 점수 = 실효 max base × 콤보캡 × 다양성캡. */
 function theoreticalMaxPerHit(weaponKey: string): number {
-  return resolveWeapon(weaponKey).strength * MAX_COMBO_MULTIPLIER * (1 + VARIETY_CAP);
+  return effectiveMaxBase(weaponKey) * MAX_COMBO_MULTIPLIER * (1 + VARIETY_CAP);
 }
 
 /**
@@ -106,11 +135,13 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
       signals.push({ id: "S1_HITS_PER_SEC", value: round1(hitsPerSec), threshold: limit, source: "submit" });
   }
 
-  // ── S2: 무기별 점수 타당성(avg/hit > 이론상한×margin, 최소 타격수 게이트) ──
+  // ── S2: 무기별 점수 타당성(fresh 차감 avg/hit > 실효 이론상한×margin, 최소 타격수 게이트) ──
+  // fresh 300 은 무기 첫 타격에 정확히 1회 weaponScores 에 플랫 가산(gameStore charge) → 정확 차감.
+  // 위조 payload 가 fresh 를 안 넣으면 무기당 최대 +300 유리할 뿐(S3 봉투 대비 무시 가능).
   if (stats) {
     for (const [w, cnt] of Object.entries(stats.weaponCounts)) {
       if (cnt < S2_MIN_HITS) continue;
-      const avg = (stats.weaponScores[w] ?? 0) / cnt;
+      const avg = ((stats.weaponScores[w] ?? 0) - FRESH_WEAPON_BONUS) / cnt;
       const cap = theoreticalMaxPerHit(w) * S2_MARGIN;
       if (avg > cap) {
         signals.push({ id: `S2_WEAPON_AVG:${w}`, value: round1(avg), threshold: round1(cap), source: "submit" });
