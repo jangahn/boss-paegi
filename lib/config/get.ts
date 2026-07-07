@@ -29,11 +29,15 @@ async function readRow(key: DomainKey): Promise<Row | null> {
 
 // unstable_cache: 도메인 태그로 캐시(전역, per-user 아님). 쓰기 시 revalidateTag(configTag,'max') 로 태그 stale 표시
 // → 다음 읽기에 갱신(stale-while-revalidate). 즉시 read-your-writes 아님.
-// revalidate(backstop TTL): tag 무효화가 어떤 이유로 안 들어도 ≤60s 내 자동 갱신(발행 미반영 영구화 방지).
+// revalidate(backstop TTL): tag 무효화가 어떤 이유로 안 들어도 ≤1h 내 자동 갱신(발행 미반영 영구화 방지).
+//   3600 인 이유: 루트 레이아웃(app/layout.tsx)이 이 캐시를 읽어 전 페이지의 ISR revalidate 가 이 값을 상속.
+//   60 이면 /(홈)·/gallery·/leaderboard 등이 60초마다 재생성 → ISR write·Fluid CPU 폭증
+//   (2026-07-07 실측: 홈 / 이 ISR write·Active CPU 양쪽 1위). config 는 예약 개념이 없고 발행은 항상
+//   revalidateTag('config:*') 로 즉시 반영되므로 backstop 을 길게 잡아도 신선도 손실 없음.
 function cachedRead(key: DomainKey): Promise<Row | null> {
   return unstable_cache(() => readRow(key), ["app_settings", key], {
     tags: [configTag(key)],
-    revalidate: 60,
+    revalidate: 3600,
   })();
 }
 
