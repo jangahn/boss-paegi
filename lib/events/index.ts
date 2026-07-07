@@ -51,6 +51,11 @@ function bucketIso(bucket: number): string {
   return new Date(bucket * 60_000).toISOString();
 }
 
+// 페이지 ISR backstop TTL. 홈/갤러리/랭킹의 배너·팝업은 클라 fetch(/api/events/active, CDN 30s)라 이 값과 무관.
+// 이 값은 /news 목록·상세(서버 렌더)에만 영향: 예약(starts_at/ends_at) 이벤트 자동 노출·만료가 ≤이 값만큼 지연될 수 있음.
+// 즉시 발행/수정/삭제는 revalidateTag('events') 로 반영. nowBucket(60s)은 클라 배너 신선도용이라 유지(예약 배너 ≤90초).
+const EVENTS_REVALIDATE = 600;
+
 // ── 공개 목록 ─────────────────────────────────────────────
 const _getPublishedEvents = unstable_cache(
   async (
@@ -82,7 +87,7 @@ const _getPublishedEvents = unstable_cache(
     };
   },
   ["events-list"],
-  { revalidate: 60, tags: ["events"] }
+  { revalidate: EVENTS_REVALIDATE, tags: ["events"] }
 );
 
 /** 공개 목록(페이징·타입 필터). */
@@ -107,7 +112,7 @@ const _getEventById = unstable_cache(
     return data ? toView(data as EventRow) : null;
   },
   ["events-by-id"],
-  { revalidate: 60, tags: ["events"] }
+  { revalidate: EVENTS_REVALIDATE, tags: ["events"] }
 );
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -149,7 +154,7 @@ const _getActivePopupEvent = unstable_cache(
     return data ? toView(data as EventRow) : null;
   },
   ["events-popup"],
-  { revalidate: 60, tags: ["events"] }
+  { revalidate: EVENTS_REVALIDATE, tags: ["events"] }
 );
 const _getActiveBanner = unstable_cache(
   async (flag: ActiveFlag, bucket: number): Promise<EventView | null> => {
@@ -157,7 +162,7 @@ const _getActiveBanner = unstable_cache(
     return data ? toView(data as EventRow) : null;
   },
   ["events-banner"],
-  { revalidate: 60, tags: ["events"] }
+  { revalidate: EVENTS_REVALIDATE, tags: ["events"] }
 );
 
 /** 홈 진입 팝업 1건(우선순위 deterministic). */
@@ -186,7 +191,7 @@ const _getSitemapEvents = unstable_cache(
     return (data as { id: string; updated_at: string }[] | null) ?? [];
   },
   ["events-sitemap"],
-  { revalidate: 60, tags: ["events"] }
+  { revalidate: EVENTS_REVALIDATE, tags: ["events"] }
 );
 
 /** 색인 대상(published·윈도우 active·미삭제·noindex=false) /news/[id] 목록. */
