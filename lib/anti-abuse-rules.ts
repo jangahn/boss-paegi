@@ -27,8 +27,14 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * 미반영해 정상 플레이를 flag(실측 grab 271.8/타 > 구 임계 184, 오탐 2건).
  * → 실효 max base 유도 + fresh 정확 차감 + margin 1.05. 클린 v2 535튜플 전수 FP 0 검증.
  * 위조 봉투는 S3(1,400/s)가 계속 바인딩이라 불변, 고정 데미지 무기는 오히려 강화.
+ *
+ * v3(2026-07-08, cron C1/C1B 교정 + S7 가중 정합): cron 정합검사(0054)를 "완주 텔레메트리"
+ * (end_reason ∈ normal/time_limit/score_limit)로 한정 — 절단 텔레(hidden_timeout 등)는 duration·score
+ * 가 부분값이라 정상 플레이를 오탐(전수조사: C1B 발화 100%가 hidden_timeout 절단 아티팩트).
+ * 또한 CRITICAL 가중 set 의 dead entry(S7_DURATION_MISMATCH — 발화 id 는 S7_DURATION_LONG)를 제거
+ * (mismatch-critical 역할은 cron C1B 가 이미 ×3 로 담당, 제출시 S7 은 magnitude-only weight 1).
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v2";
+export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v3";
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
@@ -200,8 +206,9 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (isBanned)
     signals.push({ id: "BANNED_MEMBER", value: null, threshold: null, source: "submit" });
 
-  // 치명 신호(정합 불가·확정)엔 가중치.
-  const CRITICAL = new Set(["S7_DURATION_MISMATCH", "S8_TELEMETRY_SUSPICIOUS", "S10_ULT_NO_USES", "BANNED_MEMBER"]);
+  // 치명 신호(정합 불가·확정)엔 가중치. S7_DURATION_LONG 은 magnitude-only(15~30분 장기 세션)라
+  // 미포함(weight 1) — duration mismatch-critical 역할은 cron C1B(0054, ×3)로 이관됨.
+  const CRITICAL = new Set(["S8_TELEMETRY_SUSPICIOUS", "S10_ULT_NO_USES", "BANNED_MEMBER"]);
   const abuseScore = signals.reduce((a, s) => a + (CRITICAL.has(s.id) ? 3 : 1), 0);
 
   const evidence: Record<string, unknown> = {
