@@ -33,8 +33,13 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * 가 부분값이라 정상 플레이를 오탐(전수조사: C1B 발화 100%가 hidden_timeout 절단 아티팩트).
  * 또한 CRITICAL 가중 set 의 dead entry(S7_DURATION_MISMATCH — 발화 id 는 S7_DURATION_LONG)를 제거
  * (mismatch-critical 역할은 cron C1B 가 이미 ×3 로 담당, 제출시 S7 은 magnitude-only weight 1).
+ *
+ * v4(2026-07-08, cron C1 방향 교정): cron C1(점수 정합, 0055)을 one-sided 로 — 제출 점수는 클램프
+ * (min(raw, durationSec×MAX_AVG_SCORE_PER_SEC))되고 텔레는 raw 저장이라 완주 텔레에선 항상 tscore ≥ 제출.
+ * 대칭 |score−tscore| 은 이 정상 클램프까지 오탐(예 score 5c5e6435: raw 171K→ceiling 130K, 32%) →
+ * "제출 > 텔레(raw)" 방향만 flag(원점수 초과=위조). C1B(duration)는 클램프가 없어 대칭 유지(설계 '결').
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v3";
+export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v4";
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
@@ -46,7 +51,10 @@ export const MAX_ULT_SCORE_PER_USE = 8_000;
 export const HITS_PER_SEC_SUSTAINED = 18;
 /** 임의 길이 최대 타격속도(/초). 인간 버스트 19.1. */
 export const HITS_PER_SEC_BURST = 25;
-/** 최대 평균 score/초. 인간 검증 최대 1,267. */
+/** 최대 평균 score/초(S3 의심 플래그). 인간 검증 최대 1,267 + 마진.
+ *  ⚠ 봉투 계층 불변식: `MAX_AVG_SCORE_PER_SEC`(2000, score-limits.ts 저장 하드상한) ≥ 이 값(1400, 의심
+ *  플래그) ≥ 인간 max(1267). 상한은 "저장 거부"용(정상 안 막게 넉넉), S3 는 "의심→리뷰"용이라 서로 다른
+ *  계층 — 같게 두지 말 것. 상한을 낮추면 정상 고득점을 거부하고, S3 를 올리면 봇을 놓친다. */
 export const SCORE_PER_SEC_MAX = 1_400;
 /** S2 무기별 타당성 최소 타격수(소량 표본 노이즈 방지 — fresh 는 정확 차감으로 별도 처리). */
 export const S2_MIN_HITS = 20;
