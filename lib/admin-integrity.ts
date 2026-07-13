@@ -31,18 +31,18 @@ export type IntegrityQueuePage = {
   pageSize: number;
 };
 
-type FlagJoinRow = {
-  score_id: string;
-  abuse_score: number;
-  status: string;
-  signals: Array<{ id?: string }> | null;
+type ScoreJoinRow = {
+  id: string;
+  score: number;
+  owner_id: string;
+  review_status: string;
   created_at: string;
-  scores: {
-    score: number;
-    owner_id: string;
-    review_status: string;
+  profiles: { display_name: string | null } | null;
+  score_flags: {
+    abuse_score: number;
+    status: string;
+    signals: Array<{ id?: string }> | null;
     created_at: string;
-    profiles: { display_name: string | null } | null;
   } | null;
 };
 
@@ -54,32 +54,36 @@ export async function getIntegrityQueue(
   const admin = createAdminClient();
   const from = (page - 1) * INTEGRITY_PAGE_SIZE;
   const to = from + INTEGRITY_PAGE_SIZE - 1;
+  // 큐 정렬은 최신 제출순 — UI 가 표시하는 날짜(scores.created_at)와 같은 키여야 순서가
+  // 뒤섞여 보이지 않는다(수동/cron 플래그는 flag.created_at 이 제출보다 늦어 어긋남).
+  // 그래서 base 를 scores 로 두고 정렬한다(PostgREST 는 임베드 컬럼 정렬 미보장).
+  // 위험도(abuse_score)는 정렬키가 아니라 칩 표시용. id 는 페이지 경계 안정용 tiebreaker.
   let q = admin
-    .from("score_flags")
+    .from("scores")
     .select(
-      "score_id, abuse_score, status, signals, created_at, scores!inner(score, owner_id, review_status, created_at, profiles(display_name))",
+      "id, score, owner_id, review_status, created_at, profiles(display_name), score_flags!inner(abuse_score, status, signals, created_at)",
       { count: "exact" }
     );
-  if (state !== "all") q = q.eq("status", state);
-  if (ownerId) q = q.eq("scores.owner_id", ownerId); // 특정 유저 필터(?ownerId=)
+  if (state !== "all") q = q.eq("score_flags.status", state);
+  if (ownerId) q = q.eq("owner_id", ownerId); // 특정 유저 필터(?ownerId=)
   const { data, count } = await q
-    .order("abuse_score", { ascending: false })
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .range(from, to);
 
-  const rows: IntegrityRow[] = ((data ?? []) as unknown as FlagJoinRow[]).map((r) => ({
-    scoreId: r.score_id,
-    ownerId: r.scores?.owner_id ?? "",
-    ownerName: r.scores?.profiles?.display_name ?? "익명",
-    score: r.scores?.score ?? 0,
-    reviewStatus: r.scores?.review_status ?? "",
-    abuseScore: r.abuse_score,
-    status: r.status,
-    signalIds: Array.isArray(r.signals)
-      ? r.signals.map((s) => s?.id ?? "").filter(Boolean)
+  const rows: IntegrityRow[] = ((data ?? []) as unknown as ScoreJoinRow[]).map((r) => ({
+    scoreId: r.id,
+    ownerId: r.owner_id ?? "",
+    ownerName: r.profiles?.display_name ?? "익명",
+    score: r.score ?? 0,
+    reviewStatus: r.review_status ?? "",
+    abuseScore: r.score_flags?.abuse_score ?? 0,
+    status: r.score_flags?.status ?? "",
+    signalIds: Array.isArray(r.score_flags?.signals)
+      ? r.score_flags.signals.map((s) => s?.id ?? "").filter(Boolean)
       : [],
-    scoreCreatedAt: r.scores?.created_at ?? r.created_at,
-    flaggedAt: r.created_at,
+    scoreCreatedAt: r.created_at,
+    flaggedAt: r.score_flags?.created_at ?? r.created_at,
   }));
   return { rows, total: count ?? 0, page, pageSize: INTEGRITY_PAGE_SIZE };
 }

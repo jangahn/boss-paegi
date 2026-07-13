@@ -89,6 +89,8 @@ export async function getMemberActivity(days: number): Promise<{ sessions: numbe
     .select("owner_id")
     .not("owner_id", "is", null)
     .gte("started_at", cutoffIso)
+    // ORDER BY 없는 limit 은 표본이 비결정적 — fetchSessionsWindow 와 동일하게 최근 우선으로 고정.
+    .order("started_at", { ascending: false })
     .limit(5000);
   if (error || !data) {
     if (error) log.warn("analytics.member_activity_fail", errInfo(error));

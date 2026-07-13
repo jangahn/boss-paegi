@@ -144,7 +144,7 @@ function theoreticalMaxPerHit(weaponKey: string): number {
 
 /**
  * 제출 시점 판정. 발화 신호가 하나라도 있으면 pending(banned 는 voided).
- * abuseScore = 신호 개수(치명 신호 가중) — 어드민 큐 정렬용.
+ * abuseScore = 신호 개수(치명 신호 가중) — 어드민 큐 위험도 칩 표시용(큐 정렬은 최신 제출순).
  */
 export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   const { score, durationMs, telemetrySessionId, stats, telemetry, isBanned } = input;
