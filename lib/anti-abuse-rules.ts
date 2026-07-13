@@ -38,12 +38,24 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * (min(raw, durationSec×MAX_AVG_SCORE_PER_SEC))되고 텔레는 raw 저장이라 완주 텔레에선 항상 tscore ≥ 제출.
  * 대칭 |score−tscore| 은 이 정상 클램프까지 오탐(예 score 5c5e6435: raw 171K→ceiling 130K, 32%) →
  * "제출 > 텔레(raw)" 방향만 flag(원점수 초과=위조). C1B(duration)는 클램프가 없어 대칭 유지(설계 '결').
+ *
+ * v5(2026-07-13, S7 점수 하한 결합): S7 이 duration 단독(>15분)이라 세션 캡(30분) 도달 정상 제출을
+ * 100% 오탐 — 캡 도달 시 clampForSubmit 이 durationMs 를 정확히 MAX_DURATION_MS 로 안착시키고
+ * route 400 은 strict `>` 라 경계값이 통과한다. 캡 완주(실측 3e2f930e)와 탭 방치(게임 벽시계는
+ * hidden 중에도 진행 — 실사례 0528dbad: 46초 플레이 후 방치, 1,194점, admin cleared) 모두 해당.
+ * → S7 = 장기 세션 AND 점수 하한(S7_LONG_SESSION_SCORE_FLOOR=126만, S3 의 15분 봉투 상수).
+ * 무플래그 위조 상한 126만이 duration 전 구간에서 불변(공격자 이득 정확히 0)이고, 실측 어뷰저
+ * 패턴(4be023f8: 2.19M/29.6분 — score/초 1,231 이라 S3 침묵)은 계속 포착.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v4";
+export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v5";
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
-/** 정상 최대 플레이 12.2분(실측) 위 마진. 초과 시 pending(S7). 30분 하드캡은 route 가 400. */
+/** 장기 세션 경계(S7) — 정상 최대 플레이 12.2분(실측 2026-07-02) 위 마진.
+ *  ⚠ 이 값 단독 초과는 어뷰징 증거가 아니다: 세션 캡(30분, score-limits.ts MAX_DURATION_MS =
+ *  session_limits.maxPlaySeconds 상한)까지 간 제출은 clampForSubmit 이 정확히 캡으로 안착시키고
+ *  route 400 은 strict `>` 라 경계값이 통과 — 캡 완주·탭 방치가 전부 여기 떨어진다(v5 오탐 교정).
+ *  S7 은 반드시 S7_LONG_SESSION_SCORE_FLOOR 와 결합해 발화한다. */
 export const MAX_REASONABLE_DURATION_MS = 900_000; // 15분
 /** 궁극기 1회당 상한(보수적, ~43타×상한). ultScore 몰아넣기(S10) 방어용. */
 export const MAX_ULT_SCORE_PER_USE = 8_000;
@@ -56,6 +68,13 @@ export const HITS_PER_SEC_BURST = 25;
  *  플래그) ≥ 인간 max(1267). 상한은 "저장 거부"용(정상 안 막게 넉넉), S3 는 "의심→리뷰"용이라 서로 다른
  *  계층 — 같게 두지 말 것. 상한을 낮추면 정상 고득점을 거부하고, S3 를 올리면 봇을 놓친다. */
 export const SCORE_PER_SEC_MAX = 1_400;
+/** S7 점수 하한 = S3 의 15분 봉투 상수(SCORE_PER_SEC_MAX × 900s = 1,260,000).
+ *  S3 는 score/초 비율이라 duration 에 비례해 봉투가 늘어난다 — 15분 초과 구간에선 이 상수를
+ *  하한으로 걸어야 무플래그 위조 상한(126만)이 duration 과 무관하게 불변이다. 두 신호는 상보적:
+ *  ≤15분 & >126만은 산술상 반드시 S3(126만/900s=1,400/s 초과), >15분 & >126만은 S7.
+ *  인간이 이 하한을 넘으려면 700/s+ 를 15분 이상 지속해야 함(검증 최대: 버스트 1,267/s·최장 12.2분). */
+export const S7_LONG_SESSION_SCORE_FLOOR =
+  SCORE_PER_SEC_MAX * (MAX_REASONABLE_DURATION_MS / 1000); // 1,260,000
 /** S2 무기별 타당성 최소 타격수(소량 표본 노이즈 방지 — fresh 는 정확 차감으로 별도 처리). */
 export const S2_MIN_HITS = 20;
 /** S2 실효 이론상한 대비 허용 배수 — 상한이 정확한 supremum(실측 극값이 캡에 정확 안착)이라
@@ -177,11 +196,14 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (score >= NOTABLE_SCORE && !telemetrySessionId)
     signals.push({ id: "S6_NOTABLE_NO_TELEMETRY", value: score, threshold: NOTABLE_SCORE, source: "submit" });
 
-  // ── S7: duration plausibility(magnitude만) ──
+  // ── S7: 장기 세션 × 고득점(15분 초과 구간의 봉투 연장) ──
+  // duration 단독 조건은 정상 경로를 오탐한다(v5 교정): 세션 캡 도달 제출은 정확히 30분으로
+  //   안착·통과하므로 캡 완주/탭 방치 유저가 100% 걸렸음(실사례 0528dbad). 점수 하한을 결합하면
+  //   저점수 장기 세션은 통과하고, 봉투(무플래그 위조 상한 126만)는 duration 전 구간 불변.
   // ⚠ 텔레메트리 duration 즉시 대조는 하지 않는다: 텔레메트리는 delta 스트리밍이라 점수 제출 시점엔
   //   미확정(부분값)이라 정상 플레이도 큰 "불일치"로 오탐됨(실측: 손 게임 dur 17.5s vs 미확정 텔레 10s).
   //   duration/score 정합은 텔레메트리 확정 후 cron(C1b, integrity_scan_recent)만 담당(설계 원안).
-  if (durationMs > MAX_REASONABLE_DURATION_MS)
+  if (durationMs > MAX_REASONABLE_DURATION_MS && score > S7_LONG_SESSION_SCORE_FLOOR)
     signals.push({ id: "S7_DURATION_LONG", value: durationMs, threshold: MAX_REASONABLE_DURATION_MS, source: "submit" });
 
   // ── S8: 연결 텔레메트리가 이미 suspicious(단조 → 오토클리커는 제출시 true) ──
@@ -214,7 +236,7 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (isBanned)
     signals.push({ id: "BANNED_MEMBER", value: null, threshold: null, source: "submit" });
 
-  // 치명 신호(정합 불가·확정)엔 가중치. S7_DURATION_LONG 은 magnitude-only(15~30분 장기 세션)라
+  // 치명 신호(정합 불가·확정)엔 가중치. S7_DURATION_LONG 은 장기세션×고득점 결합 신호(정황)라
   // 미포함(weight 1) — duration mismatch-critical 역할은 cron C1B(0054, ×3)로 이관됨.
   const CRITICAL = new Set(["S8_TELEMETRY_SUSPICIOUS", "S10_ULT_NO_USES", "BANNED_MEMBER"]);
   const abuseScore = signals.reduce((a, s) => a + (CRITICAL.has(s.id) ? 3 : 1), 0);
