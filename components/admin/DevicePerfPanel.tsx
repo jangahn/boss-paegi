@@ -22,8 +22,12 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-zinc-500">
-        프레임 표본 있는 {data.perfSessions}세션 기준. p95 &gt; {LAG_P95_MS}ms(≈30fps 미달 스파이크)를
-        “렉”으로 집계. 프레임타임 낮을수록 좋음(16.7ms=60fps · 33.3ms=30fps).
+        프레임 표본 있는 {data.perfSessions.toLocaleString()}세션 기준
+        {data.meta.isTruncated
+          ? ` (집계는 최대 ${data.meta.limit.toLocaleString()} 표본 제한 적용 — 최근 세션 우선, 최악 top5는 전체 기간 기준)`
+          : ""}. p95
+        &gt; {LAG_P95_MS}ms(≈30fps 미달 스파이크)를 “렉”으로 집계. 프레임타임 낮을수록
+        좋음(16.7ms=60fps · 33.3ms=30fps).
       </p>
 
       <details className="rounded-lg border border-foreground/10 ui-surface px-3 py-2 text-[11px] leading-relaxed text-zinc-500">

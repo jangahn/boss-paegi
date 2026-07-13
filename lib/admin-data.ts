@@ -101,33 +101,47 @@ export async function getRefundWarnings(): Promise<RefundWarnings> {
       .select("order_uuid", { count: "exact", head: true })
       .eq("refund_state", "in_progress")
       .lt("updated_at", staleCutoff),
-    // 웹훅 선도착 후보: 결제됐다가(paid_at) canceled 됐고 refund_state 미설정(=route 미경유).
-    admin
-      .from("payapp_orders")
-      .select(WARN_SELECT)
-      .eq("status", "canceled")
-      .not("paid_at", "is", null)
-      .is("refund_state", null)
-      .order("canceled_at", { ascending: true })
-      .limit(20),
+    // 미회수 = 웹훅 선도착(canceled+paid_at·refund_state null)이면서 cancel_refund ledger 가 없는 건.
+    // 회수 여부 판정은 SQL anti-join(0057) — 후보를 limit 으로 자른 뒤 앱에서 거르면, 오래된
+    // 후보 20건이 전부 기회수일 때 실제 미회수 건이 경고에서 통째로 누락된다(false negative).
+    admin.rpc("admin_unreconciled_canceled_orders").select(WARN_SELECT),
   ]);
   if (done.error) log.warn("admin.refund_warnings_fail", errInfo(done.error));
   const toOrder = (r: Omit<AdminOrder, "display_name">) => ({ ...r, display_name: null });
   const commitFail = ((done.data ?? []) as Array<Omit<AdminOrder, "display_name">>).map(toOrder);
 
-  // 후보 중 이미 cancel_refund ledger 가 있는(=이미 회수된) 건은 제외(중복 회수 방지·노이즈 방지).
-  let unreconciled: AdminOrder[] = [];
-  const candidates = (canceledPaid.data ?? []) as Array<Omit<AdminOrder, "display_name">>;
-  if (candidates.length > 0) {
-    const ids = candidates.map((c) => c.order_uuid);
-    const { data: ledgers } = await admin
-      .from("admin_actions_ledger")
-      .select("order_uuid")
-      .eq("action_type", "cancel_refund")
-      .in("order_uuid", ids);
-    const reconciled = new Set((ledgers ?? []).map((l) => l.order_uuid as string));
-    unreconciled = candidates.filter((c) => !reconciled.has(c.order_uuid)).map(toOrder);
+  let unreconciled: AdminOrder[];
+  if (canceledPaid.error) {
+    // 0057 미적용 환경 폴백(마이그레이션 수동 적용 관례) — 종전 limit-후-필터 로직.
+    log.warn("admin.refund_unreconciled_rpc_fail", errInfo(canceledPaid.error));
+    unreconciled = await legacyUnreconciled(admin, toOrder);
+  } else {
+    unreconciled = ((canceledPaid.data ?? []) as Array<Omit<AdminOrder, "display_name">>).map(toOrder);
   }
 
   return { commitFail, unreconciled, stuckCount: stuck.count ?? 0 };
+}
+
+/** 0057(anti-join RPC) 미적용 환경용 종전 로직 — 후보 20건 한정 후 ledger 앱 필터(완전성 한계 有). */
+async function legacyUnreconciled(
+  admin: ReturnType<typeof createAdminClient>,
+  toOrder: (r: Omit<AdminOrder, "display_name">) => AdminOrder
+): Promise<AdminOrder[]> {
+  const { data } = await admin
+    .from("payapp_orders")
+    .select(WARN_SELECT)
+    .eq("status", "canceled")
+    .not("paid_at", "is", null)
+    .is("refund_state", null)
+    .order("canceled_at", { ascending: true })
+    .limit(20);
+  const candidates = (data ?? []) as Array<Omit<AdminOrder, "display_name">>;
+  if (candidates.length === 0) return [];
+  const { data: ledgers } = await admin
+    .from("admin_actions_ledger")
+    .select("order_uuid")
+    .eq("action_type", "cancel_refund")
+    .in("order_uuid", candidates.map((c) => c.order_uuid));
+  const reconciled = new Set((ledgers ?? []).map((l) => l.order_uuid as string));
+  return candidates.filter((c) => !reconciled.has(c.order_uuid)).map(toOrder);
 }

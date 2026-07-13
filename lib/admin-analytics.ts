@@ -456,31 +456,51 @@ export type DevicePerf = {
   byDevice: DevicePerfStat[];
   worst: WorstPerfSession[];
   perfSessions: number; // perf 실데이터 세션 수(avg>0)
+  meta: SampleMeta;
 };
+
+type PerfRow = {
+  id: string;
+  device_class: string;
+  dpr: number | null;
+  refresh_hz: number | null;
+  avg_frame_ms: number;
+  p95_frame_ms: number;
+  duration_ms: number | null;
+};
+
+const PERF_SELECT = "id, device_class, dpr, refresh_hz, avg_frame_ms, p95_frame_ms, duration_ms";
 
 export async function getDevicePerf(days: number): Promise<DevicePerf> {
   const admin = createAdminClient();
   const start = kstDayStartIso(days - 1);
-  const { data, error } = await admin
-    .from("telemetry_sessions")
-    .select("id, device_class, dpr, refresh_hz, avg_frame_ms, p95_frame_ms, duration_ms")
-    .gte("started_at", start)
-    .gt("avg_frame_ms", 0) // 실프레임 표본 세션만(무플레이/배포前 0 제외)
-    .order("p95_frame_ms", { ascending: false })
-    .limit(5000);
-  if (error) {
-    log.warn("analytics.device_perf_fail", errInfo(error));
-    return { byDevice: [], worst: [], perfSessions: 0 };
+  // 집계 표본과 최악 top5 는 fetch 를 분리 — 하나의 p95 DESC fetch 를 공유하면 윈도우 세션이
+  // limit 을 넘는 순간 byDevice 집계가 "가장 느린 표본"으로 비관 편향된다(절단 감지도 없었음).
+  // 집계는 최근 우선 표본(fetchSessionsWindow 와 동일 규약, limit+1 절단 판정), top5 는 전 윈도우 정확 상위.
+  const [sampleRes, worstRes] = await Promise.all([
+    admin
+      .from("telemetry_sessions")
+      .select(PERF_SELECT)
+      .gte("started_at", start)
+      .gt("avg_frame_ms", 0) // 실프레임 표본 세션만(무플레이/배포前 0 제외)
+      .order("started_at", { ascending: false })
+      .limit(SESSION_FETCH_LIMIT + 1),
+    admin
+      .from("telemetry_sessions")
+      .select(PERF_SELECT)
+      .gte("started_at", start)
+      .gt("avg_frame_ms", 0)
+      .order("p95_frame_ms", { ascending: false })
+      .limit(5),
+  ]);
+  if (sampleRes.error || worstRes.error) {
+    log.warn("analytics.device_perf_fail", errInfo(sampleRes.error ?? worstRes.error));
+    return { byDevice: [], worst: [], perfSessions: 0, meta: emptyMeta() };
   }
-  const rows = (data ?? []) as {
-    id: string;
-    device_class: string;
-    dpr: number | null;
-    refresh_hz: number | null;
-    avg_frame_ms: number;
-    p95_frame_ms: number;
-    duration_ms: number | null;
-  }[];
+  const fetched = (sampleRes.data ?? []) as PerfRow[];
+  const isTruncated = fetched.length > SESSION_FETCH_LIMIT;
+  const rows = isTruncated ? fetched.slice(0, SESSION_FETCH_LIMIT) : fetched;
+  const meta: SampleMeta = { sampleSize: rows.length, isTruncated, limit: SESSION_FETCH_LIMIT };
 
   const byClass = new Map<string, { avgs: number[]; p95s: number[]; lag: number }>();
   for (const r of rows) {
@@ -504,8 +524,8 @@ export async function getDevicePerf(days: number): Promise<DevicePerf> {
     })
     .sort((a, b) => b.sessions - a.sessions);
 
-  // 가장 느린 세션 top-5 (쿼리에서 p95 desc 정렬됨)
-  const worst: WorstPerfSession[] = rows.slice(0, 5).map((r) => ({
+  // 가장 느린 세션 top-5 — 전용 쿼리(p95 desc limit 5)라 표본 절단과 무관하게 전 윈도우 정확값.
+  const worst: WorstPerfSession[] = ((worstRes.data ?? []) as PerfRow[]).map((r) => ({
     id: r.id,
     deviceClass: r.device_class,
     dpr: Number(r.dpr) || 0,
@@ -515,5 +535,5 @@ export async function getDevicePerf(days: number): Promise<DevicePerf> {
     durationMs: r.duration_ms,
   }));
 
-  return { byDevice, worst, perfSessions: rows.length };
+  return { byDevice, worst, perfSessions: rows.length, meta };
 }
