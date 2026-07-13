@@ -12,7 +12,9 @@
  *  텔레메트리는 이 클램프 전 raw 를 저장 → cron C1 이 완주 텔레에서 tscore(raw) ≥ 제출(clamp)을 보고
  *  오탐하지 않도록 one-sided(0055). */
 export const MAX_AVG_SCORE_PER_SEC = 2000;
-/** 30분 — 한 판 최대 플레이타임 캡(제출 클램프). DB check(1h=3,600,000)보다 타이트 = 앱이 더 빡센 캡. */
+/** 30분 — 한 판 최대 플레이타임 캡(제출 클램프). DB check(1h=3,600,000)보다 타이트 = 앱이 더 빡센 캡.
+ *  ⚠ 캡 도달 제출은 clampForSubmit 이 정확히 이 값으로 안착시키고 route 400 은 strict `>` 라 통과
+ *  — 정상 경로(캡 완주·탭 방치)다. anti-abuse S7 은 이를 오탐하지 않도록 점수 하한과 결합(v5). */
 export const MAX_DURATION_MS = 30 * 60 * 1000;
 /** 점수 하드 캡 500만. DB check(10M)보다 타이트 = 서버가 5M 에서 차단(scoreCeiling). */
 export const MAX_SCORE_HARD = 5_000_000;
