@@ -131,13 +131,18 @@ export async function getAcquisitionStats(days: number): Promise<AcquisitionStat
   const currentByKind: KeyVal[] = [...curKind.entries()].map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value);
 
   const shares = rows.reduce((s, r) => (r.metric === "share_by_surface" ? s + num(r.value) : s), 0);
-  const viralByType: KeyVal[] = [];
+  // 롤업은 (day_kst, metric, dim1) 단위 행이라 dim1 로 합산해야 한다 — 일별 행을 그대로 쌓으면
+  // 멀티데이 윈도우에서 같은 유형 라벨이 값 쪼개진 채 반복 표시됨(타 metric 의 byDim1 과 동일 패턴).
+  const viralAgg = new Map<string, number>();
   let viralInbound = 0;
   for (const r of rows)
     if (r.metric === "viral_inbound_by_type") {
-      viralByType.push({ key: r.dim1, value: num(r.value) });
+      viralAgg.set(r.dim1, (viralAgg.get(r.dim1) ?? 0) + num(r.value));
       viralInbound += num(r.value);
     }
+  const viralByType: KeyVal[] = [...viralAgg.entries()]
+    .map(([key, value]) => ({ key, value }))
+    .sort((a, b) => b.value - a.value);
 
-  return { currentBySource, currentByKind, conversion, viralLoop: { shares, viralInbound, byType: viralByType.sort((a, b) => b.value - a.value) } };
+  return { currentBySource, currentByKind, conversion, viralLoop: { shares, viralInbound, byType: viralByType } };
 }
