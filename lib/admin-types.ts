@@ -25,7 +25,11 @@ export type AdminOrder = {
   amount: number;
   credits: number;
   product_id: string;
-  mul_no: string | null;
+  /** 프로바이더 거래번호 — 페이앱 mul_no(레거시)/포트원 transactionId */
+  pg_tx_id: string | null;
+  /** 포트원 paymentId(가맹점 채번, 영숫자). 레거시 페이앱 주문은 null */
+  payment_id: string | null;
+  provider: string;
   created_at: string;
   paid_at: string | null;
   user_id: string;

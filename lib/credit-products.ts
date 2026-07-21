@@ -5,11 +5,11 @@
  * config 조회 실패 시 fallback(`GROWTH_LEVERS_DEFAULT`/`CreditProductsProvider` 초기값)으로만 살아있다
  * → 실제 발행 *상시* 상품(credits_3/10/20/40)과 일치시켜 fallback 시 존재하지 않는 productId 노출(결제 막힘)
  * 을 방지. **이벤트성 상품(event_*)은 임시라 여기 넣지 않음(종료 후 재-stale 방지) — DB-only.**
- * 클라는 `productId` 만 전송, price/credits/goodname 결정은 항상 서버. 모든 상품 1,000원 이상(PayApp floor).
+ * 클라는 `productId` 만 전송, price/credits/goodname 결정은 항상 서버. 모든 상품 1,000원 이상(소액 카드결제 하한 가드).
  */
 export type CreditProduct = {
   productId: string;
-  /** PayApp goodname(결제창·영수증 상품명) */
+  /** 주문명(결제창·영수증 상품명 — 포트원 orderName) */
   goodname: string;
   /** 결제금액(원) */
   price: number;

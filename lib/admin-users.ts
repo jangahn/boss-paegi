@@ -155,9 +155,9 @@ export async function getUserOrders(userId: string, page = 1): Promise<Paged<Adm
   const from = (p - 1) * USER_PAGE_SIZE;
   const admin = createAdminClient();
   const { data, count, error } = await admin
-    .from("payapp_orders")
+    .from("orders")
     .select(
-      "order_uuid, status, amount, credits, product_id, mul_no, created_at, paid_at, user_id, refund_state",
+      "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, created_at, paid_at, user_id, refund_state",
       { count: "exact" }
     )
     .eq("user_id", userId)

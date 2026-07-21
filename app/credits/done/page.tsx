@@ -11,12 +11,17 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 15; // ~30s
 
 function CreditsDoneInner() {
-  const order = useSearchParams().get("order");
-  const [state, setState] = useState<DoneState>(order ? "checking" : "error");
+  const params = useSearchParams();
+  const order = params.get("order");
+  // 포트원 리다이렉트 복귀는 실패 시 code/message 쿼리를 붙인다 — 즉시 실패 표시(폴링 생략).
+  const pgFailCode = params.get("code");
+  const [state, setState] = useState<DoneState>(
+    !order || pgFailCode ? "error" : "checking"
+  );
   const [credits, setCredits] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!order) return;
+    if (!order || pgFailCode) return;
     let cancelled = false;
     let tries = 0;
 
@@ -24,7 +29,7 @@ function CreditsDoneInner() {
       tries += 1;
       try {
         const res = await fetch(
-          `/api/payapp/order-status?order=${encodeURIComponent(order)}`
+          `/api/pay/order-status?order=${encodeURIComponent(order)}`
         );
         if (res.ok) {
           const d = (await res.json()) as { status: string; credits: number };
@@ -56,7 +61,7 @@ function CreditsDoneInner() {
     return () => {
       cancelled = true;
     };
-  }, [order]);
+  }, [order, pgFailCode]);
 
   return (
     <>

@@ -3,21 +3,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminRpcErrorCode } from "@/lib/admin-rpc";
-import { paycancelOrder, payappCancelConfigured } from "@/lib/payapp";
+import { cancelPortonePayment, portoneCancelConfigured } from "@/lib/portone";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
 /**
- * 정상결제 환불 — 페이앱 자동취소 + 크레딧 롤백. 관리자만.
+ * 정상결제 환불 — 포트원 자동취소 + 크레딧 롤백. 관리자만.
  *
  * 두 진입 모드:
- *  - FRESH/RECOVERY (status='paid'): 선검사(신규만 회수부족 엄격차단) → CAS → paycancel → payapp_done → RPC(p_payapp_done=true).
- *      커밋실패 시 payapp_done 유지 → '환불 재시도'(paycancel 멱등 → already_canceled) 복구.
- *  - RECONCILE (status='canceled' + paid_at + cancel_refund ledger 없음): 페이앱 취소 웹훅이 먼저 도착해
- *      status 만 canceled 되고 크레딧 미회수인 경우. paycancel 생략(웹훅=인증된 취소 확정) → CAS → RPC 화해(p_payapp_done=true) 회수.
+ *  - FRESH/RECOVERY (status='paid'): 선검사(신규만 회수부족 엄격차단) → CAS → 포트원 취소 → pg_done → RPC(p_pg_done=true).
+ *      커밋실패 시 pg_done 유지 → '환불 재시도'(취소 멱등 — PAYMENT_ALREADY_CANCELLED=ok) 복구.
+ *  - RECONCILE (status='canceled' + paid_at + cancel_refund ledger 없음): PG 취소 웹훅이 먼저 도착해
+ *      status 만 canceled 되고 크레딧 미회수인 경우. 취소 호출 생략(웹훅=검증된 취소 확정) → CAS → RPC 화해(p_pg_done=true) 회수.
  *
- * 회수는 RPC 가 보장(FOR UPDATE·payapp_done 시 clamp+shortfall·ledger 부분유니크로 중복 회수 차단). auto-retry 금지.
+ * 회수는 RPC 가 보장(FOR UPDATE·pg_done 시 clamp+shortfall·ledger 부분유니크로 중복 회수 차단). auto-retry 금지.
+ * 레거시 페이앱 주문(provider='payapp')은 실 paid 0건 실측 — 취소 API 가 없으므로 FRESH 는 수동 안내, 화해(회수만)는 동작.
  */
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
@@ -39,8 +40,8 @@ export async function POST(req: NextRequest) {
 
   // 1) 주문 로드
   const { data: order, error: loadErr } = await admin
-    .from("payapp_orders")
-    .select("order_uuid, status, mul_no, credits, user_id, refund_state, paid_at")
+    .from("orders")
+    .select("order_uuid, status, payment_id, provider, credits, user_id, refund_state, paid_at")
     .eq("order_uuid", orderUuid)
     .maybeSingle();
   if (loadErr) {
@@ -71,17 +72,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "already_processed" }, { status: 400 });
   }
 
-  const doPaycancel = isPaid; // canceled = 웹훅이 이미 취소 확정 → paycancel 생략(화해)
-  const strictBlock = isPaid && priorState === null; // 신규 paid 만 페이앱 호출 전 엄격 차단
+  const doPgCancel = isPaid; // canceled = 웹훅이 이미 취소 확정 → 취소 호출 생략(화해)
+  const strictBlock = isPaid && priorState === null; // 신규 paid 만 PG 호출 전 엄격 차단
 
-  if (doPaycancel) {
-    if (!order.mul_no) return NextResponse.json({ error: "no_mul_no" }, { status: 400 });
-    if (!payappCancelConfigured()) {
+  if (doPgCancel) {
+    if (order.provider !== "portone" || !order.payment_id) {
+      // 레거시 페이앱 paid(실측 0건) 또는 paymentId 유실 — 자동취소 경로 없음.
+      return NextResponse.json(
+        { manual: true, error: "manual_required", message: "이 주문은 자동취소를 지원하지 않아요 — PG 콘솔에서 수동 처리 후 확인하세요." },
+        { status: 200 }
+      );
+    }
+    if (!portoneCancelConfigured()) {
       return NextResponse.json({ error: "cancel_unavailable" }, { status: 503 });
     }
   }
 
-  // 4) 회수부족 선검사(신규 paid 만, 페이앱 호출 전 엄격 차단). 복구/화해는 이미 외부 취소됨 → clamp.
+  // 4) 회수부족 선검사(신규 paid 만, PG 호출 전 엄격 차단). 복구/화해는 이미 외부 취소됨 → clamp.
   if (strictBlock) {
     const { data: member } = await admin
       .from("member_accounts")
@@ -100,12 +107,12 @@ export async function POST(req: NextRequest) {
   // 5) CAS 단일플라이트: in_progress 획득. status 는 paid|canceled 허용(위 가드가 비대상 제거 완료).
   const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data: acquired, error: casErr } = await admin
-    .from("payapp_orders")
+    .from("orders")
     .update({ refund_state: "in_progress", updated_at: new Date().toISOString() })
     .eq("order_uuid", orderUuid)
     .in("status", ["paid", "canceled"])
     .or(
-      `refund_state.is.null,refund_state.eq.payapp_done,and(refund_state.eq.in_progress,updated_at.lt.${staleCutoff})`
+      `refund_state.is.null,refund_state.eq.pg_done,and(refund_state.eq.in_progress,updated_at.lt.${staleCutoff})`
     )
     .select("order_uuid");
   if (casErr) {
@@ -118,58 +125,48 @@ export async function POST(req: NextRequest) {
 
   const reset = (state: string | null) =>
     admin
-      .from("payapp_orders")
+      .from("orders")
       .update({ refund_state: state, updated_at: new Date().toISOString() })
       .eq("order_uuid", orderUuid);
 
-  // 6) 페이앱 취소(신규/복구 paid 만; 화해는 웹훅이 이미 확정)
-  if (doPaycancel) {
-    const pc = await paycancelOrder({ mulNo: order.mul_no!, cancelMemo: reason });
+  // 6) 포트원 취소(신규/복구 paid 만; 화해는 웹훅이 이미 확정). 구조화 에러 분류(lib/portone.ts).
+  if (doPgCancel) {
+    const pc = await cancelPortonePayment({ paymentId: order.payment_id!, reason });
     if (!pc.ok) {
-      await reset(priorState); // 신규→null, 복구→payapp_done (재시도 가능)
-      if (pc.kind === "settled") {
-        return NextResponse.json(
-          {
-            manual: true,
-            error: "manual_required",
-            message: "정산 마감(D+5) 등으로 자동 취소 불가 — 페이앱 관리자에서 수동 처리 후 확인하세요.",
-          },
-          { status: 200 }
-        );
-      }
+      await reset(priorState); // 신규→null, 복구→pg_done (재시도 가능)
       if (pc.kind === "unknown") {
         return NextResponse.json(
-          { error: "unknown_cancel_state", message: "페이앱 취소 응답 확인 필요 — 운영 확인 후 재시도하세요." },
+          { error: "unknown_cancel_state", message: `포트원 취소 응답 확인 필요(${pc.error}) — 콘솔 확인 후 재시도하세요.` },
           { status: 502 }
         );
       }
       return NextResponse.json(
-        { error: "payapp_unreachable", message: "페이앱 연결 실패 — 잠시 후 재시도하세요." },
+        { error: "pg_unreachable", message: "포트원 연결 실패 — 잠시 후 재시도하세요." },
         { status: 502 }
       );
     }
   }
 
-  // 7) 외부 취소 확정 → payapp_done 마킹. 이 마킹 실패도 커밋실패로 처리(가장 위험 상태 정확 분류).
-  const { error: markErr } = await reset("payapp_done");
+  // 7) 외부 취소 확정 → pg_done 마킹. 이 마킹 실패도 커밋실패로 처리(가장 위험 상태 정확 분류).
+  const { error: markErr } = await reset("pg_done");
   if (markErr) {
-    log.error("payapp.refund_commit_fail", { orderUuid, adminId: gate.user.id, stage: "mark", ...errInfo(markErr) });
+    log.error("pay.refund_commit_fail", { orderUuid, adminId: gate.user.id, stage: "mark", ...errInfo(markErr) });
     return NextResponse.json(
-      { error: "refund_commit_fail", message: "페이앱 환불 성공·로컬 반영 실패 — '환불 재시도'로 재처리하세요." },
+      { error: "refund_commit_fail", message: "포트원 환불 성공·로컬 반영 실패 — '환불 재시도'로 재처리하세요." },
       { status: 500 }
     );
   }
 
-  // 8) 원자적 로컬 커밋(회수 + ledger). 실패 시 payapp_done 유지 → 복구 가능.
+  // 8) 원자적 로컬 커밋(회수 + ledger). 실패 시 pg_done 유지 → 복구 가능.
   const { data: rpc, error: rpcErr } = await admin.rpc("admin_cancel_order", {
     p_admin: gate.user.id,
     p_order_uuid: orderUuid,
     p_clawback: true,
     p_reason: reason,
-    p_payapp_done: true,
+    p_pg_done: true,
   });
   if (rpcErr) {
-    log.error("payapp.refund_commit_fail", {
+    log.error("pay.refund_commit_fail", {
       orderUuid,
       adminId: gate.user.id,
       reconcile: isCanceled,
@@ -179,7 +176,7 @@ export async function POST(req: NextRequest) {
       {
         error: "refund_commit_fail",
         code: adminRpcErrorCode(rpcErr),
-        message: "페이앱 환불은 성공했으나 로컬 반영 실패 — '환불 재시도'로 재처리하세요.",
+        message: "포트원 환불은 성공했으나 로컬 반영 실패 — '환불 재시도'로 재처리하세요.",
       },
       { status: 500 }
     );
