@@ -7,8 +7,8 @@ import { Spinner } from "@/components/Spinner";
 import { won } from "@/lib/admin-format";
 
 /**
- * 정상결제 환불 버튼 + 확인 모달 — 페이앱 자동취소 + 크레딧 회수.
- * payapp_done(커밋실패 복구) 행은 "환불 재시도"로 라벨. 사유 필수, submit 중 차단(auto-retry 없음).
+ * 정상결제 환불 버튼 + 확인 모달 — 포트원 자동취소 + 크레딧 회수.
+ * pg_done(커밋실패 복구) 행은 "환불 재시도"로 라벨. 사유 필수, submit 중 차단(auto-retry 없음).
  */
 type Order = { orderUuid: string; amount: number; credits: number; refundState: string | null };
 
@@ -25,10 +25,10 @@ type RefundResp = {
 
 const ERR_KO: Record<string, string> = {
   insufficient_credits: "보유 크레딧이 회수량보다 적어 환불을 차단했어요(유저가 이미 사용).",
-  cancel_unavailable: "취소 연동(PAYAPP_LINKKEY)이 설정되지 않았어요.",
+  cancel_unavailable: "취소 연동(PORTONE_V2_API_SECRET)이 설정되지 않았어요.",
   already_processed: "이미 처리된(또는 처리 중인) 주문이에요.",
   not_cancelable: "취소할 수 없는 상태의 주문이에요.",
-  no_mul_no: "결제번호(mul_no)가 없어 페이앱 취소가 불가해요.",
+  pg_unreachable: "포트원 연결 실패 — 잠시 후 재시도하세요.",
   order_not_found: "주문을 찾지 못했어요.",
   reason_invalid: "사유는 5~500자여야 해요.",
   member_not_found: "회원 정보를 찾지 못했어요.",
@@ -44,7 +44,7 @@ export function RefundButton({ order }: { order: Order }) {
   const [result, setResult] = useState<RefundResp | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isRetry = order.refundState === "payapp_done";
+  const isRetry = order.refundState === "pg_done";
 
   const submit = async () => {
     if (busy || reason.trim().length < 5) return;
@@ -98,8 +98,8 @@ export function RefundButton({ order }: { order: Order }) {
         <ModalShell onClose={close}>
           <h3 className="text-base font-bold">정상결제 환불</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            페이앱 결제 취소 + 크레딧 회수({order.credits}개). 결제액 {won(order.amount)}.
-            {isRetry && " (페이앱 환불됨 — 로컬 반영 재시도)"}
+            포트원 결제 취소 + 크레딧 회수({order.credits}개). 결제액 {won(order.amount)}.
+            {isRetry && " (포트원 환불됨 — 로컬 반영 재시도)"}
             <br />
             보유 크레딧이 회수량보다 적으면 환불이 차단돼요(이미 사용분).
           </p>

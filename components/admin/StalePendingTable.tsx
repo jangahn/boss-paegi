@@ -79,7 +79,10 @@ export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
 }
 
 const ERR_KO: Record<string, string> = {
-  not_settleable: "지급할 수 없는 상태의 주문이에요(pending+mul_no 만 가능).",
+  not_settleable: "지급할 수 없는 상태의 주문이에요(pending + 결제 시도 흔적 필요).",
+  not_paid: "포트원 결제상태가 PAID 가 아니에요 — 지급 대상이 아니에요.",
+  amount_mismatch: "포트원 결제금액이 주문 금액과 달라요 — 운영 확인 필요.",
+  pg_unreachable: "포트원 조회 실패 — 잠시 후 재시도하세요.",
   not_cancelable: "취소할 수 없는 상태의 주문이에요.",
   use_refund: "이미 결제된 주문 — 주문/회원 상세의 '환불'로 처리하세요.",
   member_not_found: "회원 정보를 찾지 못했어요.",
@@ -126,7 +129,7 @@ function ActionModal({
         onDone();
         return;
       }
-      // 실패/수동(페이앱 정산후·미상태·연결실패 등) → 메시지 표시, 모달 유지.
+      // 실패/수동(미결제·상태 불일치·연결실패 등) → 메시지 표시, 모달 유지.
       setError(out.message ?? ERR_KO[out.error ?? ""] ?? out.error ?? "처리 실패");
       setBusy(false);
     } catch (e) {
@@ -138,12 +141,12 @@ function ActionModal({
   return (
     <ModalShell onClose={onClose}>
       <h2 className="text-lg font-bold">
-        {kind === "settle" ? "결제완료 확인 후 지급" : "주문 취소 (페이앱 연동)"}
+        {kind === "settle" ? "포트원 검증 후 지급" : "주문 취소 (포트원 연동)"}
       </h2>
       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
         {kind === "settle"
-          ? "페이앱은 단건 결제상태 조회 API가 없어요. 페이앱 콘솔 거래내역에서 결제완료를 직접 확인한 뒤 지급하세요 — 크레딧을 실제 지급하며 감사 로그에 기록됩니다."
-          : "페이앱에서 결제를 취소합니다(결제됐으면 환불, 미승인 요청이면 요청 취소) + 주문을 취소 처리해요. pending 이라 회수할 크레딧은 없어요. 감사 로그 기록. (LINKKEY 미설정 시 로컬 표시만.)"}
+          ? "지급 전에 서버가 포트원 단건 조회로 결제완료(PAID)·금액 일치를 검증해요. 검증 통과 시에만 크레딧을 지급하며 감사 로그에 기록됩니다."
+          : "포트원에서 결제를 취소합니다(결제됐으면 환불, 미승인 요청이면 로컬 취소만) + 주문을 취소 처리해요. pending 이라 회수할 크레딧은 없어요. 감사 로그 기록."}
       </p>
       <p className="mt-2 text-xs text-zinc-400">
         {won(order.amount)} · {order.credits}개 · {fmtKst(order.created_at)}

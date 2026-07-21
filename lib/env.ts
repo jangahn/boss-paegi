@@ -5,4 +5,13 @@ export const PUBLIC_ENV = {
   // 공유·유입 분석 수집 게이트 — production 자동 on, 로컬은 NEXT_PUBLIC_ANALYTICS_ENABLED=1 로 켬(미설정 시 off).
   ANALYTICS_ENABLED:
     process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "1" || process.env.NODE_ENV === "production",
+  // ── 포트원(PortOne) V2 — 클라 브라우저 SDK 호출용 공개 식별자 ──
+  // ⚠️ 이 프로젝트 유일한 클라측 결제 env. storeId·channelKey 는 포트원 설계상 공개 안전값
+  //    (요청 식별용 — 결제 승인·취소·조회 권한은 서버 전용 PORTONE_V2_API_SECRET 에만 있음).
+  //    서버 시크릿(API Secret·웹훅 시크릿)은 절대 NEXT_PUBLIC_ 로 만들지 말 것.
+  // 채널키는 콘솔 채널관리의 채널별 발급값 — 테스트 채널 키를 넣으면 테스트모드, 실연동 키로 교체하면 실모드.
+  PORTONE_STORE_ID: process.env.NEXT_PUBLIC_PORTONE_STORE_ID ?? "",
+  PORTONE_CHANNEL_KEY_CARD: process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_CARD ?? "", // KPN 신용카드 일반결제
+  PORTONE_CHANNEL_KEY_TOSSPAY: process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_TOSSPAY ?? "",
+  PORTONE_CHANNEL_KEY_KAKAOPAY: process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_KAKAOPAY ?? "",
 };

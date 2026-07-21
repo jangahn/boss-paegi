@@ -8,6 +8,21 @@ const faqItemSchema = z.object({
   a: z.string().trim().min(1).max(2000),
 });
 
+// 사업자정보 — PG(카드사)·카카오페이 입점 심사 요건: 상호·사업자번호·대표자·주소·유선전화(휴대폰 불가)를
+// 메인 + 결제페이지에 상시 노출(사업자등록증과 일치 필수). 통신판매업 번호는 일부 카드사(KB국민) 필수.
+// **optional**: 기존 발행값(이 필드 없음)이 검증 실패로 코드기본값으로 떨어지지 않게. 값은 콘솔에서 채움.
+const businessInfoSchema = z.object({
+  companyName: z.string().trim().min(1).max(60),
+  ownerName: z.string().trim().min(1).max(30),
+  bizRegNo: z.string().trim().min(1).max(20),
+  /** 통신판매업 신고번호 — 신고 완료 전 빈 값 허용(노출 시 생략). */
+  mailOrderNo: z.string().trim().max(40),
+  address: z.string().trim().min(1).max(120),
+  /** 유선번호만 가능(휴대폰 불가) — 카카오페이 입점 요건. */
+  phone: z.string().trim().min(1).max(20),
+  email: z.string().trim().min(3).max(120),
+});
+
 export const siteContentSchema = z.object({
   /** 한 줄 정의 — title·OG·JSON-LD·llms.txt 공통 엔티티 설명. */
   definition: z.string().trim().min(1).max(200),
@@ -19,10 +34,13 @@ export const siteContentSchema = z.object({
   intro: z.string().trim().min(1).max(1000),
   /** 자주 묻는 질문 — /faq·FAQPage JSON-LD. */
   faq: z.array(faqItemSchema).min(1).max(30),
+  /** 사업자정보 — 미설정(기존 발행값)이면 푸터 비노출. */
+  businessInfo: businessInfoSchema.optional(),
 });
 
 export type SiteContent = z.infer<typeof siteContentSchema>;
 export type FaqItem = z.infer<typeof faqItemSchema>;
+export type BusinessInfo = z.infer<typeof businessInfoSchema>;
 
 export const SITE_CONTENT_DEFAULT: SiteContent = {
   definition:

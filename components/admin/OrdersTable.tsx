@@ -2,7 +2,7 @@ import type { AdminOrder } from "@/lib/admin-types";
 import { fmtKst, STATUS_COLOR, won, shortId } from "@/lib/admin-format";
 import { RefundButton } from "@/components/admin/RefundButton";
 
-/** 주문 목록 — paid/payapp_done 행에 환불 액션(RefundButton, client). 그 외 컬럼은 조회 전용. */
+/** 주문 목록 — paid/pg_done 행에 환불 액션(RefundButton, client). 그 외 컬럼은 조회 전용. */
 export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
   if (!rows.length) {
     return <p className="text-sm text-zinc-400">주문이 없어요.</p>;
@@ -37,7 +37,7 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
               </td>
               <td className="px-2 py-1.5 font-mono text-zinc-400">{shortId(r.order_uuid)}</td>
               <td className="px-2 py-1.5">
-                {r.status === "paid" || r.refund_state === "payapp_done" ? (
+                {r.status === "paid" || r.refund_state === "pg_done" ? (
                   <RefundButton
                     order={{
                       orderUuid: r.order_uuid,

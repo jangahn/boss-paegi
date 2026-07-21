@@ -48,6 +48,7 @@ export function GrowthLeversEditor({
   const [creditsEnabled, setCreditsEnabled] = useState(initial.creditsEnabled ?? false);
   const [comingTitle, setComingTitle] = useState(initial.comingSoon?.title ?? DEFAULT_COMING_SOON.title);
   const [comingBody, setComingBody] = useState(initial.comingSoon?.body ?? DEFAULT_COMING_SOON.body);
+  const [reviewerEmails, setReviewerEmails] = useState((initial.reviewerEmails ?? []).join("\n"));
   const [products, setProducts] = useState<Draft[]>(initial.products.map(toDraft));
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
@@ -70,10 +71,15 @@ export function GrowthLeversEditor({
     setConfirm(false);
     setMsg(null);
     try {
+      const reviewerList = reviewerEmails
+        .split(/[\n,]/)
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
       const value: GrowthLevers = {
         signupBonusCredits: Number(signup),
         creditsEnabled,
         comingSoon: { title: comingTitle.trim(), body: comingBody.trim() },
+        ...(reviewerList.length > 0 ? { reviewerEmails: reviewerList } : {}),
         products: products.map((p) => ({
           productId: p.productId.trim(),
           goodname: p.goodname.trim(),
@@ -161,6 +167,22 @@ export function GrowthLeversEditor({
             placeholder="본문 (여러 줄 가능)"
             className="rounded-lg border border-foreground/15 ui-field p-2 text-sm leading-relaxed outline-none focus:border-foreground/40"
           />
+        </div>
+        <div className="mt-1 flex flex-col gap-2 border-t border-foreground/10 pt-2">
+          <span className="text-[11px] font-semibold text-zinc-400">
+            PG 심사용 계정 이메일 (한 줄에 하나, 최대 10개)
+          </span>
+          <textarea
+            value={reviewerEmails}
+            rows={2}
+            onChange={(e) => setReviewerEmails(e.target.value)}
+            placeholder="reviewer@example.com"
+            className="rounded-lg border border-foreground/15 ui-field p-2 text-xs leading-relaxed outline-none focus:border-foreground/40"
+          />
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            결제 노출이 <b>OFF 여도</b> 이 이메일로 로그인한 회원에겐 /credits 결제 UI·체크아웃이
+            열려요(테스트 채널 심사 대응). 심사 종료 후 비우세요.
+          </p>
         </div>
       </div>
 

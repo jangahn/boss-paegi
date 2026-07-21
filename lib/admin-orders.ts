@@ -5,7 +5,7 @@ import type { AdminOrder } from "@/lib/admin-types";
 
 /**
  * 전체 주문 목록 — server-only, service_role. 검색/필터/페이징은 `search_orders` RPC(0022)로.
- * RPC 가 order_uuid::text·mul_no prefix + status 필터 + window total_count 를 서버에서 처리(정확 totalPages).
+ * RPC 가 order_uuid::text·pg_tx_id/payment_id prefix + status 필터 + window total_count 를 서버에서 처리(정확 totalPages).
  */
 export const ORDERS_PAGE_SIZE = 10;
 
@@ -43,7 +43,9 @@ export async function getOrders(opts: {
     amount: r.amount,
     credits: r.credits,
     product_id: r.product_id,
-    mul_no: r.mul_no,
+    pg_tx_id: r.pg_tx_id,
+    payment_id: r.payment_id,
+    provider: r.provider,
     created_at: r.created_at,
     paid_at: r.paid_at,
     user_id: r.user_id,

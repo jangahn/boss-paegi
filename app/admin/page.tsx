@@ -85,8 +85,8 @@ export default async function AdminPage() {
               오래된 결제요청 — 확인 필요
             </h2>
             <p className="mb-2 text-xs leading-relaxed text-zinc-500">
-              결제 시도(mul_no) 후 2시간+ pending. <b>결제완료 미지급으로 단정 금지</b> —
-              페이앱 관리자에서 결제완료 여부를 확인한 뒤 처리하세요.
+              결제 시도 후 2시간+ pending. 대사 cron 이 포트원 조회로 자동 해소하며,
+              남은 건은 &lsquo;지급&rsquo; 시 서버가 포트원 결제상태(PAID·금액)를 검증한 뒤 지급해요.
             </p>
             <StalePendingTable rows={stale} />
           </section>

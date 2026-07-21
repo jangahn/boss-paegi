@@ -21,6 +21,7 @@ import {
 } from "@/lib/config/getters";
 import { creditsConfig } from "@/lib/config/domains/growth";
 import { SiteContentProvider } from "@/components/SiteContentProvider";
+import { SiteFooter } from "@/components/SiteFooter";
 import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
@@ -117,6 +118,8 @@ export default async function RootLayout({
                 <CreditProductsProvider value={creditsConfig(growthLevers)}>
                   <BadgeCatalogProvider value={badgeCatalog}>
                     {children}
+                    {/* 사업자정보 푸터 — PG 심사 요건(메인+결제페이지 상시 노출). 미설정 시 비노출. */}
+                    <SiteFooter info={siteContent.businessInfo} />
                   </BadgeCatalogProvider>
                 </CreditProductsProvider>
               </SessionLimitsProvider>

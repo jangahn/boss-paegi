@@ -16,7 +16,7 @@ if (dsn) {
       const a = (ctx?.attributes ?? {}) as Record<string, unknown>;
       const hay = `${ctx?.name ?? ""} ${a["http.route"] ?? ""} ${a["url"] ?? a["http.target"] ?? ""}`;
       if (hay.includes("/monitoring")) return 0; // Sentry 터널
-      if (hay.includes("/api/payapp")) return 1.0; // 결제(저볼륨·고가치) 전수 트레이싱
+      if (hay.includes("/api/pay/")) return 1.0; // 결제(저볼륨·고가치) 전수 트레이싱
       if (hay.includes("/api/generations")) return 0.05;
       if (hay.includes("/api/fal") || hay.includes("/api/doll")) return 1.0;
       if (hay.includes("/api/score")) return 0.5;

@@ -1,127 +1,21 @@
-"use client";
-
-import { useState } from "react";
-import { Spinner } from "@/components/Spinner";
-import { useBfcacheReset } from "@/lib/use-bfcache-reset";
-import { perUnitPrice } from "@/lib/credit-products";
-import { useCreditsConfig } from "@/components/CreditProductsProvider";
-import { log, errInfo } from "@/lib/log";
-import { setSentryLastAction } from "@/lib/sentry-context";
+import { createClient } from "@/lib/supabase/server";
+import { getGrowthLevers } from "@/lib/config/getters";
+import { creditsConfig, creditsAllowedFor } from "@/lib/config/domains/growth";
+import { CreditsClient } from "./CreditsClient";
 
 /**
- * 생성권 충전 — 상품 4종(개당 단가 표시). 클릭 시 서버 checkout 으로 결제요청 →
- * 페이앱 결제창(payurl)으로 같은 탭 이동. price/credits 결정은 항상 서버 allowlist.
- * (회원 게이트는 proxy.ts 가 처리 — 비회원은 /login 으로.)
+ * 생성권 충전 — 서버 페이지. 노출 여부는 발행 config(creditsEnabled) + PG 심사용 계정
+ * allowlist(reviewerEmails)로 판정해 클라에 내려준다(판정 함수는 체크아웃과 공유 — 드리프트 방지).
+ * (회원 게이트는 proxy.ts 가 처리 — 비회원은 /login 으로. 결제 검증은 항상 서버 재검사.)
  */
-export default function CreditsPage() {
-  const { products, enabled, comingSoon } = useCreditsConfig();
-  const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export default async function CreditsPage() {
+  const [growth, supabase] = await Promise.all([getGrowthLevers(), createClient()]);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // 법적 동의는 서버 proxy 가 렌더 전 게이트(미동의면 여기 안 옴). 진입 시 클라 동의 가드 불필요.
-  // 페이앱 결제창 갔다가 뒤로가기 → bfcache 복원 시 멈춘 스피너(pending) 해제.
-  useBfcacheReset(() => setPending(null));
+  const cfg = creditsConfig(growth);
+  const enabled = creditsAllowedFor(growth, user?.email);
 
-  const buy = async (productId: string) => {
-    if (pending) return; // 중복 클릭 가드
-    setSentryLastAction("purchase_start");
-    setPending(productId);
-    setError(null);
-    try {
-      const res = await fetch("/api/payapp/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
-      });
-      if (!res.ok) {
-        const e = (await res.json().catch(() => ({}))) as { error?: string };
-        if (e.error === "payment_unavailable") {
-          throw new Error("결제 기능이 잠시 비활성화돼 있어요. 잠시 후 다시 시도해주세요.");
-        }
-        if (e.error === "unauthorized" || e.error === "member_only") {
-          window.location.assign("/login?next=/credits");
-          return;
-        }
-        if (e.error === "consent_required") {
-          // 동의 미완(in-between/레거시/구버전) — 통합 동의 화면으로.
-          window.location.assign("/consent?next=/credits");
-          return;
-        }
-        throw new Error("결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.");
-      }
-      const { payurl } = (await res.json()) as { payurl?: string };
-      if (!payurl) throw new Error("결제창 주소를 받지 못했어요.");
-      window.location.assign(payurl); // 같은 탭 리다이렉트
-    } catch (e) {
-      log.warn("credits.checkout_fail", errInfo(e));
-      setError(e instanceof Error ? e.message : "결제 요청 실패");
-      setPending(null);
-    }
-  };
-
-  // OFF(준비중) — 어드민이 성장레버에서 결제 노출을 끈 상태. 충전 UI 대신 안내 화면(서버 체크아웃도 차단됨).
-  if (!enabled) {
-    return (
-      <main className="flex flex-1 flex-col px-6 py-8">
-        <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 py-10 text-center">
-          <span className="text-4xl" aria-hidden>
-            🛠️
-          </span>
-          <h1 className="text-2xl font-bold">{comingSoon.title}</h1>
-          <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-500">{comingSoon.body}</p>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <>
-      <main className="flex flex-1 flex-col px-6 py-8">
-        <div className="mx-auto flex w-full max-w-md flex-col gap-5">
-          <div>
-            <h1 className="text-2xl font-bold">생성권 충전</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            {products.map((p) => {
-              const isPending = pending === p.productId;
-              return (
-                <button
-                  key={p.productId}
-                  type="button"
-                  disabled={!!pending}
-                  onClick={() => void buy(p.productId)}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 ui-surface p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
-                >
-                  <div>
-                    <p className="text-base font-bold">{p.goodname}</p>
-                    <p className="text-xs text-zinc-500">
-                      생성권 {p.credits}개 · 개당 {perUnitPrice(p).toLocaleString()}원
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-extrabold tabular-nums">
-                      {p.price.toLocaleString()}원
-                    </span>
-                    {isPending && <Spinner className="h-4 w-4" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {error && (
-            <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-500">{error}</p>
-          )}
-
-          <p className="text-[11px] leading-relaxed text-zinc-400">
-            카드 · 네이버페이로 결제할 수 있어요. 결제 완료 후 생성권이 자동으로 충전돼요.
-          </p>
-        </div>
-      </main>
-    </>
-  );
+  return <CreditsClient products={cfg.products} enabled={enabled} comingSoon={cfg.comingSoon} />;
 }

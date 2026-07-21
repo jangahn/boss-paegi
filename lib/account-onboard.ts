@@ -56,7 +56,7 @@ export async function migrateAnonData(
     const [d, o, g] = await Promise.all([
       admin.from("dolls").select("id", { head: true, count: "exact" }).eq("owner_id", anonId),
       admin
-        .from("payapp_orders")
+        .from("orders")
         .select("order_uuid", { head: true, count: "exact" })
         .eq("user_id", anonId),
       admin
