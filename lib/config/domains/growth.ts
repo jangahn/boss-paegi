@@ -71,14 +71,8 @@ export function isReviewerEmail(g: GrowthLevers, email: string | null | undefine
   return (g.reviewerEmails ?? []).includes(email.trim().toLowerCase());
 }
 
-/**
- * 결제 노출/체크아웃 허용 판정 — 전역 스위치(creditsEnabled) 또는 심사용 계정(reviewerEmails).
- * 표시(/credits 서버 페이지)와 검증(/api/pay/checkout)이 같은 함수를 쓴다(드리프트 방지).
- */
-export function creditsAllowedFor(g: GrowthLevers, email: string | null | undefined): boolean {
-  if (g.creditsEnabled ?? false) return true;
-  return isReviewerEmail(g, email);
-}
+// (구 creditsAllowedFor 는 reviewer 판정이 async 소스(reviewer_accounts, 0060)로 확장되며 제거 —
+//  현행 판정: `growth.creditsEnabled || await isReviewerUser(...)`, lib/reviewer.ts 참조.)
 
 /**
  * 결제 채널 모드 판정 — 심사·테스트 계정은 테스트 채널이 기본(실돈 미이동), `?live=1` 요청 시에만

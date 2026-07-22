@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { startOAuth, type OAuthProvider } from "@/lib/auth-oauth";
 import { safeNext } from "@/lib/oauth-metadata";
+import { createClient } from "@/lib/supabase/client";
 import { Spinner } from "@/components/Spinner";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
@@ -56,6 +57,31 @@ export function LoginForm() {
   const { logoUrl } = useMediaAssets();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
+  // PG 심사·테스트 계정 전용 ID/PW 진입 — `?reviewer=1` 일 때만 폼 노출(평상시 로그인 UI 불변).
+  // 계정은 어드민(/admin/reviewers)이 발급하며, 일반 가입 경로가 아니다(안내문구로 명시).
+  const reviewerMode = params.get("reviewer") === "1";
+  const [rvEmail, setRvEmail] = useState("");
+  const [rvPw, setRvPw] = useState("");
+  const [rvBusy, setRvBusy] = useState(false);
+  const [rvErr, setRvErr] = useState<string | null>(null);
+
+  const onReviewerLogin = async () => {
+    if (rvBusy || !rvEmail.trim() || !rvPw) return;
+    setRvBusy(true);
+    setRvErr(null);
+    const sb = createClient();
+    const { error } = await sb.auth.signInWithPassword({
+      email: rvEmail.trim(),
+      password: rvPw,
+    });
+    if (error) {
+      setRvErr("아이디 또는 비밀번호가 올바르지 않아요.");
+      setRvBusy(false);
+      return;
+    }
+    // 성공 — 심사 동선 기본값은 충전 페이지(next 지정 시 그 경로).
+    window.location.assign(params.get("next") ? next : "/credits");
+  };
   const rawAuto = params.get("auto");
   const auto: OAuthProvider | null =
     rawAuto === "kakao" || rawAuto === "google" ? rawAuto : null; // allowlist
@@ -141,6 +167,47 @@ export function LoginForm() {
           <p className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
             {errorMsg}
           </p>
+        )}
+
+        {reviewerMode && (
+          <form
+            className="flex w-full flex-col gap-2 rounded-xl border border-foreground/15 bg-foreground/5 p-4 text-left"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onReviewerLogin();
+            }}
+          >
+            <p className="text-sm font-semibold">심사용 계정 로그인</p>
+            <p className="text-xs text-zinc-500">
+              결제 심사(PG)용 테스트 계정 전용이에요. 일반 이용은 아래 카카오/Google 로그인을
+              이용해주세요.
+            </p>
+            <input
+              type="email"
+              autoComplete="username"
+              value={rvEmail}
+              onChange={(e) => setRvEmail(e.target.value)}
+              placeholder="아이디(이메일)"
+              className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
+            />
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={rvPw}
+              onChange={(e) => setRvPw(e.target.value)}
+              placeholder="비밀번호"
+              className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
+            />
+            {rvErr && <p className="text-xs text-red-500">{rvErr}</p>}
+            <button
+              type="submit"
+              disabled={rvBusy || !rvEmail.trim() || !rvPw}
+              className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-foreground py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-50"
+            >
+              {rvBusy && <Spinner className="h-4 w-4" />}
+              심사용 계정으로 로그인
+            </button>
+          </form>
         )}
 
         <div className="mt-2 flex w-full flex-col gap-3">

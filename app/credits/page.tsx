@@ -1,11 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getGrowthLevers } from "@/lib/config/getters";
-import {
-  creditsConfig,
-  creditsAllowedFor,
-  isReviewerEmail,
-  payModeFor,
-} from "@/lib/config/domains/growth";
+import { creditsConfig, payModeFor } from "@/lib/config/domains/growth";
+import { isReviewerUser } from "@/lib/reviewer";
 import { CreditsClient } from "./CreditsClient";
 
 /**
@@ -29,8 +25,9 @@ export default async function CreditsPage({
   } = await supabase.auth.getUser();
 
   const cfg = creditsConfig(growth);
-  const enabled = creditsAllowedFor(growth, user?.email);
-  const isReviewer = isReviewerEmail(growth, user?.email);
+  // reviewer = config allowlist(OAuth 심사관) OR reviewer_accounts(ID/PW 테스트 계정) — lib/reviewer.ts.
+  const isReviewer = user ? await isReviewerUser(growth, user) : false;
+  const enabled = (growth.creditsEnabled ?? false) || isReviewer;
   const payMode = payModeFor(isReviewer, params.live === "1");
 
   return (
