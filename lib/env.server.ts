@@ -9,8 +9,10 @@ export const SERVER_ENV = {
   // 미설정 시 결제 라우트 비활성(503). 단건 조회·취소 공용 시크릿.
   PORTONE_V2_API_SECRET: process.env.PORTONE_V2_API_SECRET ?? "",
   // 포트원 웹훅 서명 시크릿(Standard Webhooks, whsec_~) — 콘솔 [결제알림(Webhook) 관리]에서 발급.
-  // 테스트/실연동 환경별 별도 설정. 미설정 시 웹훅 라우트 비활성.
+  // 테스트/실연동 환경이 **동시 운영**되므로 시크릿 2개를 병존시킨다(검증은 실연동 → 테스트 순 시도).
+  // 무접미사 = 실연동 환경, _TEST = 테스트 환경. 둘 다 미설정 시 웹훅 라우트 비활성.
   PORTONE_WEBHOOK_SECRET: process.env.PORTONE_WEBHOOK_SECRET ?? "",
+  PORTONE_WEBHOOK_SECRET_TEST: process.env.PORTONE_WEBHOOK_SECRET_TEST ?? "",
   // 대사 cron(cron-job.org → /api/ops/reconcile) 보호 시크릿. 미설정 시 reconcile 비활성(503).
   CRON_SECRET: process.env.CRON_SECRET ?? "",
 };

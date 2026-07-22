@@ -11,7 +11,7 @@ import type { AdminFunnel, OrderSummary, AdminOrder } from "@/lib/admin-types";
 export type { AdminFunnel, OrderSummary, AdminOrder };
 
 const ORDER_SELECT =
-  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, created_at, paid_at, user_id, profiles(display_name)";
+  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, profiles(display_name)";
 
 type RawOrderRow = Omit<AdminOrder, "display_name"> & {
   profiles:
@@ -31,6 +31,8 @@ function mapOrder(r: RawOrderRow): AdminOrder {
     pg_tx_id: r.pg_tx_id,
     payment_id: r.payment_id,
     provider: r.provider,
+    is_test: r.is_test,
+    pay_channel: r.pay_channel,
     created_at: r.created_at,
     paid_at: r.paid_at,
     user_id: r.user_id,
@@ -59,7 +61,8 @@ export async function getOrderSummary(): Promise<OrderSummary | null> {
   return data as OrderSummary;
 }
 
-/** 오래된 결제요청(확인 필요) — 결제 시도(payment_id/pg_tx_id)했으나 2시간+ pending. 미지급 단정 아님. */
+/** 오래된 결제요청(확인 필요) — 결제 시도(payment_id/pg_tx_id)했으나 2시간+ pending. 미지급 단정 아님.
+ *  테스트 주문 제외 — 심사관이 결제창만 열고 이탈하는 게 정상 패턴이라 경고 노이즈만 만든다. */
 export async function getStalePending(): Promise<AdminOrder[]> {
   const admin = createAdminClient();
   const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -67,6 +70,7 @@ export async function getStalePending(): Promise<AdminOrder[]> {
     .from("orders")
     .select(ORDER_SELECT)
     .eq("status", "pending")
+    .eq("is_test", false)
     .not("payment_id", "is", null)
     .lt("created_at", cutoff)
     .order("created_at", { ascending: false })
@@ -85,7 +89,7 @@ export type RefundWarnings = {
 };
 
 const WARN_SELECT =
-  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, created_at, paid_at, user_id, refund_state";
+  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refund_state";
 
 /** 환불 운영 경고 — 대시보드 최상단(stale pending 보다 높은 우선순위). */
 export async function getRefundWarnings(): Promise<RefundWarnings> {

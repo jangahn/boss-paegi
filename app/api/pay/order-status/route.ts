@@ -2,7 +2,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { portoneConfigured, getPortonePayment } from "@/lib/portone";
+import { portoneConfigured, getPortonePayment, paymentModeMismatch } from "@/lib/portone";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient();
   const { data: order } = await admin
     .from("orders")
-    .select("order_uuid, user_id, status, credits, amount, product_id, provider, payment_id, canceled_at, pg_tx_id")
+    .select("order_uuid, user_id, status, credits, amount, product_id, provider, payment_id, canceled_at, pg_tx_id, is_test")
     .eq("order_uuid", orderUuid)
     .maybeSingle();
 
@@ -49,7 +49,19 @@ export async function GET(req: NextRequest) {
     const got = await getPortonePayment(order.payment_id);
     if (got.ok) {
       const payment = got.payment;
-      if (payment.status === "PAID" && (payment.amount?.total ?? -1) === order.amount) {
+      // 채널 모드 대사(백스톱) — 웹훅과 동일 규칙(테스트 채널 → 실주문 지급 차단).
+      const mismatch =
+        payment.status === "PAID" ? paymentModeMismatch(payment, order.is_test === true) : null;
+      if (mismatch === "block") {
+        log.error("pay.poll_test_channel_on_live_order", { orderUuid, paymentId: order.payment_id });
+        await admin
+          .from("orders")
+          .update({ error_message: "test_channel_on_live_order" })
+          .eq("order_uuid", order.order_uuid);
+      } else if (payment.status === "PAID" && (payment.amount?.total ?? -1) === order.amount) {
+        if (mismatch === "warn") {
+          log.warn("pay.poll_live_channel_on_test_order", { orderUuid });
+        }
         const { data: granted, error } = await admin.rpc("mark_paid_and_grant", {
           p_order_uuid: order.order_uuid,
           p_pg_tx_id: payment.transactionId || null,

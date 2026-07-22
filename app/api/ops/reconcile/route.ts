@@ -2,7 +2,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVER_ENV } from "@/lib/env.server";
-import { portoneConfigured, getPortonePayment } from "@/lib/portone";
+import { portoneConfigured, getPortonePayment, paymentModeMismatch } from "@/lib/portone";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const cutoff = new Date(Date.now() - STALE_MS).toISOString();
   const { data, error } = await admin
     .from("orders")
-    .select("order_uuid, payment_id, amount, user_id, created_at, canceled_at")
+    .select("order_uuid, payment_id, amount, user_id, created_at, canceled_at, is_test")
     .eq("status", "pending")
     .eq("provider", "portone")
     .not("payment_id", "is", null)
@@ -78,7 +78,17 @@ export async function POST(req: NextRequest) {
       continue;
     }
     const p = got.payment;
-    if (p.status === "PAID" && (p.amount?.total ?? -1) === row.amount) {
+    // 채널 모드 대사(백스톱) — 웹훅/폴링과 동일 규칙(테스트 채널 → 실주문 지급 차단).
+    const mismatch = p.status === "PAID" ? paymentModeMismatch(p, row.is_test === true) : null;
+    if (mismatch === "block") {
+      log.error("pay.reconcile_test_channel_on_live_order", { orderUuid: row.order_uuid });
+      await admin
+        .from("orders")
+        .update({ error_message: "test_channel_on_live_order" })
+        .eq("order_uuid", row.order_uuid);
+      unresolved.push(row.order_uuid);
+    } else if (p.status === "PAID" && (p.amount?.total ?? -1) === row.amount) {
+      if (mismatch === "warn") log.warn("pay.reconcile_live_channel_on_test_order", { orderUuid: row.order_uuid });
       const { data: ok, error: gErr } = await admin.rpc("mark_paid_and_grant", {
         p_order_uuid: row.order_uuid,
         p_pg_tx_id: p.transactionId || null,

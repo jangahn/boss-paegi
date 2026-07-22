@@ -2,6 +2,18 @@ import type { AdminOrder } from "@/lib/admin-types";
 import { fmtKst, STATUS_COLOR, won, shortId } from "@/lib/admin-format";
 import { RefundButton } from "@/components/admin/RefundButton";
 
+// 결제경로 표기 — provider(payapp 레거시/portone) + pay_channel(0059) + is_test 를 한 컬럼에 압축.
+const CHANNEL_LABEL: Record<string, string> = {
+  card: "카드",
+  tosspay: "토스페이",
+  kakaopay: "카카오페이",
+};
+
+function payRouteLabel(o: AdminOrder): string {
+  if (o.provider === "payapp") return "페이앱";
+  return o.pay_channel ? CHANNEL_LABEL[o.pay_channel] ?? o.pay_channel : "포트원";
+}
+
 /** 주문 목록 — paid/pg_done 행에 환불 액션(RefundButton, client). 그 외 컬럼은 조회 전용. */
 export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
   if (!rows.length) {
@@ -14,6 +26,7 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
           <tr>
             <th className="px-2 py-1.5">시각(KST)</th>
             <th className="px-2 py-1.5">상태</th>
+            <th className="px-2 py-1.5">결제경로</th>
             <th className="px-2 py-1.5 text-right">금액</th>
             <th className="px-2 py-1.5 text-right">크레딧</th>
             <th className="px-2 py-1.5">상품</th>
@@ -28,6 +41,14 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
               <td className="px-2 py-1.5 tabular-nums">{fmtKst(r.created_at)}</td>
               <td className={`px-2 py-1.5 font-semibold ${STATUS_COLOR[r.status] ?? ""}`}>
                 {r.status}
+              </td>
+              <td className="px-2 py-1.5 whitespace-nowrap">
+                {payRouteLabel(r)}
+                {r.is_test && (
+                  <span className="ml-1 rounded border border-amber-500/40 bg-amber-500/10 px-1 py-px text-[10px] font-semibold text-amber-500">
+                    TEST
+                  </span>
+                )}
               </td>
               <td className="px-2 py-1.5 text-right tabular-nums">{won(r.amount)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{r.credits}</td>

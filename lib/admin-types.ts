@@ -30,6 +30,10 @@ export type AdminOrder = {
   /** 포트원 paymentId(가맹점 채번, 영숫자). 레거시 페이앱 주문은 null */
   payment_id: string | null;
   provider: string;
+  /** 테스트 채널 주문(심사·테스트 계정) — 매출/KPI 집계 제외 대상. 레거시 행은 false. */
+  is_test: boolean;
+  /** 결제수단 채널(card|tosspay|kakaopay). 0059 이전·레거시 페이앱 주문은 null. */
+  pay_channel: string | null;
   created_at: string;
   paid_at: string | null;
   user_id: string;

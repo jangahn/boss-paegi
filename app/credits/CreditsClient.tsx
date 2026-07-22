@@ -5,7 +5,7 @@ import { Spinner } from "@/components/Spinner";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { perUnitPrice, type CreditProduct } from "@/lib/credit-products";
 import { PUBLIC_ENV } from "@/lib/env";
-import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
+import { paymentChannels, type PayChannelMethod, type PayMode } from "@/lib/pay-channels";
 import { log, errInfo } from "@/lib/log";
 import { setSentryLastAction } from "@/lib/sentry-context";
 
@@ -14,17 +14,21 @@ import { setSentryLastAction } from "@/lib/sentry-context";
  * 클릭 시 서버 checkout 으로 주문 생성(price/credits 는 항상 서버 allowlist) →
  * 포트원 브라우저 SDK `requestPayment` 로 결제창 호출. 모바일은 redirectUrl 리다이렉트
  * 복귀(/credits/done), PC(iframe)는 프로미스 반환 후 같은 경로로 이동해 폴링 확인.
+ * payMode 는 서버 판정값(심사 계정=test) — 수단 목록 구성용이며, 결제창 채널키는
+ * checkout **응답의 서버 결정값**만 사용(클라 조작해도 서버가 계정 기반 재판정).
  */
 export function CreditsClient({
   products,
   enabled,
   comingSoon,
+  payMode,
 }: {
   products: CreditProduct[];
   enabled: boolean;
   comingSoon: { title: string; body: string };
+  payMode: PayMode;
 }) {
-  const channels = paymentChannels();
+  const channels = paymentChannels(payMode);
   const [method, setMethod] = useState<PayChannelMethod | null>(channels[0]?.method ?? null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +51,8 @@ export function CreditsClient({
       const res = await fetch("/api/pay/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
+        // method/wantLive 는 힌트일 뿐 — 채널키·모드는 서버가 계정 기반으로 재판정해 응답.
+        body: JSON.stringify({ productId, method: channel.method, wantLive: payMode === "live" }),
       });
       if (!res.ok) {
         const e = (await res.json().catch(() => ({}))) as { error?: string };
@@ -68,27 +73,30 @@ export function CreditsClient({
         }
         throw new Error("결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.");
       }
-      const { orderUuid, paymentId, orderName, totalAmount } = (await res.json()) as {
-        orderUuid?: string;
-        paymentId?: string;
-        orderName?: string;
-        totalAmount?: number;
-      };
-      if (!orderUuid || !paymentId || !orderName || !totalAmount) {
+      const { orderUuid, paymentId, orderName, totalAmount, channelKey, payMethod } =
+        (await res.json()) as {
+          orderUuid?: string;
+          paymentId?: string;
+          orderName?: string;
+          totalAmount?: number;
+          channelKey?: string;
+          payMethod?: "CARD" | "EASY_PAY";
+        };
+      if (!orderUuid || !paymentId || !orderName || !totalAmount || !channelKey || !payMethod) {
         throw new Error("결제 정보를 받지 못했어요.");
       }
 
-      // 결제창 호출 — 금액·주문명은 서버 결정값 그대로(클라 조작해도 서버/웹훅 금액 대사가 차단).
+      // 결제창 호출 — 금액·주문명·채널키는 서버 결정값 그대로(클라 조작해도 서버/웹훅 대사가 차단).
       const PortOne = await import("@portone/browser-sdk/v2");
       const doneUrl = `${window.location.origin}/credits/done?order=${orderUuid}`;
       const resp = await PortOne.requestPayment({
         storeId: PUBLIC_ENV.PORTONE_STORE_ID,
-        channelKey: channel.channelKey,
+        channelKey,
         paymentId,
         orderName,
         totalAmount,
         currency: "KRW",
-        payMethod: channel.payMethod,
+        payMethod,
         redirectUrl: doneUrl, // 모바일(리다이렉트 방식) 복귀 — 카카오페이 등은 모바일 REDIRECTION 강제
       });
       // 리다이렉트 방식이면 여기 안 옴. PC(iframe/프로미스 반환) 경로:
@@ -105,8 +113,9 @@ export function CreditsClient({
     }
   };
 
-  // OFF(준비중) — 어드민이 성장레버에서 결제 노출을 끈 상태(심사용 계정 제외). 서버 체크아웃도 차단됨.
-  if (!enabled) {
+  // OFF(준비중) — 어드민이 결제 노출을 끈 상태(심사용 계정 제외). 서버 체크아웃도 차단됨.
+  // 채널 0개(해당 모드의 채널키 미설정 — 예: 실연동 계약 전) 도 동일하게 준비중으로 안내.
+  if (!enabled || channels.length === 0) {
     return (
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 py-10 text-center">
@@ -125,10 +134,22 @@ export function CreditsClient({
       <main className="flex flex-1 flex-col px-6 py-8">
         <div className="mx-auto flex w-full max-w-md flex-col gap-5">
           <div>
-            <h1 className="text-2xl font-bold">생성권 충전</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              생성권 충전
+              {payMode === "test" && (
+                <span className="rounded-full border border-foreground/15 bg-foreground/5 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-500">
+                  테스트 결제 모드
+                </span>
+              )}
+            </h1>
             <p className="mt-1 text-sm text-zinc-500">
               캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.
             </p>
+            {payMode === "test" && (
+              <p className="mt-1 text-xs text-zinc-400">
+                심사·테스트용 결제 환경이에요. 실제 요금이 청구되지 않아요.
+              </p>
+            )}
           </div>
 
           {channels.length > 1 && (
