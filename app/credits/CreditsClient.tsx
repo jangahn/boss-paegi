@@ -206,10 +206,28 @@ export function CreditsClient({
             <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-500">{error}</p>
           )}
 
-          <p className="text-[11px] leading-relaxed text-zinc-400">
-            {channels.map((c) => c.label).join(" · ")}로 결제할 수 있어요. 결제 완료 후 생성권이
-            자동으로 충전돼요.
-          </p>
+          {/* 상품 정보 고지 — PG 심사 요건: 제공기간(즉시 지급)·유효기간(1년 이내)·환불규정을
+              구매 페이지에 노출(전상법 §13 상품정보제공고시 디지털콘텐츠 표시사항과 정합).
+              세부 기준은 이용약관 제10조와 동일해야 함(drift 금지). */}
+          <div className="flex flex-col gap-1.5 rounded-xl border border-foreground/10 bg-foreground/[0.03] p-3.5 text-[11px] leading-relaxed text-zinc-500">
+            <p>
+              · <b>제공 기간</b>: 생성권은 결제 완료 <b>즉시 지급</b>되어 바로 사용할 수 있어요.
+            </p>
+            <p>
+              · <b>유효기간</b>: 구매일(지급일)로부터 <b>1년</b>이에요. 무료로 지급된 생성권도
+              동일해요.
+            </p>
+            <p>
+              · <b>환불</b>: 결제일로부터 7일 이내에는 사용하지 않은 생성권을 전액 환불받을 수
+              있어요. 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한돼요.
+              유효기간이 지난 미사용 생성권은 구매일로부터 5년까지 결제금액의 90% 환급을 요청할
+              수 있어요. 자세한 기준·절차는 이용약관을 확인해주세요.
+            </p>
+            <p>
+              · {channels.map((c) => c.label).join(" · ")}로 결제할 수 있어요. 표시 가격은 부가세
+              포함 최종 결제 금액이에요.
+            </p>
+          </div>
         </div>
       </main>
     </>
