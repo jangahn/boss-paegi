@@ -46,6 +46,8 @@ export async function getOrders(opts: {
     pg_tx_id: r.pg_tx_id,
     payment_id: r.payment_id,
     provider: r.provider,
+    is_test: r.is_test,
+    pay_channel: r.pay_channel,
     created_at: r.created_at,
     paid_at: r.paid_at,
     user_id: r.user_id,

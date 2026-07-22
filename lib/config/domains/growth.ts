@@ -4,6 +4,7 @@ import {
   CREDIT_PRODUCT_LIST,
   type CreditProduct,
 } from "@/lib/credit-products";
+import type { PayMode } from "@/lib/pay-channels";
 
 // 성장 레버 도메인 — 가입 생성권 개수 + 충전 상품(가격/개수). 머니 패스(체크아웃)에 직결.
 // 가격: 최소 1,000원(소액 카드결제 하한 가드) + 상한 100,000원 가드(과실 과금 방지). productId 불변.
@@ -64,14 +65,28 @@ export const GROWTH_LEVERS_DEFAULT: GrowthLevers = {
   comingSoon: DEFAULT_COMING_SOON,
 };
 
+/** 심사용 계정(reviewerEmails) 여부 — 결제 허용·채널 모드(테스트/실) 판정의 공용 입력. */
+export function isReviewerEmail(g: GrowthLevers, email: string | null | undefined): boolean {
+  if (!email) return false;
+  return (g.reviewerEmails ?? []).includes(email.trim().toLowerCase());
+}
+
 /**
  * 결제 노출/체크아웃 허용 판정 — 전역 스위치(creditsEnabled) 또는 심사용 계정(reviewerEmails).
  * 표시(/credits 서버 페이지)와 검증(/api/pay/checkout)이 같은 함수를 쓴다(드리프트 방지).
  */
 export function creditsAllowedFor(g: GrowthLevers, email: string | null | undefined): boolean {
   if (g.creditsEnabled ?? false) return true;
-  if (!email) return false;
-  return (g.reviewerEmails ?? []).includes(email.trim().toLowerCase());
+  return isReviewerEmail(g, email);
+}
+
+/**
+ * 결제 채널 모드 판정 — 심사·테스트 계정은 테스트 채널이 기본(실돈 미이동), `?live=1` 요청 시에만
+ * 실채널(운영자 실결제 검증용). 일반 계정은 wantLive 와 무관하게 **항상 실채널**(테스트 채널로
+ * 무료 크레딧을 얻는 구멍 차단 — 표시(/credits)와 체크아웃이 같은 함수로 판정).
+ */
+export function payModeFor(isReviewer: boolean, wantLive: boolean): PayMode {
+  return isReviewer && !wantLive ? "test" : "live";
 }
 
 /** active 상품만 CreditProduct 형태로(표시·체크아웃 공용). 비활성/내부 active 플래그 제거. */

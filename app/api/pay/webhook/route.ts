@@ -6,6 +6,7 @@ import {
   portoneWebhookConfigured,
   verifyPortoneWebhook,
   getPortonePayment,
+  paymentModeMismatch,
 } from "@/lib/portone";
 import { log, errInfo } from "@/lib/log";
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
   const { data: order, error: loadErr } = await admin
     .from("orders")
-    .select("order_uuid, user_id, amount, status, canceled_at, pg_tx_id")
+    .select("order_uuid, user_id, amount, status, canceled_at, pg_tx_id, is_test")
     .eq("payment_id", paymentId)
     .maybeSingle();
   if (loadErr) {
@@ -80,6 +81,26 @@ export async function POST(req: NextRequest) {
           expected: order.amount,
         });
         return NextResponse.json({ ok: false, error: "amount_mismatch" });
+      }
+      // 채널 모드 대사(백스톱) — 테스트 채널 결제가 실주문에 지급되는 것만 차단(무료 크레딧 구멍).
+      const mismatch = paymentModeMismatch(payment, order.is_test === true);
+      if (mismatch === "block") {
+        log.error("pay.wh_test_channel_on_live_order", {
+          orderUuid: order.order_uuid,
+          paymentId,
+        });
+        await admin
+          .from("orders")
+          .update({ error_message: "test_channel_on_live_order" })
+          .eq("order_uuid", order.order_uuid);
+        return NextResponse.json({ ok: false, error: "channel_mode_mismatch" });
+      }
+      if (mismatch === "warn") {
+        // 실채널 결제가 테스트 주문에 — 실돈이 이동했으므로 지급은 진행, 수동 확인 경고만.
+        log.warn("pay.wh_live_channel_on_test_order", {
+          orderUuid: order.order_uuid,
+          paymentId,
+        });
       }
       const { data: granted, error } = await Sentry.startSpan(
         { name: "pay.grant", attributes: { orderUuid: order.order_uuid } },

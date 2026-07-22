@@ -101,8 +101,8 @@ boss-paegi/
 | `FAL_KEY` | fal.ai API 키. **서버 전용** |
 | `NEXT_PUBLIC_SITE_URL` | 공유 링크 / OG 이미지 / **포트원 웹훅·리다이렉트 베이스**용. ⚠️ Vercel prod 에 실제 도메인 필수 (미설정 시 콜백이 localhost → 결제 깨짐) |
 | `PORTONE_V2_API_SECRET` | 포트원 V2 API Secret — 단건 조회·취소. 콘솔 [식별코드·API Keys]>[V2 API]. 미설정 시 결제 비활성(503). **서버 전용** |
-| `PORTONE_WEBHOOK_SECRET` | 포트원 웹훅 서명 시크릿(Standard Webhooks, `whsec_~`) — 테스트/실연동 별도 발급. 미설정 시 웹훅 비활성. **서버 전용** |
-| `NEXT_PUBLIC_PORTONE_STORE_ID` / `NEXT_PUBLIC_PORTONE_CHANNEL_KEY_{CARD,TOSSPAY,KAKAOPAY}` | 클라 결제창 호출용 공개 식별자(승인·취소 권한 없음 — 서버 시크릿과 구분). 채널키=콘솔 채널관리 발급, **테스트 채널 키=테스트모드 ↔ 실연동 키=실모드**(env 교체만). 미설정 수단은 UI 숨김 |
+| `PORTONE_WEBHOOK_SECRET` / `PORTONE_WEBHOOK_SECRET_TEST` | 포트원 웹훅 서명 시크릿(Standard Webhooks, `whsec_~`) — 실연동/테스트 환경 각각 발급·**병존**(검증은 두 키 순차 시도). 둘 다 미설정 시 웹훅 비활성. **서버 전용** |
+| `NEXT_PUBLIC_PORTONE_STORE_ID` / `NEXT_PUBLIC_PORTONE_CHANNEL_KEY_{CARD,TOSSPAY,KAKAOPAY}[_TEST]` | 클라 결제창 호출용 공개 식별자(승인·취소 권한 없음 — 서버 시크릿과 구분). 채널키=콘솔 채널관리 발급. 무접미사=**실연동 채널**(일반 유저) · `_TEST`=**테스트 채널**(심사·테스트 계정 전용) — 두 세트 동시 운영, 계정 기반 스위칭(`payModeFor`). 미설정 수단/모드는 UI 숨김·체크아웃 차단 |
 | `CRON_SECRET` | ops cron(`/api/ops/reconcile`·`telemetry-maintain`·`content-maintain`·`analytics-maintain`) 보호 시크릿. cron-job.org 가 `x-cron-secret` 헤더로 전달. 미설정 시 해당 cron 비활성(503). **서버 전용** |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
@@ -133,8 +133,8 @@ boss-paegi/
 - **검증 3경로 수렴**: 웹훅·폴링(order-status)·대사(reconcile) 전부 **단건 조회 `GET /payments/{paymentId}` 재검증**(상태 PAID + 금액 대사)만 신뢰(웹훅 페이로드 불신 — 포트원 권장). 지급은 RPC `mark_paid_and_grant`(security definer, FOR UPDATE, pending 만)로 원자·멱등 + **credit_ledger 'purchase' 원자 기록**(0058). 폴링 경로도 같은 RPC 라 웹훅과 경합해도 1회 지급.
 - **웹훅**: Standard Webhooks 서명 검증(`@portone/server-sdk`, **raw body**) → 단건 조회 재검증 → 상태 반영. 2xx=확인 / 5xx=포트원 최대 5회 재전송. 취소 웹훅은 `canceled_at` 채움(0057 폴백 정렬 갭 해소). 위조/우리 주문 아님(콘솔 수동 테스트 등)은 로그 후 확인 응답.
 - **환불(자동연동)**: 어드민 환불 → `POST /payments/{id}/cancel`(전액) + 크레딧 회수. **회수량 > 보유 크레딧이면 환불 차단**(PG 호출 전 선검사); PG 성공 직후 경쟁상황만 가진 만큼 회수 + 부족분(shortfall) 기록. 응답은 구조화 에러 타입 분류 — `PAYMENT_ALREADY_CANCELLED`=멱등 ok(페이앱의 한국어 문구 파싱 제거). `refund_state`(in_progress/**pg_done**/done) CAS 단일플라이트·복구는 종전 설계 그대로.
-- **테스트모드 ↔ 실모드**: 콘솔 채널관리에서 테스트/실연동은 **독립 채널(각자 channelKey)** — env 값 교체만으로 전환(코드 변경 없음). 테스트 채널은 계약 전에도 공용 테스트 MID(tosstest·TC0ONETIME·merchantest6)로 생성 가능. 테스트 결제는 매입 전 자동취소(KB국민·NH농협·카카오뱅크 카드는 테스트 불가).
-- **PG 심사용 노출**: `growth_levers.reviewerEmails`(콘솔 편집) — `creditsEnabled=false`(전역 준비중)여도 해당 이메일 회원에겐 /credits 결제 UI·체크아웃 허용(`creditsAllowedFor` 단일 판정 — 표시·체크아웃 공유). 심사관 계정을 만들어 동의까지 완료 후 등록. **사업자정보 푸터**(`site_content.businessInfo`, 콘솔 편집)는 심사 요건(상호·사업자번호·대표자·주소·유선전화 상시 노출).
+- **테스트 채널 ↔ 실연동 채널(동시 운영)**: 콘솔 채널관리에서 테스트/실연동은 **독립 채널(각자 channelKey)** — env 두 세트(`…` / `…_TEST`)를 병존시키고 **계정 기반으로 서버가 스위칭**한다(`payModeFor`: reviewerEmails 계정=테스트 기본·`/credits?live=1` 시 실채널, 일반 유저=항상 실채널). 주문에는 `is_test`·`pay_channel` 이 기록되고(0059), 지급 3경로(웹훅/폴링/reconcile)가 포트원 단건조회 `channel.type` 과 대사해 **테스트 채널 결제 → 실주문 지급을 차단**(`paymentModeMismatch` 백스톱). 테스트 채널은 계약 전에도 공용 테스트 MID(tosstest·TC0ONETIME·merchantest6)로 생성 가능. 테스트 결제는 매입 전 자동취소(KB국민·NH농협·카카오뱅크 카드는 테스트 불가).
+- **PG 심사용 노출**: `growth_levers.reviewerEmails`(콘솔 편집) — `creditsEnabled=false`(전역 준비중)여도 해당 이메일 회원에겐 /credits 결제 UI·체크아웃 허용(`creditsAllowedFor` 단일 판정 — 표시·체크아웃 공유). 심사관 계정을 만들어 동의까지 완료 후 등록. 심사 계정 주문은 테스트 채널 + `is_test`로 기록되어 어드민 매출·KPI 에서 제외(주문 목록엔 TEST 뱃지 표시). **사업자정보 푸터**(`site_content.businessInfo`, 콘솔 편집)는 심사 요건(상호·사업자번호·대표자·주소·유선전화 상시 노출).
 - **설정**(사용자 작업): 포트원 콘솔 — ①채널관리에서 테스트 채널 3개 추가(채널키 확보) ②[식별코드·API Keys]>[V2 API] Secret 발급 ③[결제알림(Webhook) 관리]에서 `{SITE_URL}/api/pay/webhook` 등록(V2·테스트/실연동 각각)+시크릿 확보 → env 6종(.env.local+Vercel). 계약·카드사 심사 완료 후 실연동 채널로 교체.
 
 ### 운영 한계·모니터링

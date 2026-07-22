@@ -6,7 +6,13 @@ import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PUBLIC_ENV } from "@/lib/env";
 import { getGrowthLevers } from "@/lib/config/getters";
-import { activeCreditProducts, creditsAllowedFor } from "@/lib/config/domains/growth";
+import {
+  activeCreditProducts,
+  creditsAllowedFor,
+  isReviewerEmail,
+  payModeFor,
+} from "@/lib/config/domains/growth";
+import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
 import { rateLimit } from "@/lib/rate-limit";
 import { log, errInfo } from "@/lib/log";
@@ -37,7 +43,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
-  const body = (await req.json().catch(() => null)) as { productId?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    productId?: string;
+    method?: string;
+    wantLive?: boolean;
+  } | null;
   // 가격/개수/상품명은 서버 config 의 **active 상품**으로만 결정(클라 조작·비활성 상품 차단).
   const growth = await getGrowthLevers();
   // 결제 노출 OFF(성장레버 creditsEnabled=false/미설정) → 준비중. 단 PG 심사용 계정(reviewerEmails)은 허용.
@@ -50,6 +60,18 @@ export async function POST(req: NextRequest) {
   if (!product) {
     return NextResponse.json({ error: "invalid_product" }, { status: 400 });
   }
+
+  // 채널 모드·채널키는 **서버 판정**(클라 body 는 힌트) — 일반 계정은 wantLive 무관 항상 실채널이라
+  // 테스트 채널로 무료 크레딧을 얻는 경로가 원천 차단된다. 심사 계정은 테스트 기본, wantLive 시 실채널.
+  const isReviewer = isReviewerEmail(growth, user.email);
+  const mode = payModeFor(isReviewer, body?.wantLive === true);
+  const channel =
+    paymentChannels(mode).find((c) => c.method === (body?.method as PayChannelMethod)) ?? null;
+  if (!channel) {
+    // 해당 모드의 채널키 미설정(예: 실연동 계약 전) 또는 알 수 없는 method.
+    return NextResponse.json({ error: "channel_unavailable" }, { status: 503 });
+  }
+  const isTest = mode === "test";
 
   // 리다이렉트/웹훅 베이스 URL 검증 — 주문 생성 전에 fail-fast.
   // SITE_URL 이 오형식이거나 localhost 면 포트원 웹훅이 외부에서 도달 불가
@@ -80,6 +102,9 @@ export async function POST(req: NextRequest) {
     .eq("status", "pending")
     .eq("provider", "portone")
     .eq("amount", product.price)
+    // 모드·채널까지 일치해야 재사용 — 테스트↔실 주문 교차 재사용은 지급 백스톱(채널 대사)에 걸린다.
+    .eq("is_test", isTest)
+    .eq("pay_channel", channel.method)
     .not("payment_id", "is", null)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
@@ -92,6 +117,8 @@ export async function POST(req: NextRequest) {
       paymentId: reuse.payment_id,
       orderName: product.goodname,
       totalAmount: product.price,
+      channelKey: channel.channelKey,
+      payMethod: channel.payMethod,
     });
   }
 
@@ -107,6 +134,8 @@ export async function POST(req: NextRequest) {
     amount: product.price,
     credits: product.credits,
     status: "pending",
+    is_test: isTest,
+    pay_channel: channel.method,
   });
   if (insErr) {
     log.error("pay.order_insert_fail", { userId: user.id, ...errInfo(insErr) });
@@ -118,6 +147,8 @@ export async function POST(req: NextRequest) {
     userId: user.id,
     orderUuid,
     productId: product.productId,
+    channel: channel.method,
+    mode,
   });
   // 클라는 이 서버 결정값으로 requestPayment 호출. redirectUrl 은 클라가 /credits/done?order= 로 구성.
   return NextResponse.json({
@@ -125,5 +156,7 @@ export async function POST(req: NextRequest) {
     paymentId,
     orderName: product.goodname,
     totalAmount: product.price,
+    channelKey: channel.channelKey,
+    payMethod: channel.payMethod,
   });
 }
