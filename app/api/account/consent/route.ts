@@ -56,9 +56,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "consent_required" }, { status: 400 });
   }
 
-  const bonus = await getGrowthLevers()
-    .then((g) => g.signupBonusCredits)
-    .catch(() => 0);
+  // email/password 가입엔 보너스 0 — 프로바이더가 심사계정(0060) 때문에 열려 있어, 공개 REST 로
+  // email 계정을 양산해 가입보너스를 파밍하는 벡터를 차단(OAuth 는 계정당 비용이 있어 기존 유지).
+  const provider = (user.app_metadata as { provider?: string } | null)?.provider;
+  const bonus =
+    provider === "email"
+      ? 0
+      : await getGrowthLevers()
+          .then((g) => g.signupBonusCredits)
+          .catch(() => 0);
 
   // I7: terms/privacy 는 현재 버전이 있을 때(required 에 포함)만 stamp — 버전 null 이면 required 에 없어 p_set=false.
   const { data: isNewData, error: rpcErr } = await admin.rpc(

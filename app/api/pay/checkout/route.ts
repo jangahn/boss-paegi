@@ -6,12 +6,8 @@ import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PUBLIC_ENV } from "@/lib/env";
 import { getGrowthLevers } from "@/lib/config/getters";
-import {
-  activeCreditProducts,
-  creditsAllowedFor,
-  isReviewerEmail,
-  payModeFor,
-} from "@/lib/config/domains/growth";
+import { activeCreditProducts, payModeFor } from "@/lib/config/domains/growth";
+import { isReviewerUser } from "@/lib/reviewer";
 import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
 import { rateLimit } from "@/lib/rate-limit";
@@ -50,8 +46,10 @@ export async function POST(req: NextRequest) {
   } | null;
   // 가격/개수/상품명은 서버 config 의 **active 상품**으로만 결정(클라 조작·비활성 상품 차단).
   const growth = await getGrowthLevers();
-  // 결제 노출 OFF(성장레버 creditsEnabled=false/미설정) → 준비중. 단 PG 심사용 계정(reviewerEmails)은 허용.
-  if (!creditsAllowedFor(growth, user.email)) {
+  // 결제 노출 OFF(성장레버 creditsEnabled=false/미설정) → 준비중. 단 심사·테스트 계정은 허용.
+  // reviewer = config allowlist(OAuth) OR reviewer_accounts(ID/PW, 0060) — /credits 표시와 동일 판정.
+  const isReviewer = await isReviewerUser(growth, user);
+  if (!(growth.creditsEnabled ?? false) && !isReviewer) {
     return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
   }
   const product = body?.productId
@@ -63,7 +61,6 @@ export async function POST(req: NextRequest) {
 
   // 채널 모드·채널키는 **서버 판정**(클라 body 는 힌트) — 일반 계정은 wantLive 무관 항상 실채널이라
   // 테스트 채널로 무료 크레딧을 얻는 경로가 원천 차단된다. 심사 계정은 테스트 기본, wantLive 시 실채널.
-  const isReviewer = isReviewerEmail(growth, user.email);
   const mode = payModeFor(isReviewer, body?.wantLive === true);
   const channel =
     paymentChannels(mode).find((c) => c.method === (body?.method as PayChannelMethod)) ?? null;

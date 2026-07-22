@@ -20,6 +20,7 @@ const LINKS = [
   { href: "/admin/analytics", label: "게임 분석" },
   { href: "/admin/acquisition", label: "공유·유입" },
   { href: "/admin/integrity", label: "무결성" },
+  { href: "/admin/reviewers", label: "심사 계정" },
 ];
 
 export function AdminNav() {
