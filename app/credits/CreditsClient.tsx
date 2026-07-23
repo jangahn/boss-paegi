@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { perUnitPrice, type CreditProduct } from "@/lib/credit-products";
@@ -206,9 +207,10 @@ export function CreditsClient({
             <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-500">{error}</p>
           )}
 
-          {/* 상품 정보 고지 — PG 심사 요건: 제공기간(즉시 지급)·유효기간(1년 이내)·환불규정을
-              구매 페이지에 노출(전상법 §13 상품정보제공고시 디지털콘텐츠 표시사항과 정합).
-              세부 기준은 이용약관 제10조와 동일해야 함(drift 금지). */}
+          {/* 상품 정보 고지 — PG 심사 요건: 제공기간(즉시 지급)·유효기간(1년 이내)과 '사용분
+              청약철회 제한' 표시는 법정 필수(전상법 §13·§17⑥)라 여기 유지. 환불 산정·수치의
+              정본은 이용약관 제10조 단일 소스 — 여기엔 요지+약관 참조만 두고 세부 수치(7일·90%
+              등)를 중복 명시하지 않는다(약관만 고치면 되게, v0.75). */}
           <div className="flex flex-col gap-1.5 rounded-xl border border-foreground/10 bg-foreground/[0.03] p-3.5 text-[11px] leading-relaxed text-zinc-500">
             <p>
               · <b>제공 기간</b>: 생성권은 결제 완료 <b>즉시 지급</b>되어 바로 사용할 수 있어요.
@@ -218,10 +220,13 @@ export function CreditsClient({
               동일해요.
             </p>
             <p>
-              · <b>환불</b>: 결제일로부터 7일 이내에는 사용하지 않은 생성권을 전액 환불받을 수
-              있어요. 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한돼요.
-              유효기간이 지난 미사용 생성권은 구매일로부터 5년까지 결제금액의 90% 환급을 요청할
-              수 있어요. 자세한 기준·절차는 이용약관을 확인해주세요.
+              · <b>환불</b>: 미사용 생성권은 환불받을 수 있어요(무료로 지급받은 생성권은 제외).
+              일부만 사용했더라도 남은 수량만큼 환불돼요. 이미 사용한 생성권은 디지털콘텐츠
+              제공이 개시된 것으로 청약철회가 제한돼요. 정확한 산정 기준·차감 순서·절차는{" "}
+              <Link href="/terms" className="underline underline-offset-2">
+                이용약관 제10조
+              </Link>
+              를 확인해주세요.
             </p>
             <p>
               · {channels.map((c) => c.label).join(" · ")}로 결제할 수 있어요. 표시 가격은 부가세
