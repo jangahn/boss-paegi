@@ -170,7 +170,7 @@ export function GrowthLeversEditor({
         </div>
         <div className="mt-1 flex flex-col gap-2 border-t border-foreground/10 pt-2">
           <span className="text-[11px] font-semibold text-zinc-400">
-            PG 심사용 계정 이메일 (한 줄에 하나, 최대 10개)
+            테스트 결제 계정 이메일 (한 줄에 하나, 최대 10개)
           </span>
           <textarea
             value={reviewerEmails}
@@ -180,8 +180,12 @@ export function GrowthLeversEditor({
             className="rounded-lg border border-foreground/15 ui-field p-2 text-xs leading-relaxed outline-none focus:border-foreground/40"
           />
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            결제 노출이 <b>OFF 여도</b> 이 이메일로 로그인한 회원에겐 /credits 결제 UI·체크아웃이
-            열려요(테스트 채널 심사 대응). 심사 종료 후 비우세요.
+            이 이메일로 로그인한 회원의 결제는 <b>항상 테스트 채널이 기본</b>이에요 — 실청구 없음,
+            주문에 TEST 표시·매출 집계 제외(<code>?live=1</code>로 접속할 때만 실채널). 또한 결제
+            노출이 <b>OFF 여도</b> 이 계정엔 /credits 결제 UI·체크아웃이 열려요(PG 심사 대응).
+            ID/PW 방식 심사 계정은 <b>PG 심사·테스트 계정</b> 탭에서 따로 관리해요(같은 효력).
+            테스트 주문은 매출을 오염시키지 않으므로 심사 승인 후에도 유지 운영 — 더 이상 쓰지 않는
+            이메일만 정리하세요.
           </p>
         </div>
       </div>

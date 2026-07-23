@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { LedgerRow } from "@/lib/admin-types";
 import { fmtKst, shortId } from "@/lib/admin-format";
 
@@ -61,7 +62,13 @@ export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
                 {ACTION_LABEL[r.action_type] ?? r.action_type}
               </td>
               <td className="max-w-[8rem] truncate px-2 py-1.5">
-                {r.target_name ?? shortId(r.target_user_id)}
+                <Link
+                  href={`/admin/users/${r.target_user_id}`}
+                  className="text-sky-600 underline-offset-2 hover:underline"
+                  title="회원 상세로 이동"
+                >
+                  {r.target_name ?? shortId(r.target_user_id)}
+                </Link>
               </td>
               <td
                 className={`px-2 py-1.5 text-right tabular-nums ${

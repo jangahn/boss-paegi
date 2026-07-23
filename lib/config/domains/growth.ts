@@ -31,8 +31,9 @@ export const growthLeversSchema = z
     products: z.array(productSchema).min(1).max(8),
     creditsEnabled: z.boolean().optional(),
     comingSoon: comingSoonSchema.optional(),
-    // PG 심사용 계정 allowlist — creditsEnabled OFF(전역 준비중)여도 이 이메일 회원에겐
-    // /credits 결제 UI·체크아웃을 허용(테스트 채널로 심사관이 결제창 호출을 확인).
+    // 테스트 결제 계정 allowlist(OAuth 가입 심사관·운영자용, ID/PW 계정은 reviewer_accounts/0060 — OR 판정)
+    // 효과 2중: ①등록 계정 결제는 항상 테스트 채널 기본(payModeFor — creditsEnabled 와 무관, ?live=1 시만 실채널)
+    // ②creditsEnabled OFF(전역 준비중)여도 /credits 결제 UI·체크아웃 허용(PG 심사 대응).
     // **optional**: 기존 발행값(이 필드 없음)이 검증 실패로 코드기본값으로 떨어지지 않게.
     reviewerEmails: z.array(z.string().trim().toLowerCase().min(3).max(120)).max(10).optional(),
   })
@@ -65,7 +66,7 @@ export const GROWTH_LEVERS_DEFAULT: GrowthLevers = {
   comingSoon: DEFAULT_COMING_SOON,
 };
 
-/** 심사용 계정(reviewerEmails) 여부 — 결제 허용·채널 모드(테스트/실) 판정의 공용 입력. */
+/** 테스트 결제 계정(reviewerEmails) 여부 — 결제 허용·채널 모드(테스트/실) 판정의 공용 입력. */
 export function isReviewerEmail(g: GrowthLevers, email: string | null | undefined): boolean {
   if (!email) return false;
   return (g.reviewerEmails ?? []).includes(email.trim().toLowerCase());

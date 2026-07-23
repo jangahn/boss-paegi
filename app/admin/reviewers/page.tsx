@@ -24,7 +24,7 @@ export default async function AdminReviewersPage() {
         <p className="mt-1 text-sm text-zinc-500">
           ID/PW 로 로그인하는 심사 전용 계정이에요. <code>/login?reviewer=1</code> 로 진입하며,
           결제는 항상 <b>테스트 채널</b>(실청구 없음, 주문에 TEST 표시)로 나가요. 구글·카카오로
-          가입한 심사관은 콘텐츠 콘솔의 성장 레버 → &lsquo;PG 심사용 계정 이메일&rsquo;에
+          가입한 심사관은 콘텐츠 콘솔의 성장 레버 → &lsquo;테스트 결제 계정 이메일&rsquo;에
           등록하세요(같은 효력).
         </p>
       </div>

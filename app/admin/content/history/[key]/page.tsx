@@ -17,6 +17,7 @@ const KEY_LABEL: Record<DomainKey, string> = {
   growth_levers: "성장 레버",
   site_content: "소개·FAQ (SEO)",
   media_config: "미디어 자산",
+  business_info: "사업자 정보",
 };
 
 function firstParam(v: string | string[] | undefined): string | undefined {

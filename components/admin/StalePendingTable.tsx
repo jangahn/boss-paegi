@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdminOrder } from "@/lib/admin-types";
 import { fmtKst, won, shortId } from "@/lib/admin-format";
@@ -37,7 +38,15 @@ export function StalePendingTable({ rows }: { rows: AdminOrder[] }) {
               <tr key={o.order_uuid} className="border-t border-amber-500/10">
                 <td className="px-2 py-1.5 tabular-nums">{fmtKst(o.created_at)}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{won(o.amount)} · {o.credits}개</td>
-                <td className="px-2 py-1.5 truncate">{o.display_name ?? shortId(o.user_id)}</td>
+                <td className="px-2 py-1.5 truncate">
+                  <Link
+                    href={`/admin/users/${o.user_id}`}
+                    className="text-sky-600 underline-offset-2 hover:underline"
+                    title="회원 상세로 이동"
+                  >
+                    {o.display_name ?? shortId(o.user_id)}
+                  </Link>
+                </td>
                 <td className="px-2 py-1.5">
                   <div className="flex gap-1">
                     <button

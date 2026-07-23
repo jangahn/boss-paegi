@@ -1,6 +1,37 @@
+import Link from "next/link";
 import type { AdminOrder } from "@/lib/admin-types";
 import { won, shortId } from "@/lib/admin-format";
 import { RefundButton } from "@/components/admin/RefundButton";
+import { TestBadge } from "@/components/admin/TestBadge";
+
+/** 경고 행 — 주문 식별 + TEST 뱃지(테스트 주문도 경고에 포함됨, 0059) + 회원 링크 + 환불 재시도. */
+function WarningRow({ order: o }: { order: AdminOrder }) {
+  return (
+    <li className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 p-2 text-xs">
+      <span className="font-mono text-zinc-400">{shortId(o.order_uuid)}</span>
+      {o.is_test && <TestBadge />}
+      <span>{won(o.amount)}</span>
+      <span className="text-zinc-500">크레딧 {o.credits}</span>
+      <Link
+        href={`/admin/users/${o.user_id}`}
+        className="max-w-[8rem] truncate text-sky-600 underline-offset-2 hover:underline"
+        title="회원 상세로 이동"
+      >
+        {o.display_name ?? shortId(o.user_id)}
+      </Link>
+      <span className="ml-auto">
+        <RefundButton
+          order={{
+            orderUuid: o.order_uuid,
+            amount: o.amount,
+            credits: o.credits,
+            refundState: o.refund_state ?? null,
+          }}
+        />
+      </span>
+    </li>
+  );
+}
 
 /**
  * 환불 운영 경고 — 대시보드 최상단(stale pending 보다 우선).
@@ -29,24 +60,7 @@ export function DashboardWarnings({
           </p>
           <ul className="mt-2 flex flex-col gap-1.5">
             {commitFail.map((o) => (
-              <li
-                key={o.order_uuid}
-                className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 p-2 text-xs"
-              >
-                <span className="font-mono text-zinc-400">{shortId(o.order_uuid)}</span>
-                <span>{won(o.amount)}</span>
-                <span className="text-zinc-500">크레딧 {o.credits}</span>
-                <span className="ml-auto">
-                  <RefundButton
-                    order={{
-                      orderUuid: o.order_uuid,
-                      amount: o.amount,
-                      credits: o.credits,
-                      refundState: o.refund_state ?? null,
-                    }}
-                  />
-                </span>
-              </li>
+              <WarningRow key={o.order_uuid} order={o} />
             ))}
           </ul>
         </section>
@@ -61,24 +75,7 @@ export function DashboardWarnings({
           </p>
           <ul className="mt-2 flex flex-col gap-1.5">
             {unreconciled.map((o) => (
-              <li
-                key={o.order_uuid}
-                className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 p-2 text-xs"
-              >
-                <span className="font-mono text-zinc-400">{shortId(o.order_uuid)}</span>
-                <span>{won(o.amount)}</span>
-                <span className="text-zinc-500">크레딧 {o.credits}</span>
-                <span className="ml-auto">
-                  <RefundButton
-                    order={{
-                      orderUuid: o.order_uuid,
-                      amount: o.amount,
-                      credits: o.credits,
-                      refundState: o.refund_state ?? null,
-                    }}
-                  />
-                </span>
-              </li>
+              <WarningRow key={o.order_uuid} order={o} />
             ))}
           </ul>
         </section>

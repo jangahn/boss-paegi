@@ -28,7 +28,11 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
         ) : (
           <>
             <div className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-4">
-              <Field label="유형" value={s.is_anon ? "익명" : "회원"} />
+              <Field
+                label="유형"
+                value={s.is_anon ? "익명" : s.owner_name ? `회원 (${s.owner_name})` : "회원"}
+                href={!s.is_anon && s.owner_id ? `/admin/users/${s.owner_id}` : undefined}
+              />
               <Field label="종료" value={s.end_reason ?? "—"} />
               <Field label="기기" value={s.device_class} />
               <Field label="시간(초)" value={String(Math.round((s.duration_ms ?? 0) / 1000))} />
@@ -66,11 +70,19 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, href }: { label: string; value: string; href?: string }) {
   return (
     <div className="rounded-lg border border-foreground/10 ui-surface p-2">
       <p className="text-[10px] text-zinc-500">{label}</p>
-      <p className="tabular-nums font-medium">{value}</p>
+      {href ? (
+        <p className="font-medium">
+          <Link href={href} className="text-sky-600 underline-offset-2 hover:underline" title="회원 상세로 이동">
+            {value}
+          </Link>
+        </p>
+      ) : (
+        <p className="tabular-nums font-medium">{value}</p>
+      )}
     </div>
   );
 }
