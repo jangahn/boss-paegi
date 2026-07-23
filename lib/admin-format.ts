@@ -1,5 +1,13 @@
 // 관리자 UI 공용 포맷 (client-safe — server/client 양쪽 사용).
 
+import { CHANNEL_LABELS, type PayChannelMethod } from "@/lib/pay-channels";
+
+/** 결제경로 표기 — provider(payapp 레거시/portone) + pay_channel(0059)을 한 라벨로 압축. */
+export function payRouteLabel(o: { provider: string; pay_channel: string | null }): string {
+  if (o.provider === "payapp") return "페이앱";
+  return o.pay_channel ? CHANNEL_LABELS[o.pay_channel as PayChannelMethod] ?? o.pay_channel : "포트원";
+}
+
 export function fmtKst(iso: string | null): string {
   if (!iso) return "—";
   try {

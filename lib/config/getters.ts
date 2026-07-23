@@ -40,6 +40,11 @@ import {
   MEDIA_CONFIG_DEFAULT,
   type MediaConfig,
 } from "./domains/media-config";
+import {
+  businessInfoConfigSchema,
+  BUSINESS_INFO_DEFAULT,
+  type BusinessInfoConfig,
+} from "./domains/business-info";
 
 // 도메인별 타입드 서버 getter — 핫패스 value-only + 어드민 진단 WithMeta. (도메인 PR 마다 추가.)
 export function getMarketingCopy(): Promise<MarketingCopy> {
@@ -96,4 +101,11 @@ export function getMediaConfig(): Promise<MediaConfig> {
 }
 export function getMediaConfigWithMeta() {
   return getSettingWithMeta("media_config", mediaConfigSchema, MEDIA_CONFIG_DEFAULT);
+}
+
+export function getBusinessInfo(): Promise<BusinessInfoConfig> {
+  return getSetting("business_info", businessInfoConfigSchema, BUSINESS_INFO_DEFAULT);
+}
+export function getBusinessInfoWithMeta() {
+  return getSettingWithMeta("business_info", businessInfoConfigSchema, BUSINESS_INFO_DEFAULT);
 }

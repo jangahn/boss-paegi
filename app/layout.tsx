@@ -18,6 +18,7 @@ import {
   getGrowthLevers,
   getBadgeCatalog,
   getSiteContent,
+  getBusinessInfo,
 } from "@/lib/config/getters";
 import { creditsConfig } from "@/lib/config/domains/growth";
 import { SiteContentProvider } from "@/components/SiteContentProvider";
@@ -73,7 +74,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // 마케팅 카피 + 롤 콘텐츠 + 점수 등급을 서버에서 1회 읽어 클라 컨텍스트로 주입(클라 fetch 불필요·코드 기본값 폴백).
-  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog, siteContent, mediaAssets] =
+  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog, siteContent, businessInfo, mediaAssets] =
     await Promise.all([
       getMarketingCopy(),
       getRoleConfig(),
@@ -82,6 +83,7 @@ export default async function RootLayout({
       getGrowthLevers(),
       getBadgeCatalog(),
       getSiteContent(),
+      getBusinessInfo(),
       getMediaAssetUrls(),
     ]);
   const jsonLd = [
@@ -119,7 +121,7 @@ export default async function RootLayout({
                   <BadgeCatalogProvider value={badgeCatalog}>
                     {children}
                     {/* 사업자정보 푸터 — PG 심사 요건(메인+결제페이지 상시 노출). 미설정 시 비노출. */}
-                    <SiteFooter info={siteContent.businessInfo} />
+                    <SiteFooter info={businessInfo.info} />
                   </BadgeCatalogProvider>
                 </CreditProductsProvider>
               </SessionLimitsProvider>

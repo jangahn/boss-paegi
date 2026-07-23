@@ -157,7 +157,7 @@ export async function getUserOrders(userId: string, page = 1): Promise<Paged<Adm
   const { data, count, error } = await admin
     .from("orders")
     .select(
-      "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, created_at, paid_at, user_id, refund_state",
+      "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refund_state",
       { count: "exact" }
     )
     .eq("user_id", userId)

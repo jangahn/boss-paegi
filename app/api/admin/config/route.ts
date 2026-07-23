@@ -49,9 +49,11 @@ export async function POST(req: NextRequest) {
       { status: res.error === "version_conflict" ? 409 : 400 }
     );
   }
-  // media_config 는 텍스트 config 와 달리 렌더(layout metadata·로고)에 박힘 → 도메인 tag 외에
-  // layout/metadata 소비 경로도 무효화(og:image·twitter·로고 즉시 반영). 다른 도메인은 tag 로 충분.
-  if (body.key === "media_config") {
+  // media_config·business_info 는 텍스트 config 와 달리 렌더(layout metadata·로고·푸터)에 박힘 →
+  // 도메인 tag 외에 layout 소비 경로도 무효화(og:image·로고·사업자정보 푸터 즉시 반영 — businessInfo 가
+  // site_content 에 있던 시절 발행이 ISR 페이지에 반영되지 않아 수동 재배포가 필요했던 갭의 해소).
+  // 다른 도메인은 tag 로 충분.
+  if (body.key === "media_config" || body.key === "business_info") {
     revalidatePath("/", "layout");
     revalidatePath("/");
     revalidatePath("/login");

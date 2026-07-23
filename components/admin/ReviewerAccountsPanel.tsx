@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { fmtKst } from "@/lib/admin-format";
@@ -167,7 +168,15 @@ export function ReviewerAccountsPanel({ initialRows }: { initialRows: ReviewerRo
             <tbody>
               {initialRows.map((r) => (
                 <tr key={r.user_id} className="border-t border-foreground/5">
-                  <td className="px-2 py-1.5 font-mono">{r.email}</td>
+                  <td className="px-2 py-1.5 font-mono">
+                    <Link
+                      href={`/admin/users/${r.user_id}`}
+                      className="text-sky-600 underline-offset-2 hover:underline"
+                      title="회원 상세로 이동 (첫 로그인·동의 전 계정은 비회원으로 표시)"
+                    >
+                      {r.email}
+                    </Link>
+                  </td>
                   <td className="px-2 py-1.5">
                     {r.active ? (
                       <span className="font-semibold text-emerald-500">활성</span>

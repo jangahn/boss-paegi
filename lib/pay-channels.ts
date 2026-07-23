@@ -54,6 +54,11 @@ const CHANNEL_DEFS: Array<{
   },
 ];
 
+/** 결제수단 라벨(카드/토스페이/카카오페이) — 결제수단 선택 UI·어드민 결제경로 표기의 단일 소스. */
+export const CHANNEL_LABELS: Record<PayChannelMethod, string> = Object.fromEntries(
+  CHANNEL_DEFS.map((d) => [d.method, d.label])
+) as Record<PayChannelMethod, string>;
+
 /** 해당 모드의 채널키가 설정된 결제수단만(표시 순서 고정: 카드 → 토스페이 → 카카오페이). */
 export function paymentChannels(mode: PayMode): PayChannel[] {
   const list: PayChannel[] = [];

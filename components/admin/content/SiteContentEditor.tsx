@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { moveItem } from "@/lib/reorder";
-import type { SiteContent, FaqItem, BusinessInfo } from "@/lib/config/domains/site-content";
+import type { SiteContent, FaqItem } from "@/lib/config/domains/site-content";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -45,35 +45,11 @@ export function SiteContentEditor({
   const [kwText, setKwText] = useState(initial.keywords.join(", "));
   const keywords = kwText.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
 
-  // 사업자정보 — 전부 빈 값이면 미설정(푸터 비노출)로 발행. mailOrderNo 만 빈 값 허용.
-  const EMPTY_BIZ: BusinessInfo = {
-    companyName: "", ownerName: "", bizRegNo: "", mailOrderNo: "", address: "", phone: "", email: "",
-  };
-  const [biz, setBiz] = useState<BusinessInfo>(initial.businessInfo ?? EMPTY_BIZ);
-  const setB = (k: keyof BusinessInfo, v: string) => setBiz((b) => ({ ...b, [k]: v }));
-  const bizFilled = Object.entries(biz).some(([, v]) => v.trim() !== "");
-
   const submit = async () => {
     if (busy) return;
     setBusy(true);
     setMsg(null);
-    const value: SiteContent = {
-      ...form,
-      keywords,
-      ...(bizFilled
-        ? {
-            businessInfo: {
-              companyName: biz.companyName.trim(),
-              ownerName: biz.ownerName.trim(),
-              bizRegNo: biz.bizRegNo.trim(),
-              mailOrderNo: biz.mailOrderNo.trim(),
-              address: biz.address.trim(),
-              phone: biz.phone.trim(),
-              email: biz.email.trim(),
-            },
-          }
-        : { businessInfo: undefined }),
-    };
+    const value: SiteContent = { ...form, keywords };
     try {
       const res = await fetch("/api/admin/config", {
         method: "POST",
@@ -155,25 +131,6 @@ export function SiteContentEditor({
         {form.faq.length < 30 && (
           <button type="button" onClick={addFaq} className="rounded-xl border border-dashed border-foreground/20 py-2 text-sm text-zinc-500 hover:bg-foreground/5">+ 질문 추가</button>
         )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-semibold text-zinc-500">
-          사업자정보 <span className="text-zinc-400">· 채우면 전 페이지 푸터에 상시 노출(PG 심사 요건)</span>
-        </span>
-        <p className="rounded-lg bg-foreground/5 p-2 text-[11px] leading-relaxed text-zinc-500">
-          카드사·카카오페이 입점 심사는 상호·사업자번호·대표자·주소·<b>유선전화(휴대폰 불가)</b>가
-          메인·결제페이지에 노출되고 사업자등록증과 일치해야 해요. 통신판매업신고번호는 신고 완료 후 채우세요.
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <input value={biz.companyName} maxLength={60} onChange={(e) => setB("companyName", e.target.value)} placeholder="상호 (예: 제이엔에이)" className={inputCls} />
-          <input value={biz.ownerName} maxLength={30} onChange={(e) => setB("ownerName", e.target.value)} placeholder="대표자명" className={inputCls} />
-          <input value={biz.bizRegNo} maxLength={20} onChange={(e) => setB("bizRegNo", e.target.value)} placeholder="사업자등록번호" className={inputCls} />
-          <input value={biz.mailOrderNo} maxLength={40} onChange={(e) => setB("mailOrderNo", e.target.value)} placeholder="통신판매업신고번호 (미신고 시 비움)" className={inputCls} />
-          <input value={biz.address} maxLength={120} onChange={(e) => setB("address", e.target.value)} placeholder="사업장 주소" className={`${inputCls} col-span-2`} />
-          <input value={biz.phone} maxLength={20} onChange={(e) => setB("phone", e.target.value)} placeholder="유선전화 (휴대폰 불가, 예: 070-…)" className={inputCls} />
-          <input value={biz.email} maxLength={120} onChange={(e) => setB("email", e.target.value)} placeholder="고객센터 이메일" className={inputCls} />
-        </div>
       </div>
 
       {msg && <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-400"}`}>{msg.text}</p>}

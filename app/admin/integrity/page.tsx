@@ -84,6 +84,13 @@ export default async function AdminIntegrityPage({
           <span className="rounded-full border border-foreground/15 px-2 py-0.5 font-mono">
             이 유저만 · {shortId(ownerId)}
           </span>
+          <Link
+            href={`/admin/users/${ownerId}`}
+            className="text-sky-600 underline-offset-2 hover:underline"
+            title="회원 상세로 이동"
+          >
+            회원 →
+          </Link>
           <Link href={hrefFor({ ownerId: null, page: 1 })} className="text-sky-600 underline-offset-2 hover:underline">
             필터 해제 ✕
           </Link>
@@ -114,20 +121,29 @@ export default async function AdminIntegrityPage({
                       <span className="text-[11px] text-zinc-400">· {fmtKst(r.scoreCreatedAt)}</span>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                      <Link
-                        href={hrefFor({ ownerId: r.ownerId, page: 1 })}
-                        className="rounded-full border border-foreground/15 px-2 py-0.5 text-zinc-500 transition hover:bg-foreground/10"
-                        title="이 유저만 필터"
-                      >
-                        {r.ownerName}
-                      </Link>
-                      <Link
-                        href={`/admin/users/${r.ownerId}`}
-                        className="text-sky-600 underline-offset-2 hover:underline"
-                        title="회원 상세로 이동"
-                      >
-                        회원 →
-                      </Link>
+                      {/* owner_id null(하드삭제 유저 점수 잔존) 행은 빈 링크가 되므로 텍스트만(moderation 관용구). */}
+                      {r.ownerId ? (
+                        <>
+                          <Link
+                            href={hrefFor({ ownerId: r.ownerId, page: 1 })}
+                            className="rounded-full border border-foreground/15 px-2 py-0.5 text-zinc-500 transition hover:bg-foreground/10"
+                            title="이 유저만 필터"
+                          >
+                            {r.ownerName}
+                          </Link>
+                          <Link
+                            href={`/admin/users/${r.ownerId}`}
+                            className="text-sky-600 underline-offset-2 hover:underline"
+                            title="회원 상세로 이동"
+                          >
+                            회원 →
+                          </Link>
+                        </>
+                      ) : (
+                        <span className="rounded-full border border-foreground/15 px-2 py-0.5 text-zinc-400">
+                          {r.ownerName} (탈퇴/삭제)
+                        </span>
+                      )}
                     </div>
                     {r.signalIds.length > 0 && (
                       <p className="mt-1 font-mono text-[11px] text-zinc-500">

@@ -125,7 +125,26 @@ export async function getRefundWarnings(): Promise<RefundWarnings> {
     unreconciled = ((canceledPaid.data ?? []) as Array<Omit<AdminOrder, "display_name">>).map(toOrder);
   }
 
+  // 닉네임 배치 조회 — unreconciled 는 RPC 결과라 profiles 임베드가 안 통해 한 번에 채운다.
+  await fillDisplayNames(admin, [...commitFail, ...unreconciled]);
+
   return { commitFail, unreconciled, stuckCount: stuck.count ?? 0 };
+}
+
+/** 주문 행들의 display_name 을 profiles 일괄 조회로 채움(실패 시 그대로 null — 표기는 shortId 폴백). */
+async function fillDisplayNames(
+  admin: ReturnType<typeof createAdminClient>,
+  orders: AdminOrder[]
+): Promise<void> {
+  const userIds = [...new Set(orders.map((o) => o.user_id))];
+  if (userIds.length === 0) return;
+  const { data, error } = await admin.from("profiles").select("id, display_name").in("id", userIds);
+  if (error) {
+    log.warn("admin.refund_warnings_names_fail", errInfo(error));
+    return;
+  }
+  const names = new Map((data ?? []).map((p) => [p.id as string, p.display_name as string | null]));
+  for (const o of orders) o.display_name = names.get(o.user_id) ?? null;
 }
 
 /** 0057(anti-join RPC) 미적용 환경용 종전 로직 — 후보 20건 한정 후 ledger 앱 필터(완전성 한계 有). */

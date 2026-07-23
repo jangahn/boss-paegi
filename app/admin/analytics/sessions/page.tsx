@@ -42,7 +42,22 @@ export default async function SessionsPage() {
                 {rows.map((r) => (
                   <tr key={r.id} className="border-t border-foreground/5">
                     <td className="px-3 py-2 tabular-nums">{fmtKst(r.started_at)}</td>
-                    <td className="px-2 py-2">{r.is_anon ? "익명" : "회원"}</td>
+                    <td className="max-w-[8rem] truncate px-2 py-2">
+                      {r.is_anon ? (
+                        "익명"
+                      ) : r.owner_id ? (
+                        <Link
+                          href={`/admin/users/${r.owner_id}`}
+                          className="text-sky-600 underline-offset-2 hover:underline"
+                          title="회원 상세로 이동"
+                        >
+                          회원{r.owner_name ? ` (${r.owner_name})` : ""}
+                        </Link>
+                      ) : (
+                        // 회원 세션인데 owner_id null = 프로필 하드삭제 잔존(on delete set null) — 링크 불가.
+                        "회원"
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.score.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.hit_count.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.distinct_weapons}/{r.distinct_maps}</td>

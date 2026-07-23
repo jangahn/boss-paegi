@@ -13,9 +13,17 @@ export type DimStat = { key: string; sessions: number; hits: number; score: numb
 export type Funnel = Record<string, number>;
 export type SessionRow = {
   id: string; started_at: string; is_anon: boolean; owner_id: string | null;
+  /** 회원 닉네임(profiles 임베드) — owner_id null(익명·프로필 삭제 잔존)이면 null. */
+  owner_name: string | null;
   end_reason: string | null; duration_ms: number | null; score: number;
   hit_count: number; distinct_weapons: number; distinct_maps: number; device_class: string;
 };
+
+/** profiles(display_name) 임베드 → 닉네임 평탄화(주문 어드민 mapOrder 와 동일 관용구). */
+function embeddedName(p: { display_name: string | null } | { display_name: string | null }[] | null): string | null {
+  const row = Array.isArray(p) ? p[0] : p;
+  return row?.display_name ?? null;
+}
 
 /** KST 기준 offsetDays 일 전 날짜 문자열(YYYY-MM-DD). 공유·유입 분석(lib/admin-acquisition)도 재사용. */
 export function kstDate(offsetDays = 0): string {
@@ -107,14 +115,14 @@ export async function getRecentSessions(limit = 50): Promise<SessionRow[]> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("telemetry_sessions")
-    .select("id,started_at,is_anon,owner_id,end_reason,duration_ms,score,hit_count,distinct_weapons,distinct_maps,device_class")
+    .select("id,started_at,is_anon,owner_id,end_reason,duration_ms,score,hit_count,distinct_weapons,distinct_maps,device_class,profiles(display_name)")
     .order("started_at", { ascending: false })
     .limit(limit);
   if (error) {
     log.warn("analytics.recent_fail", errInfo(error));
     return [];
   }
-  return (data ?? []) as SessionRow[];
+  return (data ?? []).map(({ profiles, ...r }) => ({ ...r, owner_name: embeddedName(profiles) })) as SessionRow[];
 }
 
 /** 세션 상세(타임라인 재생). 없으면 null(pruned/미존재). */
@@ -122,14 +130,16 @@ export async function getSessionDetail(id: string) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("telemetry_sessions")
-    .select("*")
+    .select("*, profiles(display_name)")
     .eq("id", id)
     .maybeSingle();
   if (error) {
     log.warn("analytics.detail_fail", { id, ...errInfo(error) });
     return null;
   }
-  return data;
+  if (!data) return null;
+  const { profiles, ...row } = data;
+  return { ...row, owner_name: embeddedName(profiles) };
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
