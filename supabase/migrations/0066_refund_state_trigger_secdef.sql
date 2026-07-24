@@ -1,0 +1,22 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0066: enforce_request_state_derive(환불상태 파생 constraint 트리거)를 SECURITY DEFINER 로
+--
+-- 장애(prod): 어드민 부분 환불 확정 시 "불변식 위반으로 전체 롤백" — 실제 원인은
+--   `permission denied for function derive_refund_request_state` (Sentry pay.refund_invariant_violation
+--   fatal, route admin/refund-credits, mode begin, order 5e7d0a19…).
+--   `enforce_request_state_derive` 는 refund_requests·order_refund_attempts 의 **DEFERRED** constraint
+--   트리거 함수(trg_refund_requests_state_derive[_self], initially deferred)인데 secdef=false →
+--   **커밋 시점(deferred 발화)에 outer 트랜잭션 롤(service_role)로 실행**되고, 내부에서
+--   `derive_refund_request_state`(0062 에서 service_role EXECUTE 회수)를 호출 → permission denied.
+--   secdef RPC(admin_refund_begin 등) 내부 인라인 호출은 postgres 컨텍스트라 통과하지만, 커밋 시점
+--   deferred 트리거만 service_role 컨텍스트라 실패. 로컬/pgTAP 은 postgres 로 실행돼 미검출.
+--
+-- 수정: 트리거 함수를 SECURITY DEFINER(owner=postgres)로 → 발화 롤과 무관하게 postgres 컨텍스트에서
+--   실행되어 private helper 호출 가능. `derive_refund_request_state` 는 계속 service_role 직접호출 차단
+--   유지(설계 의도 보존). 트리거 함수는 SELECT+RAISE 만(무쓰기)이라 secdef 안전, search_path='' 유지.
+--
+-- 범위: init_deferred 트리거는 이 함수(2개 트리거)가 유일 — 나머지 guard 트리거는 non-deferred 라
+--   secdef RPC 내부(postgres)에서 발화돼 무영향. 데이터 무변경(함수 속성만).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+alter function public.enforce_request_state_derive() security definer;
