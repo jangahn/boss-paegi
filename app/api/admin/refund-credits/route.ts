@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertWriteAllowed } from "@/lib/credits-gate";
 import {
   getPortonePaymentSnapshot,
   portoneCancelConfigured,
@@ -143,9 +142,6 @@ async function handlePreview(admin: SupabaseClient, body: RefundCreditsBody) {
 
 // ── begin — admin_refund_begin 위임(requestId 멱등) ───────────────────────────────────────
 async function handleBegin(admin: SupabaseClient, adminId: string, body: RefundCreditsBody) {
-  const maintenance = assertWriteAllowed({ actor: "admin" });
-  if (maintenance) return maintenance;
-
   const { requestId, userId, orderUuid, qty, customerRequestedAt } = body;
   const reason = body.reason?.trim() ?? "";
   if (
@@ -183,9 +179,6 @@ async function handleBegin(admin: SupabaseClient, adminId: string, body: RefundC
 
 // ── process — attempt 1건 전진(HTTP 1회당 1건) ────────────────────────────────────────────
 async function handleProcess(admin: SupabaseClient, adminId: string, body: RefundCreditsBody) {
-  const maintenance = assertWriteAllowed({ actor: "admin" });
-  if (maintenance) return maintenance;
-
   const attemptId = body.attemptId;
   if (!attemptId || !UUID_RE.test(attemptId)) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });

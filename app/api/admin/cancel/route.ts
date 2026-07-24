@@ -8,7 +8,6 @@ import {
   portoneCancelConfigured,
   type PortonePaymentSnapshot,
 } from "@/lib/portone";
-import { assertWriteAllowed } from "@/lib/credits-gate";
 import { handleObservedCancellation, refundRpcErrorResponsePayload } from "@/lib/refund-saga";
 import { log, errInfo } from "@/lib/log";
 
@@ -44,10 +43,6 @@ type OrderRow = {
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
-
-  // Phase-A 유지보수 게이트(v0.76 컷오버) — closed 면 신규 cancel intent 진입 차단.
-  const maintenance = assertWriteAllowed({ actor: "admin" });
-  if (maintenance) return maintenance;
 
   const body = (await req.json().catch(() => null)) as
     | { orderUuid?: string; reason?: string; customerRequestedAt?: string }

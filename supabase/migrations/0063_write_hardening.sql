@@ -38,6 +38,11 @@ revoke all privileges on table public.orders          from service_role;
 revoke all privileges on table public.member_accounts  from service_role;
 revoke all privileges on table public.ai_generations   from service_role;
 
+-- Supabase 기본권한(ALTER DEFAULT PRIVILEGES)으로 anon/authenticated/public 에 부여된 직접 DML 도 회수
+-- (§17·H4). 로컬 raw psql 적용엔 없으나 실 supabase 프로젝트엔 존재 — H4 는 이 회수를 전제로 검사한다.
+revoke insert, update, delete on table public.orders, public.member_accounts, public.ai_generations
+  from anon, authenticated, public;
+
 -- 0062(S12·A.5.2)가 부여한 **컬럼 레벨** UPDATE grant 를 일단 전량 회수한 뒤(테이블 REVOKE 는 컬럼
 -- grant 를 자동 제거하지 않음 — 미보유 컬럼 회수는 WARNING 일 뿐 에러 아님) operational 만 재부여한다.
 revoke update (pg_status, raw, error_message, refund_state)

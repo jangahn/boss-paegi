@@ -20,7 +20,6 @@ export const runtime = "nodejs";
  *  - 그 외/조회 실패 → 미해결로 남기고 경고(운영 확인)
  * 지급 대사 후 refund-sweep 확장(B.8.6): open PG attempt 순회(항목별 독립·완전 멱등).
  * 처리량은 호출당 20건(오래된 순) — Vercel 함수 타임아웃 안에서 외부 API 직렬 호출을 감당하는 상한.
- * drain 경로 — Phase-A 게이트(assertWriteAllowed) 미적용(closed 에서도 기시작 건 종결).
  */
 const STALE_MS = 2 * 60 * 60 * 1000;
 const EXPIRE_MS = 24 * 60 * 60 * 1000; // 진행형(READY 등) pending 의 시효 종단 기준
