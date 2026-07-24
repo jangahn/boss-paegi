@@ -43,3 +43,9 @@ next-env.d.ts
 
 # 로컬 스크래치(워크스페이스 규칙: 미추적)
 _local/
+
+# 컷오버 스크립트 생성 산출물 — 프로덕션 주문/결제 데이터 포함, 커밋 금지(로컬 provenance 전용)
+# (도구 자체 .mjs/.sql·테스트 골든 hash-goldens.json 은 추적 유지)
+scripts/refund/paid-credit-allocation.json
+scripts/refund/pre-0062-drain.json
+scripts/refund/preflight-portone-legacy.json

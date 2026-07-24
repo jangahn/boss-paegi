@@ -7,6 +7,8 @@ repo-baseline: main @ 86fba4ce99deeffe63fc33ff4f80d8a9ce3d504c (PR #178 병합 �
 supersedes: 이전 rev(6,022줄 설계 명세)의 서술 전부
 ```
 
+> **⚠️ [실집행 기록 — 2026-07-24 컷오버 완료]** 아래 §25 의 컷오버 타임라인(21-스텝, `CREDITS_MAINTENANCE_MODE` gate 포함)은 계획 명세다. 실제 집행은 **canary(스텝 15·16·18) 생략·즉시 open** 으로 수행됐고, 과도기 게이트는 컷오버 완료 후 commit `8c8f1c2`(PR #181)에서 코드·env 에서 **제거**됐다(하드닝 0063 은 영구 적용). 프로덕션 go/no-go G-1~48 위반 0 재실행·독립 ACL 사후 probe 로 최종 검증 완료(`docs/refund-saga/verification-report.md`).
+
 이 문서는 **구현 명세**다 — 아키텍처·계약·상태기계·정책·불변식·gate 목록을 서술하고, 구체 DDL·RPC·gate SQL·테스트는 **아래 정본 파일을 참조**한다(§0.2 파일 인덱스). SQL·함수 본문은 이 문서에 복사하지 않는다. 이름·시그니처·gate ID 는 정본 파일이 판단 기준이며, 이 문서의 서술은 정본 파일과 한 글자도 어긋나지 않게 대조되었다(0062 실측 대조 완료). 추적표(§18 요구)는 `docs/refund-saga/traceability.md`, 배포·장애 절차는 `docs/refund-saga/runbook.md`, 검증 수행/미실행 기록은 `docs/refund-saga/verification-report.md` 로 분리한다.
 
 ---

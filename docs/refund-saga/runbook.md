@@ -11,6 +11,8 @@ repo-baseline: main @ 86fba4ce99deeffe63fc33ff4f80d8a9ce3d504c (PR #178 병합 �
       docs/refund-saga/traceability.md 를 참조한다. 게이트 SQL 은 scripts/refund/post-0062-go-no-go.sql 이 유일 정본(§32).
 ```
 
+> **⚠️ [이력 문서 — 2026-07-24 컷오버 완료·현행 절차 아님]** 이 runbook 의 배포 절차는 실제로 수행·완료됐다. **과도기 유지보수 게이트(`CREDITS_MAINTENANCE_MODE`·`lib/credits-gate.ts`·`assertWriteAllowed()`·`CANARY_USER_IDS`)는 컷오버 완료 후 commit `8c8f1c2`(PR #181)에서 코드·env 에서 제거됐고, canary 단계(스텝 15·16·18)는 생략(즉시 open)됐다.** 아래 게이트 관련 스텝(② 게이트 신설·`closed`·`canary` 전환 등)은 당시 실행 기록이며 **현행 절차가 아니다 — 재사용·재설정 금지**(존재하지 않는 env/파일). 하드닝(0063)은 영구 적용돼 게이트 없이도 금융 write 는 SECURITY DEFINER RPC 전용이다. 상시 운영 대응은 `docs/refund-runbook.md`.
+
 ---
 
 ## 0. 사전 준비 (배포 착수 전)
