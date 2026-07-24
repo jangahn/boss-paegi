@@ -1,0 +1,115 @@
+{
+  "hash_version": 1,
+  "algorithm": "sha256",
+  "encoding": "utf8",
+  "canonical_scheme": "bp_canonical_json v1 — compact JSON, keys sorted by UTF-8 bytes (collate \"C\"), jsonb-normal scalars; hash_version merged at top level (bp_versioned_hash equivalent)",
+  "pg_equivalent": "public.bp_versioned_hash(<payload>, hash_version) = encode(extensions.digest(convert_to(public.bp_canonical_json(<payload> || jsonb_build_object('hash_version', hash_version)),'UTF8'),'sha256'),'hex')",
+  "generated_by": "scripts/refund/hash-golden-vectors.mjs",
+  "vector_count": 8,
+  "vectors": [
+    {
+      "name": "base",
+      "dimension": "baseline refund-attempt plan",
+      "payload": {
+        "attempt_id": {
+          "$uuid": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+        },
+        "order_uuid": {
+          "$uuid": "00000000-0000-4000-8000-000000000001"
+        },
+        "amount": 3000,
+        "qty": 3,
+        "rail": "portone",
+        "reason": "customer_request"
+      },
+      "canonical": "{\"amount\":3000,\"attempt_id\":\"6f9619ff-8b86-d011-b42d-00c04fc964ff\",\"hash_version\":1,\"order_uuid\":\"00000000-0000-4000-8000-000000000001\",\"qty\":3,\"rail\":\"portone\",\"reason\":\"customer_request\"}",
+      "sha256": "791050fec7fb81caebdc512e4eb16b7187b999c7521f8c706f09a73e8b5bc3b4"
+    },
+    {
+      "name": "key_order",
+      "dimension": "key order — 입력 키 순서만 다름 → base 와 동일 hash 여야 함",
+      "payload": {
+        "reason": "customer_request",
+        "rail": "portone",
+        "qty": 3,
+        "amount": 3000,
+        "order_uuid": {
+          "$uuid": "00000000-0000-4000-8000-000000000001"
+        },
+        "attempt_id": {
+          "$uuid": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+        }
+      },
+      "canonical": "{\"amount\":3000,\"attempt_id\":\"6f9619ff-8b86-d011-b42d-00c04fc964ff\",\"hash_version\":1,\"order_uuid\":\"00000000-0000-4000-8000-000000000001\",\"qty\":3,\"rail\":\"portone\",\"reason\":\"customer_request\"}",
+      "sha256": "791050fec7fb81caebdc512e4eb16b7187b999c7521f8c706f09a73e8b5bc3b4"
+    },
+    {
+      "name": "whitespace",
+      "dimension": "whitespace — 값 안의 공백/개행은 보존(문자열 값 민감)",
+      "payload": {
+        "note": "  leading and  inner\ttabs and trailing  ",
+        "amount": 0
+      },
+      "canonical": "{\"amount\":0,\"hash_version\":1,\"note\":\"  leading and  inner\\ttabs and trailing  \"}",
+      "sha256": "59d213eba037909ac95016789f3f6d7643f26d5b28a1aaff1de93e767272672f"
+    },
+    {
+      "name": "unicode",
+      "dimension": "Unicode — 한글/이모지 문자열",
+      "payload": {
+        "reason": "테스트 환불 사유 — 오류 정정 🔁",
+        "label": "생성권"
+      },
+      "canonical": "{\"hash_version\":1,\"label\":\"생성권\",\"reason\":\"테스트 환불 사유 — 오류 정정 🔁\"}",
+      "sha256": "52a5a7125ed827375af361c0ec64b6e920576e3ddf75740540ba2a75b967026c"
+    },
+    {
+      "name": "timestamp",
+      "dimension": "timestamp — +09:00 입력을 UTC microsecond 로 정규화",
+      "payload": {
+        "paid_at": {
+          "$ts": "2026-07-24T18:30:45.123456+09:00"
+        },
+        "granted_at": {
+          "$ts": "2026-07-24T09:30:45.123456Z"
+        }
+      },
+      "canonical": "{\"granted_at\":\"2026-07-24T09:30:45.123456Z\",\"hash_version\":1,\"paid_at\":\"2026-07-24T09:30:45.123456Z\"}",
+      "sha256": "e601269c16b057152ee071146a1c1cc75a7a9da6ee4c49b4913090a7641a9a9a"
+    },
+    {
+      "name": "uuid",
+      "dimension": "UUID — 대문자 입력을 lowercase 로 정규화",
+      "payload": {
+        "cancellation_id": {
+          "$uuid": "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"
+        }
+      },
+      "canonical": "{\"cancellation_id\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\",\"hash_version\":1}",
+      "sha256": "86e50b2673bdf5eab7bae5e00505c336b9c5a7dfc5c66637d8912a6115a4c125"
+    },
+    {
+      "name": "numeric_boundary",
+      "dimension": "numeric boundary — 0 · 대형 KRW · MAX_SAFE_INTEGER · 음수",
+      "payload": {
+        "zero": 0,
+        "krw": 1000000,
+        "max_safe": 9007199254740991,
+        "neg": -3000
+      },
+      "canonical": "{\"hash_version\":1,\"krw\":1000000,\"max_safe\":9007199254740991,\"neg\":-3000,\"zero\":0}",
+      "sha256": "4245937ba95722fbc23b1ed61b672a5d5bc7465a6151ded582c1c739ffef3a1a"
+    },
+    {
+      "name": "delimiter",
+      "dimension": "delimiter — 값에 `|` 와 `:` 포함(correlation marker) → 이스케이프 검증",
+      "payload": {
+        "marker": "BP_REFUND:6f9619ff-8b86-d011-b42d-00c04fc964ff",
+        "pipe": "a|b|c",
+        "mixed": "k:v|k2:v2"
+      },
+      "canonical": "{\"hash_version\":1,\"marker\":\"BP_REFUND:6f9619ff-8b86-d011-b42d-00c04fc964ff\",\"mixed\":\"k:v|k2:v2\",\"pipe\":\"a|b|c\"}",
+      "sha256": "a3ba9f7f0de2203e9a6083949b55ece5d7072ef07af50d9266bab5f571d214a2"
+    }
+  ]
+}
