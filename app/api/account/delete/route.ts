@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuthedNonDeleted, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deletedEmailMarker } from "@/lib/oauth-metadata";
+import { assertWriteAllowed } from "@/lib/credits-gate";
 import { DOLLS_BUCKET } from "@/lib/generation";
 import { dollPath } from "@/lib/storage-path";
 import { log, errInfo } from "@/lib/log";
@@ -48,6 +49,18 @@ export async function POST(req: Request) {
     .limit(1);
   if (pending && pending.length > 0) {
     return NextResponse.json({ error: "payment_pending" }, { status: 409 });
+  }
+
+  // Phase-A 유지보수 게이트(v0.76 컷오버) — 잔여 크레딧 회수(원장 변동)가 발생하는 탈퇴만 차단.
+  // 잔여 0 이면 "계정 종료 권리"라 게이트와 무관하게 허용(§16).
+  const { data: gateMember } = await admin
+    .from("member_accounts")
+    .select("gen_credits")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if ((gateMember?.gen_credits ?? 0) > 0) {
+    const maintenance = assertWriteAllowed({ actor: "user", userId });
+    if (maintenance) return maintenance;
   }
 
   // 1) confirmed doll 이미지 경로를 RPC(=dolls row 삭제) 전에 수집.

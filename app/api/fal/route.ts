@@ -10,6 +10,7 @@ import { analyzeInputFace } from "@/lib/fal";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
 import { isRoleId } from "@/lib/roles";
+import { assertWriteAllowed } from "@/lib/credits-gate";
 import { logCreditEvent } from "@/lib/credit-ledger";
 import { log, errInfo } from "@/lib/log";
 
@@ -25,6 +26,10 @@ export async function POST(req: NextRequest) {
   if (!gate.ok) return memberGateResponse(gate);
   const { user, member } = gate;
   // 14세/약관/방침 동의는 로그인 직후 통합 게이트(requireMember 의 consent_required)에서 보장 — 여기 backstop 없음.
+
+  // Phase-A 유지보수 게이트(v0.76 컷오버) — closed 면 신규 생성권 소비 진입 차단.
+  const maintenance = assertWriteAllowed({ actor: "user", userId: user.id });
+  if (maintenance) return maintenance;
 
   log.info("gen.request", { userId: user.id });
 

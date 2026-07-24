@@ -8,6 +8,7 @@ import { seedOAuthProfile, migrateAnonData } from "@/lib/account-onboard";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
 import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
 import type { RawSource } from "@/lib/analytics/core";
+import { assertWriteAllowed } from "@/lib/credits-gate";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
   };
   if (!required.every((item) => body[item] === true)) {
     return NextResponse.json({ error: "consent_required" }, { status: 400 });
+  }
+
+  // Phase-A 유지보수 게이트(v0.76 컷오버) — **신규 회원 INSERT(가입 보너스 지급)** 만 차단.
+  // 기존 회원의 재동의(stamp UPDATE·크레딧 무변동)는 게이트와 무관하게 허용(글로벌 동의 게이트 잠금 방지).
+  if (member === null) {
+    const maintenance = assertWriteAllowed({ actor: "user", userId: user.id });
+    if (maintenance) return maintenance;
   }
 
   // email/password 가입엔 보너스 0 — 프로바이더가 심사계정(0060) 때문에 열려 있어, 공개 REST 로
