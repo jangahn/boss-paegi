@@ -2,7 +2,6 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertWriteAllowed } from "@/lib/credits-gate";
 import { refundRpcErrorResponsePayload } from "@/lib/refund-saga";
 import { log } from "@/lib/log";
 
@@ -16,10 +15,6 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
-
-  // Phase-A 유지보수 게이트(v0.76 컷오버) — closed 면 신규 화해 진입 차단.
-  const maintenance = assertWriteAllowed({ actor: "admin" });
-  if (maintenance) return maintenance;
 
   const body = (await req.json().catch(() => null)) as
     | { cancellationId?: string; note?: string; economicQty?: number }

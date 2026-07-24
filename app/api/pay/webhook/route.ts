@@ -33,7 +33,6 @@ function channelModeMismatch(
  * 처리 완료·중복 → 200.
  *
  * v0.76: 상태 전이는 전부 definer RPC 경유(§13 — 직접 금융/금융인접 UPDATE 금지).
- * drain 경로라 Phase-A 게이트(assertWriteAllowed) 미적용 — closed 에서도 기시작 결제는 종결돼야 한다.
  */
 export async function POST(req: NextRequest) {
   if (!portoneWebhookConfigured()) {
