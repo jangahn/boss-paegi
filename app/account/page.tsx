@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { AvatarEditor } from "@/components/AvatarEditor";
 import { FadeImg } from "@/components/FadeImg";
@@ -128,6 +129,19 @@ export default function AccountPage() {
             </div>
           </section>
 
+          {/* 결제내역 진입점 — 주문·환불 상태·영수증·크레딧 3분류는 /account/payments 에서 확인. */}
+          <section className="overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
+            <Link
+              href="/account/payments"
+              className="flex items-center justify-between px-6 py-4 text-sm font-semibold transition hover:bg-foreground/5"
+            >
+              결제내역
+              <span aria-hidden className="text-zinc-400">
+                ›
+              </span>
+            </Link>
+          </section>
+
           <WithdrawSection />
         </div>
       </main>
@@ -159,7 +173,26 @@ function WithdrawSection() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 실측 환불가능 수량(§11.6 /api/account/refundable-credits — 표시 전용, null=미조회/실패).
+  const [refundable, setRefundable] = useState<number | null>(null);
   const ready = ack && confirm.trim() === "회원탈퇴";
+
+  // 고지가 열렸을 때 1회 조회 — 실패는 조용히 미표시(법률 고지 자체는 정적 문구로 항상 노출).
+  useEffect(() => {
+    if (!open || refundable !== null) return;
+    let cancelled = false;
+    fetch("/api/account/refundable-credits")
+      .then((res) =>
+        res.ok ? (res.json() as Promise<{ ok?: boolean; refundable?: number }>) : null
+      )
+      .then((d) => {
+        if (!cancelled && d?.ok && typeof d.refundable === "number") setRefundable(d.refundable);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open, refundable]);
 
   const submit = async () => {
     if (busy || !ready) return;
@@ -213,6 +246,23 @@ function WithdrawSection() {
             <p>· (결제 이용 시) 결제 기록은 관련 법령에 따라 일정 기간 보존될 수 있습니다.</p>
             <p>· 탈퇴 후 재이용은 제한되며, 재이용을 원하면 고객센터로 문의해 주세요(계정만 복구되고 위 데이터는 복구되지 않습니다).</p>
           </div>
+          {/* 동적 환불 안내 — 위 법률 고지 블록(byte-for-byte 보존, §11.5)과 분리된 별도 노드. */}
+          {refundable !== null && (
+            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-500">
+              <p>
+                지금 환불 가능한 유료 생성권: <b className="text-foreground">{refundable}개</b>
+              </p>
+              {refundable > 0 && (
+                <p className="mt-1">
+                  탈퇴 전에 환불을 요청할 수 있어요(이용약관 참조). 주문·환불 상태는{" "}
+                  <Link href="/account/payments" className="underline underline-offset-2">
+                    결제내역
+                  </Link>
+                  에서 확인해주세요.
+                </p>
+              )}
+            </div>
+          )}
           <label className="mt-3 flex items-start gap-2 text-xs">
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
             <span>위 내용을 이해했으며 삭제된 데이터는 되돌릴 수 없음에 동의합니다.</span>

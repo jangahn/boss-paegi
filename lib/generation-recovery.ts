@@ -4,7 +4,6 @@ import { fal } from "@fal-ai/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SERVER_ENV } from "@/lib/env.server";
 import { DOLLS_BUCKET, candidatePrefix } from "@/lib/generation";
-import { logCreditEvent } from "@/lib/credit-ledger";
 import { log, errInfo } from "@/lib/log";
 
 fal.config({ credentials: SERVER_ENV.FAL_KEY });
@@ -245,19 +244,25 @@ export async function recoverQueuedGeneration(
   }
 
   const urls = stored.map((c) => c.url);
-  const doneRow = {
-    status: "done",
-    // 실제 받은 이미지 수 기준 — fal route(images.length)와 일치
-    cost_cents: COST_CENTS_PER_IMAGE * images.length,
-    fal_request_id: `flux-pulid:${genId}:recovered`,
-  };
+  // status/cost_cents/fal_request_id/candidate_urls 는 전부 operational 컬럼(§13 — 0063 column-grant
+  // 허용). 인라인 리터럴로 유지해 no-direct-financial-write 가드가 키를 정적 검증할 수 있게 한다.
+  const doneCostCents = COST_CENTS_PER_IMAGE * images.length; // 실제 받은 이미지 수 기준(fal route 와 일치)
+  const doneFalRequestId = `flux-pulid:${genId}:recovered`;
   const { error: doneErr } = await admin
     .from("ai_generations")
-    .update({ ...doneRow, candidate_urls: urls })
+    .update({
+      status: "done",
+      cost_cents: doneCostCents,
+      fal_request_id: doneFalRequestId,
+      candidate_urls: urls,
+    })
     .eq("id", genId);
   // migration 0005 (candidate_urls) 미적용 환경 fallback
   if (doneErr && doneErr.message.includes("candidate_urls")) {
-    await admin.from("ai_generations").update(doneRow).eq("id", genId);
+    await admin
+      .from("ai_generations")
+      .update({ status: "done", cost_cents: doneCostCents, fal_request_id: doneFalRequestId })
+      .eq("id", genId);
   } else if (doneErr) {
     log.error("gen.recover_done_update_fail", { genId, ...errInfo(doneErr) });
   }
@@ -274,9 +279,14 @@ export async function recoverQueuedGeneration(
 }
 
 /**
- * 비동기 생성 실패를 **1회만** 처리 — `status` 전이 가드로 폴링(3.5s)·cron 스윕·동시요청에 멱등.
- * status 가 아직 failed 가 아닐 때만 failed 마킹 → 그 전이가 일어난 호출에서만 생성권 환불(이중환불 방지).
- * ops(테스트 계정)는 제출 시 차감을 안 했으니 환불 스킵. (generations 폴링 + gen-recover cron 공용.)
+ * 비동기 생성 실패 처리 — failed 마킹 + 생성권 환급(v2 RPC).
+ * **원자성 정본은 DB RPC** — `mark_generation_failed_and_refund` 가 queued/generating(및 미환급 failed)
+ * row 를 한 트랜잭션에서 status='failed' 전이 + 환급을 수행하고 `refunded_at` 으로 멱등(이중환불 방어·
+ * 소비 없던 row 는 no_consume). 비-ops 는 이 RPC 를 **먼저** 호출해 status flip 과 환급 사이의 크래시
+ * 윈도우(소비 크레딧 영구 손실)를 제거한다. done/picked(만료) row 만 RPC 가 invalid_state 로 거부하므로,
+ * 그 경우에 한해 status 를 먼저 failed 로 전이한 뒤 재환급한다(그 잔여 윈도우는 gen-recover 의 미환급
+ * 스윕이 안전망으로 회수). ops(테스트 계정)는 소비가 없어 환급 없이 status 만 전이.
+ * (generations 폴링 + gen-recover cron 공용 — 동시 호출은 RPC 멱등으로 안전.)
  */
 export async function failGeneration(
   admin: SupabaseClient,
@@ -285,39 +295,52 @@ export async function failGeneration(
   isOps: boolean,
   reason?: string
 ): Promise<void> {
+  if (isOps) {
+    // ops 는 소비가 없어 환급 불요 — status 만 failed 로 전이(operational 컬럼).
+    const patch = reason ? { status: "failed", fail_reason: reason } : { status: "failed" };
+    // eslint-disable-next-line boss-paegi/no-direct-financial-write
+    const { error } = await admin.from("ai_generations").update(patch).eq("id", genId).neq("status", "failed");
+    if (error) log.warn("gen.fail_mark_error", { genId, ...errInfo(error) });
+    return;
+  }
+
+  // 원자성 우선: RPC 가 flip+환급을 한 트랜잭션에 수행(queued/generating·미환급 failed).
+  const { data, error: rErr } = await admin.rpc("mark_generation_failed_and_refund", {
+    p_gen_id: genId,
+    p_fail_reason: reason ?? "unknown",
+  });
+  if (!rErr) {
+    log.info("gen.fail_refunded", { genId, userId, outcome: (data as { outcome?: string } | null)?.outcome });
+    return;
+  }
+  if (!rErr.message.includes("invalid_state")) {
+    // generation_not_found 등 — 환급 불가, 로그만.
+    log.error("gen.fail_refund_error", { genId, userId, ...errInfo(rErr) });
+    return;
+  }
+
+  // done/picked(만료) — RPC 가 이 상태를 거부하므로 status 를 먼저 failed 로 전이 후 재환급.
   const patch = reason ? { status: "failed", fail_reason: reason } : { status: "failed" };
-  let { data: flipped, error } = await admin
+  // eslint-disable-next-line boss-paegi/no-direct-financial-write
+  const { data: flipped, error: upErr } = await admin
     .from("ai_generations")
     .update(patch)
     .eq("id", genId)
     .neq("status", "failed")
     .select("id");
-  // 0046(fail_reason) 미적용 환경 — 사유만 빼고 재시도(마킹/환불은 반드시 보존).
-  if (error && reason && error.message.includes("fail_reason")) {
-    ({ data: flipped, error } = await admin
-      .from("ai_generations")
-      .update({ status: "failed" })
-      .eq("id", genId)
-      .neq("status", "failed")
-      .select("id"));
-  }
-  if (error) {
-    log.warn("gen.fail_mark_error", { genId, ...errInfo(error) });
+  if (upErr) {
+    log.warn("gen.fail_mark_error", { genId, ...errInfo(upErr) });
     return;
   }
-  if ((flipped?.length ?? 0) > 0 && !isOps) {
-    const { data: bal, error: rErr } = await admin.rpc("refund_gen_credit", { p_user: userId });
-    if (rErr) {
-      log.error("gen.fail_refund_error", { genId, userId, ...errInfo(rErr) });
-    } else {
-      log.info("gen.fail_refunded", { genId, userId });
-      await logCreditEvent(admin, {
-        userId,
-        delta: 1,
-        eventType: "gen_refund",
-        balanceAfter: typeof bal === "number" ? bal : null,
-        refGenId: genId,
+  if ((flipped?.length ?? 0) > 0) {
+    const { data: d2, error: r2 } = await admin.rpc("mark_generation_failed_and_refund", {
+      p_gen_id: genId,
+      p_fail_reason: reason ?? "unknown",
+    });
+    if (r2) log.error("gen.fail_refund_error", { genId, userId, ...errInfo(r2) });
+    else
+      log.info("gen.fail_refunded", {
+        genId, userId, outcome: (d2 as { outcome?: string } | null)?.outcome, path: "post_flip",
       });
-    }
   }
 }

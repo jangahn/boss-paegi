@@ -15,6 +15,9 @@ export const SERVER_ENV = {
   PORTONE_WEBHOOK_SECRET_TEST: process.env.PORTONE_WEBHOOK_SECRET_TEST ?? "",
   // 대사 cron(cron-job.org → /api/ops/reconcile) 보호 시크릿. 미설정 시 reconcile 비활성(503).
   CRON_SECRET: process.env.CRON_SECRET ?? "",
+  // 포트원 API base URL 오버라이드 — 컷오버 리허설의 stub E2E(__tests__/refund/portone-stub.ts) 전용.
+  // 프로덕션은 미설정(기본 https://api.portone.io).
+  PORTONE_API_BASE_URL: process.env.PORTONE_API_BASE_URL ?? "https://api.portone.io",
   // Phase-A 크레딧 유지보수 게이트(v0.76 환불 saga 컷오버) — open|closed|canary. 미설정=open(동작 무변화).
   // closed: 신규 money 진입 라우트가 503 service_maintenance. canary: 아래 allowlist 계정만 진입 허용.
   // 값 전이는 배포 절차(runbook)이지 코드가 아니다 — lib/credits-gate.ts 참조.

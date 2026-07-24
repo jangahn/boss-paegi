@@ -13,7 +13,8 @@ import { log, errInfo } from "@/lib/log";
  * 취소는 POST /payments/{paymentId}/cancel(전액). 웹훅 서명은 Standard Webhooks(@portone/server-sdk).
  */
 
-const PORTONE_API_URL = "https://api.portone.io";
+// 리허설 stub E2E 만 오버라이드(PORTONE_API_BASE_URL) — 프로덕션 기본값 고정.
+const PORTONE_API_URL = SERVER_ENV.PORTONE_API_BASE_URL;
 
 /** 포트원 연동값 설정 여부 — 미설정이면 결제 라우트 비활성(503). 채널은 live/test 어느 한쪽이면 충분. */
 export function portoneConfigured(): boolean {
@@ -110,19 +111,200 @@ export async function getPortonePayment(paymentId: string): Promise<GetPaymentRe
   }
 }
 
-// ── 결제 취소 (POST /payments/{paymentId}/cancel — 전액) ───────────────
-export type PortoneCancelResult =
-  | { ok: true; alreadyCanceled: boolean }
-  | { ok: false; kind: "unknown" | "unreachable"; error: string };
+// ── V2 정규화 스냅샷·부분취소 (v0.76 환불 saga — §6·§27) ────────────────
+// 단건 조회 응답의 cancellations[]·취소 누계를 canonical 형태로 정규화한 스냅샷이
+// 경제 재대사·record_pg_result p_raw·switch_to_manual 증빙·이벤트 ingest 의 단일 소스다.
+// SDK(@portone/server-sdk ^0.19.0) 실재 필드만 사용 — 미확인 필드 신설 금지.
+
+/** correlation marker(§27) — PG cancel reason 은 정확히 이 문자열(중립·PII 없음·200자 내). */
+export const REFUND_MARKER_PREFIX = "BP_REFUND:";
+export function refundCorrelationMarker(attemptId: string): string {
+  return `${REFUND_MARKER_PREFIX}${attemptId}`.slice(0, 200);
+}
+/** marker 에서 attempt uuid 추출 — 형식 불일치는 null(fail-closed). */
+export function parseRefundMarker(reason: string | null | undefined): string | null {
+  if (!reason || !reason.startsWith(REFUND_MARKER_PREFIX)) return null;
+  const id = reason.slice(REFUND_MARKER_PREFIX.length, REFUND_MARKER_PREFIX.length + 36);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) ? id : null;
+}
+/** Idempotency-Key = attempt.id 의 RFC 8941 quoted-string(따옴표 포함). */
+export function refundIdempotencyKey(attemptId: string): string {
+  return `"${attemptId}"`;
+}
+
+export type PortoneCancellationStatus = "REQUESTED" | "SUCCEEDED" | "FAILED" | "UNRECOGNIZED";
+export type PortoneCancellationSnapshot = {
+  id: string;
+  status: PortoneCancellationStatus;
+  totalAmount: number | null; // nonnegative safe integer 아니면 null(fail-closed)
+  reason: string | null;
+  requestedAt: string | null;
+  cancelledAt: string | null;
+  receiptUrl: string | null; // SUCCEEDED 전용 필드
+};
+export type PortonePaymentSnapshot = {
+  paymentId: string;
+  /** 정규화 status — 비공식 PAY_PENDING→PENDING, 미인식은 UNRECOGNIZED(신규 POST 금지). */
+  status: PortonePayment["status"] | "UNRECOGNIZED";
+  totalAmount: number | null;
+  /** PG 측 취소 누계(amount.cancelled) — Σ SUCCEEDED 과 대사, 불일치 시 경고 후 PG 값 채택. */
+  cancelledAmount: number | null;
+  /** 취소가능액 = total − cancelled. 음수/판정불가 = null(호출부 fail-closed). */
+  cancellableAmount: number | null;
+  cancellations: PortoneCancellationSnapshot[];
+  channelType: "LIVE" | "TEST" | null;
+  raw: Record<string, unknown>;
+};
+
+function asSafeNonNegInt(v: unknown): number | null {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+
+const PAYMENT_STATUSES: ReadonlySet<string> = new Set([
+  "READY", "PENDING", "VIRTUAL_ACCOUNT_ISSUED", "PAID", "FAILED", "PARTIAL_CANCELLED", "CANCELLED",
+]);
+
+/** 원시 단건조회 JSON → canonical 스냅샷(정규화·금액 검증). */
+export function normalizePortonePayment(
+  paymentId: string,
+  rawPayment: Record<string, unknown>
+): PortonePaymentSnapshot {
+  const statusRaw = String(rawPayment.status ?? "");
+  const status =
+    statusRaw === "PAY_PENDING"
+      ? "PENDING"
+      : PAYMENT_STATUSES.has(statusRaw)
+        ? (statusRaw as PortonePayment["status"])
+        : "UNRECOGNIZED";
+
+  const amountObj = (rawPayment.amount ?? {}) as Record<string, unknown>;
+  const totalAmount = asSafeNonNegInt(amountObj.total);
+  const pgCancelled = asSafeNonNegInt(amountObj.cancelled);
+
+  const cancellations: PortoneCancellationSnapshot[] = Array.isArray(rawPayment.cancellations)
+    ? (rawPayment.cancellations as Record<string, unknown>[]).map((c) => {
+        const st = String(c.status ?? "");
+        return {
+          id: String(c.id ?? ""),
+          status: (st === "REQUESTED" || st === "SUCCEEDED" || st === "FAILED"
+            ? st
+            : "UNRECOGNIZED") as PortoneCancellationStatus,
+          totalAmount: asSafeNonNegInt(c.totalAmount),
+          reason: typeof c.reason === "string" ? c.reason : null,
+          requestedAt: typeof c.requestedAt === "string" ? c.requestedAt : null,
+          cancelledAt: typeof c.cancelledAt === "string" ? c.cancelledAt : null,
+          receiptUrl: typeof c.receiptUrl === "string" ? c.receiptUrl : null,
+        };
+      })
+    : [];
+
+  // 금액 대사: Σ SUCCEEDED ≤ total, PG 누계와 일치 확인(불일치 = 경고 후 PG 값 채택).
+  const succeededSum = cancellations
+    .filter((c) => c.status === "SUCCEEDED")
+    .reduce((s, c) => s + (c.totalAmount ?? 0), 0);
+  let cancelledAmount = pgCancelled;
+  if (pgCancelled === null) {
+    cancelledAmount = succeededSum;
+  } else if (pgCancelled !== succeededSum) {
+    log.warn("pay.snapshot_cancelled_mismatch", { paymentId, pgCancelled, succeededSum });
+  }
+  const cancellableAmount =
+    totalAmount !== null && cancelledAmount !== null && totalAmount - cancelledAmount >= 0
+      ? totalAmount - cancelledAmount
+      : null;
+  if (totalAmount !== null && cancelledAmount !== null && cancelledAmount > totalAmount) {
+    log.warn("pay.snapshot_cancelled_exceeds_total", { paymentId, totalAmount, cancelledAmount });
+  }
+
+  const channel = (rawPayment.channel ?? {}) as Record<string, unknown>;
+  return {
+    paymentId,
+    status,
+    totalAmount,
+    cancelledAmount,
+    cancellableAmount,
+    cancellations,
+    channelType: channel.type === "LIVE" || channel.type === "TEST" ? channel.type : null,
+    raw: rawPayment,
+  };
+}
+
+export type GetPaymentSnapshotResult =
+  | { ok: true; snapshot: PortonePaymentSnapshot }
+  | { ok: false; kind: "not_found" | "unreachable" | "error"; error: string };
+
+/** fresh 단건 조회 → canonical 스냅샷. saga preflight·대사·증빙의 단일 소스. */
+export async function getPortonePaymentSnapshot(
+  paymentId: string
+): Promise<GetPaymentSnapshotResult> {
+  try {
+    const res = await fetch(`${PORTONE_API_URL}/payments/${encodeURIComponent(paymentId)}`, {
+      headers: { Authorization: `PortOne ${SERVER_ENV.PORTONE_V2_API_SECRET}` },
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+    if (res.status === 404) return { ok: false, kind: "not_found", error: "payment_not_found" };
+    if (!res.ok) {
+      log.warn("pay.snapshot_http_error", { status: res.status, paymentId });
+      return { ok: false, kind: "error", error: `http_${res.status}` };
+    }
+    const raw = (await res.json()) as Record<string, unknown>;
+    if (!raw?.status || raw.id !== paymentId) {
+      log.warn("pay.snapshot_bad_payload", { paymentId });
+      return { ok: false, kind: "error", error: "bad_payload" };
+    }
+    return { ok: true, snapshot: normalizePortonePayment(paymentId, raw) };
+  } catch (e) {
+    log.warn("pay.snapshot_exception", { paymentId, ...errInfo(e) });
+    return { ok: false, kind: "unreachable", error: "request_exception" };
+  }
+}
+
+// ── 부분취소 (POST /payments/{paymentId}/cancel — §7.3 exact 3필드 body) ─
+export type PortonePartialCancelResult =
+  | { ok: true; cancellation: PortoneCancellationSnapshot; raw: Record<string, unknown> }
+  | {
+      ok: false;
+      /**
+       * 오류 4분류(§7.3): stale_cancellable=취소가능액 CAS 불일치(fresh GET 재대사) /
+       * already_cancelled=이미 취소(fresh GET 후 marker 귀속) / hard_reject=한도·확정 무이동(manual rail) /
+       * outstanding=타임아웃·불명(3h 내 동일 key·body 재시도만).
+       */
+      kind: "stale_cancellable" | "already_cancelled" | "hard_reject" | "outstanding";
+      error: string;
+    };
+
+const CANCEL_ERROR_KIND: Record<string, "stale_cancellable" | "already_cancelled" | "hard_reject"> = {
+  CANCELLABLE_AMOUNT_CONSISTENCY_BROKEN: "stale_cancellable",
+  PAYMENT_ALREADY_CANCELLED: "already_cancelled",
+  CANCEL_AMOUNT_EXCEEDS_CANCELLABLE_AMOUNT: "hard_reject",
+  CANCEL_TAX_AMOUNT_EXCEEDS_CANCELLABLE_TAX_AMOUNT: "hard_reject",
+  CANCEL_TAX_FREE_AMOUNT_EXCEEDS_CANCELLABLE_TAX_FREE_AMOUNT: "hard_reject",
+  SUM_OF_PARTS_EXCEEDS_CANCEL_AMOUNT: "hard_reject",
+  PAYMENT_NOT_PAID: "hard_reject",
+  PAYMENT_NOT_FOUND: "hard_reject",
+  FORBIDDEN: "hard_reject",
+  INVALID_REQUEST: "hard_reject",
+  UNAUTHORIZED: "hard_reject",
+  PG_PROVIDER: "hard_reject",
+};
 
 /**
- * 전액 취소. 구조화 에러 타입으로 분류(페이앱의 한국어 문구 allowlist 파싱 대체):
- * PAYMENT_ALREADY_CANCELLED → ok(alreadyCanceled — 환불 재시도 멱등의 핵심), 그 외 → unknown(로컬 무변경 안전 실패).
+ * 부분취소 POST — body 는 정확히 3필드 `{amount, reason, currentCancellableAmount}`(§7.3 — 명세·
+ * 영속 pg_request_body·이 helper·PortOne stub 4자 동일). reason = correlation marker(§27),
+ * Idempotency-Key = attempt uuid quoted(§7.4). 최초 POST 후 3h 내 동일 key·동일 body 재시도만 허용.
  */
-export async function cancelPortonePayment(args: {
+export async function cancelPortonePaymentPartial(args: {
   paymentId: string;
-  reason: string;
-}): Promise<PortoneCancelResult> {
+  attemptId: string;
+  amount: number;
+  currentCancellableAmount: number;
+}): Promise<PortonePartialCancelResult> {
+  const body = {
+    amount: args.amount,
+    reason: refundCorrelationMarker(args.attemptId),
+    currentCancellableAmount: args.currentCancellableAmount,
+  };
   try {
     const res = await fetch(
       `${PORTONE_API_URL}/payments/${encodeURIComponent(args.paymentId)}/cancel`,
@@ -131,22 +313,44 @@ export async function cancelPortonePayment(args: {
         headers: {
           Authorization: `PortOne ${SERVER_ENV.PORTONE_V2_API_SECRET}`,
           "Content-Type": "application/json",
+          "Idempotency-Key": refundIdempotencyKey(args.attemptId),
         },
-        body: JSON.stringify({ reason: args.reason.slice(0, 200), requester: "Admin" }),
-        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify(body),
+        // 라우트 maxDuration=120 안에서 PG 처리 대기(§B.8.1 — fetch 65s).
+        signal: AbortSignal.timeout(65_000),
       }
     );
-    if (res.ok) return { ok: true, alreadyCanceled: false };
-
-    const body = (await res.json().catch(() => null)) as { type?: string; message?: string } | null;
-    if (body?.type === "PAYMENT_ALREADY_CANCELLED") {
-      return { ok: true, alreadyCanceled: true };
+    if (res.ok) {
+      const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const c = (raw.cancellation ?? {}) as Record<string, unknown>;
+      const st = String(c.status ?? "");
+      const cancellation: PortoneCancellationSnapshot = {
+        id: String(c.id ?? ""),
+        status: (st === "REQUESTED" || st === "SUCCEEDED" || st === "FAILED"
+          ? st
+          : "UNRECOGNIZED") as PortoneCancellationStatus,
+        totalAmount: asSafeNonNegInt(c.totalAmount),
+        reason: typeof c.reason === "string" ? c.reason : null,
+        requestedAt: typeof c.requestedAt === "string" ? c.requestedAt : null,
+        cancelledAt: typeof c.cancelledAt === "string" ? c.cancelledAt : null,
+        receiptUrl: typeof c.receiptUrl === "string" ? c.receiptUrl : null,
+      };
+      return { ok: true, cancellation, raw };
     }
-    log.warn("pay.cancel_unknown", { paymentId: args.paymentId, type: body?.type, status: res.status });
-    return { ok: false, kind: "unknown", error: body?.type ?? `http_${res.status}` };
+    const errBody = (await res.json().catch(() => null)) as { type?: string } | null;
+    const type = errBody?.type ?? `http_${res.status}`;
+    const kind = (errBody?.type && CANCEL_ERROR_KIND[errBody.type]) ||
+      (res.status >= 500 ? "outstanding" : "hard_reject");
+    log.warn("pay.partial_cancel_rejected", {
+      paymentId: args.paymentId, attemptId: args.attemptId, type, status: res.status, kind,
+    });
+    return { ok: false, kind, error: type };
   } catch (e) {
-    log.warn("pay.cancel_exception", { paymentId: args.paymentId, ...errInfo(e) });
-    return { ok: false, kind: "unreachable", error: "request_exception" };
+    // 타임아웃·네트워크 불명 — POST 가 PG 에 도달했을 수 있다(outstanding): 동일 key·body 재시도만.
+    log.warn("pay.partial_cancel_outstanding", {
+      paymentId: args.paymentId, attemptId: args.attemptId, ...errInfo(e),
+    });
+    return { ok: false, kind: "outstanding", error: "request_exception" };
   }
 }
 

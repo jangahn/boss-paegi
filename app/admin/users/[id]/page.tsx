@@ -7,6 +7,8 @@ import {
   getUserGenerations,
   getUserDolls,
   getUserCreditLedger,
+  getUserLots,
+  getUserRefundActivity,
 } from "@/lib/admin-users";
 import { getLedger } from "@/lib/admin-ledger";
 import { CreditLedgerTable } from "@/components/admin/CreditLedgerTable";
@@ -17,12 +19,121 @@ import { GenerationsTable, DollsList } from "@/components/admin/UserSections";
 import { CreditAdjustForm } from "@/components/admin/CreditAdjustForm";
 import { ReactivateAccountForm } from "@/components/admin/ReactivateAccountForm";
 import { Pagination } from "@/components/Pagination";
-import { fmtKst, shortId, firstParam } from "@/lib/admin-format";
+import {
+  LOT_SOURCE_LABELS,
+  LOT_EXPIRATION_LABELS,
+  REQUEST_STATE_META,
+  ISSUE_TYPE_LABELS,
+} from "@/components/admin/refund-saga-ui";
+import type { UserLotRow, RefundRequestRow, ReconIssueRow } from "@/lib/admin-types";
+import { fmtKst, shortId, firstParam, won } from "@/lib/admin-format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const pageOf = (v: string | string[] | undefined) => Math.max(1, Number(firstParam(v)) || 1);
+
+/** 로트 잔여 = 부여 − 소비 − 환불 − 환불 예약(refund_reserved). 0062 카운터 규약. */
+const lotRemaining = (l: UserLotRow) => l.qty - l.consumed - l.refunded - l.refund_reserved;
+
+/** 진행 중 환불 요청 1건 — 환불 큐(/admin/refunds)에서 조치. 경고 행(WarningRow) 토큰 재사용. */
+function RefundRequestItem({ req }: { req: RefundRequestRow }) {
+  const meta = REQUEST_STATE_META[req.state] ?? {
+    label: req.state,
+    cls: "bg-foreground/10 text-zinc-500",
+  };
+  return (
+    <li className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 p-2 text-xs">
+      <span className={`rounded-full px-2 py-0.5 font-semibold ${meta.cls}`}>{meta.label}</span>
+      <span className="text-zinc-500">환불 요청 {req.requested_qty}개</span>
+      {req.approved_amount !== null && <span>{won(req.approved_amount)}</span>}
+      {req.scope_order_uuid && (
+        <span className="font-mono text-zinc-400">주문 {shortId(req.scope_order_uuid)}</span>
+      )}
+      <span className="max-w-[12rem] truncate text-zinc-400" title={req.reason}>
+        {req.reason}
+      </span>
+      <span className="ml-auto tabular-nums text-zinc-400">{fmtKst(req.created_at)}</span>
+    </li>
+  );
+}
+
+/** open 대사 이슈 1건 — 환불 큐에서 화해. blocked 토큰(bg-red-500/15) 재사용. */
+function ReconIssueItem({ issue }: { issue: ReconIssueRow }) {
+  return (
+    <li className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 p-2 text-xs">
+      <span className="rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-500">
+        {ISSUE_TYPE_LABELS[issue.type] ?? issue.type}
+      </span>
+      <span className="font-mono text-zinc-400">주문 {shortId(issue.order_uuid)}</span>
+      <span className="ml-auto tabular-nums text-zinc-400">{fmtKst(issue.created_at)}</span>
+    </li>
+  );
+}
+
+/** 크레딧 로트 현황 표(0062) — 소스·잔여·상태(만료/quarantine)·부여/만료. 조회 전용 RSC. */
+function LotsTable({ rows }: { rows: UserLotRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed border-foreground/15 p-4 text-center text-xs text-zinc-500">
+        크레딧 로트가 없어요. (로트 원장 적용 후 신규 부여분부터 쌓여요.)
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl border border-foreground/10">
+      <table className="w-full text-left text-xs">
+        <thead className="ui-surface text-zinc-500">
+          <tr>
+            <th className="px-2 py-1.5">소스</th>
+            <th className="px-2 py-1.5 text-right">잔여</th>
+            <th className="px-2 py-1.5 text-right">부여량</th>
+            <th className="px-2 py-1.5">상태</th>
+            <th className="px-2 py-1.5">주문</th>
+            <th className="px-2 py-1.5">부여(KST)</th>
+            <th className="px-2 py-1.5">만료(KST)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((l) => {
+            const remaining = lotRemaining(l);
+            return (
+              <tr key={l.id} className="border-t border-foreground/5">
+                <td className="px-2 py-1.5">{LOT_SOURCE_LABELS[l.source] ?? l.source}</td>
+                <td
+                  className={`px-2 py-1.5 text-right tabular-nums font-bold ${
+                    remaining > 0 ? "text-foreground" : "text-zinc-400"
+                  }`}
+                >
+                  {remaining}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-zinc-400">{l.qty}</td>
+                <td className="px-2 py-1.5">
+                  {l.expired_at ? (
+                    <span className="text-red-500">
+                      {LOT_EXPIRATION_LABELS[l.expiration_reason ?? ""] ?? l.expiration_reason}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-600">유효</span>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 font-mono text-zinc-400">
+                  {l.order_uuid ? shortId(l.order_uuid) : "—"}
+                </td>
+                <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-zinc-400">
+                  {fmtKst(l.granted_at)}
+                </td>
+                <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-zinc-400">
+                  {l.expired_at ? fmtKst(l.expired_at) : fmtKst(l.expires_at)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default async function AdminUserDetailPage({
   params,
@@ -71,14 +182,17 @@ export default async function AdminUserDetailPage({
     );
   }
 
-  const [orders, adjustments, creditLedger, generations, dolls, roleCfg] = await Promise.all([
-    getUserOrders(id, pages.ordersPage),
-    getLedger({ targetUserId: id, page: pages.adjPage }),
-    getUserCreditLedger(id, pages.creditPage),
-    getUserGenerations(id, pages.genPage),
-    getUserDolls(id, pages.dollsPage),
-    getRoleConfig(), // 어드민 유저표 역할 호칭 = DB 발행값(roleFrom)
-  ]);
+  const [orders, adjustments, creditLedger, generations, dolls, lots, refundActivity, roleCfg] =
+    await Promise.all([
+      getUserOrders(id, pages.ordersPage),
+      getLedger({ targetUserId: id, page: pages.adjPage }),
+      getUserCreditLedger(id, pages.creditPage),
+      getUserGenerations(id, pages.genPage),
+      getUserDolls(id, pages.dollsPage),
+      getUserLots(id), // 로트 현황 — 페이징 없음(상한 100).
+      getUserRefundActivity(id), // 진행 중 request + open issue.
+      getRoleConfig(), // 어드민 유저표 역할 호칭 = DB 발행값(roleFrom)
+    ]);
 
   // overshoot(존재 행보다 큰 섹션 page) → 1페이지로(빈 화면·페이저 소실 방지). 한 번에 하나씩 수렴.
   if (orders.rows.length === 0 && pages.ordersPage > 1) redirect(hrefFor("ordersPage")(1));
@@ -88,6 +202,9 @@ export default async function AdminUserDetailPage({
   if (dolls.rows.length === 0 && pages.dollsPage > 1) redirect(hrefFor("dollsPage")(1));
 
   const pp = (total: number, size: number) => Math.max(1, Math.ceil(total / size));
+
+  const hasRefundActivity =
+    refundActivity.requests.length > 0 || refundActivity.issues.length > 0;
 
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
@@ -134,6 +251,37 @@ export default async function AdminUserDetailPage({
           </section>
         )}
 
+        {/* 진행 중 환불 · 대사 이슈 — 활동이 있을 때만(조치는 /admin/refunds). */}
+        {hasRefundActivity && (
+          <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3">
+            <h2 className="text-sm font-bold text-amber-600">진행 중 환불 · 대사 이슈</h2>
+            <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+              아래 환불 요청·대사 이슈는 처리 중이에요. 조치는{" "}
+              <Link
+                href="/admin/refunds"
+                className="text-sky-600 underline underline-offset-2"
+              >
+                환불 큐
+              </Link>
+              에서 진행하세요.
+            </p>
+            {refundActivity.requests.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {refundActivity.requests.map((req) => (
+                  <RefundRequestItem key={req.id} req={req} />
+                ))}
+              </ul>
+            )}
+            {refundActivity.issues.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {refundActivity.issues.map((issue) => (
+                  <ReconIssueItem key={issue.id} issue={issue} />
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         {/* CS 크레딧 조정 */}
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">CS 크레딧 조정</h2>
@@ -172,6 +320,9 @@ export default async function AdminUserDetailPage({
             totalPages={pp(creditLedger.total, creditLedger.pageSize)}
             hrefFor={hrefFor("creditPage")}
           />
+          <h2 className="mt-2 text-sm font-bold text-zinc-500">크레딧 로트 현황 ({lots.length})</h2>
+          <p className="-mt-1 text-[11px] text-zinc-400">잔여 = 부여 − 소비 − 환불 − 환불 예약. 만료·회수된 로트는 상태에 사유가 표시돼요.</p>
+          <LotsTable rows={lots} />
         </section>
 
         {/* 콘텐츠 */}
