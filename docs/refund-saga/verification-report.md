@@ -6,6 +6,8 @@
 > - **클린 체인 마이그 적용**: 0001~0064 순차 적용(프로덕션 Management API 방식) 에러 0 → 그 스키마에서 **pgTAP 146/146** · go/no-go 48 중 **G-46(법률 seed 없음)·G-47(cron 미가동)만 미충족**(둘 다 데이터/런타임 조건, 스키마 결함 아님 — 프로덕션엔 법률문서 발행·cron 가동으로 충족).
 > - **적대적 리뷰(4관점·refute 검증)**: confirmed 4건 전부 교정 — ①failGeneration 크래시 윈도우 크레딧 손실(RPC-first 원자화 + gen-recover 미환급 안전망 스윕) ②③RefundQueueActions release/replan 배선(해제 영구불능·manual_review 오배선) ④payments 전액환불 표시 오분류. rejected 2건(403 계약 오해·cancel qty fail-safe) 정당 기각.
 > - **판정 갱신**: `IMPLEMENTATION-VERIFIED: YES(로컬)` · `PRODUCTION-GO: 프로덕션 컷오버 시 go/no-go 재실행 대기`(Phase-A 배포→closed→0062→postflight→v2→gates→0063→0064, canary 실결제는 운영자).
+> - **[2026-07-24 프로덕션 컷오버 완료]** 0062·0063·0064 프로덕션 적용(Management API)·v2 배포(deploy `cd47689`)·**과도기 게이트 철거**(canary 생략·즉시 open, 게이트 코드/env 제거 = commit `8c8f1c2`·PR #181). 위 line 4 인벤토리의 `credits-gate` 는 당시 기록이며 현재 파일 부재(`lib/credits-gate.ts` 삭제됨). 하드닝(0063) 영구 적용 → 게이트 없이 금융 write 는 RPC 전용.
+> - **[2026-07-25 컷오버 후 최종 전면 감사]** 5차원 독립·적대적 감사(과도기데이터·불변식·데드코드·문서·운영) 수행: DB **G-1 정확 성립(153=153)**·backfill lot 30개 전부 정형·ops-debt 큐(reconciliation_issues·credit_refund_shortfalls) 0·고아 0·**프로덕션 go/no-go 48/48**·**독립 ACL 사후 probe**(금융테이블 직접 DML 0·service_role operational 컬럼만). **결정 기록**: ①`legacy_refund_backfill_evidence`(29행=백필 환불 provenance)는 **영구 보존**(refund_state·legacy_free 와 동급 의도 유지) ②`is_test` 2건 `pg_status='PAID'`(status=canceled)은 KPN 취소불가·미-saga 종단이라 프로바이더 미러 **정확값**(정규화 안 함) ③PAYAPP_* env 3종 제거 완료. **잔여 동적 미검증**(신규 컷오버 본질): v2 consume/refund 실경로(첫 실사용 시 최초 실행)·credit-expire cron 최초 실행(최조 만료 2027-06 이라 그전 무해 no-op).
 >
 > ---
 
