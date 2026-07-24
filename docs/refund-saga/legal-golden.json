@@ -1,0 +1,24 @@
+{
+  "file": "app/account/page.tsx",
+  "scheme": "utf8-sha256",
+  "note": "byte-for-byte 보존 대상 법률 문구(§31·§11.5). 배포 전후 hash 동일해야 함. line number 비정본 — 문자열 존재+hash로 검증.",
+  "strings": [
+    {
+      "text": "삭제된 데이터(캐릭터·하이라이트·생성권)는 되돌릴 수 없습니다.",
+      "present": true,
+      "sha256": "b6e746879f653255cd2ae5d1dcc4e62e080d3d22d426581b589342255166284b"
+    },
+    {
+      "text": "· 남은 생성권은 사용할 수 없으며 복구되지 않습니다.",
+      "present": true,
+      "sha256": "62c06e7470930a5c3e0f978e8b869ac16eb48fbbd149d33f0492895875869845"
+    },
+    {
+      "text": "· 유료로 구매한 미사용 생성권은 탈퇴 전에 환불을 요청할 수 있습니다(이용약관 참조).",
+      "present": true,
+      "sha256": "9fcca65358a0b99ab9bba86f07b24777e47c6957acdd05bbcdf60996172c900a"
+    }
+  ],
+  "all_present": true,
+  "combined_sha256": "ef9bb870e746c9b2fc802e80c07cd6df2d104771a3b6d9f0b460e7a1d37c1650"
+}
