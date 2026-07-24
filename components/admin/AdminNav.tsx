@@ -11,6 +11,7 @@ import { useRef } from "react";
 const LINKS = [
   { href: "/admin", label: "대시보드" },
   { href: "/admin/orders", label: "주문" },
+  { href: "/admin/refunds", label: "환불" },
   { href: "/admin/users", label: "회원" },
   { href: "/admin/ledger", label: "처리내역" },
   { href: "/admin/moderation", label: "신고" },

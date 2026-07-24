@@ -92,12 +92,42 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── 안전망: 미환급 실패 생성 재환급(§19) — status='failed'·refunded_at=NULL·credit_lot_id set 로
+  //    고착된 소비 크레딧(failGeneration 의 done-fallback flip↔환급 RPC 사이 크래시 윈도우 잔여)을
+  //    멱등 RPC 로 회수. idx_ai_generations_refund_pending 사용. ops(credit_lot_id NULL)는 predicate 로 제외.
+  let reRefunded = 0;
+  const { data: pendingRefunds, error: prErr } = await admin
+    .from("ai_generations")
+    .select("id, fail_reason")
+    .eq("status", "failed")
+    .is("refunded_at", null)
+    .not("credit_lot_id", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(SWEEP_LIMIT);
+  if (prErr) {
+    log.warn("gen.refund_sweep_query_fail", errInfo(prErr));
+  } else {
+    for (const g of (pendingRefunds as { id: string; fail_reason: string | null }[] | null) ?? []) {
+      try {
+        const { error: rErr } = await admin.rpc("mark_generation_failed_and_refund", {
+          p_gen_id: g.id,
+          p_fail_reason: g.fail_reason ?? "recover_sweep",
+        });
+        if (rErr) log.warn("gen.refund_sweep_item_fail", { genId: g.id, ...errInfo(rErr) });
+        else reRefunded++;
+      } catch (e) {
+        log.warn("gen.refund_sweep_item_fail", { genId: g.id, ...errInfo(e) });
+      }
+    }
+  }
+
   log.info("gen.sweep_done", {
     scanned: (data as Row[] | null)?.length ?? 0,
     targeted: targets.length,
     recovered,
     failed,
     pending,
+    reRefunded,
   });
   return NextResponse.json({
     ok: true,
@@ -106,5 +136,6 @@ export async function POST(req: NextRequest) {
     recovered,
     failed,
     pending,
+    reRefunded,
   });
 }

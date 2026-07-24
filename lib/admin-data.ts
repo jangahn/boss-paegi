@@ -1,7 +1,16 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PG_RETRY_CUTOFF_MS } from "@/lib/refund-saga";
 import { log, errInfo } from "@/lib/log";
-import type { AdminFunnel, OrderSummary, AdminOrder } from "@/lib/admin-types";
+import type {
+  AdminFunnel,
+  OrderSummary,
+  AdminOrder,
+  RefundAttemptRow,
+  RefundRequestRow,
+  ReconIssueRow,
+} from "@/lib/admin-types";
+import { OPEN_ATTEMPT_STATES, ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
 
 /**
  * 관리자 대시보드 데이터 — server-only, service_role(admin client).
@@ -11,7 +20,7 @@ import type { AdminFunnel, OrderSummary, AdminOrder } from "@/lib/admin-types";
 export type { AdminFunnel, OrderSummary, AdminOrder };
 
 const ORDER_SELECT =
-  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, profiles(display_name)";
+  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refunded_credits, refunded_amount, profiles(display_name)";
 
 type RawOrderRow = Omit<AdminOrder, "display_name"> & {
   profiles:
@@ -37,6 +46,8 @@ function mapOrder(r: RawOrderRow): AdminOrder {
     paid_at: r.paid_at,
     user_id: r.user_id,
     display_name: p?.display_name ?? null,
+    refunded_credits: r.refunded_credits,
+    refunded_amount: r.refunded_amount,
   };
 }
 
@@ -82,61 +93,153 @@ export async function getStalePending(): Promise<AdminOrder[]> {
   return ((data ?? []) as unknown as RawOrderRow[]).map(mapOrder);
 }
 
+// ── 환불 saga(0062) 운영 경고·큐 ──────────────────────────────────────────────────────────
+
 export type RefundWarnings = {
-  commitFail: AdminOrder[]; // refund_state='pg_done' — PG 환불됨·로컬 미반영(최우선, 재처리 필요)
-  unreconciled: AdminOrder[]; // PG 취소 웹훅 선도착(canceled+paid_at·refund_state null·ledger 없음) → 크레딧 미회수
-  stuckCount: number; // refund_state='in_progress' 가 10분+ (함수 죽음 등 고착 — 확인 필요)
+  /** 개입 필요 미종결 attempt — manual_review 전건 + pg_requested 가 3h(재시도 cutoff)+ 경과한 stale. */
+  attentionAttempts: RefundAttemptRow[];
+  /** blocked request — attempt 가 수동 계열(manual_pending/manual_review)로 멈춘 실행 단위. */
+  blockedRequests: RefundRequestRow[];
+  /** open 대사 이슈(운영 조치 필요 3종) — late_paid·unmatched_cancellation·cancellation_discrepancy. */
+  openIssues: ReconIssueRow[];
+  /** 레거시 화해 — saga 이전 PG 취소 웹훅 선도착(canceled+paid_at) 크레딧 미회수(0057 RPC 존속). */
+  unreconciled: AdminOrder[];
 };
 
+// RPC(setof orders) 행은 profiles 임베드 불가 — 컬럼만 고르고 display_name 은 배치 조회로 채움.
 const WARN_SELECT =
-  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refund_state";
+  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refunded_credits, refunded_amount";
 
-/** 환불 운영 경고 — 대시보드 최상단(stale pending 보다 높은 우선순위). */
+const ATTEMPT_SELECT =
+  "id, request_id, order_uuid, user_id, state, rail, qty, amount, rate_bps, created_at, pg_requested_at";
+const REQUEST_SELECT =
+  "id, user_id, origin, scope_order_uuid, requested_qty, approved_amount, state, reason, created_at";
+const ISSUE_SELECT = "id, type, order_uuid, user_id, cancellation_id, state, created_at";
+
+/** 이슈 중 대시보드 경고 대상 3종 — economic_over_refund·manual_pg_cancel 은 /admin/refunds 큐에서만. */
+const WARN_ISSUE_TYPES = ["late_paid", "unmatched_cancellation", "cancellation_discrepancy"];
+
+/** 환불 운영 경고 — 대시보드 최상단(stale pending 보다 높은 우선순위). invariant_violation 은
+ *  경고 소스가 아니다(Sentry `pay.refund_invariant_violation` 전용 — open issue 로 저장되지 않음). */
 export async function getRefundWarnings(): Promise<RefundWarnings> {
   const admin = createAdminClient();
-  const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const [done, stuck, canceledPaid] = await Promise.all([
+  const pgStaleIso = new Date(Date.now() - PG_RETRY_CUTOFF_MS).toISOString();
+  const [attempts, requests, issues, canceledPaid] = await Promise.all([
     admin
-      .from("orders")
-      .select(WARN_SELECT)
-      .eq("refund_state", "pg_done")
-      .order("updated_at", { ascending: true })
+      .from("order_refund_attempts")
+      .select(ATTEMPT_SELECT)
+      .or(`state.eq.manual_review,and(state.eq.pg_requested,pg_requested_at.lt.${pgStaleIso})`)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(20),
     admin
-      .from("orders")
-      .select("order_uuid", { count: "exact", head: true })
-      .eq("refund_state", "in_progress")
-      .lt("updated_at", staleCutoff),
-    // 미회수 = 웹훅 선도착(canceled+paid_at·refund_state null)이면서 cancel_refund ledger 가 없는 건.
-    // 회수 여부 판정은 SQL anti-join(0057) — 후보를 limit 으로 자른 뒤 앱에서 거르면, 오래된
-    // 후보 20건이 전부 기회수일 때 실제 미회수 건이 경고에서 통째로 누락된다(false negative).
+      .from("refund_requests")
+      .select(REQUEST_SELECT)
+      .eq("state", "blocked")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(20),
+    admin
+      .from("reconciliation_issues")
+      .select(ISSUE_SELECT)
+      .eq("state", "open")
+      .in("type", WARN_ISSUE_TYPES)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(20),
     admin.rpc("admin_unreconciled_canceled_orders").select(WARN_SELECT),
   ]);
-  if (done.error) log.warn("admin.refund_warnings_fail", errInfo(done.error));
-  const toOrder = (r: Omit<AdminOrder, "display_name">) => ({ ...r, display_name: null });
-  const commitFail = ((done.data ?? []) as Array<Omit<AdminOrder, "display_name">>).map(toOrder);
-
-  let unreconciled: AdminOrder[];
-  if (canceledPaid.error) {
-    // 0057 미적용 환경 폴백(마이그레이션 수동 적용 관례) — 종전 limit-후-필터 로직.
+  if (attempts.error) log.warn("admin.refund_warnings_attempts_fail", errInfo(attempts.error));
+  if (requests.error) log.warn("admin.refund_warnings_requests_fail", errInfo(requests.error));
+  if (issues.error) log.warn("admin.refund_warnings_issues_fail", errInfo(issues.error));
+  if (canceledPaid.error)
     log.warn("admin.refund_unreconciled_rpc_fail", errInfo(canceledPaid.error));
-    unreconciled = await legacyUnreconciled(admin, toOrder);
-  } else {
-    unreconciled = ((canceledPaid.data ?? []) as Array<Omit<AdminOrder, "display_name">>).map(toOrder);
-  }
 
-  // 닉네임 배치 조회 — unreconciled 는 RPC 결과라 profiles 임베드가 안 통해 한 번에 채운다.
-  await fillDisplayNames(admin, [...commitFail, ...unreconciled]);
+  const withName = <T>(rows: T[] | null | undefined) =>
+    (rows ?? []).map((r) => ({ ...r, display_name: null as string | null }));
 
-  return { commitFail, unreconciled, stuckCount: stuck.count ?? 0 };
+  const attentionAttempts = withName(
+    attempts.data as Omit<RefundAttemptRow, "display_name">[] | null
+  );
+  const blockedRequests = withName(
+    requests.data as Omit<RefundRequestRow, "display_name">[] | null
+  );
+  const openIssues = withName(issues.data as Omit<ReconIssueRow, "display_name">[] | null);
+  const unreconciled = withName(
+    canceledPaid.data as Omit<AdminOrder, "display_name">[] | null
+  );
+
+  await fillDisplayNames(admin, [
+    ...attentionAttempts,
+    ...blockedRequests,
+    ...openIssues,
+    ...unreconciled,
+  ]);
+
+  return { attentionAttempts, blockedRequests, openIssues, unreconciled };
 }
 
-/** 주문 행들의 display_name 을 profiles 일괄 조회로 채움(실패 시 그대로 null — 표기는 shortId 폴백). */
+export type RefundQueue = {
+  /** open 대사 이슈 — 전 타입(최신순). */
+  openIssues: ReconIssueRow[];
+  /** 비종단 request(building·prepared·processing·blocked, 최신순). */
+  activeRequests: RefundRequestRow[];
+  /** 미종결(open) attempt 6종(최신순). */
+  openAttempts: RefundAttemptRow[];
+};
+
+/** /admin/refunds 운영 큐 — RSC 서버 직쿼리 3목록(별도 목록 API 없음). */
+export async function getRefundQueue(): Promise<RefundQueue> {
+  const admin = createAdminClient();
+  const [issues, requests, attempts] = await Promise.all([
+    admin
+      .from("reconciliation_issues")
+      .select(ISSUE_SELECT)
+      .eq("state", "open")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(50),
+    admin
+      .from("refund_requests")
+      .select(REQUEST_SELECT)
+      .in("state", [...ACTIVE_REQUEST_STATES])
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(50),
+    admin
+      .from("order_refund_attempts")
+      .select(ATTEMPT_SELECT)
+      .in("state", [...OPEN_ATTEMPT_STATES])
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(50),
+  ]);
+  if (issues.error) log.warn("admin.refund_queue_issues_fail", errInfo(issues.error));
+  if (requests.error) log.warn("admin.refund_queue_requests_fail", errInfo(requests.error));
+  if (attempts.error) log.warn("admin.refund_queue_attempts_fail", errInfo(attempts.error));
+
+  const withName = <T>(rows: T[] | null | undefined) =>
+    (rows ?? []).map((r) => ({ ...r, display_name: null as string | null }));
+
+  const openIssues = withName(issues.data as Omit<ReconIssueRow, "display_name">[] | null);
+  const activeRequests = withName(
+    requests.data as Omit<RefundRequestRow, "display_name">[] | null
+  );
+  const openAttempts = withName(
+    attempts.data as Omit<RefundAttemptRow, "display_name">[] | null
+  );
+
+  await fillDisplayNames(admin, [...openIssues, ...activeRequests, ...openAttempts]);
+
+  return { openIssues, activeRequests, openAttempts };
+}
+
+/** 행들의 display_name 을 profiles 일괄 조회로 채움(실패 시 그대로 null — 표기는 shortId 폴백). */
 async function fillDisplayNames(
   admin: ReturnType<typeof createAdminClient>,
-  orders: AdminOrder[]
+  rows: Array<{ user_id: string; display_name: string | null }>
 ): Promise<void> {
-  const userIds = [...new Set(orders.map((o) => o.user_id))];
+  const userIds = [...new Set(rows.map((r) => r.user_id))];
   if (userIds.length === 0) return;
   const { data, error } = await admin.from("profiles").select("id, display_name").in("id", userIds);
   if (error) {
@@ -144,29 +247,5 @@ async function fillDisplayNames(
     return;
   }
   const names = new Map((data ?? []).map((p) => [p.id as string, p.display_name as string | null]));
-  for (const o of orders) o.display_name = names.get(o.user_id) ?? null;
-}
-
-/** 0057(anti-join RPC) 미적용 환경용 종전 로직 — 후보 20건 한정 후 ledger 앱 필터(완전성 한계 有). */
-async function legacyUnreconciled(
-  admin: ReturnType<typeof createAdminClient>,
-  toOrder: (r: Omit<AdminOrder, "display_name">) => AdminOrder
-): Promise<AdminOrder[]> {
-  const { data } = await admin
-    .from("orders")
-    .select(WARN_SELECT)
-    .eq("status", "canceled")
-    .not("paid_at", "is", null)
-    .is("refund_state", null)
-    .order("canceled_at", { ascending: true })
-    .limit(20);
-  const candidates = (data ?? []) as Array<Omit<AdminOrder, "display_name">>;
-  if (candidates.length === 0) return [];
-  const { data: ledgers } = await admin
-    .from("admin_actions_ledger")
-    .select("order_uuid")
-    .eq("action_type", "cancel_refund")
-    .in("order_uuid", candidates.map((c) => c.order_uuid));
-  const reconciled = new Set((ledgers ?? []).map((l) => l.order_uuid as string));
-  return candidates.filter((c) => !reconciled.has(c.order_uuid)).map(toOrder);
+  for (const r of rows) r.display_name = names.get(r.user_id) ?? null;
 }

@@ -38,9 +38,10 @@ export default async function AdminPage() {
         <h1 className="text-2xl font-bold">운영 대시보드</h1>
 
         <DashboardWarnings
-          commitFail={refundWarnings.commitFail}
+          attentionAttempts={refundWarnings.attentionAttempts}
+          blockedRequests={refundWarnings.blockedRequests}
+          openIssues={refundWarnings.openIssues}
           unreconciled={refundWarnings.unreconciled}
-          stuckCount={refundWarnings.stuckCount}
         />
 
           {/* 매출·주문 (KST today / rolling 7d·30d) */}
@@ -91,9 +92,13 @@ export default async function AdminPage() {
             <StalePendingTable rows={stale} />
           </section>
 
-        {/* CS 크레딧 조정은 회원 검색 → 유저 상세로 이전됨 */}
+        {/* 환불 운영은 전용 큐, 회원별 CS 크레딧 조정은 회원 상세에서 */}
         <p className="text-xs text-zinc-500">
-          CS 크레딧 조정·환불은{" "}
+          진행 중 환불·대사 이슈는{" "}
+          <Link href="/admin/refunds" className="text-sky-600 underline">
+            환불 큐
+          </Link>
+          에서 처리하세요. 회원별 CS 크레딧 조정·수량 환불은{" "}
           <Link href="/admin/users" className="text-sky-600 underline">
             회원 관리
           </Link>

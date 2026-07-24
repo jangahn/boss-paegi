@@ -9,7 +9,11 @@ import type {
   GenerationRow,
   DollRow,
   Paged,
+  UserLotRow,
+  RefundRequestRow,
+  ReconIssueRow,
 } from "@/lib/admin-types";
+import { ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
 
 /**
  * 유저 검색 + 상세 데이터 — server-only, service_role.
@@ -149,7 +153,7 @@ export async function listMembers(page = 1): Promise<Paged<MemberInfo>> {
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
 }
 
-/** 유저 결제(주문) 내역 — 10/page, count:exact. refund_state 포함(머니패스 액션용). */
+/** 유저 결제(주문) 내역 — 10/page, count:exact. 환불 누계(0062) 포함(환불 액션 노출 판정용). */
 export async function getUserOrders(userId: string, page = 1): Promise<Paged<AdminOrder>> {
   const p = Math.max(1, page);
   const from = (p - 1) * USER_PAGE_SIZE;
@@ -157,7 +161,7 @@ export async function getUserOrders(userId: string, page = 1): Promise<Paged<Adm
   const { data, count, error } = await admin
     .from("orders")
     .select(
-      "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refund_state",
+      "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refunded_credits, refunded_amount",
       { count: "exact" }
     )
     .eq("user_id", userId)
@@ -238,12 +242,18 @@ export type CreditLedgerRow = {
   balanceAfter: number | null;
   refGenId: string | null;
   refOrderUuid: string | null;
+  /** 환불 saga(0062) ref 3종 — 로트/환불 시도/PG 취소 이벤트. */
+  refLotId: string | null;
+  refAttemptId: string | null;
+  refCancellationId: string | null;
+  metadata: Record<string, unknown> | null;
+  schemaVersion: number;
   createdAt: string;
 };
 
 /**
- * 유저 크레딧 변동(생성 차감/환불·충전) — 10/page, count:exact. credit_ledger(0047).
- * 0047 미적용이면 쿼리 에러 → 빈 결과(섹션만 비고 페이지 안전). 운영자 조정/환불은 별도 '크레딧 조정' 섹션.
+ * 유저 크레딧 변동(생성 차감/환불·충전·만료·환불 예약/확정) — 10/page, count:exact. credit_ledger(0047·0062).
+ * 조회 에러면 빈 결과(섹션만 비고 페이지 안전). 운영자 조정/환불은 별도 '크레딧 조정' 섹션.
  */
 export async function getUserCreditLedger(
   userId: string,
@@ -254,9 +264,10 @@ export async function getUserCreditLedger(
   const admin = createAdminClient();
   const { data, count, error } = await admin
     .from("credit_ledger")
-    .select("id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, created_at", {
-      count: "exact",
-    })
+    .select(
+      "id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, ref_lot_id, ref_attempt_id, ref_cancellation_id, metadata, schema_version, created_at",
+      { count: "exact" }
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(from, from + USER_PAGE_SIZE - 1);
@@ -271,6 +282,11 @@ export async function getUserCreditLedger(
     balance_after: number | null;
     ref_gen_id: string | null;
     ref_order_uuid: string | null;
+    ref_lot_id: string | null;
+    ref_attempt_id: string | null;
+    ref_cancellation_id: string | null;
+    metadata: Record<string, unknown> | null;
+    schema_version: number;
     created_at: string;
   };
   const rows = ((data ?? []) as Row[]).map((r) => ({
@@ -280,7 +296,73 @@ export async function getUserCreditLedger(
     balanceAfter: r.balance_after,
     refGenId: r.ref_gen_id,
     refOrderUuid: r.ref_order_uuid,
+    refLotId: r.ref_lot_id,
+    refAttemptId: r.ref_attempt_id,
+    refCancellationId: r.ref_cancellation_id,
+    metadata: r.metadata,
+    schemaVersion: r.schema_version,
     createdAt: r.created_at,
   }));
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+}
+
+/**
+ * 유저 크레딧 로트 현황(0062) — 최신 부여순(granted_at desc, id tiebreak). 유저당 로트 수는
+ * 구매+보너스 수준이라 페이징 없이 상한 100(초과분은 사실상 없음 — 초과 시 최신 100만 표시).
+ */
+export async function getUserLots(userId: string): Promise<UserLotRow[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("credit_lots")
+    .select(
+      "id, source, order_uuid, qty, consumed, refunded, refund_reserved, granted_at, expires_at, expired_at, expiration_reason"
+    )
+    .eq("user_id", userId)
+    .order("granted_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(100);
+  if (error) {
+    log.warn("admin.user_lots_fail", errInfo(error));
+    return [];
+  }
+  return (data ?? []) as UserLotRow[];
+}
+
+export type UserRefundActivity = {
+  /** 진행 중(비종단) 환불 요청 — building·prepared·processing·blocked. */
+  requests: RefundRequestRow[];
+  /** open 대사 이슈(전 타입). */
+  issues: ReconIssueRow[];
+};
+
+/** 유저 진행 중 환불 요청 + open 이슈(0062) — 회원 상세 표시 전용(조치는 /admin/refunds). */
+export async function getUserRefundActivity(userId: string): Promise<UserRefundActivity> {
+  const admin = createAdminClient();
+  const [requests, issues] = await Promise.all([
+    admin
+      .from("refund_requests")
+      .select("id, user_id, origin, scope_order_uuid, requested_qty, approved_amount, state, reason, created_at")
+      .eq("user_id", userId)
+      .in("state", [...ACTIVE_REQUEST_STATES])
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(20),
+    admin
+      .from("reconciliation_issues")
+      .select("id, type, order_uuid, user_id, cancellation_id, state, created_at")
+      .eq("user_id", userId)
+      .eq("state", "open")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(20),
+  ]);
+  if (requests.error) log.warn("admin.user_refund_requests_fail", errInfo(requests.error));
+  if (issues.error) log.warn("admin.user_refund_issues_fail", errInfo(issues.error));
+  // 본인 상세 페이지 문맥이라 display_name 채움 불필요(헤더가 이미 표기) — null 고정.
+  const withName = <T>(rows: T[] | null | undefined) =>
+    (rows ?? []).map((r) => ({ ...r, display_name: null as string | null }));
+  return {
+    requests: withName(requests.data as Omit<RefundRequestRow, "display_name">[] | null),
+    issues: withName(issues.data as Omit<ReconIssueRow, "display_name">[] | null),
+  };
 }

@@ -11,6 +11,7 @@ import { isReviewerUser } from "@/lib/reviewer";
 import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
 import { assertWriteAllowed } from "@/lib/credits-gate";
+import { refundRpcErrorResponsePayload } from "@/lib/refund-saga";
 import { rateLimit } from "@/lib/rate-limit";
 import { log, errInfo } from "@/lib/log";
 
@@ -125,23 +126,29 @@ export async function POST(req: NextRequest) {
   }
 
   // 2) 새 주문 pending 선삽입 — paymentId(=order_uuid 하이픈 제거, KPN 영숫자 제약)까지 함께.
+  //    직접 insert 금지(§13 W1) — create_pending_order 가 상품 allowlist·금액·형식·멱등을 강제(definer RPC).
   const orderUuid = randomUUID();
   const paymentId = paymentIdForOrder(orderUuid);
-  const { error: insErr } = await admin.from("orders").insert({
-    order_uuid: orderUuid,
-    payment_id: paymentId,
-    provider: "portone",
-    user_id: user.id,
-    product_id: product.productId,
-    amount: product.price,
-    credits: product.credits,
-    status: "pending",
-    is_test: isTest,
-    pay_channel: channel.method,
+  const { error: insErr } = await admin.rpc("create_pending_order", {
+    p_user: user.id,
+    p_order_uuid: orderUuid,
+    p_product_id: product.productId,
+    p_amount: product.price,
+    p_credits: product.credits,
+    p_payment_id: paymentId,
+    p_provider: "portone",
+    p_pay_channel: channel.method,
+    p_is_test: isTest,
   });
   if (insErr) {
+    // invalid_product 는 §38 매핑으로 기존 400 {error:'invalid_product'} 그대로(서버 config↔RPC allowlist 드리프트 신호).
     log.error("pay.order_insert_fail", { userId: user.id, ...errInfo(insErr) });
-    return NextResponse.json({ error: "order_create_failed" }, { status: 500 });
+    const p = refundRpcErrorResponsePayload(insErr, {
+      route: "pay/checkout",
+      userId: user.id,
+      orderUuid,
+    });
+    return NextResponse.json(p.body, { status: p.status });
   }
 
   Sentry.setTag("pay.product", product.productId);

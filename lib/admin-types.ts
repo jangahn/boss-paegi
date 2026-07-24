@@ -1,4 +1,4 @@
-// 관리자 대시보드 공용 타입 — server(admin-data)·client(components/admin) 공유.
+// 관리자 대시보드 공용 타입·상태 어휘 — server(admin-data)·client(components/admin) 공유.
 // (server-only 가 아니어야 클라 컴포넌트가 타입 import 가능.)
 
 export type AdminFunnel = {
@@ -38,11 +38,23 @@ export type AdminOrder = {
   paid_at: string | null;
   user_id: string;
   display_name: string | null;
-  // 머니 패스(0023)에서 환불 진행 상태. 목록(search_orders)만 채움 — 대시보드 조회는 생략(undefined).
-  refund_state?: string | null;
+  /** 환불 saga(0062) 누계 — committed attempt 합. 부분환불>0, 전액=credits. */
+  refunded_credits: number;
+  /** 환불 saga(0062) 환불 현금 누계(원). */
+  refunded_amount: number;
 };
 
-export type LedgerActionType = "settle_stuck" | "cancel_refund" | "cs_adjust";
+export type LedgerActionType =
+  | "settle_stuck"
+  | "cancel_refund"
+  | "cs_adjust"
+  // 환불 saga(0062) 신규 action_type
+  | "partial_refund"
+  | "refund_release"
+  | "refund_switch_manual"
+  | "refund_replan"
+  | "cancel_intent"
+  | "resolve_external_cancellation";
 
 export type LedgerRow = {
   id: string;
@@ -66,6 +78,78 @@ export type LedgerPage = {
   total: number;
   page: number;
   pageSize: number;
+};
+
+// ── 환불 saga(0062) — 어드민 조회 행 타입·상태 어휘 ──
+
+/** attempt 미종결(open) 6종 — uq_refund_attempts_order_open 과 동일 집합. */
+export const OPEN_ATTEMPT_STATES = [
+  "prepared",
+  "pg_requested",
+  "pg_pending",
+  "pg_succeeded",
+  "manual_pending",
+  "manual_review",
+] as const;
+
+/** request 비종단 4종 — idx_refund_requests_state 부분 인덱스와 동일 집합. */
+export const ACTIVE_REQUEST_STATES = ["building", "prepared", "processing", "blocked"] as const;
+
+/** order_refund_attempts 조회 행(어드민 목록·경고용 요약). */
+export type RefundAttemptRow = {
+  id: string;
+  request_id: string;
+  order_uuid: string;
+  user_id: string;
+  display_name: string | null;
+  state: string;
+  rail: string;
+  qty: number;
+  amount: number;
+  rate_bps: number;
+  created_at: string;
+  pg_requested_at: string | null;
+};
+
+/** refund_requests 조회 행(어드민 목록·경고용 요약). */
+export type RefundRequestRow = {
+  id: string;
+  user_id: string;
+  display_name: string | null;
+  origin: string;
+  scope_order_uuid: string | null;
+  requested_qty: number;
+  approved_amount: number | null;
+  state: string;
+  reason: string;
+  created_at: string;
+};
+
+/** reconciliation_issues 조회 행(어드민 목록·경고용 요약). */
+export type ReconIssueRow = {
+  id: string;
+  type: string;
+  order_uuid: string;
+  user_id: string;
+  display_name: string | null;
+  cancellation_id: string | null;
+  state: string;
+  created_at: string;
+};
+
+/** credit_lots 조회 행 — 회원 상세 로트 현황. 잔여 = qty − consumed − refunded − refund_reserved. */
+export type UserLotRow = {
+  id: string;
+  source: string;
+  order_uuid: string | null;
+  qty: number;
+  consumed: number;
+  refunded: number;
+  refund_reserved: number;
+  granted_at: string;
+  expires_at: string;
+  expired_at: string | null;
+  expiration_reason: string | null;
 };
 
 // ── 유저 상세 ──
