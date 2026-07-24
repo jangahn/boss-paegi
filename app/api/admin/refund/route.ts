@@ -4,6 +4,7 @@ import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminRpcErrorCode } from "@/lib/admin-rpc";
 import { cancelPortonePayment, portoneCancelConfigured } from "@/lib/portone";
+import { assertWriteAllowed } from "@/lib/credits-gate";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -23,6 +24,10 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
+
+  // Phase-A 유지보수 게이트(v0.76 컷오버) — closed 면 신규 환불 진입 차단(drain 대상 경로).
+  const maintenance = assertWriteAllowed({ actor: "admin" });
+  if (maintenance) return maintenance;
 
   const body = (await req.json().catch(() => null)) as
     | { orderUuid?: string; reason?: string }

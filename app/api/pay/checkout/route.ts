@@ -10,6 +10,7 @@ import { activeCreditProducts, payModeFor } from "@/lib/config/domains/growth";
 import { isReviewerUser } from "@/lib/reviewer";
 import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
+import { assertWriteAllowed } from "@/lib/credits-gate";
 import { rateLimit } from "@/lib/rate-limit";
 import { log, errInfo } from "@/lib/log";
 
@@ -33,6 +34,10 @@ export async function POST(req: NextRequest) {
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
   // 14세/약관/방침 동의는 로그인 직후 통합 게이트(requireMember 의 consent_required)에서 보장 — 여기 backstop 없음.
+
+  // Phase-A 유지보수 게이트(v0.76 컷오버) — closed 면 신규 결제 진입 차단.
+  const maintenance = assertWriteAllowed({ actor: "user", userId: user.id });
+  if (maintenance) return maintenance;
 
   // 인메모리 고정창 rate-limit — 결제 요청 난사 완화(per-instance 한계는 lib/rate-limit.ts 주석).
   if (!rateLimit(`pay-checkout:${user.id}`, 10, 60_000)) {
