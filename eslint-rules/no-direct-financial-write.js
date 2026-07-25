@@ -84,7 +84,7 @@ const DEFAULT_ALLOWED_UPDATE_COLUMNS = {
   member_accounts: ["email"],
   ai_generations: [
     "status", "fail_reason", "candidate_urls", "fal_request_id", "fal_request_ids",
-    "picked_doll_id", "picked_index", "cost_cents", "role",
+    "picked_doll_id", "picked_index", "cost_cents", "role", "gen_params",
   ],
 };
 

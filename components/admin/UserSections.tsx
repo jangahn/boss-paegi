@@ -37,7 +37,15 @@ export function GenerationsTable({ rows, cfg }: { rows: GenerationRow[]; cfg: Ro
         <tbody>
           {rows.map((g) => (
             <tr key={g.id} className="border-t border-foreground/5">
-              <td className="whitespace-nowrap px-2 py-1.5 tabular-nums">{fmtKst(g.created_at)}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 tabular-nums">
+                <Link
+                  href={`/admin/generations/${g.id}`}
+                  className="text-sky-600 underline-offset-2 hover:underline"
+                  title="생성 파라미터·프롬프트 상세"
+                >
+                  {fmtKst(g.created_at)}
+                </Link>
+              </td>
               <td className={`px-2 py-1.5 font-semibold ${GEN_COLOR[g.status] ?? ""}`}>
                 {GEN_STATUS[g.status] ?? g.status}
               </td>

@@ -893,7 +893,7 @@ select 'G-43' as gate, count(*)::int as violations, 'cutover/normal' as scope,
              ('ai_generations','candidate_urls'), ('ai_generations','fal_request_id'),
              ('ai_generations','fal_request_ids'), ('ai_generations','picked_doll_id'),
              ('ai_generations','picked_index'), ('ai_generations','cost_cents'),
-             ('ai_generations','role'))
+             ('ai_generations','role'), ('ai_generations','gen_params'))
     union all
     -- (d) 실 권한 probe(무기입): 신규 12테이블은 INSERT/UPDATE/DELETE 전부, 기존 3테이블은 INSERT/DELETE
     --     (UPDATE 는 operational 컬럼 grant 로 table-level true 가 정상 — 컬럼 단위는 (e)가 검증)

@@ -154,10 +154,14 @@ function GeneratePageInner() {
   const handlePick = async (img: GeneratedImage) => {
     setStage("saving");
     try {
+      // 서버 권위 pick — candidateIndex(후보 경로 .../{index}.jpg 에서 파싱)를 보낸다. 서버가 소유·
+      // done·candidate_urls 멤버십을 검증하고 경로를 재구성·서명하므로 클라 URL 자체는 신뢰되지 않음.
+      const m = /\/candidates\/[^/]+\/(\d+)\.jpg/.exec(img.url);
+      const candidateIndex = m ? Number(m[1]) : undefined;
       const res = await fetch("/api/doll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: img.url, generationId, role: selectedRole }),
+        body: JSON.stringify({ generationId, candidateIndex, imageUrl: img.url }),
       });
       if (!res.ok) throw new Error("저장 실패");
       const { doll } = (await res.json()) as { doll: { id: string } };

@@ -14,8 +14,8 @@ const COST_CENTS_PER_IMAGE = 4;
 
 type SrcImage = { url: string; width: number; height: number };
 export type CandidateImage = { url: string; width: number; height: number };
-/** 복사 결과 — copied=false 면 url 은 원본(fal) url 폴백(즉시 노출용, 곧 만료) */
-export type CopiedCandidate = CandidateImage & { copied: boolean };
+/** 복사 결과 — copied=false 면 url 은 원본(fal) url 폴백(즉시 노출용, 곧 만료). index=원 candidate index(재번호화 금지). */
+export type CopiedCandidate = CandidateImage & { copied: boolean; index: number };
 
 // 방금 생성된 fal 이미지는 CDN 전파에 시간이 걸릴 수 있어 넉넉히. 실패 시 1회 재시도.
 const COPY_FETCH_TIMEOUT_MS = 15_000;
@@ -65,6 +65,7 @@ async function copyOne(
         width: img.width,
         height: img.height,
         copied: true,
+        index,
       };
     } catch (e) {
       log.warn("gen.candidate_copy_fail", {
@@ -79,23 +80,23 @@ async function copyOne(
   // 재시도 모두 실패 — 원본(fal) url 폴백. 즉시 고르기엔 유효하나 만료되므로
   // candidate_urls(durable storage 전용)엔 넣지 않는다(copied:false).
   log.warn("gen.candidate_copy_giveup", { genId, index });
-  return { url: img.url, width: img.width, height: img.height, copied: false };
+  return { url: img.url, width: img.width, height: img.height, copied: false, index };
 }
 
 /**
  * fal 결과 이미지들을 우리 Supabase storage 로 복사 (fal URL 은 만료되므로).
- * 입력 순서 보존. 복사 실패 칸은 copied:false + 원본 url 폴백(즉시 노출용).
- * 호출부는 copied 플래그로 candidate_urls(durable) 여부를 가른다. fal route·복구가 공유.
+ * **각 항목의 명시적 candidateIndex 로 저장**({prefix}/{index}.jpg) — 배열 위치 재번호화 금지
+ * (후보 0 실패·1·2 성공이어도 파일명·pickedIndex 가 1·2 유지). 복사 실패 칸은 copied:false + 원본 url 폴백.
  */
 export async function copyCandidatesToStorage(
   admin: SupabaseClient,
   ownerId: string,
   genId: string,
-  images: SrcImage[]
+  items: { index: number; image: SrcImage }[]
 ): Promise<CopiedCandidate[]> {
   const prefix = candidatePrefix(ownerId, genId);
   return Promise.all(
-    images.map((img, i) => copyOne(admin, prefix, img, i, genId))
+    items.map((it) => copyOne(admin, prefix, it.image, it.index, genId))
   );
 }
 
@@ -180,8 +181,10 @@ export async function recoverQueuedGeneration(
     };
   }
 
-  // 2) 완료분 결과 fetch
-  const images = (
+  // 2) 완료분 결과 fetch — **원 candidate index(requestIds 위치) 보존**(재번호화 금지). flux-pulid 는
+  //    request 당 1장. seed/has_nsfw_concepts 는 fal 공식 output 을 방어적으로 파싱(없으면 null).
+  type CandResult = { index: number; image: SrcImage; seed: number | null; nsfw: boolean | null };
+  const results = (
     await Sentry.startSpan(
       {
         name: "gen.fal_result",
@@ -190,81 +193,122 @@ export async function recoverQueuedGeneration(
       },
       () =>
         Promise.all(
-          completedIdx.map(async (i) => {
+          completedIdx.map(async (i): Promise<CandResult | null> => {
             try {
-              const res = await fal.queue.result(FLUX_PULID, {
-                requestId: requestIds[i],
-              });
-          const data = res.data as {
-            images?: { url: string; width?: number; height?: number }[];
-          };
-          return (data.images ?? []).map((im) => ({
-            url: im.url,
-            width: im.width ?? 1024,
-            height: im.height ?? 1024,
-          }));
-        } catch (e) {
-          log.warn("gen.recover_result_fail", {
-            genId,
-            requestId: requestIds[i],
-            ...errInfo(e),
-          });
-          return [];
-        }
-      })
+              const res = await fal.queue.result(FLUX_PULID, { requestId: requestIds[i] });
+              const data = res.data as {
+                images?: { url: string; width?: number; height?: number }[];
+                seed?: number;
+                has_nsfw_concepts?: boolean[];
+              };
+              const im = (data.images ?? [])[0];
+              if (!im) return null;
+              return {
+                index: i,
+                image: { url: im.url, width: im.width ?? 1024, height: im.height ?? 1024 },
+                seed: typeof data.seed === "number" ? data.seed : null,
+                nsfw: Array.isArray(data.has_nsfw_concepts) ? !!data.has_nsfw_concepts[0] : null,
+              };
+            } catch (e) {
+              log.warn("gen.recover_result_fail", { genId, requestId: requestIds[i], ...errInfo(e) });
+              return null;
+            }
+          })
         )
     )
-  ).flat();
+  ).filter((r): r is CandResult => r !== null);
 
   // COMPLETED 인데 결과를 못 받음(facexlib no-face 400·result 만료/404) → 결정적 실패(재시도해도 동일).
-  if (images.length === 0) {
+  if (results.length === 0) {
     return { status: "failed", candidateUrls: [], definitive: true, reason: "no_face" };
   }
 
-  // 3) 후보 복사 + done 마킹. 복구는 durable storage url 만 사용
-  // (fal queue.result url 도 만료 → resume 때 깨질 수 있어 copied 만).
+  // 3) 후보 복사 — **원 candidate index 로 저장**({prefix}/{index}.jpg). durable storage url 만 사용.
   const copied = await Sentry.startSpan(
-    {
-      name: "gen.copy_candidates",
-      op: "storage.copy",
-      attributes: { genId, images: images.length },
-    },
-    () => copyCandidatesToStorage(admin, ownerId, genId, images)
+    { name: "gen.copy_candidates", op: "storage.copy", attributes: { genId, images: results.length } },
+    () =>
+      copyCandidatesToStorage(
+        admin,
+        ownerId,
+        genId,
+        results.map((r) => ({ index: r.index, image: r.image }))
+      )
   );
   const stored = copied.filter((c) => c.copied);
   if (stored.length === 0) {
     return { status: "failed", candidateUrls: [] };
   }
-  if (stored.length < images.length) {
+  if (stored.length < results.length) {
     log.warn("gen.recover_candidate_copy_partial", {
       genId,
       copied: stored.length,
-      total: images.length,
+      total: results.length,
     });
   }
 
-  const urls = stored.map((c) => c.url);
-  // status/cost_cents/fal_request_id/candidate_urls 는 전부 operational 컬럼(§13 — 0063 column-grant
-  // 허용). 인라인 리터럴로 유지해 no-direct-financial-write 가드가 키를 정적 검증할 수 있게 한다.
-  const doneCostCents = COST_CENTS_PER_IMAGE * images.length; // 실제 받은 이미지 수 기준(fal route 와 일치)
-  const doneFalRequestId = `flux-pulid:${genId}:recovered`;
-  const { error: doneErr } = await admin
-    .from("ai_generations")
-    .update({
-      status: "done",
-      cost_cents: doneCostCents,
-      fal_request_id: doneFalRequestId,
-      candidate_urls: urls,
-    })
-    .eq("id", genId);
-  // migration 0005 (candidate_urls) 미적용 환경 fallback
-  if (doneErr && doneErr.message.includes("candidate_urls")) {
-    await admin
+  // candidate index 순 정렬 — **누락분 앞당김 없음**(path 가 실 index 보유, pick 이 path 로 판단).
+  const urls = stored.slice().sort((a, b) => a.index - b.index).map((c) => c.url);
+
+  // provenance 후보별 seed/status 단조 병합(completed 는 유지 — 동시 복구가 수렴). best-effort:
+  // gen_params 없거나(레거시) 읽기 실패면 gen_params 미기록(기존 스냅샷 보존).
+  const storedIdx = new Set(stored.map((c) => c.index));
+  let mergedGenParams: unknown | undefined = undefined;
+  try {
+    const { data: gpRow } = await admin
       .from("ai_generations")
-      .update({ status: "done", cost_cents: doneCostCents, fal_request_id: doneFalRequestId })
-      .eq("id", genId);
-  } else if (doneErr) {
+      .select("gen_params")
+      .eq("id", genId)
+      .maybeSingle();
+    const gp = gpRow?.gen_params as { generation?: { candidates?: unknown[] } } | null | undefined;
+    const cands = gp?.generation?.candidates;
+    if (gp && Array.isArray(cands)) {
+      const byIdx = new Map(results.map((r) => [r.index, r]));
+      (gp.generation as { candidates: unknown[] }).candidates = cands.map((raw) => {
+        const c = raw as { index?: number; status?: string };
+        const r = typeof c.index === "number" ? byIdx.get(c.index) : undefined;
+        if (r && storedIdx.has(c.index as number) && c.status !== "completed") {
+          return { ...c, status: "completed", seed: r.seed, hasNsfw: r.nsfw };
+        }
+        return c;
+      });
+      mergedGenParams = gp;
+    }
+  } catch (e) {
+    log.warn("gen.recover_provenance_merge_fail", { genId, ...errInfo(e) });
+  }
+
+  // 4) done 마킹 — status/cost_cents/fal_request_id/candidate_urls(+gen_params) 전부 operational(§13 0063+0070).
+  //    **영속 성공 전 ready 반환 금지**(DB 실패=transient → pending 재시도, ready 위장 X). 리터럴 payload(eslint 정적검증).
+  const doneCostCents = COST_CENTS_PER_IMAGE * results.length;
+  const doneFalRequestId = `flux-pulid:${genId}:recovered`;
+  const doneErr =
+    mergedGenParams !== undefined
+      ? (
+          await admin
+            .from("ai_generations")
+            .update({
+              status: "done",
+              cost_cents: doneCostCents,
+              fal_request_id: doneFalRequestId,
+              candidate_urls: urls,
+              gen_params: mergedGenParams,
+            })
+            .eq("id", genId)
+        ).error
+      : (
+          await admin
+            .from("ai_generations")
+            .update({
+              status: "done",
+              cost_cents: doneCostCents,
+              fal_request_id: doneFalRequestId,
+              candidate_urls: urls,
+            })
+            .eq("id", genId)
+        ).error;
+  if (doneErr) {
     log.error("gen.recover_done_update_fail", { genId, ...errInfo(doneErr) });
+    return { status: "pending", candidateUrls: [] };
   }
 
   log.info("gen.recovered", {

@@ -8,7 +8,10 @@ import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 import { analyzeInputFace } from "@/lib/fal";
-import { getGenerationConfig } from "@/lib/config/getters";
+import { getGenerationConfigWithMeta } from "@/lib/config/getters";
+import { buildGenerationPlan, FIXED_FLUX } from "@/lib/character-gen/plan";
+import { failGeneration } from "@/lib/generation-recovery";
+import { PROVENANCE_SCHEMA_VERSION } from "@/lib/character-gen/provenance";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
 import { isRoleId } from "@/lib/roles";
@@ -116,11 +119,12 @@ export async function POST(req: NextRequest) {
     );
     facePath = uploaded.path;
 
-    // 얼굴 분석(1회 VLM) — 얼굴 존재 + 안경 여부. 안경은 PuLID 누락 보정용, 얼굴은 제출 전 게이트용.
-    const { faceVisible, wearsGlasses } = await Sentry.startSpan(
+    // 얼굴 분석(1회 VLM) — 얼굴 존재 + 안경 여부(+ provenance 기록용 메타). 얼굴은 제출 전 게이트용.
+    const analysis = await Sentry.startSpan(
       { name: "gen.analyze_face", op: "fal.vqa", attributes: { tmpFaceId, userId: user.id } },
       () => analyzeInputFace(uploaded.url)
     );
+    const { faceVisible, wearsGlasses } = analysis;
     if (wearsGlasses) log.info("gen.glasses_detected", { tmpFaceId, userId: user.id });
 
     // 제출 전 얼굴 게이트 — 확실한 no-face 면 소비·제출 없이 즉시 반려(no-face fal 낭비·30~60초 대기 방지).
@@ -188,42 +192,114 @@ export async function POST(req: NextRequest) {
     facePath = uploadedFinal.path;
     await cleanupFace(analyzePath);
 
-    // 생성 파라미터·프롬프트 설정 — 발행 즉시 반영 위해 uncached 강한읽기 1회(SWR 우회).
-    const genConfig = await getGenerationConfig();
+    // 생성 설정 — 발행 즉시 반영 위해 uncached 강한읽기 1회(SWR 우회). source/version/invalid 은 provenance 로.
+    const cfg = await getGenerationConfigWithMeta();
+    const plan = buildGenerationPlan(cfg.value, { role, wearsGlasses, numImages: 3 });
 
-    // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
-    const requestIds = await Sentry.startSpan(
+    // provenance 초기 스냅샷(submitted) — 제출 **전** 저장(부분 실패 시 계획 유실 방지). 비밀/URL 미포함.
+    const provenance = {
+      schemaVersion: PROVENANCE_SCHEMA_VERSION,
+      config: {
+        key: "generation_config" as const,
+        source: cfg.source,
+        version: cfg.version,
+        invalid: !!cfg.invalid,
+      },
+      analyze: {
+        model: analysis.model,
+        prompt: analysis.prompt,
+        rawOutput: analysis.rawOutput,
+        status: analysis.status,
+        faceVisible: analysis.faceVisible,
+        wearsGlasses: analysis.wearsGlasses,
+      },
+      generation: {
+        provider: FIXED_FLUX.provider,
+        model: FIXED_FLUX.model,
+        role,
+        request: plan.request,
+        snapshot: plan.snapshot,
+        candidates: plan.candidates.map((c) => ({
+          index: c.index,
+          suitColor: c.suitColor,
+          positivePrompt: c.positivePrompt,
+          requestId: null as string | null,
+          seed: null as number | null,
+          status: "submitted" as "submitted" | "completed" | "failed",
+        })),
+      },
+      postprocess: null,
+      picked: null,
+    };
+
+    // 제출 전 선저장 — 실패면 fal 미제출 + 원자 환불(소비 크레딧 회수) 후 반려.
+    const { error: preErr } = await admin
+      .from("ai_generations")
+      .update({ gen_params: provenance })
+      .eq("id", genId);
+    if (preErr) {
+      log.error("gen.provenance_presave_fail", { genId, ...errInfo(preErr) });
+      await failGeneration(admin, genId, user.id, isOps, "provenance_presave_fail");
+      await cleanupFace(facePath);
+      return NextResponse.json({ error: "log_failed" }, { status: 500 });
+    }
+
+    // fal 큐에 3건 allSettled 제출 — 부분 성공 허용, 접수된 request_id 유실 금지.
+    const submitResults = await Sentry.startSpan(
       {
         name: "gen.fal_submit",
         op: "fal.queue.submit",
         attributes: { genId, userId: user.id, numImages: 3, wearsGlasses },
       },
-      () =>
-        provider.submitGeneration({
-          faceImageUrl: uploadedFinal.url,
-          templateImageUrl: "", // PuLID 는 template 무시
-          genConfig,
-          numImages: 3,
-          wearsGlasses,
-          role,
-        })
+      () => provider.submitPlan({ faceImageUrl: uploadedFinal.url, plan })
     );
+    const okResults = submitResults.filter((r) => r.status === "submitted" && r.requestId);
+    // 성공 0 = 전부 제출 실패 → failed + 환불.
+    if (okResults.length === 0) {
+      log.error("gen.submit_all_failed", { genId, userId: user.id });
+      await failGeneration(admin, genId, user.id, isOps, "submit_failed");
+      await cleanupFace(facePath);
+      return NextResponse.json({ error: "generation_failed" }, { status: 502 });
+    }
 
-    // request_id 저장 — 복구(generation-recovery)가 이걸로 fal 결과 회수 + done 마킹.
-    const { error: ridErr } = await admin
-      .from("ai_generations")
-      .update({ fal_request_ids: requestIds })
-      .eq("id", genId);
-    // migration 0006 미적용이면 복구만 비활성 — 다른 에러는 추적.
-    if (ridErr && !ridErr.message.includes("fal_request_ids")) {
-      log.warn("gen.request_ids_persist_fail", { genId, ...errInfo(ridErr) });
+    // 후보 provenance 에 requestId/status 반영 + fal_request_ids 파생(index 순, 성공분만).
+    const byIndex = new Map(submitResults.map((r) => [r.index, r]));
+    provenance.generation.candidates = provenance.generation.candidates.map((c) => {
+      const r = byIndex.get(c.index);
+      return r ? { ...c, requestId: r.requestId, status: r.status } : c;
+    });
+    const falRequestIds = okResults
+      .slice()
+      .sort((a, b) => a.index - b.index)
+      .map((r) => r.requestId as string);
+
+    // 저장(bounded retry) — fal_request_ids(복구 회수용) + gen_params(requestId 반영). 둘 다 operational 컬럼.
+    let persistErr: string | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const { error } = await admin
+        .from("ai_generations")
+        .update({ fal_request_ids: falRequestIds, gen_params: provenance })
+        .eq("id", genId);
+      if (!error) {
+        persistErr = null;
+        break;
+      }
+      persistErr = error.message;
+      log.warn("gen.request_ids_persist_retry", { genId, attempt, error: error.message });
+    }
+    if (persistErr) {
+      // 영속 실패 = 복구가 request_id 를 못 찾아 좀비화 → failed + 환불(관측가능 오류로 종료).
+      log.error("gen.request_ids_persist_fail", { genId, error: persistErr });
+      await failGeneration(admin, genId, user.id, isOps, "persist_failed");
+      await cleanupFace(facePath);
+      return NextResponse.json({ error: "log_failed" }, { status: 500 });
     }
 
     log.info("gen.submitted", {
       genId,
       userId: user.id,
       provider: provider.name,
-      requestCount: requestIds.length,
+      requestCount: falRequestIds.length,
       wearsGlasses,
       elapsedMs: Date.now() - startedAt,
     });

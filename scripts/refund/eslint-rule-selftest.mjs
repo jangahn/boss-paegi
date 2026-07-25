@@ -30,6 +30,7 @@ tester.run("no-direct-financial-write", rule, {
     `admin.from("ai_generations").update({ status: "failed", fail_reason: "no_face" }).eq("id", g);`,
     `admin.from("ai_generations").update({ fal_request_ids: ids }).eq("id", g);`,
     `admin.from("ai_generations").update({ status: "picked", picked_doll_id: d, picked_index: i }).eq("id", g);`,
+    `admin.from("ai_generations").update({ fal_request_ids: ids, gen_params: p }).eq("id", g);`,
     // 동적 from — 정적 판정 불가는 통과(일반 모드)
     `admin.from(tableName).update({ x: 1 });`,
   ],

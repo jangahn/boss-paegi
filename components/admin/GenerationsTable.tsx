@@ -66,13 +66,22 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
             </span>
             <span className={`text-[11px] ${credit.cls}`}>{credit.label}</span>
             <span className="text-[11px] text-zinc-400">· {fmtKst(row.createdAt)}</span>
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              className="ml-auto rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:bg-foreground/10"
-            >
-              상세 <span className="text-[10px]">{open ? "▴" : "▾"}</span>
-            </button>
+            <div className="ml-auto flex items-center gap-1">
+              <Link
+                href={`/admin/generations/${row.id}`}
+                className="rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-sky-600 transition hover:bg-foreground/10"
+                title="생성 파라미터·프롬프트 상세"
+              >
+                상세 페이지 →
+              </Link>
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:bg-foreground/10"
+              >
+                요약 <span className="text-[10px]">{open ? "▴" : "▾"}</span>
+              </button>
+            </div>
           </div>
 
           {/* 클릭 필터: 회원 / 캐릭터 + 회원 상세 이동 */}

@@ -10,85 +10,124 @@ import { normalizeDollImage } from "@/lib/image-utils";
 import {
   DOLLS_BUCKET as BUCKET,
   cleanupCandidateStorage,
+  candidatePrefix,
 } from "@/lib/generation";
 import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
-import { log, errInfo, urlHost } from "@/lib/log";
-import { asRole, isRoleId, type RoleId } from "@/lib/roles";
+import { PROVENANCE_SCHEMA_VERSION } from "@/lib/character-gen/provenance";
+import { log, errInfo } from "@/lib/log";
+import { asRole, isRoleId } from "@/lib/roles";
 
 export const runtime = "nodejs";
 // 누끼(birefnet ~2s) + fetch/normalize/upload/insert. 30s 면 충분.
 // 명시 안 하면 플랫폼 기본값(Hobby 10s)에 묶여 느린 누끼가 잘릴 수 있음.
 export const maxDuration = 30;
 
-/** 신뢰 호스트 — fal 결과 또는 우리 Supabase storage(후보 복사본) */
-function isTrustedImageUrl(raw: string): boolean {
-  try {
-    const u = new URL(raw);
-    if (u.hostname.endsWith("fal.media")) return true;
-    const sb = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (sb && u.hostname === new URL(sb).hostname) return true;
-    return false;
-  } catch {
-    return false;
-  }
-}
-
+/**
+ * 후보 선택(pick) — **서버 권위**. 클라 계약 = {generationId, candidateIndex}.
+ *   서버가 소유 generation 을 조회해 status(done/선택가능)·candidateIndex(0~2)·해당 canonical 경로가
+ *   candidate_urls 에 실존하는지 검증하고, 검증된 경로를 **내부 서명**해 birefnet 에 넘긴다.
+ *   클라 imageUrl/styleMeta/role 은 비권위(과도기 imageUrl 은 index 파싱에만, 경로는 서버 재구성).
+ *   멱등(이미 picked 면 기존 doll)·동시성(done→picked 조건부 1승·패자 보상삭제)·pick 후 provenance 갱신.
+ */
 export async function POST(req: NextRequest) {
-  // 회원 전용 + 동의 완료 게이트(lazy 모델: 미동의 로그인 차단). 익명/무세션/미동의 → 401/403.
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
-  const supabase = await createClient();
 
   const body = (await req.json().catch(() => null)) as {
-    imageUrl?: string;
-    styleMeta?: Record<string, unknown>;
     generationId?: string;
-    role?: string;
+    candidateIndex?: number;
+    imageUrl?: string; // 과도기(구 클라) — 신뢰 안 하고 index 파싱에만.
   } | null;
-  if (!body?.imageUrl) {
-    return NextResponse.json({ error: "imageUrl_required" }, { status: 400 });
-  }
-  if (!isTrustedImageUrl(body.imageUrl)) {
-    log.warn("doll.untrusted_url", {
-      userId: user.id,
-      host: urlHost(body.imageUrl),
-    });
-    return NextResponse.json({ error: "untrusted_url" }, { status: 400 });
+  const genId = body?.generationId;
+  if (!genId) {
+    return NextResponse.json({ error: "generationId_required" }, { status: 400 });
   }
 
-  const genId = body.generationId ?? null;
-  log.info("doll.pick", { userId: user.id, genId, srcHost: urlHost(body.imageUrl) });
+  const admin = createAdminClient();
 
-  // 누끼 제거
+  // 소유 generation 조회(서버 권위).
+  const { data: gen, error: genErr } = await admin
+    .from("ai_generations")
+    .select("role, status, candidate_urls, picked_doll_id")
+    .eq("id", genId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (genErr) {
+    log.error("doll.gen_lookup_fail", { userId: user.id, genId, ...errInfo(genErr) });
+    return NextResponse.json({ error: "lookup_failed" }, { status: 500 });
+  }
+  if (!gen) return NextResponse.json({ error: "generation_not_found" }, { status: 404 });
+
+  // candidateIndex 결정 — body 우선, 없으면 과도기 imageUrl 에서 파싱(신뢰X, 검증만).
+  let candidateIndex: number | null =
+    typeof body?.candidateIndex === "number" ? body.candidateIndex : null;
+  if (candidateIndex === null && body?.imageUrl) {
+    const m = /\/candidates\/[^/]+\/(\d+)\.jpg/.exec(body.imageUrl);
+    candidateIndex = m ? Number(m[1]) : null;
+  }
+  if (
+    candidateIndex === null ||
+    !Number.isInteger(candidateIndex) ||
+    candidateIndex < 0 ||
+    candidateIndex > 2
+  ) {
+    return NextResponse.json({ error: "invalid_candidate_index" }, { status: 400 });
+  }
+
+  // 멱등 — 이미 picked 면 기존 doll 반환(재제출/더블클릭 흔한 케이스, birefnet 전에 단락).
+  if (gen.status === "picked" && gen.picked_doll_id) {
+    const { data: existing } = await admin
+      .from("dolls")
+      .select("*")
+      .eq("id", gen.picked_doll_id)
+      .maybeSingle();
+    if (existing) return NextResponse.json({ doll: existing });
+  }
+  if (gen.status !== "done" && gen.status !== "picked") {
+    return NextResponse.json({ error: "not_selectable" }, { status: 409 });
+  }
+
+  // canonical 후보 경로 서버 구성 + candidate_urls 멤버십 검증(클라 URL 비신뢰).
+  const candidateUrls: string[] = Array.isArray(gen.candidate_urls) ? gen.candidate_urls : [];
+  const canonicalPath = `${candidatePrefix(user.id, genId)}/${candidateIndex}.jpg`;
+  if (!candidateUrls.includes(canonicalPath)) {
+    log.warn("doll.candidate_not_member", { userId: user.id, genId, candidateIndex });
+    return NextResponse.json({ error: "candidate_not_found" }, { status: 404 });
+  }
+
+  // 검증된 경로를 내부 서명 → birefnet.
+  const { data: signed, error: signErr } = await admin.storage
+    .from(BUCKET)
+    .createSignedUrl(canonicalPath, 600);
+  if (signErr || !signed?.signedUrl) {
+    log.error("doll.sign_fail", { userId: user.id, genId, candidateIndex, ...errInfo(signErr) });
+    return NextResponse.json({ error: "sign_failed" }, { status: 500 });
+  }
+
+  // 누끼
   let cleanedUrl: string;
   try {
     cleanedUrl = await Sentry.startSpan(
-      { name: "doll.bg_removal", op: "fal.birefnet", attributes: { genId: genId ?? "none" } },
-      () => removeBackground(body.imageUrl!)
+      { name: "doll.bg_removal", op: "fal.birefnet", attributes: { genId } },
+      () => removeBackground(signed.signedUrl)
     );
   } catch (e) {
     log.error("doll.bg_removal_fail", { userId: user.id, genId, ...errInfo(e) });
     return NextResponse.json({ error: "bg_removal_failed" }, { status: 502 });
   }
 
-  const src = await fetch(cleanedUrl);
-  if (!src.ok) {
-    log.error("doll.fetch_fail", {
-      userId: user.id,
-      genId,
-      status: src.status,
-      host: urlHost(cleanedUrl),
-    });
+  const srcRes = await fetch(cleanedUrl);
+  if (!srcRes.ok) {
+    log.error("doll.fetch_fail", { userId: user.id, genId, status: srcRes.status });
     return NextResponse.json({ error: "fetch_failed" }, { status: 502 });
   }
-  const raw = await src.arrayBuffer();
+  const raw = await srcRes.arrayBuffer();
 
-  // 캐릭터 정중앙 + 일정 비율 frame 으로 정규화 (lib/image-utils)
   let normalized: Buffer;
   try {
     normalized = await Sentry.startSpan(
-      { name: "doll.normalize", op: "image.process", attributes: { genId: genId ?? "none" } },
+      { name: "doll.normalize", op: "image.process", attributes: { genId } },
       () => normalizeDollImage(raw)
     );
   } catch (e) {
@@ -98,108 +137,95 @@ export async function POST(req: NextRequest) {
 
   const dollId = crypto.randomUUID();
   const path = `${user.id}/${dollId}.png`;
-
-  const admin = createAdminClient();
-
-  // 생성 시 고른 롤 — ai_generations 가 권위(클라 body 는 폴백). 미지/없음은 boss.
-  let dollRole: RoleId = "boss";
-  if (genId) {
-    const { data: genRole } = await admin
-      .from("ai_generations")
-      .select("role")
-      .eq("id", genId)
-      .eq("owner_id", user.id)
-      .single();
-    dollRole = asRole(genRole?.role);
-  } else if (isRoleId(body.role)) {
-    dollRole = body.role;
-  }
+  const dollRole = asRole(gen.role); // 롤은 ai_generations 권위.
 
   const { error: uploadError } = await admin.storage
     .from(BUCKET)
     .upload(path, normalized, { contentType: "image/png", upsert: false });
   if (uploadError) {
-    log.error("doll.upload_fail", {
-      userId: user.id,
-      genId,
-      dollId,
-      ...errInfo(uploadError),
-    });
-    return NextResponse.json(
-      { error: "upload_failed", detail: uploadError.message },
-      { status: 500 }
-    );
+    log.error("doll.upload_fail", { userId: user.id, genId, dollId, ...errInfo(uploadError) });
+    return NextResponse.json({ error: "upload_failed" }, { status: 500 });
   }
 
-  // private 버킷 — image_url 에 **경로** 저장(읽을 때 signedDollUrl 로 서명). getPublicUrl 미사용.
+  // doll insert — style_meta = 비민감 포인터만(전체 프롬프트/파라미터는 어드민 전용 gen_params 정본).
+  const stylePointer = {
+    schemaVersion: PROVENANCE_SCHEMA_VERSION,
+    sourceGenerationId: genId,
+    candidateIndex,
+  };
   const { data: doll, error: insertError } = await admin
     .from("dolls")
-    .insert({
-      id: dollId,
-      owner_id: user.id,
-      image_url: path,
-      style_meta: body.styleMeta ?? {},
-      role: dollRole,
-    })
+    .insert({ id: dollId, owner_id: user.id, image_url: path, style_meta: stylePointer, role: dollRole })
     .select()
     .single();
   if (insertError) {
-    log.error("doll.insert_fail", {
-      userId: user.id,
-      genId,
-      dollId,
-      ...errInfo(insertError),
-    });
-    return NextResponse.json(
-      { error: "insert_failed", detail: insertError.message },
-      { status: 500 }
-    );
+    await admin.storage.from(BUCKET).remove([path]); // 보상: 업로드 객체 제거.
+    log.error("doll.insert_fail", { userId: user.id, genId, dollId, ...errInfo(insertError) });
+    return NextResponse.json({ error: "insert_failed" }, { status: 500 });
   }
 
-  // 이 doll 이 특정 generation 에서 골라진 거라면: picked 처리 + 안 고른 후보 정리
-  if (body.generationId) {
-    // 고른 후보가 3장 중 몇 번째였는지 — 후보 경로(candidates/{genId}/{N}.jpg)에서 파싱(분석용). 못 찾으면 null.
-    const pm = /\/candidates\/[^/]+\/(\d+)\.jpg/.exec(body.imageUrl ?? "");
-    const pickedIndex = pm ? Number(pm[1]) : null;
-    let { error: pickErr } = await admin
+  // 조건부 done→picked (동시성 1승). picked_index = 서버 검증 candidateIndex.
+  const { data: claimed, error: pickErr } = await admin
+    .from("ai_generations")
+    .update({ status: "picked", picked_doll_id: dollId, picked_index: candidateIndex })
+    .eq("id", genId)
+    .eq("owner_id", user.id)
+    .eq("status", "done")
+    .select("id");
+  if (pickErr) {
+    // 전이 DB 오류 — doll 은 저장됨. generation done 유지(재노출) → 후보 정리하지 않음(전이 성공 전).
+    log.error("doll.pick_transition_fail", { userId: user.id, genId, dollId, ...errInfo(pickErr) });
+    return NextResponse.json({ doll });
+  }
+  if ((claimed?.length ?? 0) === 0) {
+    // 레이스 패배(다른 pick 이 먼저 picked) — 방금 만든 doll/storage 보상삭제 + 기존 picked doll 반환.
+    await admin.from("dolls").delete().eq("id", dollId);
+    await admin.storage.from(BUCKET).remove([path]);
+    const { data: after2 } = await admin
       .from("ai_generations")
-      .update({ status: "picked", picked_doll_id: dollId, picked_index: pickedIndex })
-      .eq("id", body.generationId)
-      .eq("owner_id", user.id);
-    // 0046(picked_index) 미적용 환경 — 인덱스만 빼고 재시도(picked 전이는 반드시 보존).
-    if (pickErr && pickErr.message.includes("picked_index")) {
-      ({ error: pickErr } = await admin
-        .from("ai_generations")
-        .update({ status: "picked", picked_doll_id: dollId })
-        .eq("id", body.generationId)
-        .eq("owner_id", user.id));
+      .select("picked_doll_id")
+      .eq("id", genId)
+      .maybeSingle();
+    if (after2?.picked_doll_id) {
+      const { data: winner } = await admin
+        .from("dolls")
+        .select("*")
+        .eq("id", after2.picked_doll_id)
+        .maybeSingle();
+      if (winner) return NextResponse.json({ doll: winner });
     }
-    if (pickErr) {
-      // picked 전이 실패 → generation 이 done(미선택)으로 남아 24h 내 갤러리에
-      // ready 후보로 다시 노출됨. '캐릭터는 저장됐는데 generation 이 안 닫힌' 케이스.
-      log.error("doll.pick_transition_fail", {
-        userId: user.id,
-        genId,
-        dollId,
-        ...errInfo(pickErr),
-      });
-    }
-    // 정리(후보 스토리지 + 임시 얼굴 삭제)는 사용자 응답 critical path 에서 제거 — `after()` 로
-    // **응답 직후·같은 요청 수명 내** 실행(저장 체감 ~0.5s+ 단축, 정리 실패가 저장 응답을 깨던
-    // 잠재 500도 해소). 정책 #1(원본 즉시 폐기)은 유지 — after 는 함수 종료 전 완료되고, picked
-    // 행은 /api/generations 정리 쿼리에서 제외돼 폴링 backstop 재시도도 누락 없음.
-    const gid = body.generationId;
-    after(async () => {
-      await cleanupCandidateStorage(admin, user.id, gid).catch((e) =>
-        log.warn("gen.candidate_cleanup_fail", { userId: user.id, genId: gid, ...errInfo(e) })
-      );
-      await deleteFaceTmp(tmpFacePath(user.id, gid)).catch((e) =>
-        log.warn("gen.face_cleanup_fail", { userId: user.id, genId: gid, ...errInfo(e) })
-      );
-    });
+    return NextResponse.json({ error: "pick_conflict" }, { status: 409 });
   }
 
-  log.info("doll.save_success", { userId: user.id, genId, dollId });
+  // pick 성공 → gen_params 에 postprocess/picked 추가(status·picked_doll_id·picked_index 정합). best-effort.
+  try {
+    const { data: gpRow } = await admin
+      .from("ai_generations")
+      .select("gen_params")
+      .eq("id", genId)
+      .maybeSingle();
+    const gp = gpRow?.gen_params as Record<string, unknown> | null;
+    if (gp && typeof gp === "object") {
+      const nowIso = new Date().toISOString();
+      gp.postprocess = { model: "fal-ai/birefnet", candidateIndex, completedAt: nowIso };
+      gp.picked = { candidateIndex, dollId, pickedAt: nowIso };
+      await admin.from("ai_generations").update({ gen_params: gp }).eq("id", genId);
+    }
+  } catch (e) {
+    log.warn("doll.provenance_pick_merge_fail", { genId, ...errInfo(e) });
+  }
+
+  // 정리(후보 스토리지 + 임시 얼굴) — 전이 성공 후에만. after() 로 응답 직후 실행.
+  after(async () => {
+    await cleanupCandidateStorage(admin, user.id, genId).catch((e) =>
+      log.warn("gen.candidate_cleanup_fail", { userId: user.id, genId, ...errInfo(e) })
+    );
+    await deleteFaceTmp(tmpFacePath(user.id, genId)).catch((e) =>
+      log.warn("gen.face_cleanup_fail", { userId: user.id, genId, ...errInfo(e) })
+    );
+  });
+
+  log.info("doll.save_success", { userId: user.id, genId, dollId, candidateIndex });
   return NextResponse.json({ doll });
 }
 

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
 import type { Paged } from "@/lib/admin-types";
+import { parseProvenance, type GenProvenance } from "@/lib/character-gen/provenance";
 
 /**
  * 캐릭터 생성 현황 — 어드민 전용(service_role). 생성 라이프사이클을 상태/회원/캐릭터로 조회.
@@ -229,4 +230,79 @@ async function fetchDollImages(
     if (!d.artifacts_purged_at) map.set(d.id, d.image_url); // 영구삭제분은 객체 없음 → 스킵
   }
   return map;
+}
+
+export type AdminGenerationDetail = AdminGeneration & {
+  /** gen_params provenance(검증됨) 또는 null(레거시/미지원 — 상세에서 '기록 이전' 표기). */
+  provenance: GenProvenance | null;
+  /** 후보 index → 서명 썸네일. unpicked(done): 남은 후보 / picked: 선택 index 만 doll 이미지 / 그 외: 없음. */
+  candidateThumbByIndex: Record<number, string>;
+};
+
+/**
+ * 생성 단건 상세(어드민 전용) — provenance(gen_params) + 후보별 썸네일 + owner. gen_params 는 safeParse
+ * 라 구버전·NULL·미지원 schemaVersion 에도 페이지가 깨지지 않는다(provenance=null). 원가·fal 링크 미포함.
+ */
+export async function getGeneration(id: string): Promise<AdminGenerationDetail | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("ai_generations")
+    .select(
+      "id, owner_id, status, fail_reason, picked_doll_id, picked_index, candidate_urls, role, gen_params, created_at, updated_at"
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    log.warn("admin.gen_detail_fail", { id, ...errInfo(error) });
+    return null;
+  }
+  if (!data) return null;
+  const r = data as GenRow & { gen_params: unknown };
+  const adminStatus = toAdminStatus(r.status, r.fail_reason);
+
+  const nameMap = await fetchOwnerNames(admin, [r.owner_id]);
+  const dollMap = r.picked_doll_id
+    ? await fetchDollImages(admin, [r.picked_doll_id])
+    : new Map<string, string>();
+
+  const candPaths = Array.isArray(r.candidate_urls) ? (r.candidate_urls as string[]) : [];
+  const idxOf = (p: string): number => {
+    const m = /\/(\d+)\.jpg$/.exec(p);
+    return m ? Number(m[1]) : -1;
+  };
+  const candidateThumbByIndex: Record<number, string> = {};
+  if (adminStatus === "unpicked") {
+    await Promise.all(
+      candPaths.map(async (p) => {
+        const i = idxOf(p);
+        if (i < 0) return;
+        const s = await signedDollUrl(p, 600, { thumb: true });
+        if (s) candidateThumbByIndex[i] = s;
+      })
+    );
+  } else if (adminStatus === "picked" && r.picked_doll_id && r.picked_index != null) {
+    const img = dollMap.get(r.picked_doll_id);
+    if (img) {
+      const s = await signedDollUrl(img, 600, { thumb: true });
+      if (s) candidateThumbByIndex[r.picked_index] = s;
+    }
+  }
+
+  return {
+    id: r.id,
+    ownerId: r.owner_id,
+    ownerName: nameMap.get(r.owner_id) ?? null,
+    adminStatus,
+    failReason: r.fail_reason,
+    role: r.role,
+    pickedDollId: r.picked_doll_id,
+    pickedIndex: r.picked_index,
+    candidateThumbs: Object.values(candidateThumbByIndex),
+    candidateCount: candPaths.length,
+    creditNote: toCreditNote(r.status, r.fail_reason),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    provenance: parseProvenance(r.gen_params),
+    candidateThumbByIndex,
+  };
 }

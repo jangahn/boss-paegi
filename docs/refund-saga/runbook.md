@@ -226,7 +226,7 @@ select version, applied_at, app_commit from public.schema_migration_journal orde
   ```sh
   sbq supabase/migrations/0063_write_hardening.sql
   ```
-  S0 대상 3테이블 EXCLUSIVE LOCK → S1 orders/member_accounts/ai_generations `revoke all` 후 **§13 operational 컬럼만 exact-set 재부여**(orders: pg_status·raw·error_message / member_accounts: email / ai_generations: status·fail_reason·candidate_urls·fal_request_id·fal_request_ids·picked_doll_id·picked_index·cost_cents·role — refund_state·consent 계열은 회수) → S2 구 함수 3종 fail-closed stub(`mark_paid_and_grant(uuid,text,int,jsonb)`·`consume_gen_credit(uuid)`·`refund_gen_credit(uuid)` → RAISE P0001 + `revoke all`) → S4 postflight(H1~H7) → S5 journal.
+  S0 대상 3테이블 EXCLUSIVE LOCK → S1 orders/member_accounts/ai_generations `revoke all` 후 **§13 operational 컬럼만 exact-set 재부여**(orders: pg_status·raw·error_message / member_accounts: email / ai_generations: status·fail_reason·candidate_urls·fal_request_id·fal_request_ids·picked_doll_id·picked_index·cost_cents·role[·gen_params=0070 추가] — refund_state·consent 계열은 회수) → S2 구 함수 3종 fail-closed stub(`mark_paid_and_grant(uuid,text,int,jsonb)`·`consume_gen_credit(uuid)`·`refund_gen_credit(uuid)` → RAISE P0001 + `revoke all`) → S4 postflight(H1~H7) → S5 journal.
 - **③ 합격 기준**: commit 성공. S4 postflight 통과(H1 테이블 DML grant 0·H2 컬럼 UPDATE grant = operational exact set(초과·부족 양방향 0)·H3 SELECT 3개 유지·H4 anon/auth/PUBLIC DML 0·H5 stub 의 owner 외 EXECUTE 0·H6 keeper 존재·H7 keeper service_role EXECUTE 유지). journal 에 `0063_write_hardening` 행.
 - **④ 중단 조건**: **전제 미충족 시 적용 금지** — v2 앱 배포·canary·direct DML 0 실측(스텝 9·12·15) 완료 전에는 적용하지 않는다(권한만 먼저 죄면 구 라우트 즉사). H1~H7 위반 시 자동 롤백.
 - **⑤ 판단**: 데이터 무변경(권한·함수 본문만) → 문제 시 **0062 grant 재부여로 즉시 복구**(canary off). fix-forward 우선.
