@@ -119,76 +119,77 @@ export default async function AccountPaymentsPage() {
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-400">아직 결제 내역이 없어요.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-foreground/10">
-            <table className="w-full text-left text-xs">
-              <thead className="ui-surface text-zinc-500">
-                <tr>
-                  <th className="px-2 py-1.5">상품</th>
-                  <th className="px-2 py-1.5">결제수단</th>
-                  <th className="px-2 py-1.5 text-right">금액</th>
-                  <th className="px-2 py-1.5 text-right">크레딧</th>
-                  <th className="px-2 py-1.5">상태</th>
-                  <th className="px-2 py-1.5">영수증</th>
-                  <th className="px-2 py-1.5">일시</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const label = orderStateLabel(r);
-                  const channelLabel = payChannelLabel(r.pay_channel);
-                  return (
-                    <tr key={r.order_uuid} className="border-t border-foreground/5">
-                      <td className="px-2 py-1.5">{goodnameById.get(r.product_id) ?? r.product_id}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        {channelLabel ?? (!r.is_test && <span className="text-zinc-300">—</span>)}
-                        {r.is_test && (
-                          <span className="ml-1 rounded border border-amber-500/40 bg-amber-500/10 px-1 py-px text-[10px] font-semibold text-amber-500">
-                            테스트
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
-                        {won(r.amount)}
-                        {r.refunded_amount > 0 && (
-                          <span className="block text-[10px] text-zinc-400">
-                            환불 {won(r.refunded_amount)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
-                        {r.credits}개
-                        {r.refunded_credits > 0 && (
-                          <span className="block text-[10px] text-zinc-400">
-                            잔여 {r.credits - r.refunded_credits}개
-                          </span>
-                        )}
-                      </td>
-                      <td className={`px-2 py-1.5 font-semibold ${LABEL_COLOR[label] ?? ""}`}>
-                        {label}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        {r.receipt_url ? (
-                          <a
-                            href={r.receipt_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sky-600 underline-offset-2 hover:underline"
-                          >
-                            보기
-                          </a>
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
-                        {fmtKstDateTime(r.paid_at ?? r.created_at)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          // 모바일 우선 카드 리스트 — 소형폰(iPhone SE 375px)에서도 상품명/금액/상태가 한눈에.
+          <ul className="flex flex-col gap-2.5">
+            {rows.map((r) => {
+              const label = orderStateLabel(r);
+              const channelLabel = payChannelLabel(r.pay_channel);
+              const remaining = r.credits - r.refunded_credits;
+              return (
+                <li
+                  key={r.order_uuid}
+                  className="ui-surface flex flex-col gap-2.5 rounded-xl border border-foreground/10 p-4"
+                >
+                  {/* 상품명 + 상태 */}
+                  <div className="flex items-start justify-between gap-2.5">
+                    <span className="text-sm font-semibold leading-snug text-foreground">
+                      {goodnameById.get(r.product_id) ?? r.product_id}
+                    </span>
+                    <span className={`shrink-0 text-sm font-bold ${LABEL_COLOR[label] ?? "text-zinc-500"}`}>
+                      {label}
+                    </span>
+                  </div>
+
+                  {/* 금액 · 크레딧 · 결제수단 (좁으면 자연 래핑) */}
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
+                    <span className="font-medium tabular-nums text-foreground">
+                      {won(r.amount)}
+                      {r.refunded_amount > 0 && (
+                        <span className="ml-1 text-xs text-zinc-400">환불 {won(r.refunded_amount)}</span>
+                      )}
+                    </span>
+                    <span aria-hidden className="text-zinc-300">·</span>
+                    <span className="tabular-nums text-foreground">
+                      크레딧 {r.credits}개
+                      {r.refunded_credits > 0 && (
+                        <span className="ml-1 text-xs text-zinc-400">잔여 {remaining}개</span>
+                      )}
+                    </span>
+                    {(channelLabel || r.is_test) && (
+                      <>
+                        <span aria-hidden className="text-zinc-300">·</span>
+                        <span className="flex items-center gap-1 text-zinc-500">
+                          {channelLabel}
+                          {r.is_test && (
+                            <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-px text-[10px] font-semibold text-amber-500">
+                              테스트
+                            </span>
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 일시 + 영수증 */}
+                  <div className="flex items-center justify-between border-t border-foreground/5 pt-2 text-xs text-zinc-400">
+                    <span className="tabular-nums">{fmtKstDateTime(r.paid_at ?? r.created_at)}</span>
+                    {r.receipt_url ? (
+                      <a
+                        href={r.receipt_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-sky-600 underline-offset-2 hover:underline"
+                      >
+                        영수증 보기 →
+                      </a>
+                    ) : (
+                      <span className="text-zinc-300">영수증 없음</span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
 
         {/* 환불 안내 — 약관 참조형만(산정 기준·수치의 정본은 이용약관 제10조, 재기입 금지). */}
