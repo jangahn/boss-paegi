@@ -136,9 +136,8 @@ export default async function DollPage({
               <CardRow label="소속">{dollDepartment(doll.id, role, cfg)}</CardRow>
               <CardRow label="제작자">{name}</CardRow>
               <CardRow label="등록일">
-                {joined.getFullYear()}.
-                {String(joined.getMonth() + 1).padStart(2, "0")}.
-                {String(joined.getDate()).padStart(2, "0")}
+                {/* KST 고정 — 서버(UTC) 로컬 파싱 시 자정 근처 하루 밀림 방지. */}
+                {joined.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }).replace(/-/g, ".")}
               </CardRow>
             </dl>
           </div>

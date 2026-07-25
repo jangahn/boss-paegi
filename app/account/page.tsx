@@ -129,19 +129,6 @@ export default function AccountPage() {
             </div>
           </section>
 
-          {/* 결제내역 진입점 — 주문·환불 상태·영수증·크레딧 3분류는 /account/payments 에서 확인. */}
-          <section className="overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
-            <Link
-              href="/account/payments"
-              className="flex items-center justify-between px-6 py-4 text-sm font-semibold transition hover:bg-foreground/5"
-            >
-              결제내역
-              <span aria-hidden className="text-zinc-400">
-                ›
-              </span>
-            </Link>
-          </section>
-
           <WithdrawSection />
         </div>
       </main>

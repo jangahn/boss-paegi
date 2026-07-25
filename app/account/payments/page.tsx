@@ -5,7 +5,7 @@ import { requireMember } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getGrowthLevers } from "@/lib/config/getters";
 import { won } from "@/lib/admin-format";
-import { CreditsSummaryCard } from "@/components/account/CreditsSummaryCard";
+import { CHANNEL_LABELS, type PayChannelMethod } from "@/lib/pay-channels";
 
 // 본인 결제·환불 실시간 조회 — 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -24,7 +24,15 @@ type OrderRow = {
   refunded_amount: number;
   receipt_url: string | null;
   created_at: string;
+  pay_channel: string | null;
+  is_test: boolean;
 };
+
+/** 결제수단 표기 — pay_channel(0059) → 사용자 라벨(카드/토스페이/카카오페이). null=표시 생략. */
+function payChannelLabel(pay_channel: string | null): string | null {
+  if (!pay_channel) return null;
+  return CHANNEL_LABELS[pay_channel as PayChannelMethod] ?? pay_channel;
+}
 
 const STATUS_LABEL: Record<string, string> = {
   paid: "결제완료",
@@ -50,15 +58,18 @@ function orderStateLabel(o: OrderRow): string {
   return STATUS_LABEL[o.status] ?? o.status;
 }
 
-/** KST 일자 — 결제기록은 수년 보존이라 연 표기 필수(fmtKst 는 월일시분만이라 미사용). */
-function fmtKstDate(iso: string | null): string {
+/** KST 일시 — 결제기록은 수년 보존이라 연 표기 필수 + 시:분(admin fmtKst 는 연 없이 월일시분이라 미사용). */
+function fmtKstDateTime(iso: string | null): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleDateString("ko-KR", {
+    return new Date(iso).toLocaleString("ko-KR", {
       timeZone: "Asia/Seoul",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     });
   } catch {
     return "—";
@@ -66,7 +77,9 @@ function fmtKstDate(iso: string | null): string {
 }
 
 /**
- * 결제내역(마이페이지) — 본인 주문 목록 + 크레딧 3분류 카드 + 영수증(PortOne receiptUrl) 링크.
+ * 결제내역(마이페이지) — 결제완료(paid_at 존재) 주문만 + 결제수단·영수증(PortOne receiptUrl) 링크.
+ * 대기/취소/실패(paid_at null) 는 비노출; 결제 후 환불건은 paid_at 이 남아 계속 표시. 크레딧 개수는
+ * 헤더 드롭다운(AccountMenu '생성권 N')에 있어 이 페이지엔 요약 카드 없음.
  * 게이트: proxy 가 /account/* 를 회원 전용으로 선차단 — 여기 requireMember 는 백스톱(레이스 방어).
  * 환불 산정·수치의 정본은 이용약관 제10조 단일 소스 — 여기엔 참조 안내만(수치 재기입 금지, v0.75).
  */
@@ -80,16 +93,16 @@ export default async function AccountPaymentsPage() {
   const userId = gate.user.id;
 
   const admin = createAdminClient();
-  // 최신순(paid_at desc nulls last → created_at desc → order_uuid tiebreaker) — 리스트 정렬 규약.
+  // 결제완료만(paid_at not null) + 최신순(paid_at desc → order_uuid tiebreaker) — 표시 일시(paid_at)와 정렬키 일치.
   const [{ data, error }, growth] = await Promise.all([
     admin
       .from("orders")
       .select(
-        "order_uuid, product_id, amount, credits, status, paid_at, refunded_credits, refunded_amount, receipt_url, created_at"
+        "order_uuid, product_id, amount, credits, status, paid_at, refunded_credits, refunded_amount, receipt_url, created_at, pay_channel, is_test"
       )
       .eq("user_id", userId)
-      .order("paid_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
+      .not("paid_at", "is", null)
+      .order("paid_at", { ascending: false })
       .order("order_uuid", { ascending: false })
       .limit(100),
     getGrowthLevers(),
@@ -103,8 +116,6 @@ export default async function AccountPaymentsPage() {
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <h1 className="text-2xl font-bold text-foreground">결제내역</h1>
 
-        <CreditsSummaryCard />
-
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-400">아직 결제 내역이 없어요.</p>
         ) : (
@@ -113,6 +124,7 @@ export default async function AccountPaymentsPage() {
               <thead className="ui-surface text-zinc-500">
                 <tr>
                   <th className="px-2 py-1.5">상품</th>
+                  <th className="px-2 py-1.5">결제수단</th>
                   <th className="px-2 py-1.5 text-right">금액</th>
                   <th className="px-2 py-1.5 text-right">크레딧</th>
                   <th className="px-2 py-1.5">상태</th>
@@ -123,9 +135,18 @@ export default async function AccountPaymentsPage() {
               <tbody>
                 {rows.map((r) => {
                   const label = orderStateLabel(r);
+                  const channelLabel = payChannelLabel(r.pay_channel);
                   return (
                     <tr key={r.order_uuid} className="border-t border-foreground/5">
                       <td className="px-2 py-1.5">{goodnameById.get(r.product_id) ?? r.product_id}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        {channelLabel ?? (!r.is_test && <span className="text-zinc-300">—</span>)}
+                        {r.is_test && (
+                          <span className="ml-1 rounded border border-amber-500/40 bg-amber-500/10 px-1 py-px text-[10px] font-semibold text-amber-500">
+                            테스트
+                          </span>
+                        )}
+                      </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">
                         {won(r.amount)}
                         {r.refunded_amount > 0 && (
@@ -134,7 +155,14 @@ export default async function AccountPaymentsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{r.credits}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {r.credits}개
+                        {r.refunded_credits > 0 && (
+                          <span className="block text-[10px] text-zinc-400">
+                            잔여 {r.credits - r.refunded_credits}개
+                          </span>
+                        )}
+                      </td>
                       <td className={`px-2 py-1.5 font-semibold ${LABEL_COLOR[label] ?? ""}`}>
                         {label}
                       </td>
@@ -153,7 +181,7 @@ export default async function AccountPaymentsPage() {
                         )}
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
-                        {fmtKstDate(r.paid_at ?? r.created_at)}
+                        {fmtKstDateTime(r.paid_at ?? r.created_at)}
                       </td>
                     </tr>
                   );
