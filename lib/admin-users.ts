@@ -235,47 +235,79 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
 }
 
-export type CreditLedgerRow = {
+/** 통합 크레딧 변동 종류 — 3소스 병합 후의 표시 단위(원장 event_type 과 1:1 아님: refund_commit→refund). */
+export type CreditHistoryKind =
+  | "signup_bonus"
+  | "purchase"
+  | "gen_consume"
+  | "gen_refund"
+  | "cs_adjust"
+  | "refund"
+  | "refund_policy_close"
+  | "expire";
+
+export type CreditHistoryRow = {
+  /** 소스 접두(cl:/aa:/lot:) + 원본 행 id — 병합 리스트 key 충돌 방지. */
   id: string;
+  kind: CreditHistoryKind;
   delta: number;
-  eventType: string;
   balanceAfter: number | null;
-  refGenId: string | null;
-  refOrderUuid: string | null;
-  /** 환불 saga(0062) ref 3종 — 로트/환불 시도/PG 취소 이벤트. */
-  refLotId: string | null;
-  refAttemptId: string | null;
-  refCancellationId: string | null;
-  metadata: Record<string, unknown> | null;
-  schemaVersion: number;
+  /** 운영자 조정 사유(cs_adjust)만 채움 — 그 외 null. 유저 화면엔 비노출(내부 메모 보호). */
+  note: string | null;
+  /** 어드민 표기용 ref(생성/주문/로트) — credit_ledger 소스만 채움. 유저 화면엔 비노출. */
+  refs: { genId: string | null; orderUuid: string | null; lotId: string | null };
   createdAt: string;
 };
 
+/** 병합 조회 소스별 상한(현실적으로 충분 — 초과분은 최신 우선 절단). */
+const HISTORY_SOURCE_CAP = 1000;
+
 /**
- * 유저 크레딧 변동(생성 차감/환불·충전·만료·환불 예약/확정) — 10/page, count:exact. credit_ledger(0047·0062).
- * 조회 에러면 빈 결과(섹션만 비고 페이지 안전). 운영자 조정/환불은 별도 '크레딧 조정' 섹션.
+ * 통합 생성권(크레딧) 변동 내역 — 3소스 시간순 병합(읽기 전용, 스키마 무변경). 유저/어드민 공용.
+ *   1) credit_ledger — 구매·생성 차감/환불·만료·환불(refund_reserve/release 는 내부 잠금이라 표시 제외,
+ *      refund_commit 만 'refund' 로. 내부환불은 회수량이 같은 attempt 의 예약 delta 에 있음).
+ *   2) admin_actions_ledger(cs_adjust) — 운영자 조정.
+ *   3) credit_lots(source='signup_bonus') — 가입 보너스(첫 이벤트라 잔액=qty).
+ * 각 소스가 그 시점 잔액을 이미 보유 → 병합만으로 연속 타임라인. created_at desc 정렬 후 in-memory 페이징(10/page).
+ * 소스별 에러는 빈 배열로 폴백(부분 실패에도 페이지 안전).
  */
-export async function getUserCreditLedger(
+export async function getCreditHistory(
   userId: string,
   page = 1
-): Promise<Paged<CreditLedgerRow>> {
+): Promise<Paged<CreditHistoryRow>> {
   const p = Math.max(1, page);
-  const from = (p - 1) * USER_PAGE_SIZE;
   const admin = createAdminClient();
-  const { data, count, error } = await admin
-    .from("credit_ledger")
-    .select(
-      "id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, ref_lot_id, ref_attempt_id, ref_cancellation_id, metadata, schema_version, created_at",
-      { count: "exact" }
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .range(from, from + USER_PAGE_SIZE - 1);
-  if (error) {
-    log.warn("admin.user_credit_ledger_fail", errInfo(error));
-    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
-  }
-  type Row = {
+
+  const [ledgerRes, adjustRes, lotsRes] = await Promise.all([
+    admin
+      .from("credit_ledger")
+      .select(
+        "id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, ref_lot_id, ref_attempt_id, ref_cancellation_id, created_at"
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(HISTORY_SOURCE_CAP),
+    admin
+      .from("admin_actions_ledger")
+      .select("id, credit_delta, after_credits, reason, created_at")
+      .eq("target_user_id", userId)
+      .eq("action_type", "cs_adjust")
+      .order("created_at", { ascending: false })
+      .limit(HISTORY_SOURCE_CAP),
+    admin
+      .from("credit_lots")
+      .select("id, qty, granted_at")
+      .eq("user_id", userId)
+      .eq("source", "signup_bonus")
+      .order("granted_at", { ascending: false })
+      .limit(HISTORY_SOURCE_CAP),
+  ]);
+
+  if (ledgerRes.error) log.warn("admin.credit_history_ledger_fail", errInfo(ledgerRes.error));
+  if (adjustRes.error) log.warn("admin.credit_history_adjust_fail", errInfo(adjustRes.error));
+  if (lotsRes.error) log.warn("admin.credit_history_lots_fail", errInfo(lotsRes.error));
+
+  type LedgerRaw = {
     id: string;
     delta: number;
     event_type: string;
@@ -285,25 +317,104 @@ export async function getUserCreditLedger(
     ref_lot_id: string | null;
     ref_attempt_id: string | null;
     ref_cancellation_id: string | null;
-    metadata: Record<string, unknown> | null;
-    schema_version: number;
     created_at: string;
   };
-  const rows = ((data ?? []) as Row[]).map((r) => ({
-    id: r.id,
-    delta: r.delta,
-    eventType: r.event_type,
-    balanceAfter: r.balance_after,
-    refGenId: r.ref_gen_id,
-    refOrderUuid: r.ref_order_uuid,
-    refLotId: r.ref_lot_id,
-    refAttemptId: r.ref_attempt_id,
-    refCancellationId: r.ref_cancellation_id,
-    metadata: r.metadata,
-    schemaVersion: r.schema_version,
-    createdAt: r.created_at,
-  }));
-  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+  const ledgerRows = (ledgerRes.data ?? []) as LedgerRaw[];
+
+  // refund_commit(내부환불)이 참조할 예약 delta(−N) 맵 — reserve 를 버리기 전에 먼저 구성.
+  const reserveDeltaByAttempt = new Map<string, number>();
+  for (const r of ledgerRows) {
+    if (r.event_type === "refund_reserve" && r.ref_attempt_id) {
+      reserveDeltaByAttempt.set(r.ref_attempt_id, r.delta);
+    }
+  }
+
+  const events: CreditHistoryRow[] = [];
+
+  for (const r of ledgerRows) {
+    const refs = { genId: r.ref_gen_id, orderUuid: r.ref_order_uuid, lotId: r.ref_lot_id };
+    switch (r.event_type) {
+      case "purchase":
+      case "gen_consume":
+      case "gen_refund":
+      case "expire":
+      case "refund_policy_close":
+        events.push({
+          id: `cl:${r.id}`,
+          kind: r.event_type,
+          delta: r.delta,
+          balanceAfter: r.balance_after,
+          note: null,
+          refs,
+          createdAt: r.created_at,
+        });
+        break;
+      case "refund_commit": {
+        // 내부환불(ref_attempt_id): 실제 회수량 = 같은 attempt 의 예약(−N) delta.
+        // 외부취소(ref_cancellation_id): 이 행 delta 가 이미 −N.
+        const delta = r.ref_attempt_id
+          ? reserveDeltaByAttempt.get(r.ref_attempt_id) ?? r.delta
+          : r.delta;
+        events.push({
+          id: `cl:${r.id}`,
+          kind: "refund",
+          delta,
+          balanceAfter: r.balance_after,
+          note: null,
+          refs,
+          createdAt: r.created_at,
+        });
+        break;
+      }
+      // refund_reserve · refund_release → 내부 잠금(표시 제외).
+      default:
+        break;
+    }
+  }
+
+  type AdjustRaw = {
+    id: string;
+    credit_delta: number;
+    after_credits: number;
+    reason: string;
+    created_at: string;
+  };
+  for (const a of (adjustRes.data ?? []) as AdjustRaw[]) {
+    events.push({
+      id: `aa:${a.id}`,
+      kind: "cs_adjust",
+      delta: a.credit_delta,
+      balanceAfter: a.after_credits,
+      note: a.reason,
+      refs: { genId: null, orderUuid: null, lotId: null },
+      createdAt: a.created_at,
+    });
+  }
+
+  type LotRaw = { id: string; qty: number; granted_at: string };
+  for (const l of (lotsRes.data ?? []) as LotRaw[]) {
+    events.push({
+      id: `lot:${l.id}`,
+      kind: "signup_bonus",
+      delta: l.qty,
+      balanceAfter: l.qty, // 가입은 첫 이벤트라 잔액 = 부여량.
+      note: null,
+      refs: { genId: null, orderUuid: null, lotId: null },
+      createdAt: l.granted_at,
+    });
+  }
+
+  // created_at desc — 동시각은 id 로 안정 정렬.
+  events.sort(
+    (x, y) =>
+      new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime() ||
+      y.id.localeCompare(x.id)
+  );
+
+  const total = events.length;
+  const from = (p - 1) * USER_PAGE_SIZE;
+  const rows = events.slice(from, from + USER_PAGE_SIZE);
+  return { rows, total, page: p, pageSize: USER_PAGE_SIZE };
 }
 
 /**

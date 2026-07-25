@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
+import { notifyCreditsChanged } from "@/lib/profile";
 
 type DoneState = "checking" | "paid" | "pending" | "error";
 
@@ -37,8 +38,8 @@ function CreditsDoneInner() {
           if (d.status === "paid") {
             setCredits(d.credits);
             setState("paid");
-            // 상단 nav 크레딧 배지(AccountMenu)는 충전 직후 이 페이지에선 옛값일 수 있으나,
-            // 다음 라우트 이동 시 AppNav 재마운트로 갱신(genCredits 캐시 미저장 → 최신 재조회). [품질감사 low: 자가보정]
+            // 충전 확정 → 헤더 크레딧 배지(AccountMenu) 즉시 갱신(라우트 이동 없이).
+            notifyCreditsChanged();
             return;
           }
           if (d.status === "canceled" || d.status === "failed") {

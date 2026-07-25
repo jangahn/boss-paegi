@@ -5,6 +5,7 @@ import { requireMember } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getGrowthLevers } from "@/lib/config/getters";
 import { won } from "@/lib/admin-format";
+import { fmtKstDateTime } from "@/lib/format";
 import { CHANNEL_LABELS, type PayChannelMethod } from "@/lib/pay-channels";
 
 // 본인 결제·환불 실시간 조회 — 캐시 금지.
@@ -56,24 +57,6 @@ function orderStateLabel(o: OrderRow): string {
   if (o.refunded_credits >= o.credits && o.refunded_amount > 0) return "전액환불";
   if (o.refunded_credits > 0) return "부분환불";
   return STATUS_LABEL[o.status] ?? o.status;
-}
-
-/** KST 일시 — 결제기록은 수년 보존이라 연 표기 필수 + 시:분(admin fmtKst 는 연 없이 월일시분이라 미사용). */
-function fmtKstDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("ko-KR", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return "—";
-  }
 }
 
 /**

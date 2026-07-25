@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getMyProfile,
   updateNickname,
@@ -9,6 +9,7 @@ import {
   readCachedProfile,
   writeCachedProfile,
   NICKNAME_MAX,
+  CREDITS_CHANGED_EVENT,
   type MyProfile,
 } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/client";
@@ -30,6 +31,25 @@ export function AccountMenu() {
   const [open, setOpen] = useState(false);
   const [editingNick, setEditingNick] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
+
+  // 헤더 생성권 fresh 재조회 — 마운트·크레딧 변동 이벤트·탭 복귀 시 공통 호출.
+  const refreshProfile = useCallback(() => {
+    getMyProfile()
+      .then((p) => {
+        if (!p || !mountedRef.current) return;
+        setProfile(p);
+        writeCachedProfile(p.id, p);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,17 +74,24 @@ export function AccountMenu() {
       })
       .catch(() => {});
     // 2) 백그라운드 fresh 조회(genCredits 포함) + 캐시 갱신.
-    getMyProfile()
-      .then((p) => {
-        if (cancelled || !p) return;
-        setProfile(p);
-        writeCachedProfile(p.id, p);
-      })
-      .catch(() => {});
+    refreshProfile();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshProfile]);
+
+  // 크레딧 변동(생성 차감/구매/환불) 또는 탭 복귀 시 헤더 생성권 즉시 재조회(새로고침 불필요).
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshProfile();
+    };
+    window.addEventListener(CREDITS_CHANGED_EVENT, refreshProfile);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener(CREDITS_CHANGED_EVENT, refreshProfile);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshProfile]);
 
   useEffect(() => {
     if (!open) return;

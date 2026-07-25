@@ -9,7 +9,7 @@ import { PickStage } from "@/components/generate/PickStage";
 import { LoadingStage } from "@/components/generate/LoadingStage";
 import { GeneratingProgress, SavingProgress } from "@/components/generate/GeneratingProgress";
 import { RoleSelectStage } from "@/components/generate/RoleSelectStage";
-import { getMyProfile } from "@/lib/profile";
+import { getMyProfile, notifyCreditsChanged } from "@/lib/profile";
 import { setSentryGenStage, setSentryLastAction } from "@/lib/sentry-context";
 import { type RoleId } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
@@ -138,6 +138,8 @@ function GeneratePageInner() {
       const genId = data.generationId;
       if (!genId) throw new Error("generation_failed");
       setGenerationId(genId);
+      // 제출 성공 = 서버에서 생성권 1개 차감됨 → 헤더 잔액 즉시 갱신(새로고침 불필요).
+      notifyCreditsChanged();
       // URL 에 genId 기록 → 리로드/모바일 eviction 후에도 resume 플로우로 재진입(폴링 이어감).
       // history.replaceState 는 Next 라우터와 동기화돼 resumeId 가 갱신되되 라우트 전환은
       // 안 일으킨다. (전환 안 돼도 activeGenId=generationId 라 이펙트가 폴링 시작.)

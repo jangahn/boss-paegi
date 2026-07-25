@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * 마이페이지 2뎁스 탭바 — 회원정보(/account) · 결제내역(/account/payments).
+ * 마이페이지 2뎁스 탭바 — 회원정보(/account) · 결제내역(/account/payments) · 생성권 내역(/account/credits).
  * 스타일 토큰은 AppNav/AdminNav 와 동일(pill + active bg-foreground) — 일회성 스타일 금지.
  */
 const TABS = [
   { href: "/account", label: "회원정보" },
   { href: "/account/payments", label: "결제내역" },
+  { href: "/account/credits", label: "생성권 내역" },
 ];
 
 export function AccountTabs() {

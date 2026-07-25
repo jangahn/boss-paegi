@@ -22,6 +22,16 @@ export function formatCredits(n: number): string {
   return n >= UNLIMITED_THRESHOLD ? "무제한" : `${n}개`;
 }
 
+/** 크레딧 변동(생성 차감·구매·환불 등) 시 헤더 생성권을 새로고침 없이 즉시 갱신하도록 알리는 이벤트. */
+export const CREDITS_CHANGED_EVENT = "boss-paegi:credits-changed";
+
+/** 크레딧 변동 후 호출 — AccountMenu(헤더 생성권)가 이 이벤트를 듣고 재조회한다. 클라 전용(SSR no-op). */
+export function notifyCreditsChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(CREDITS_CHANGED_EVENT));
+  }
+}
+
 /**
  * 내 프로필 조회 — 세션 없으면 익명 세션 생성 후 조회.
  * **동의 여부는 서버 proxy 가 게이트**(클라 계산 불필요) → 비익명이면 isLoggedIn=true.
