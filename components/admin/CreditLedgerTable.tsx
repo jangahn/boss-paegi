@@ -48,7 +48,11 @@ export function CreditLedgerTable({ rows }: { rows: CreditHistoryRow[] }) {
               {r.delta >= 0 ? `+${r.delta}` : r.delta}
             </span>
             {r.balanceAfter !== null && (
-              <span className="text-xs text-zinc-400">→ {r.balanceAfter}개</span>
+              <span className="tabular-nums text-xs text-zinc-400">
+                {r.balanceBefore !== null && <>{r.balanceBefore}개 </>}
+                <span className="text-zinc-500">→</span>{" "}
+                <span className="font-semibold text-foreground/70">{r.balanceAfter}개</span>
+              </span>
             )}
             {refs.map((t) => (
               <span key={t} className="font-mono text-[11px] text-zinc-400">

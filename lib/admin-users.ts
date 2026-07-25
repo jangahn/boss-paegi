@@ -251,6 +251,8 @@ export type CreditHistoryRow = {
   id: string;
   kind: CreditHistoryKind;
   delta: number;
+  /** 이벤트 직전 잔액 = balanceAfter − delta(표시 델타 기준, 봉투 원장 정의상 항상 성립). '얼마에서 얼마가' 표시용. */
+  balanceBefore: number | null;
   balanceAfter: number | null;
   /** 운영자 조정 사유(cs_adjust)만 채움 — 그 외 null. 유저 화면엔 비노출(내부 메모 보호). */
   note: string | null;
@@ -329,7 +331,8 @@ export async function getCreditHistory(
     }
   }
 
-  const events: CreditHistoryRow[] = [];
+  // balanceBefore 는 마지막에 일괄 계산(after − delta) → 각 push 는 이를 제외하고 구성.
+  const events: Omit<CreditHistoryRow, "balanceBefore">[] = [];
 
   for (const r of ledgerRows) {
     const refs = { genId: r.ref_gen_id, orderUuid: r.ref_order_uuid, lotId: r.ref_lot_id };
@@ -413,7 +416,14 @@ export async function getCreditHistory(
 
   const total = events.length;
   const from = (p - 1) * USER_PAGE_SIZE;
-  const rows = events.slice(from, from + USER_PAGE_SIZE);
+  // 표시 델타 기준 직전 잔액 유도 — 봉투 원장 정의상 before = after − delta(환불 확정처럼
+  // 델타를 예약값으로 치환한 케이스도 balanceAfter 가 예약 반영 후 스냅샷이라 동일하게 성립).
+  const rows: CreditHistoryRow[] = events
+    .slice(from, from + USER_PAGE_SIZE)
+    .map((e) => ({
+      ...e,
+      balanceBefore: e.balanceAfter == null ? null : e.balanceAfter - e.delta,
+    }));
   return { rows, total, page: p, pageSize: USER_PAGE_SIZE };
 }
 

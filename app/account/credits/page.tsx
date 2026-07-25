@@ -95,7 +95,13 @@ export default async function AccountCreditsPage({
                     {r.delta >= 0 ? `+${r.delta}` : r.delta}
                   </span>
                   {r.balanceAfter !== null && (
-                    <span className="tabular-nums text-xs text-zinc-400">→ {r.balanceAfter}개</span>
+                    <span className="tabular-nums text-xs text-zinc-400">
+                      {r.balanceBefore !== null && <>{r.balanceBefore}개 </>}
+                      →{" "}
+                      <span className="font-semibold text-foreground/70">
+                        {r.balanceAfter}개
+                      </span>
+                    </span>
                   )}
                 </div>
               </li>
