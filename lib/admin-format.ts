@@ -8,11 +8,13 @@ export function payRouteLabel(o: { provider: string; pay_channel: string | null 
   return o.pay_channel ? CHANNEL_LABELS[o.pay_channel as PayChannelMethod] ?? o.pay_channel : "포트원";
 }
 
+// 관리자 UI 전역 공용 — KST + 연·월·일·시:분. 로트 만료(예: 2027년)·장기 이력의 연도 식별에 연 표기 필수.
 export function fmtKst(iso: string | null): string {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString("ko-KR", {
       timeZone: "Asia/Seoul",
+      year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
