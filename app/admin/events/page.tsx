@@ -5,15 +5,11 @@ import { getAdminEvents } from "@/lib/events";
 import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/types";
 import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
-import { firstParam } from "@/lib/admin-format";
+import { firstParam, fmtKst } from "@/lib/admin-format";
 
 // 운영 목록 — 항상 최신.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function fmtKst(iso: string): string {
-  return new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "short" });
-}
 
 export default async function AdminEventsPage({
   searchParams,

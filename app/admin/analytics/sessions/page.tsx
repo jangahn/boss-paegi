@@ -2,13 +2,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-server";
 import { getRecentSessions } from "@/lib/admin-analytics";
+import { fmtKst } from "@/lib/admin-format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function fmtKst(iso: string): string {
-  return new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
 
 export default async function SessionsPage() {
   const gate = await requireAdmin();
