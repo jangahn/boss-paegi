@@ -16,6 +16,7 @@ const DOMAINS: { key: DomainKey; label: string; desc: string }[] = [
   { key: "site_content", label: "소개·FAQ (SEO)", desc: "홈 소개·자주 묻는 질문·검색 메타" },
   { key: "business_info", label: "사업자 정보", desc: "상호·사업자번호·연락처 — 푸터 상시 노출(PG 심사 요건)" },
   { key: "media_config", label: "미디어 자산", desc: "기본 OG 공유 이미지·서비스 로고" },
+  { key: "generation_config", label: "캐릭터 생성", desc: "생성 프롬프트·수치(fal flux-pulid)·롤 변주·정장색" },
 ];
 
 export default function ContentHome() {

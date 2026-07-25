@@ -1,4 +1,4 @@
-// 마케터 설정 도메인 key — app_settings PK 및 RPC allowlist 와 일치(0025·0040·0045·0061).
+// 마케터 설정 도메인 key — app_settings PK 및 RPC allowlist 와 일치(0025·0040·0045·0061·0069).
 export const DOMAIN_KEYS = [
   "marketing_copy",
   "role_content",
@@ -9,6 +9,7 @@ export const DOMAIN_KEYS = [
   "site_content",
   "media_config",
   "business_info",
+  "generation_config",
 ] as const;
 
 export type DomainKey = (typeof DOMAIN_KEYS)[number];

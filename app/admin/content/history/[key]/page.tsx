@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isDomainKey, type DomainKey } from "@/lib/config/keys";
-import { getConfigAudit } from "@/lib/config/audit";
+import { getConfigAudit, getConfigVersion } from "@/lib/config/audit";
 import { diffConfig } from "@/lib/config/diff";
 import { fmtKst } from "@/lib/admin-format";
 import { Pagination } from "@/components/Pagination";
+import { RestoreButton } from "@/components/admin/content/RestoreButton";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ const KEY_LABEL: Record<DomainKey, string> = {
   site_content: "소개·FAQ (SEO)",
   media_config: "미디어 자산",
   business_info: "사업자 정보",
+  generation_config: "캐릭터 생성",
 };
 
 function firstParam(v: string | string[] | undefined): string | undefined {
@@ -35,7 +37,10 @@ export default async function ContentHistoryPage({
   if (!isDomainKey(key)) notFound();
   const sp = await searchParams;
   const page = Math.max(1, Number(firstParam(sp.page)) || 1);
-  const { rows, total, pageSize } = await getConfigAudit(key, { page });
+  const [{ rows, total, pageSize }, currentVersion] = await Promise.all([
+    getConfigAudit(key, { page }),
+    getConfigVersion(key),
+  ]);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
@@ -65,15 +70,26 @@ export default async function ContentHistoryPage({
                   key={r.id}
                   className="rounded-2xl border border-foreground/10 ui-surface p-4"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">
-                      {r.adminName ?? `관리자 ${r.adminId.slice(0, 8)}`}
-                    </span>
-                    <span className="text-xs text-zinc-400">{fmtKst(r.createdAt)}</span>
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-zinc-400">
-                    v{r.oldVersion ?? 0} → v{r.newVersion}
-                    {r.note ? ` · ${r.note}` : ""}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-sm font-semibold">
+                        {r.adminName ?? `관리자 ${r.adminId.slice(0, 8)}`}
+                      </span>
+                      <div className="mt-0.5 text-[11px] text-zinc-400">
+                        v{r.oldVersion ?? 0} → v{r.newVersion}
+                        {r.note ? ` · ${r.note}` : ""}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-xs text-zinc-400">{fmtKst(r.createdAt)}</span>
+                      <RestoreButton
+                        configKey={key}
+                        auditId={r.id}
+                        targetVersion={r.newVersion}
+                        currentVersion={currentVersion}
+                        isCurrent={r.newVersion === currentVersion}
+                      />
+                    </div>
                   </div>
                   {r.oldValue == null ? (
                     <p className="mt-2 text-xs font-medium text-emerald-600">최초 발행</p>

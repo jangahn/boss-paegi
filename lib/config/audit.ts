@@ -71,3 +71,41 @@ export async function getConfigAudit(
   );
   return { rows, total: count ?? 0, page, pageSize: AUDIT_PAGE_SIZE };
 }
+
+/**
+ * 감사행 단건 조회(롤백 재발행용) — id + key 로 조회해 그 시점 new_value/new_version 반환.
+ * key 불일치(타 도메인 auditId)는 null(호출부가 404). service_role 전용.
+ */
+export async function getConfigAuditEntry(
+  key: DomainKey,
+  auditId: string
+): Promise<{ newValue: unknown; newVersion: number } | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("app_settings_audit")
+    .select("new_value, new_version")
+    .eq("id", auditId)
+    .eq("key", key)
+    .maybeSingle();
+  if (error) {
+    log.warn("config.audit_entry_fail", { key, auditId, ...errInfo(error) });
+    return null;
+  }
+  if (!data) return null;
+  return { newValue: data.new_value, newVersion: data.new_version as number };
+}
+
+/** 현재 발행 버전(app_settings.version) — 롤백 baseVersion(CAS)용. 미발행이면 0. */
+export async function getConfigVersion(key: DomainKey): Promise<number> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("app_settings")
+    .select("version")
+    .eq("key", key)
+    .maybeSingle();
+  if (error) {
+    log.warn("config.version_fail", { key, ...errInfo(error) });
+    return 0;
+  }
+  return (data?.version as number | undefined) ?? 0;
+}

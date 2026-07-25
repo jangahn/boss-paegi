@@ -8,6 +8,7 @@ import { prepareInputImage } from "@/lib/image-utils";
 import { selectProvider } from "@/lib/character-gen";
 import { uploadFaceTmp, deleteFaceTmp } from "@/lib/character-gen/upload-face";
 import { analyzeInputFace } from "@/lib/fal";
+import { getGenerationConfig } from "@/lib/config/getters";
 import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
 import { isRoleId } from "@/lib/roles";
@@ -187,6 +188,9 @@ export async function POST(req: NextRequest) {
     facePath = uploadedFinal.path;
     await cleanupFace(analyzePath);
 
+    // 생성 파라미터·프롬프트 설정 — 발행 즉시 반영 위해 uncached 강한읽기 1회(SWR 우회).
+    const genConfig = await getGenerationConfig();
+
     // fal 큐에 3건 제출 — request_id 만 받고 대기 X.
     const requestIds = await Sentry.startSpan(
       {
@@ -198,6 +202,7 @@ export async function POST(req: NextRequest) {
         provider.submitGeneration({
           faceImageUrl: uploadedFinal.url,
           templateImageUrl: "", // PuLID 는 template 무시
+          genConfig,
           numImages: 3,
           wearsGlasses,
           role,

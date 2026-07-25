@@ -252,7 +252,7 @@ npm run typecheck   # tsc --noEmit
 
 - **업로드 이미지**: 생성 직후 원본 즉시 폐기. 결과물(캐릭터화된 이미지)만 Supabase Storage 저장.
 - **동의 다이얼로그**: 생성 직전 3개 체크박스 강제 (본인 또는 사용권 있는 이미지 / 타인 비방 목적 아님 / 캐릭터화 변형 동의).
-- **AI 프롬프트**: 강한 캐릭터화 (3D claymation, caricature, exaggerated chibi) — 실제 얼굴과 닮음 최소화.
+- **AI 프롬프트·수치**: `generation_config`(어드민 콘텐츠 콘솔) 소유 — 기본 시드 = 캐릭터화 템플릿(chibi super-deformed·plush felt·흰 배경·identity 보존), 어드민 편집·버전 이력·롤백. 강제 키워드는 코드로 강제하지 않고 이력·롤백·검토로 관리. 조립 단일 소스 `assembleGenerationPrompts`(`lib/config/domains/generation.ts`).
 - **API 키**: `FAL_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 는 **서버 전용**. 클라이언트 번들 절대 포함 금지.
 - **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 1개(발행 `growth_levers.signupBonusCredits`), 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 **충전**(`/credits`, 포트원). 전역 fal 잔액 캡($2) 미만이면 service_paused. `OPS_USER_ID` 무제한.
 
@@ -410,7 +410,7 @@ v0.17 (2026-06-22, 캐릭터 롤 확장 — 부장 → 5종):
 - **브랜드 유지**: 앱명("부장님 패기")·홈·메타·login 은 부장 그대로. 갤러리 집합 카피만 "캐릭터"로 중립화.
 
 v0.18 (2026-06-22, 롤 후속 — 생성 시 롤 선택 + 감정선/포맷/조사):
-- **생성 시 롤 선택**: 사진 crop 후 `role-select` 단계(`components/generate/RoleSelectStage`, 5칩·boss 기본) → 고른 롤이 **fal 프롬프트(복장·표정·분위기, `flux-pulid` `ROLE_VISUALS`)** 와 `dolls.role` 에 반영. 강한 캐릭터화(chibi·plush·identity) 정책은 공통 고정, **복장/표정만 롤 차등**(임원=고급정장+포켓스퀘어, 팀장=노타이·소매 걷음, 거래처=정장+방문증, 동료=니트 가디건). 이미지=생성 시 롤 반영, 이후 갤러리 롤 변경=텍스트만(재생성 없음).
+- **생성 시 롤 선택**: 사진 crop 후 `role-select` 단계(`components/generate/RoleSelectStage`, 5칩·boss 기본) → 고른 롤이 **fal 프롬프트(복장·표정·분위기)** 와 `dolls.role` 에 반영. 프롬프트는 **`generation_config.prompt.roles[role]`(subject/attire/expression) + 공용 템플릿**(chibi·plush·identity 시드)로 조립(`assembleGenerationPrompts`), **복장/표정만 롤 차등**(임원=고급정장+포켓스퀘어, 팀장=노타이·소매 걷음, 거래처=정장+방문증, 동료=니트 가디건). 이미지=생성 시 롤 반영, 이후 갤러리 롤 변경=텍스트만(재생성 없음).
 - **데이터/배선**: `ai_generations.role`(migration 0018, default 'boss', CHECK 5롤). `/api/fal` role 추출·검증(미지 400)·저장·프롬프트 전달. `/api/doll` POST 는 `ai_generations.role` 을 **권위 소스**로 읽어 doll.role 저장(클라 신뢰 X). resume/"이어서" 복귀 시 `/api/generations` 가 role 반환 → `useGenerationPolling` 이 복구.
 - **감정선 전면 재정렬**: 4롤 `taunts`+`reactions` 를 boss 아크(0~4 고압 → 5 전환 → 6~9 점진 비굴)로 재작성 — tier5 이전엔 굴복 금지(기존엔 너무 빨리 비굴). 4롤 파일을 boss.ts 포맷(tier 1줄)으로 통일.
 - **조사/UX**: `josaEuro(word)`(받침 따라 으로/로) → "동료로 변경"(기존 "동료 으로" 오류 수정). 갤러리 롤 변경 중 **"변경 중…" 오버레이**(삭제 패턴 복제) — 탭/대기 구분.

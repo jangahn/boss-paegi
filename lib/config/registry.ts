@@ -9,6 +9,7 @@ import { badgeEntry } from "./domains/badges";
 import { siteContentEntry } from "./domains/site-content";
 import { mediaConfigEntry } from "./domains/media-config";
 import { businessInfoEntry } from "./domains/business-info";
+import { generationEntry } from "./domains/generation";
 
 /**
  * 도메인 설정 레지스트리 — 각 도메인 PR 에서 항목을 등록한다.
@@ -39,6 +40,7 @@ export const REGISTRY: Partial<Record<DomainKey, DomainEntry<unknown>>> = {
   site_content: siteContentEntry as DomainEntry<unknown>,
   media_config: mediaConfigEntry as DomainEntry<unknown>,
   business_info: businessInfoEntry as DomainEntry<unknown>,
+  generation_config: generationEntry as DomainEntry<unknown>,
 };
 
 export function getEntry(key: DomainKey): DomainEntry<unknown> | undefined {

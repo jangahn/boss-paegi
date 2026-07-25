@@ -1,12 +1,13 @@
 import type { RoleId } from "@/lib/roles";
+import type { GenerationConfig } from "@/lib/config/domains/generation";
 
 export type CharacterGenInput = {
   /** 사용자 얼굴 이미지 URL (Supabase signed URL — 짧은 TTL). identity 만 참고. */
   faceImageUrl: string;
   /** 우리 template 캐릭터 URL. 구도·비율·스타일·배경의 기준. */
   templateImageUrl: string;
-  /** 추가 prompt hint (예: "더 화난 표정"). 기본 prompt 뒤에 붙음. */
-  promptHints?: string;
+  /** 생성 파라미터·프롬프트 설정 스냅샷 — /api/fal 이 generation_config 를 1회 읽어 주입(코드 상수 대체). */
+  genConfig: GenerationConfig;
   /** 생성 후보 수 (기본 3) */
   numImages?: number;
   /** 입력 얼굴이 안경을 썼는지 — true 면 프롬프트에 안경 절 주입(조건부 반영) */

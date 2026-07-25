@@ -5,20 +5,31 @@ import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { isDomainKey } from "@/lib/config/keys";
 import { getEntry } from "@/lib/config/registry";
 import { updateSetting } from "@/lib/config/write";
+import { getConfigAuditEntry } from "@/lib/config/audit";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 
 /**
- * 마케터 설정 발행 — requireAdmin → 도메인 schema 검증 → admin_update_app_setting(CAS+감사 원자) → revalidate.
+ * 설정 발행/복원 — requireAdmin → 도메인 schema 검증 → admin_update_app_setting(CAS+감사 원자) → revalidate.
  * 주 방어선 = requireAdmin + server-only service_role(client direct write 금지). 검증은 도메인 entry.schema.
+ *   publish: {key, value, baseVersion, note?} — 에디터 발행.
+ *   restore: {action:"restore", key, auditId, baseVersion} — 감사행(auditId)의 new_value 를 재발행.
+ *     클라는 복원 value/version/note 를 보내지 않음(서버가 감사행에서 조회). 복원도 새 감사 버전으로 남음.
  */
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
   const body = (await req.json().catch(() => null)) as
-    | { key?: string; value?: unknown; baseVersion?: number; note?: string }
+    | {
+        action?: "publish" | "restore";
+        key?: string;
+        value?: unknown;
+        baseVersion?: number;
+        note?: string;
+        auditId?: string;
+      }
     | null;
   if (!body || typeof body.key !== "string" || typeof body.baseVersion !== "number") {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
@@ -32,7 +43,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "domain_not_ready" }, { status: 400 });
   }
 
-  const parsed = entry.schema.safeParse(body.value);
+  // 발행할 value·note 결정 — restore 는 감사행(서버 조회), publish 는 클라 value.
+  let value: unknown;
+  let note: string | null;
+  if (body.action === "restore") {
+    if (typeof body.auditId !== "string") {
+      return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+    }
+    const target = await getConfigAuditEntry(body.key, body.auditId);
+    if (!target) {
+      // 없거나 타 도메인 auditId — 복원 대상 아님.
+      return NextResponse.json({ error: "target_not_found" }, { status: 404 });
+    }
+    value = target.newValue;
+    note = `restore v${target.newVersion}`;
+  } else {
+    value = body.value;
+    note = typeof body.note === "string" ? body.note.slice(0, 500) : null;
+  }
+
+  const parsed = entry.schema.safeParse(value);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation_failed", issues: parsed.error.issues.slice(0, 30) },
@@ -40,7 +70,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const note = typeof body.note === "string" ? body.note.slice(0, 500) : null;
   const res = await updateSetting(body.key, parsed.data, body.baseVersion, gate.user.id, note);
   if (!res.ok) {
     log.warn("config.update_fail", { key: body.key, adminId: gate.user.id, error: res.error });

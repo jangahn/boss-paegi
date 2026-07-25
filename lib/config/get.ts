@@ -50,18 +50,16 @@ export type WithMeta<T> = {
   invalid?: boolean;
 };
 
-/**
- * 어드민 진단용 getter — 폴백 여부(source/invalid)까지 반환.
- * **핫패스는 throw 금지** 불변식: 읽기 실패/검증 실패 어떤 경우에도 코드 기본값으로 폴백.
- */
-export async function getSettingWithMeta<T>(
+// reader 주입형 공통 파싱 — cached/uncached 두 경로 공유. 핫패스 throw 금지.
+async function withMetaFrom<T>(
   key: DomainKey,
   schema: ZodType<T>,
-  codeDefault: T
+  codeDefault: T,
+  reader: (k: DomainKey) => Promise<Row | null>
 ): Promise<WithMeta<T>> {
   let row: Row | null = null;
   try {
-    row = await cachedRead(key);
+    row = await reader(key);
   } catch (e) {
     log.warn("config.read_throw", { key, ...errInfo(e) });
   }
@@ -76,11 +74,43 @@ export async function getSettingWithMeta<T>(
   return { value: parsed.data, source: "db", version: row.version };
 }
 
-/** 핫패스용 value-only getter. */
+/**
+ * 어드민 진단용 getter — 폴백 여부(source/invalid)까지 반환.
+ * **핫패스는 throw 금지** 불변식: 읽기 실패/검증 실패 어떤 경우에도 코드 기본값으로 폴백.
+ */
+export function getSettingWithMeta<T>(
+  key: DomainKey,
+  schema: ZodType<T>,
+  codeDefault: T
+): Promise<WithMeta<T>> {
+  return withMetaFrom(key, schema, codeDefault, cachedRead);
+}
+
+/** 핫패스용 value-only getter(캐시). */
 export async function getSetting<T>(
   key: DomainKey,
   schema: ZodType<T>,
   codeDefault: T
 ): Promise<T> {
   return (await getSettingWithMeta(key, schema, codeDefault)).value;
+}
+
+// ── uncached 강한읽기(SWR 우회) ─────────────────────────────────────────────
+// 발행 즉시 첫 읽기부터 새 값이 필요한 도메인(예: generation_config — 발행 직후 첫 생성이 새 값을
+// 써야 함)용. unstable_cache 를 거치지 않고 service_role 로 app_settings 를 직접 읽는다.
+// 캐시 이득이 없으므로 **저빈도·비핫패스 소비처(생성 제출 시 1회)** 에만 쓴다.
+export function getSettingWithMetaUncached<T>(
+  key: DomainKey,
+  schema: ZodType<T>,
+  codeDefault: T
+): Promise<WithMeta<T>> {
+  return withMetaFrom(key, schema, codeDefault, readRow);
+}
+
+export async function getSettingUncached<T>(
+  key: DomainKey,
+  schema: ZodType<T>,
+  codeDefault: T
+): Promise<T> {
+  return (await getSettingWithMetaUncached(key, schema, codeDefault)).value;
 }
