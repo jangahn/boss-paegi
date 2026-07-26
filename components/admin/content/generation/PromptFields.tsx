@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { GenerationPromptConfig } from "@/lib/config/domains/generation";
 import type { RoleId } from "@/lib/roles";
 
@@ -12,21 +13,29 @@ const ROLE_LABEL: Record<RoleId, string> = {
 };
 const ROLES: RoleId[] = ["boss", "exec", "teamlead", "client", "coworker"];
 
+// 내용에 맞춰 세로로 자동 확장(잘림 없음) — 값 변경/마운트 시 scrollHeight 로 높이 재설정.
 function Area({
   label,
   hint,
   value,
   onChange,
-  rows = 3,
+  minRows = 2,
   mono = true,
 }: {
   label: string;
   hint?: string;
   value: string;
   onChange: (v: string) => void;
-  rows?: number;
+  minRows?: number;
   mono?: boolean;
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
   return (
     <label className="flex flex-col gap-1">
       <span className="text-sm font-semibold text-zinc-500">
@@ -34,10 +43,11 @@ function Area({
         {hint ? <span className="ml-1 font-normal text-zinc-400">· {hint}</span> : null}
       </span>
       <textarea
+        ref={ref}
         value={value}
-        rows={rows}
+        rows={minRows}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full rounded-lg border border-foreground/15 ui-field p-2 text-xs leading-relaxed outline-none focus:border-foreground/40 ${
+        className={`w-full resize-none overflow-hidden rounded-lg border border-foreground/15 ui-field p-2 text-xs leading-relaxed outline-none focus:border-foreground/40 ${
           mono ? "font-mono" : ""
         }`}
       />
@@ -76,7 +86,7 @@ export function PromptFields({
           hint="{head}{attire}{glasses}{expression}{tail}{identity}{idGlasses} 각 1회"
           value={prompt.positiveTemplate}
           onChange={(v) => set({ positiveTemplate: v })}
-          rows={2}
+          minRows={2}
         />
         <div className="mt-3">
           <Area
@@ -84,17 +94,17 @@ export function PromptFields({
             hint="{subject} 정확히 1회"
             value={prompt.headTemplate}
             onChange={(v) => set({ headTemplate: v })}
-            rows={2}
+            minRows={2}
           />
         </div>
         <div className="mt-3">
-          <Area label="tail (스타일·배경·포커스)" value={prompt.tail} onChange={(v) => set({ tail: v })} rows={3} />
+          <Area label="tail (스타일·배경·포커스)" value={prompt.tail} onChange={(v) => set({ tail: v })} minRows={3} />
         </div>
         <div className="mt-3">
-          <Area label="identity (identity 보존 지시)" value={prompt.identity} onChange={(v) => set({ identity: v })} rows={3} />
+          <Area label="identity (identity 보존 지시)" value={prompt.identity} onChange={(v) => set({ identity: v })} minRows={3} />
         </div>
         <div className="mt-3">
-          <Area label="negative prompt" value={prompt.negative} onChange={(v) => set({ negative: v })} rows={3} />
+          <Area label="negative prompt" value={prompt.negative} onChange={(v) => set({ negative: v })} minRows={3} />
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Area
@@ -102,14 +112,14 @@ export function PromptFields({
             hint="빈값=비활성"
             value={prompt.glassesPrompt}
             onChange={(v) => set({ glassesPrompt: v })}
-            rows={2}
+            minRows={2}
           />
           <Area
             label="glassesIdentityPrompt"
             hint="빈값=비활성"
             value={prompt.glassesIdentityPrompt}
             onChange={(v) => set({ glassesIdentityPrompt: v })}
-            rows={2}
+            minRows={2}
           />
         </div>
         <div className="mt-3">
@@ -120,7 +130,7 @@ export function PromptFields({
             onChange={(v) =>
               set({ suitColors: v.split("\n").map((s) => s.trim()).filter(Boolean) })
             }
-            rows={4}
+            minRows={4}
             mono={false}
           />
         </div>
@@ -136,20 +146,20 @@ export function PromptFields({
                 label="subject (직군)"
                 value={prompt.roles[role].subject}
                 onChange={(v) => setRole(role, { subject: v })}
-                rows={1}
+                minRows={1}
                 mono={false}
               />
               <Area
                 label="attireTemplate ({suitColor} 1회)"
                 value={prompt.roles[role].attireTemplate}
                 onChange={(v) => setRole(role, { attireTemplate: v })}
-                rows={2}
+                minRows={2}
               />
               <Area
                 label="expression (표정/분위기)"
                 value={prompt.roles[role].expression}
                 onChange={(v) => setRole(role, { expression: v })}
-                rows={1}
+                minRows={1}
                 mono={false}
               />
             </div>
