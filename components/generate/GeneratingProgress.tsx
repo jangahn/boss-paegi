@@ -14,11 +14,16 @@ function TimedProgress({
   tauSec,
   footer,
   ariaLabel,
+  longAfterSec,
+  longNote,
 }: {
   stages: Stage[];
   tauSec: number;
   footer: string;
   ariaLabel: string;
+  /** 이 시간(초) 초과 시 longNote 노출 — 예상보다 오래 걸릴 때 안내(무피드백 방지). */
+  longAfterSec?: number;
+  longNote?: string;
 }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -29,6 +34,7 @@ function TimedProgress({
 
   const pct = Math.min(95, 95 * (1 - Math.exp(-elapsed / tauSec))); // 항상 조금씩 차되 95% 점근
   const stage = [...stages].reverse().find((s) => elapsed >= s.at) ?? stages[0];
+  const isLong = longAfterSec != null && longNote != null && elapsed >= longAfterSec;
 
   return (
     <div className="m-auto flex w-full max-w-xs flex-col items-center gap-4 text-center">
@@ -45,6 +51,11 @@ function TimedProgress({
         />
       </div>
       <p className="text-xs text-zinc-500">{footer}</p>
+      {isLong && (
+        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+          {longNote}
+        </p>
+      )}
     </div>
   );
 }
@@ -67,6 +78,8 @@ export function GeneratingProgress() {
       tauSec={60}
       footer="보통 1~2분 걸려요. 완료되면 자동으로 떠요."
       ariaLabel="캐릭터 생성 진행"
+      longAfterSec={120}
+      longNote="예상보다 조금 더 걸리고 있어요. 완료되면 이 화면에 자동으로 떠요. 이 화면을 벗어나도 갤러리에서 확인·이어서 고를 수 있어요."
     />
   );
 }

@@ -92,6 +92,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── 좀비 백스톱: 30분 넘게 queued 로 고착된 행을 failed+환불로 강제 종결. 회수 불가 케이스 —
+  //    (A) fal 이 IN_QUEUE 로 무한 정체(완료 0)라 recovery 가 pending 만 반환 / (B) submit~request_id
+  //    영속 사이 하드크래시로 request_id 없어 recovery 대상서 제외. 클라의 age>30분 fall-through 를
+  //    cron 에도 둬 **브라우저 종료 사용자도 크레딧을 잃지 않게** 한다. 정상 행은 수분 내 done/failed 로
+  //    빠지므로 30분+ queued = 종결불가로 판단(2h RECOVER_WINDOW 밖도 포함해 상한 없이 스캔).
+  //    failGeneration(RPC-first, 멱등)이 queued→failed+환불(비-ops)·no_consume(ops)을 원자 처리.
+  let stuckFailed = 0;
+  const staleCutoff = new Date(Date.now() - QUEUED_STALE_MS).toISOString();
+  const { data: stuck, error: stErr } = await admin
+    .from("ai_generations")
+    .select("id, owner_id")
+    .eq("status", "queued")
+    .lt("created_at", staleCutoff)
+    .order("created_at", { ascending: true })
+    .limit(SWEEP_LIMIT);
+  if (stErr) {
+    log.warn("gen.stuck_sweep_query_fail", errInfo(stErr));
+  } else {
+    for (const g of (stuck as { id: string; owner_id: string }[] | null) ?? []) {
+      try {
+        await failGeneration(admin, g.id, g.owner_id, g.owner_id === opsId, "timeout");
+        stuckFailed++;
+      } catch (e) {
+        log.warn("gen.stuck_sweep_item_fail", { genId: g.id, ...errInfo(e) });
+      }
+    }
+  }
+
   // ── 안전망: 미환급 실패 생성 재환급(§19) — status='failed'·refunded_at=NULL·credit_lot_id set 로
   //    고착된 소비 크레딧(failGeneration 의 done-fallback flip↔환급 RPC 사이 크래시 윈도우 잔여)을
   //    멱등 RPC 로 회수. idx_ai_generations_refund_pending 사용. ops(credit_lot_id NULL)는 predicate 로 제외.
@@ -127,6 +155,7 @@ export async function POST(req: NextRequest) {
     recovered,
     failed,
     pending,
+    stuckFailed,
     reRefunded,
   });
   return NextResponse.json({
@@ -136,6 +165,7 @@ export async function POST(req: NextRequest) {
     recovered,
     failed,
     pending,
+    stuckFailed,
     reRefunded,
   });
 }

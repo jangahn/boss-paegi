@@ -21,13 +21,16 @@ export function PendingGrid({ pending }: { pending: PendingGeneration[] }) {
 
 function PendingCard({ gen }: { gen: PendingGeneration }) {
   if (gen.kind === "generating") {
+    // 클릭 시 진행 화면으로 복귀(?resume) — 진행 중 생성을 언제든 다시 보고 완료 시 고를 수 있게.
     return (
-      <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-foreground/10 ui-surface">
+      <Link
+        href={`/generate?resume=${gen.id}`}
+        className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-foreground/10 ui-surface transition hover:bg-foreground/5"
+      >
         <Spinner className="h-7 w-7 text-foreground/70" />
-        <span className="text-xs font-medium text-zinc-500">
-          AI 가 만드는 중…
-        </span>
-      </div>
+        <span className="text-xs font-medium text-zinc-500">AI 가 만드는 중…</span>
+        <span className="text-[11px] text-zinc-400">탭해서 보기</span>
+      </Link>
     );
   }
   if (gen.kind === "interrupted") {

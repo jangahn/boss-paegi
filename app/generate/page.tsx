@@ -40,14 +40,35 @@ function GeneratePageInner() {
   useEffect(() => {
     if (resumeId) return;
     let cancelled = false;
-    getMyProfile()
-      .then((p) => {
-        if (cancelled) return;
-        setStage(p?.isLoggedIn && p.genCredits === 0 ? "no_credits" : "consent");
-      })
-      .catch(() => {
+    (async () => {
+      // 진행 중(in-flight) 생성이 있으면 자동 이어보기 — resume URL 없이 재진입해도 새 생성(중복 과금)
+      // 대신 그 생성으로 복귀. replaceState 로 URL 도 심어 이후 새로고침 안전.
+      try {
+        const res = await fetch("/api/generations");
+        if (res.ok) {
+          const { pending } = (await res.json()) as {
+            pending?: { id: string; kind: string }[];
+          };
+          const active = pending?.find((g) => g.kind === "generating");
+          if (active && !cancelled) {
+            setGenerationId(active.id);
+            setStage("generating");
+            window.history.replaceState(null, "", `/generate?resume=${active.id}`);
+            return;
+          }
+        }
+      } catch {
+        /* 조회 실패는 무시하고 정상 funnel 로 */
+      }
+      if (cancelled) return;
+      // 진행 중 없음 → 생성권 게이트(getMyProfile 가 세션 워밍업도 겸함).
+      try {
+        const p = await getMyProfile();
+        if (!cancelled) setStage(p?.isLoggedIn && p.genCredits === 0 ? "no_credits" : "consent");
+      } catch {
         if (!cancelled) setStage("consent");
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
