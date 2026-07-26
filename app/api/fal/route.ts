@@ -124,21 +124,19 @@ export async function POST(req: NextRequest) {
       { name: "gen.analyze_face", op: "fal.vqa", attributes: { tmpFaceId, userId: user.id } },
       () => analyzeInputFace(uploaded.url)
     );
-    const { faceVisible, singlePerson, headComplete, faceClear, wearsGlasses } = analysis;
+    const { faceVisible, singlePerson, faceClear, wearsGlasses } = analysis;
     if (wearsGlasses) log.info("gen.glasses_detected", { tmpFaceId, userId: user.id });
 
     // 제출 전 입력 게이트 — 소비·제출 없이 즉시 반려(불량 입력의 fal 낭비·아티팩트 방지). 각 판정은
-    // 명시적 부정일 때만 차단(fail-open). gen row 없어 실패 기록 불요 — row 없이 400 반환.
-    // 우선순위: 얼굴 없음 → 여러 명 → 머리 잘림 → 얼굴 가림.
+    // 명시적 위반일 때만 차단(fail-open). gen row 없어 실패 기록 불요 — row 없이 400 반환.
+    // 우선순위: 얼굴 없음 → 여러 명 → 얼굴 가림. (정수리 잘림은 moondream 신뢰성 미달로 제외 — 생성 프롬프트가 담당.)
     const inputReject = !faceVisible
       ? "no_face"
       : !singlePerson
         ? "multiple_people"
-        : !headComplete
-          ? "head_incomplete"
-          : !faceClear
-            ? "face_obstructed"
-            : null;
+        : !faceClear
+          ? "face_obstructed"
+          : null;
     if (inputReject) {
       await cleanupFace(facePath);
       log.info("gen.input_rejected", { tmpFaceId, userId: user.id, reason: inputReject });
@@ -217,11 +215,13 @@ export async function POST(req: NextRequest) {
       },
       analyze: {
         model: analysis.model,
-        prompt: analysis.prompt,
-        rawOutput: analysis.rawOutput,
         status: analysis.status,
         faceVisible: analysis.faceVisible,
+        singlePerson: analysis.singlePerson,
+        peopleCount: analysis.peopleCount,
+        faceClear: analysis.faceClear,
         wearsGlasses: analysis.wearsGlasses,
+        checks: analysis.checks,
       },
       generation: {
         provider: FIXED_FLUX.provider,

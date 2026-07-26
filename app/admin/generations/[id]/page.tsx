@@ -103,12 +103,27 @@ export default async function AdminGenerationDetailPage({
               <h2 className="mb-2 text-sm font-bold text-zinc-500">① 얼굴 분석 (moondream)</h2>
               <Row label="모델">{p.analyze.model}</Row>
               <Row label="얼굴 감지">{p.analyze.faceVisible ? "예" : "아니오"}</Row>
+              {p.analyze.peopleCount != null && <Row label="인원 수">{p.analyze.peopleCount}명</Row>}
+              {p.analyze.faceClear != null && (
+                <Row label="얼굴 가림">{p.analyze.faceClear ? "없음" : "가려짐"}</Row>
+              )}
               <Row label="안경">{p.analyze.wearsGlasses ? "예" : "아니오"}</Row>
               <Row label="상태">{p.analyze.status}</Row>
-              {p.analyze.rawOutput != null && (
-                <Row label="원문">
-                  <span className="font-mono text-xs">{p.analyze.rawOutput || "(빈 응답)"}</span>
-                </Row>
+              {p.analyze.checks?.length ? (
+                <div className="mt-1">
+                  <span className="text-sm text-zinc-500">검증 원문</span>
+                  <Pre>
+                    {p.analyze.checks
+                      .map((c) => `${c.key}: ${c.rawOutput ?? "(호출 실패)"}`)
+                      .join("\n")}
+                  </Pre>
+                </div>
+              ) : (
+                p.analyze.rawOutput != null && (
+                  <Row label="원문">
+                    <span className="font-mono text-xs">{p.analyze.rawOutput || "(빈 응답)"}</span>
+                  </Row>
+                )
               )}
             </section>
 

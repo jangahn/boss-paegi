@@ -32,11 +32,25 @@ export const provenanceSchema = z.object({
   }),
   analyze: z.object({
     model: z.string(),
-    prompt: z.string(),
-    rawOutput: z.string().nullable(),
     status: z.enum(["ok", "fail_open"]),
     faceVisible: z.boolean(),
     wearsGlasses: z.boolean(),
+    // 신규(2026-07: 체크별 병렬콜) — 구 레코드엔 없어 optional.
+    singlePerson: z.boolean().optional(),
+    peopleCount: z.number().nullable().optional(),
+    faceClear: z.boolean().optional(),
+    checks: z
+      .array(
+        z.object({
+          key: z.string(),
+          prompt: z.string(),
+          rawOutput: z.string().nullable(),
+        })
+      )
+      .optional(),
+    // 레거시 단일콜 필드(구 레코드) — 신규는 checks 사용. 둘 다 optional.
+    prompt: z.string().optional(),
+    rawOutput: z.string().nullable().optional(),
   }),
   generation: z.object({
     provider: z.string(),
