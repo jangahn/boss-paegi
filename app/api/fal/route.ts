@@ -124,15 +124,25 @@ export async function POST(req: NextRequest) {
       { name: "gen.analyze_face", op: "fal.vqa", attributes: { tmpFaceId, userId: user.id } },
       () => analyzeInputFace(uploaded.url)
     );
-    const { faceVisible, wearsGlasses } = analysis;
+    const { faceVisible, singlePerson, headComplete, faceClear, wearsGlasses } = analysis;
     if (wearsGlasses) log.info("gen.glasses_detected", { tmpFaceId, userId: user.id });
 
-    // 제출 전 얼굴 게이트 — 확실한 no-face 면 소비·제출 없이 즉시 반려(no-face fal 낭비·30~60초 대기 방지).
-    // gen row 는 아직 없으므로 실패 기록도 불필요 — row 없이 400 만 반환(의도된 결정).
-    if (!faceVisible) {
+    // 제출 전 입력 게이트 — 소비·제출 없이 즉시 반려(불량 입력의 fal 낭비·아티팩트 방지). 각 판정은
+    // 명시적 부정일 때만 차단(fail-open). gen row 없어 실패 기록 불요 — row 없이 400 반환.
+    // 우선순위: 얼굴 없음 → 여러 명 → 머리 잘림 → 얼굴 가림.
+    const inputReject = !faceVisible
+      ? "no_face"
+      : !singlePerson
+        ? "multiple_people"
+        : !headComplete
+          ? "head_incomplete"
+          : !faceClear
+            ? "face_obstructed"
+            : null;
+    if (inputReject) {
       await cleanupFace(facePath);
-      log.info("gen.no_face_rejected", { tmpFaceId, userId: user.id });
-      return NextResponse.json({ error: "no_face" }, { status: 400 });
+      log.info("gen.input_rejected", { tmpFaceId, userId: user.id, reason: inputReject });
+      return NextResponse.json({ error: inputReject }, { status: 400 });
     }
 
     // ── queued row 생성 + 생성권 차감 — 외부 비용(fal submit) 직전, 원자적 RPC(동시요청 안전) ──

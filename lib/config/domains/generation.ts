@@ -181,23 +181,24 @@ export type GenerationConfig = z.infer<typeof generationConfigSchema>;
 export const GENERATION_CONFIG_DEFAULT: GenerationConfig = {
   numbers: {
     numInferenceSteps: 28,
-    guidanceScale: 4,
+    // 4→5: 프롬프트(비율 앵커) 준수 강화로 등신 편차 축소. 과하면 아티팩트 — 콘솔에서 미세조정.
+    guidanceScale: 5,
     trueCfg: 2,
     imageSize: "square_hd",
   },
   prompt: {
     positiveTemplate:
       "{head} wearing {attire},{glasses} {expression} {tail} {identity}{idGlasses}",
+    // 비율 앵커 강화(부장님 기본 ~2.5등신으로 수렴) + 정수리~발끝 온전 + 양손 내림(얼굴 옆 손 아티팩트 완화).
     headTemplate:
-      "A full body chibi character of a {subject}, standing front-facing pose, full body visible from head to feet, round large head with chibi super-deformed proportions, short body and limbs,",
+      "A full body chibi figurine of a {subject}, standing straight in a front-facing pose, the entire body from the very top of the head down to the feet fully visible and centered in frame, consistent super-deformed toy proportions about 2.5 heads tall, one single oversized round head, short stubby torso and limbs, both hands relaxed hanging down at the sides,",
     tail:
       "soft plush fabric doll material texture, felt-like surface, plain pure white background, no scene, no objects, no shadows on background, sharp focus, all-in-focus, even soft studio lighting from front, high detail, crisp clean lines, no motion blur, no depth of field, no bokeh, no shallow focus, no blur effect, professional product photography of a toy character, 1:1 square aspect ratio, centered composition.",
     identity:
       "Use the reference face with HIGH identity fidelity: preserve exact eye shape, eyelid type, eye spacing, eyebrow thickness and angle, nose bridge height, nose tip shape, lip shape, jaw width, cheekbone prominence, face roundness, skin tone, ethnicity, age appearance. The character face must be strongly and clearly recognizable as the SAME specific reference person, keeping their distinctive unique facial features and proportions intact, reinterpreted in the plush chibi office character style described above.",
-    // ⚠️ 이중 콤마(",,")는 현행 main 의 실제값(배열 요소가 "," 로 끝나는데 join(", ") 한 결과)이라
-    // byte-identity 위해 보존. 운영자가 콘솔에서 정리 가능.
+    // 화질 저하 + 비율 이탈(현실적/큰키/긴다리) + 입력 아티팩트(손 얼굴근처·브이·잘린머리) 배제.
     negative:
-      "blurry, out of focus, soft focus, depth of field, bokeh, motion blur, lens blur,, shallow focus, defocused background, hazy, foggy,, low quality, jpeg artifacts, noise, grain, pixelated, oversharpened, oversaturated,, photorealistic photograph of the reference person,, identical clothing as the reference, identical background as the reference,, multiple characters, group, crowd, two people,, scene, environment, props, furniture, plants,, text, watermark, signature, logo, frame, border",
+      "blurry, out of focus, soft focus, depth of field, bokeh, motion blur, lens blur, shallow focus, defocused background, hazy, foggy, low quality, jpeg artifacts, noise, grain, pixelated, oversharpened, oversaturated, photorealistic photograph of the reference person, identical clothing as the reference, identical background as the reference, multiple characters, group, crowd, two people, scene, environment, props, furniture, plants, text, watermark, signature, logo, frame, border, realistic human body proportions, tall figure, long legs, lanky, slim adult body proportions, hand near face, fingers over face, hand covering face, peace sign, v sign gesture, raised hand, extra fingers, deformed hands, extra limb, blob on face, cropped head, head cut off, flat top of head, incomplete head, multiple heads",
     glassesPrompt: " wearing eyeglasses,",
     glassesIdentityPrompt: " Preserve the eyeglasses of the reference person.",
     suitColors: [

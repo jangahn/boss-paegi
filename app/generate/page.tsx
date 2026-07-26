@@ -146,11 +146,19 @@ function GeneratePageInner() {
             "생성 요청이 많아 AI 캐릭터 만들기가 일시적으로 중단됐어요. 잠시 후 다시 시도해주세요. (기본 부장님으로는 계속 플레이할 수 있어요)"
           );
         }
-        if (err.error === "no_face") {
-          // 제출 전 얼굴 게이트(차감 없음) — 다른 사진으로 즉시 재시도 안내.
-          throw new Error(
-            "사진에서 얼굴을 찾지 못했어요. 얼굴이 정면으로 또렷하게 보이는 사진으로 다시 시도해주세요."
-          );
+        // 제출 전 입력 게이트(차감 없음) — 원인별 재촬영 안내로 즉시 재시도.
+        const INPUT_MSG: Record<string, string> = {
+          no_face:
+            "사진에서 얼굴을 찾지 못했어요. 얼굴이 정면으로 또렷하게 보이는 사진으로 다시 시도해주세요.",
+          multiple_people:
+            "사진에 여러 명이 있어요. 한 명만 나온 사진으로 다시 시도해주세요.",
+          head_incomplete:
+            "머리(정수리)나 얼굴 일부가 잘렸어요. 머리 전체가 온전히 나오게 다시 찍어주세요.",
+          face_obstructed:
+            "손이나 물건이 얼굴을 가리고 있어요. 얼굴을 가리지 않은 사진으로 다시 시도해주세요.",
+        };
+        if (err.error && INPUT_MSG[err.error]) {
+          throw new Error(INPUT_MSG[err.error]);
         }
         throw new Error(err.error ?? "generation_failed");
       }
