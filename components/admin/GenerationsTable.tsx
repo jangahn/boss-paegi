@@ -8,8 +8,8 @@ import type { AdminGeneration, AdminGenStatus } from "@/lib/admin-generations";
 
 const STATUS_META: Record<AdminGenStatus, { label: string; cls: string; icon: string }> = {
   requested: { label: "생성요청", cls: "bg-sky-500/15 text-sky-600", icon: "⏳" },
-  rejected: { label: "거부(얼굴X)", cls: "bg-orange-500/15 text-orange-600", icon: "🚫" },
-  failed: { label: "실패", cls: "bg-red-500/15 text-red-500", icon: "⚠️" },
+  rejected: { label: "거부", cls: "bg-orange-500/15 text-orange-600", icon: "🚫" },
+  failed: { label: "기타 실패", cls: "bg-red-500/15 text-red-500", icon: "⚠️" },
   unpicked: { label: "선택 전", cls: "bg-amber-500/15 text-amber-600", icon: "🖼️" },
   picked: { label: "선택완료", cls: "bg-emerald-500/15 text-emerald-600", icon: "✅" },
 };
@@ -22,8 +22,13 @@ const CREDIT_META: Record<AdminGeneration["creditNote"], { label: string; cls: s
 
 const FAIL_KO: Record<string, string> = {
   no_face: "얼굴 미검출(no_face)",
+  multiple_people: "여러 명 감지(multiple_people)",
+  face_obstructed: "얼굴 가림(face_obstructed)",
   no_credits: "크레딧 부족",
   submit_error: "제출 오류",
+  submit_failed: "제출 실패",
+  persist_failed: "기록 실패",
+  provenance_presave_fail: "기록 실패(선저장)",
   fal_error: "생성 오류(fal)",
   no_requests: "요청 없음",
   timeout: "시간초과(30분)",
@@ -156,15 +161,23 @@ function GenDetail({ row }: { row: AdminGeneration }) {
         <p className="text-zinc-500">
           {row.adminStatus === "requested"
             ? "생성 진행 중 — 아직 후보 없음."
-            : `후보 이미지 없음${row.candidateCount > 0 ? ` (후보 ${row.candidateCount}건 기록·만료/삭제)` : ""}.`}
+            : row.adminStatus === "rejected"
+              ? "입력 사진 부적합으로 제출·차감 전 반려 — 생성 미진행."
+              : `후보 이미지 없음${row.candidateCount > 0 ? ` (후보 ${row.candidateCount}건 기록·만료/삭제)` : ""}.`}
         </p>
       )}
 
-      {/* 실패 사유 */}
-      {(row.adminStatus === "failed" || row.adminStatus === "rejected") && (
-        <p className="text-red-500">
-          실패 사유: {row.failReason ? (FAIL_KO[row.failReason] ?? row.failReason) : "미기록(0046 적용 전)"}
+      {/* 거부/실패 사유 */}
+      {row.adminStatus === "rejected" ? (
+        <p className="text-orange-600">
+          거부 사유: {row.failReason ? (FAIL_KO[row.failReason] ?? row.failReason) : "미기록"}
         </p>
+      ) : (
+        row.adminStatus === "failed" && (
+          <p className="text-red-500">
+            실패 사유: {row.failReason ? (FAIL_KO[row.failReason] ?? row.failReason) : "미기록(0046 적용 전)"}
+          </p>
+        )
       )}
 
       {/* 메타 */}

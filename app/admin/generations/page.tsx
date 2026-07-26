@@ -53,9 +53,9 @@ export default async function AdminGenerationsPage({
         <h1 className="text-2xl font-bold">캐릭터 생성</h1>
         <p className="text-xs leading-relaxed text-zinc-500">
           캐릭터 생성 요청을 <b>상태</b>별로 봅니다. <b>생성요청</b>=진행 중 · <b>선택 전</b>=후보
-          3장 대기 · <b>선택완료</b>=고름 · <b>거부(얼굴X)</b>=얼굴 미검출로 반려 · <b>기타 실패</b>=
-          그 외 실패. 회원/캐릭터 id를 누르면 해당 항목만 필터돼요. <b>크레딧</b> 표기는 추정값입니다(정확한
-          변동 기록은 처리내역 연동 예정).
+          3장 대기 · <b>선택완료</b>=고름 · <b>거부(입력 부적합)</b>=얼굴 없음·여러 명·가림으로 제출 전
+          반려(미차감) · <b>기타 실패</b>=그 외 실패. 회원/캐릭터 id를 누르면 해당 항목만 필터돼요.
+          <b>크레딧</b> 표기는 추정값입니다(정확한 변동 기록은 처리내역 연동 예정).
         </p>
 
         <GenStatusFilterBar status={status} ownerId={ownerId} dollId={dollId} />

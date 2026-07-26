@@ -9,7 +9,7 @@ const STATUSES = [
   { v: "requested", l: "생성요청" },
   { v: "unpicked", l: "선택 전" },
   { v: "picked", l: "선택완료" },
-  { v: "rejected", l: "거부(얼굴X)" },
+  { v: "rejected", l: "거부(입력 부적합)" },
   { v: "failed", l: "기타 실패" },
 ];
 

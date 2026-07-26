@@ -24,12 +24,15 @@ export type ProvenanceCandidate = z.infer<typeof candidateSchema>;
 
 export const provenanceSchema = z.object({
   schemaVersion: z.literal(PROVENANCE_SCHEMA_VERSION),
-  config: z.object({
-    key: z.literal("generation_config"),
-    source: z.enum(["db", "default"]),
-    version: z.number().nullable(),
-    invalid: z.boolean(),
-  }),
+  // config/generation 은 **입력 거부 row(제출·차감 전 반려)엔 없음** → optional. 정상 생성은 항상 채움.
+  config: z
+    .object({
+      key: z.literal("generation_config"),
+      source: z.enum(["db", "default"]),
+      version: z.number().nullable(),
+      invalid: z.boolean(),
+    })
+    .optional(),
   analyze: z.object({
     model: z.string(),
     status: z.enum(["ok", "fail_open"]),
@@ -52,7 +55,8 @@ export const provenanceSchema = z.object({
     prompt: z.string().optional(),
     rawOutput: z.string().nullable().optional(),
   }),
-  generation: z.object({
+  generation: z
+    .object({
     provider: z.string(),
     model: z.string(),
     role: z.string(),
@@ -78,7 +82,8 @@ export const provenanceSchema = z.object({
       expression: z.string(),
     }),
     candidates: z.array(candidateSchema),
-  }),
+    })
+    .optional(),
   postprocess: z
     .object({
       model: z.string(),
@@ -93,6 +98,11 @@ export const provenanceSchema = z.object({
       dollId: z.string(),
       pickedAt: z.string(),
     })
+    .nullable()
+    .optional(),
+  // 입력 게이트 반려 사유(제출·차감 전) — 이 필드가 있으면 config/generation 은 없다.
+  rejected: z
+    .object({ reason: z.string() })
     .nullable()
     .optional(),
 });

@@ -21,6 +21,12 @@ export const FACE_CHECK_PROMPTS = {
 export type FaceCheckKey = keyof typeof FACE_CHECK_PROMPTS;
 export const FACE_CHECK_KEYS = ["face", "count", "covered", "glasses"] as const;
 
+// 입력 게이트 반려 사유(제출·차감 전 400). route 게이트가 세팅하는 fail_reason 과, 어드민이 '거부'로
+// 분류하는 fail_reason 집합이 **일치**해야 하므로 단일 정본으로 둔다. fal 제출 후 no-face(recovery)도
+// 같은 no_face 라 '거부'로 함께 분류됨. 그 외 실패(fal_error/timeout/…)는 '기타실패'.
+export const INPUT_REJECT_REASONS = ["no_face", "multiple_people", "face_obstructed"] as const;
+export type InputRejectReason = (typeof INPUT_REJECT_REASONS)[number];
+
 export type FaceCheck = { key: string; prompt: string; rawOutput: string | null };
 
 export type FaceAnalysis = {

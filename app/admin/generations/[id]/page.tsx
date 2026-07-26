@@ -9,10 +9,26 @@ export const dynamic = "force-dynamic";
 
 const STATUS_LABEL: Record<string, string> = {
   requested: "생성요청",
-  rejected: "거부(no-face)",
-  failed: "실패",
+  rejected: "거부",
+  failed: "기타 실패",
   unpicked: "선택 전",
   picked: "선택완료",
+};
+
+// fail_reason → 한글. 입력 거부(no_face/multiple_people/face_obstructed) + 기술 실패.
+const FAIL_KO: Record<string, string> = {
+  no_face: "얼굴 미검출",
+  multiple_people: "여러 명 감지",
+  face_obstructed: "얼굴 가림(손/물건)",
+  no_credits: "크레딧 부족",
+  submit_error: "제출 오류",
+  submit_failed: "제출 실패",
+  persist_failed: "기록 실패",
+  provenance_presave_fail: "기록 실패(선저장)",
+  fal_error: "생성 오류(fal)",
+  no_requests: "요청 없음",
+  timeout: "시간초과(30분)",
+  expired: "후보 만료",
 };
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -80,8 +96,18 @@ export default async function AdminGenerationDetailPage({
           <Row label="생성 시각">{fmtKst(gen.createdAt)}</Row>
           <Row label="후보 수">{gen.candidateCount}</Row>
           {gen.pickedIndex != null && <Row label="선택 후보">#{gen.pickedIndex}</Row>}
-          {gen.failReason && <Row label="실패 사유">{gen.failReason}</Row>}
+          {gen.failReason && (
+            <Row label={gen.adminStatus === "rejected" ? "거부 사유" : "실패 사유"}>
+              {FAIL_KO[gen.failReason] ?? gen.failReason}
+            </Row>
+          )}
         </section>
+
+        {gen.adminStatus === "rejected" && (
+          <p className="mt-4 rounded-xl border border-dashed border-orange-500/40 bg-orange-500/5 p-4 text-sm text-orange-600">
+            입력 사진이 부적합해 <b>제출·차감 전 반려</b>됐어요(크레딧 미차감). 아래 얼굴 분석에서 원인을 볼 수 있어요.
+          </p>
+        )}
 
         {!p ? (
           <p className="mt-4 rounded-xl border border-dashed border-foreground/15 p-4 text-center text-sm text-zinc-500">
@@ -89,14 +115,16 @@ export default async function AdminGenerationDetailPage({
           </p>
         ) : (
           <>
-            {/* 설정 */}
-            <section className="mt-4 rounded-2xl border border-foreground/10 ui-surface p-4">
-              <h2 className="mb-2 text-sm font-bold text-zinc-500">설정 (generation_config)</h2>
-              <Row label="출처">
-                {p.config.source === "db" ? `발행값 v${p.config.version ?? "?"}` : "코드 기본값"}
-                {p.config.invalid ? " · 검증실패 폴백" : ""}
-              </Row>
-            </section>
+            {/* 설정 — 입력 거부 row 엔 config 없음 */}
+            {p.config && (
+              <section className="mt-4 rounded-2xl border border-foreground/10 ui-surface p-4">
+                <h2 className="mb-2 text-sm font-bold text-zinc-500">설정 (generation_config)</h2>
+                <Row label="출처">
+                  {p.config.source === "db" ? `발행값 v${p.config.version ?? "?"}` : "코드 기본값"}
+                  {p.config.invalid ? " · 검증실패 폴백" : ""}
+                </Row>
+              </section>
+            )}
 
             {/* 1단계: 얼굴 분석 */}
             <section className="mt-4 rounded-2xl border border-foreground/10 ui-surface p-4">
@@ -127,7 +155,8 @@ export default async function AdminGenerationDetailPage({
               )}
             </section>
 
-            {/* 2단계: 생성 (flux-pulid) */}
+            {/* 2단계: 생성 (flux-pulid) — 입력 거부 row 엔 generation 없음 */}
+            {p.generation && (
             <section className="mt-4 rounded-2xl border border-foreground/10 ui-surface p-4">
               <h2 className="mb-2 text-sm font-bold text-zinc-500">② 생성 (flux-pulid ×{p.generation.candidates.length})</h2>
               <Row label="모델">{p.generation.model}</Row>
@@ -177,6 +206,7 @@ export default async function AdminGenerationDetailPage({
                 })}
               </div>
             </section>
+            )}
 
             {/* 3단계: 배경 제거 + 선택 */}
             {(p.postprocess || p.picked) && (

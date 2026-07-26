@@ -138,6 +138,44 @@ export async function POST(req: NextRequest) {
           ? "face_obstructed"
           : null;
     if (inputReject) {
+      // 입력 거부도 어드민에 가시화 — **소비 없이** row 생성(create_generation_row, ops 경로 재사용)
+      // 후 failed+사유+analyze 스냅샷 기록. best-effort(기록 실패해도 반려는 유지). 크레딧 미차감이라
+      // 크레딧 로트/원장 무접촉 → G-1·환불 sweep 불변식과 독립(credit_lot_id=NULL).
+      try {
+        const { data: rejId } = await admin.rpc("create_generation_row", {
+          p_user: user.id,
+          p_role: role,
+        });
+        if (rejId) {
+          await admin
+            .from("ai_generations")
+            .update({
+              status: "failed",
+              fail_reason: inputReject,
+              gen_params: {
+                schemaVersion: PROVENANCE_SCHEMA_VERSION,
+                analyze: {
+                  model: analysis.model,
+                  status: analysis.status,
+                  faceVisible: analysis.faceVisible,
+                  singlePerson: analysis.singlePerson,
+                  peopleCount: analysis.peopleCount,
+                  faceClear: analysis.faceClear,
+                  wearsGlasses: analysis.wearsGlasses,
+                  checks: analysis.checks,
+                },
+                rejected: { reason: inputReject },
+              },
+            })
+            .eq("id", rejId as string);
+        }
+      } catch (e) {
+        log.warn("gen.input_reject_record_fail", {
+          userId: user.id,
+          reason: inputReject,
+          ...errInfo(e),
+        });
+      }
       await cleanupFace(facePath);
       log.info("gen.input_rejected", { tmpFaceId, userId: user.id, reason: inputReject });
       return NextResponse.json({ error: inputReject }, { status: 400 });

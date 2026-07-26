@@ -4,13 +4,18 @@ import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
 import type { Paged } from "@/lib/admin-types";
 import { parseProvenance, type GenProvenance } from "@/lib/character-gen/provenance";
+import { INPUT_REJECT_REASONS } from "@/lib/character-gen/face-analysis";
 
 /**
  * 캐릭터 생성 현황 — 어드민 전용(service_role). 생성 라이프사이클을 상태/회원/캐릭터로 조회.
- * 상태(파생): 생성요청(queued) · 거부(failed+no_face) · 기타실패(failed 그 외) · 선택 전(done) · 선택완료(picked).
+ * 상태(파생): 생성요청(queued) · 거부(failed+입력 부적합 사유) · 기타실패(failed 그 외) · 선택 전(done) · 선택완료(picked).
  * 후보 썸네일: done 은 후보 3장 서명, picked 은 고른 캐릭터 1장(나머지 후보는 pick 시 삭제됨), 그 외 없음.
  */
 export const GEN_PAGE_SIZE = 10;
+
+// '거부'로 분류하는 fail_reason 집합 = 입력 게이트 반려 사유(단일 정본, face-analysis.ts). fal 제출 후
+// no-face(recovery)도 no_face 라 함께 '거부'. 나머지 failed(fal_error/timeout/submit_error/…)=기타실패.
+const REJECTION_REASONS: readonly string[] = INPUT_REJECT_REASONS;
 
 export type AdminGenStatus = "requested" | "rejected" | "failed" | "unpicked" | "picked";
 export const GEN_STATUS_FILTERS = [
@@ -53,10 +58,13 @@ type GenRow = {
   updated_at: string | null;
 };
 
+const isRejection = (failReason: string | null): boolean =>
+  !!failReason && REJECTION_REASONS.includes(failReason);
+
 const toAdminStatus = (status: string, failReason: string | null): AdminGenStatus => {
   if (status === "picked") return "picked";
   if (status === "done") return "unpicked";
-  if (status === "failed") return failReason === "no_face" ? "rejected" : "failed";
+  if (status === "failed") return isRejection(failReason) ? "rejected" : "failed";
   return "requested"; // queued (그리고 알 수 없는 status 안전 기본)
 };
 
@@ -64,7 +72,11 @@ const toCreditNote = (
   status: string,
   failReason: string | null
 ): AdminGeneration["creditNote"] => {
-  if (status === "failed") return failReason === "no_credits" ? "none" : "refunded";
+  if (status === "failed") {
+    // 입력 거부(제출·차감 전 반려)·크레딧 부족 = 애초에 소비 없음 → 미차감. 그 외 실패 = 차감 후 환불.
+    if (failReason === "no_credits" || isRejection(failReason)) return "none";
+    return "refunded";
+  }
   return "consumed"; // queued/done/picked = 제출 시 차감(ops 제외 — 추정)
 };
 
@@ -103,11 +115,13 @@ export async function listGenerations(opts: {
         q = q.eq("status", "picked");
         break;
       case "rejected":
-        q = q.eq("status", "failed").eq("fail_reason", "no_face");
+        q = q.eq("status", "failed").in("fail_reason", REJECTION_REASONS as string[]);
         break;
       case "failed":
-        // 실패지만 거부(no_face)는 제외 — null(미기록)도 '기타실패'로 포함.
-        q = q.eq("status", "failed").or("fail_reason.is.null,fail_reason.neq.no_face");
+        // 실패지만 거부(입력 부적합)는 제외 — null(미기록)도 '기타실패'로 포함.
+        q = q
+          .eq("status", "failed")
+          .or(`fail_reason.is.null,fail_reason.not.in.(${REJECTION_REASONS.join(",")})`);
         break;
       // "all" — 상태 무필터
     }
