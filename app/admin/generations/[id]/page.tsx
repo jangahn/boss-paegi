@@ -55,7 +55,15 @@ export default async function AdminGenerationDetailPage({
             ← 생성 현황
           </Link>
           {gen.pickedDollId && (
-            <span className="text-xs text-zinc-400">채택 캐릭터 {shortId(gen.pickedDollId)}</span>
+            <Link
+              href={`/doll/${gen.pickedDollId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-sky-600 underline-offset-2 hover:underline"
+              title="공개 캐릭터 공유 페이지 (새 탭)"
+            >
+              공유 페이지 {shortId(gen.pickedDollId)} ↗
+            </Link>
           )}
         </div>
         <h1 className="mt-2 text-2xl font-bold">캐릭터 생성 {shortId(gen.id)}</h1>

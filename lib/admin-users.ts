@@ -222,14 +222,31 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
     log.warn("admin.user_dolls_fail", errInfo(error));
     return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
   }
+  const dollList = (data ?? []) as DollRow[];
+
+  // 소스 생성 배치 조회(N+1 금지) — 이 페이지 doll 들을 채택한 ai_generations 한 번에.
+  const srcMap = new Map<string, string>();
+  const dollIds = dollList.map((d) => d.id);
+  if (dollIds.length > 0) {
+    const { data: gens, error: gErr } = await admin
+      .from("ai_generations")
+      .select("id, picked_doll_id")
+      .in("picked_doll_id", dollIds);
+    if (gErr) log.warn("admin.user_dolls_src_fail", errInfo(gErr));
+    for (const g of (gens ?? []) as { id: string; picked_doll_id: string | null }[]) {
+      if (g.picked_doll_id) srcMap.set(g.picked_doll_id, g.id);
+    }
+  }
+
   // private 버킷 — 공개·숨김은 서명(어드민 얼굴 확인), 영구삭제(purged)는 객체 없음→경로 그대로(칩 placeholder 가 덮음).
   const rows: DollRow[] = [];
-  for (const d of (data ?? []) as DollRow[]) {
+  for (const d of dollList) {
     rows.push({
       ...d,
       image_url: d.artifacts_purged_at
         ? d.image_url
         : (await signedDollUrl(d.image_url, 600, { thumb: true })) ?? d.image_url,
+      sourceGenerationId: srcMap.get(d.id) ?? null,
     });
   }
   return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };

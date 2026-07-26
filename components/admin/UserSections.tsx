@@ -74,48 +74,56 @@ export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
       {rows.map((d) => {
         const purged = !!d.artifacts_purged_at;
         const hidden = !!d.deleted_at && !purged;
-        const moderated = !!d.deleted_at; // 숨김/영구삭제 → 신고 어드민으로
-        const href = moderated ? `/admin/moderation?dollId=${d.id}` : `/doll/${d.id}`;
+        // 카드 클릭 → 어드민 캐릭터 상세(생성 파라미터·프롬프트). 공개 공유 링크는 상세 페이지에 있음.
+        const src = d.sourceGenerationId ?? null;
+        const href = src ? `/admin/generations/${src}` : null;
+        const cardCls =
+          "relative block rounded-xl border border-foreground/10 p-2 text-center text-[11px] transition";
+        const inner = (
+          <>
+            {purged ? (
+              <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-red-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                영구삭제
+              </span>
+            ) : hidden ? (
+              <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-yellow-500/90 px-1.5 py-0.5 text-[9px] font-bold text-black">
+                숨김
+              </span>
+            ) : null}
+            {purged ? (
+              <div className="mx-auto mb-1 flex h-20 w-20 items-center justify-center rounded-lg bg-foreground/10 text-2xl opacity-60">
+                🗑️
+              </div>
+            ) : (
+              <FadeImg
+                src={d.image_url}
+                placeholder="shimmer"
+                fit="cover"
+                className={`mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 ${
+                  hidden ? "opacity-70" : ""
+                }`}
+              />
+            )}
+            <div className="font-medium">{roleFrom(asRole(d.role), cfg).label}</div>
+            <div className="text-zinc-400">{fmtKst(d.created_at)}</div>
+          </>
+        );
         return (
           <li key={d.id}>
-            <Link
-              href={href}
-              {...(moderated ? {} : { target: "_blank", rel: "noreferrer" })}
-              className="relative block rounded-xl border border-foreground/10 p-2 text-center text-[11px] transition hover:bg-foreground/5"
-              title={
-                purged
-                  ? "영구삭제됨 — 신고 어드민에서 보기"
-                  : hidden
-                    ? "숨김 — 신고 어드민에서 보기"
-                    : "doll 페이지 열기"
-              }
-            >
-              {purged ? (
-                <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-red-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                  영구삭제
-                </span>
-              ) : hidden ? (
-                <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-yellow-500/90 px-1.5 py-0.5 text-[9px] font-bold text-black">
-                  숨김
-                </span>
-              ) : null}
-              {purged ? (
-                <div className="mx-auto mb-1 flex h-20 w-20 items-center justify-center rounded-lg bg-foreground/10 text-2xl opacity-60">
-                  🗑️
-                </div>
-              ) : (
-                <FadeImg
-                  src={d.image_url}
-                  placeholder="shimmer"
-                  fit="cover"
-                  className={`mx-auto mb-1 h-20 w-20 rounded-lg bg-foreground/10 ${
-                    hidden ? "opacity-70" : ""
-                  }`}
-                />
-              )}
-              <div className="font-medium">{roleFrom(asRole(d.role), cfg).label}</div>
-              <div className="text-zinc-400">{fmtKst(d.created_at)}</div>
-            </Link>
+            {href ? (
+              <Link
+                href={href}
+                className={`${cardCls} hover:bg-foreground/5`}
+                title="어드민 캐릭터 상세 (생성 파라미터·프롬프트)"
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div className={`${cardCls} cursor-default`} title="생성 기록 없음(기능 배포 이전)">
+                {inner}
+                <div className="mt-0.5 text-[9px] text-zinc-500">생성 기록 없음</div>
+              </div>
+            )}
           </li>
         );
       })}

@@ -192,6 +192,8 @@ export type DollRow = {
   deleted_at: string | null;
   /** 영구삭제(artifact purge) 시각. null=미purge. set이면 객체 제거됨(복구 불가). */
   artifacts_purged_at: string | null;
+  /** 이 캐릭터를 채택한 소스 생성 id(ai_generations.picked_doll_id 역조회). 없으면 null(생성 기록 없음). */
+  sourceGenerationId?: string | null;
 };
 
 export type Paged<T> = { rows: T[]; total: number; page: number; pageSize: number };
