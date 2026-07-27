@@ -23,7 +23,6 @@ import {
   FederatedPointerEvent,
   Graphics,
   Sprite,
-  Text,
   Texture,
 } from "pixi.js";
 import { Body, Constraint } from "matter-js";

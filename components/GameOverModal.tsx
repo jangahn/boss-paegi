@@ -124,9 +124,12 @@ export function GameOverModal({
   useEffect(() => {
     if (!open) return;
     uploadStartedRef.current = false;
+    // open 토글(새 게임)마다 공유/업로드 상태 리셋 — 의도적 open→state 동기화(gallery/leaderboard 동일 패턴).
+    /* eslint-disable react-hooks/set-state-in-effect */
     setUploading(false);
     setAttached(false);
     setShareMsg(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [open]);
 
   // 점수 자동 제출(중복/0점 가드·클램프·trace 는 hook 내부)

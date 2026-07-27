@@ -12,7 +12,11 @@ import { useEffect, useRef } from "react";
  */
 export function useBfcacheReset(reset: () => void) {
   const ref = useRef(reset);
-  ref.current = reset;
+  // 매 렌더 최신 reset 을 ref 에 미러(latest-ref) — 렌더 중 대신 effect 에서 갱신(react-hooks/refs).
+  // pageshow 는 훨씬 나중(bfcache 복원)에 발화하므로 commit 후 갱신으로 충분(타이밍 무해).
+  useEffect(() => {
+    ref.current = reset;
+  });
   useEffect(() => {
     const onPageShow = (e: PageTransitionEvent) => {
       if (e.persisted) ref.current();

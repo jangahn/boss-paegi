@@ -31,6 +31,8 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // period 변경 시 스켈레톤으로 리셋 후 재조회 — 의도적 로딩 상태 동기화.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRows(null);
     fetch(`/api/leaderboard?period=${period}`)
       .then((r) => r.json())

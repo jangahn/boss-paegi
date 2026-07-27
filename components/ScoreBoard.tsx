@@ -18,6 +18,8 @@ export function ScoreBoard() {
   const freshAt = lastFreshWeaponBonus?.at;
   useEffect(() => {
     if (freshAt == null) return;
+    // 새 무기 보너스 배지 1.5초 노출 — 타이머 UI 동기화(의도적).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFreshVisible(true);
     const t = setTimeout(() => setFreshVisible(false), 1500);
     return () => clearTimeout(t);

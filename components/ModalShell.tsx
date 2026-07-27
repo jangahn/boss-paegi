@@ -20,6 +20,8 @@ export function ModalShell({
   wide?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
+  // SSR/portal 마운트 게이트(hydration 불일치 방지) — 마운트 1회 setState(의도적·표준 패턴).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
   const pathname = usePathname();
   if (!mounted) return null;

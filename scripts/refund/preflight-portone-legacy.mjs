@@ -37,7 +37,6 @@ import {
   sbQuery,
   getManagementEnv,
   buildAllocationManifest,
-  asInt,
   asUuid,
   asStr,
   asTimestamp,

@@ -69,6 +69,9 @@ export function useScoreSubmission(opts: {
     const durationMs = endedAt && startedAt ? endedAt - startedAt : 0;
     if (durationMs <= 0) return;
 
+    // 모달 열림(open) 조건에서 1회만 제출하는 의도적 패턴 — scoreId/submitting 가드로 재실행 없음.
+    // 로딩 UI 를 위해 제출 직전 동기 setState 필요(캐스케이드 1회, 무해).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSubmitting(true);
     // 서버 검증과 동일 공식으로 클램프 — 한도 초과 저장 실패 방지
     const clamped = clampForSubmit(score, durationMs);
@@ -128,7 +131,7 @@ export function useScoreSubmission(opts: {
           .finally(() => setSubmitting(false))
     );
     // gameplayStats 는 제출 1회 가드(scoreId/submitting) 안에서만 쓰이므로 identity 변동 무해.
-  }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats, endReason]);
+  }, [open, scoreId, submitting, score, endedAt, startedAt, weapon, dollId, maxCombo, gameplayStats, endReason, telemetrySessionId]);
 
   return { scoreId, submitting, submitError, percentile, newBadges, collectedCount, reviewStatus };
 }

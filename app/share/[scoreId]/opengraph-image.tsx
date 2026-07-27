@@ -144,7 +144,6 @@ export default async function OgImage({
           {/* 본문: 캐릭터 + 정보 */}
           <div style={{ display: "flex", flex: 1, gap: 44, marginTop: 16, alignItems: "center" }}>
             {dollSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={dollSrc}
                 alt=""

@@ -14,6 +14,20 @@ const eslintConfig = defineConfig([
     },
     rules: { "boss-paegi/no-direct-financial-write": "error" },
   },
+  {
+    // `_`-prefix = 의도적 미사용(코드베이스 관례) — 표준 ignore 패턴으로 존중.
+    // 예: selectProvider(_key) 향후 확장점. `_` 안 붙은 진짜 미사용은 그대로 경고.
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

@@ -20,6 +20,8 @@ export function useTaunts(over: boolean, role: RoleId = "boss"): string | null {
 
   useEffect(() => {
     if (over) {
+      // 게임 종료 시 시비 멘트 즉시 제거 — 타이머 UI 동기화(의도적).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTaunt(null);
       return;
     }

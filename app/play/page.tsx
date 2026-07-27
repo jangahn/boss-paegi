@@ -85,10 +85,14 @@ function PlayInner() {
     "normal"
   );
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
-  // 게임 생성(비동기) 중 바뀐 무기/배경을 생성 완료 시점에 재적용하기 위한 미러
+  // 게임 생성(비동기) 중 바뀐 무기/배경을 생성 완료 시점에 재적용하기 위한 미러(latest-ref).
+  // 렌더 중 동기 갱신은 **의도적** — 아래 세션시작(120·127)·bg확정(110)·game-init effect 보다 먼저,
+  // 렌더 시점에 최신값이어야 한다("먼저 채워야" 불변식, :103). effect 로 미루면 순서가 깨져 규칙을 국소 해제.
   const weaponRef = useRef(weapon);
+  // eslint-disable-next-line react-hooks/refs
   weaponRef.current = weapon;
   const bgKeyRef = useRef(bgKey);
+  // eslint-disable-next-line react-hooks/refs
   bgKeyRef.current = bgKey;
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
@@ -362,6 +366,11 @@ function PlayInner() {
     telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
   };
 
+  // 게임 종료(over) 시점 방문 배경 스냅샷 — over=true 이후 bgVisitsRef 변이가 없어 렌더 중 읽기 안전(의도적).
+  // JSX 속성엔 국소 해제 주석을 못 달아 여기서 스냅샷.
+  // eslint-disable-next-line react-hooks/refs
+  const bgVisitsSnapshot = getBgVisits();
+
   return (
     <div
       // h-[100dvh]: 뷰포트에 고정된 정의 높이 → 창 리사이즈/모바일 주소창에 즉시 추종(flex-1 은 body
@@ -441,7 +450,7 @@ function PlayInner() {
         dollImageUrl={dollImageUrl}
         highlightClip={bestClip}
         getCardHighlight={getTimelineHighlight}
-        bgVisits={Array.from(bgVisitsRef.current)}
+        bgVisits={bgVisitsSnapshot}
         endReason={endReason}
         telemetrySessionId={telemetry.getSessionId()}
       />

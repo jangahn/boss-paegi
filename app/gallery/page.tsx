@@ -147,6 +147,8 @@ export default function GalleryPage() {
   }, [hasMore, loadMore]);
 
   useEffect(() => {
+    // 마운트 시 초기 목록 로드(1회) — bootstrap 내부 setState 는 의도적 데이터 로딩.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void bootstrap();
   }, [bootstrap]);
 

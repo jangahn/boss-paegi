@@ -233,7 +233,6 @@ export async function GET() {
   // 회원 전용 + 동의 완료 게이트(lazy 모델: 미동의 로그인 차단). 익명/무세션/미동의 → 401/403.
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
-  const { user } = gate;
   const supabase = await createClient();
 
   const { data } = await supabase
