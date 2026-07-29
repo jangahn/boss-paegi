@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test __tests__/generation/*.test.ts __tests__/refund/*.test.ts",
+    "test:goldens": "node scripts/refund/hash-golden-vectors.mjs --check",
+    "test:eslint-rule": "node scripts/refund/eslint-rule-selftest.mjs",
+    "audit": "npm audit --audit-level=moderate"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",
@@ -18,14 +22,14 @@
     "@supabase/supabase-js": "^2.107.0",
     "@types/matter-js": "^0.20.2",
     "matter-js": "^0.20.0",
-    "next": "16.2.7",
+    "next": "16.2.12",
     "pixi.js": "^8.19.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-easy-crop": "^5.5.7",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "sharp": "^0.34.5",
+    "sharp": "0.35.3",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
@@ -35,8 +39,14 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.7",
+    "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "minimatch": "10.2.6",
+    "postcss": "8.5.24",
+    "sharp": "$sharp"
   }
 }
