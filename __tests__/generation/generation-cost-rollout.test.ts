@@ -27,6 +27,10 @@ test("the fal freeze is before body, auth, storage, and provider work", async ()
   const handler = source.slice(source.indexOf("export async function POST"));
   const gate = handler.indexOf("if (!generationCostPathEnabled())");
   assert.ok(gate >= 0);
+  assert.ok(
+    handler.indexOf("paymentRolloutIdentityHeaders()", gate) > gate,
+    "the fal freeze must expose the validated deployment identity",
+  );
   for (const later of [
     "requireMember()",
     "req.formData()",
@@ -44,6 +48,10 @@ test("only doll POST is frozen and its gate precedes paid work", async () => {
   const post = source.slice(postStart, getStart);
   const gate = post.indexOf("if (!generationCostPathEnabled())");
   assert.ok(gate >= 0);
+  assert.ok(
+    post.indexOf("paymentRolloutIdentityHeaders()", gate) > gate,
+    "the doll freeze must expose the validated deployment identity",
+  );
   for (const later of [
     "requireMember()",
     "req.json()",

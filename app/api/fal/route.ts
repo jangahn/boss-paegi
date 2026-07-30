@@ -21,6 +21,7 @@ import {
   GENERATION_COST_ROLLOUT_HEADER,
   generationCostPathEnabled,
 } from "@/lib/generation-cost-rollout";
+import { paymentRolloutIdentityHeaders } from "@/lib/pay/checkout-rollout";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -35,7 +36,10 @@ export async function POST(req: NextRequest) {
   if (!generationCostPathEnabled()) {
     return NextResponse.json(GENERATION_COST_FROZEN_BODY, {
       status: 503,
-      headers: { [GENERATION_COST_ROLLOUT_HEADER]: "frozen" },
+      headers: {
+        [GENERATION_COST_ROLLOUT_HEADER]: "frozen",
+        ...paymentRolloutIdentityHeaders(),
+      },
     });
   }
 

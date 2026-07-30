@@ -347,6 +347,7 @@ v0.9 (2026-06-13, 생성 파이프라인 복구):
 
 v0.10 (2026-06-15, 생성 품질·데이터 감사·랭킹):
 - **생성 비동기 전환** (제출-후-폴링): `/api/fal` 가 fal 에 3건 제출만 하고 즉시 반환(~6s) → 클라가 `/api/generations` 폴링으로 완성분 수집. 생성이 60~120s+ 걸려도 maxDuration/abort 에 안 걸림(기존 동기 대기 → 후보 누락/실패 사고의 구조적 해결). 임시 얼굴은 genId 결정적 경로(`{owner}/tmp/{genId}.jpg`)로 두고 복구가 done 마킹 시 폐기(정책 #1). `/api/generations` 행별 복구 병렬화 + OG 라우트 ISR 캐시(`revalidate=3600`)
+- **비용 경로 재개방 식별자**: 결제 checkout과 생성 `/api/fal`·`/api/doll`의 frozen 응답은 검증된 Supabase project ref와 40자리 배포 commit 헤더를 함께 노출한다. 운영 migration runner는 세 표면의 식별자가 모두 일치하는 배포에서만 expand·drain을 수행하고, DB/app/drain 검증이 끝난 뒤에만 `GENERATION_COST_PATH_ENABLED=1`로 생성 비용 경로를 연다.
 - **입력 얼굴 화질 게이트** (crop 시 해상도≥300px·Laplacian 선명도 검사 → 미달 차단), **안경 조건부 반영** (Moondream VQA 로 입력 안경 검출 → 있을 때만 프롬프트 주입), 의류 색 베리에이션(팔레트), 닮음도 파라미터(true_cfg 2/guidance 4), 후보 복사 재시도+폴백, 느린 생성 자가복구(request_id 기반 reclaim)
 - **감사 컬럼** (migration 0007): 모든 테이블(profiles/dolls/scores/ai_generations)에 `updated_at`·`version` + UPDATE 트리거(`set_updated_at_and_version`)로 자동 갱신 — 데이터 확인/트러블슈팅용
 - **랭킹 KST 자정 초기화** (migration 0008): `get_leaderboard` 윈도우를 롤링(now()−1d/7d)에서 **KST 자정 고정 경계**로 — 일간=매일 0시, 주간=월요일 0시 (Asia/Seoul). 일간/주간 모두 **최대 10명**
