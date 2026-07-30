@@ -31,7 +31,13 @@ export async function POST(req: NextRequest) {
   // DB expand/contract rollout 동안 reviewer bypass까지 포함한 checkout
   // 전체를 fail-closed한다. 명시적인 post-smoke opt-in 전에는 열지 않는다.
   if (!paymentCheckoutEnabled()) {
-    return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { error: "payment_unavailable" },
+      {
+        status: 503,
+        headers: { "X-Boss-Paegi-Payment-Rollout": "frozen" },
+      },
+    );
   }
   if (!portoneConfigured()) {
     return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
