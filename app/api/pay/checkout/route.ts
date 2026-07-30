@@ -9,6 +9,7 @@ import { getGrowthLevers } from "@/lib/config/getters";
 import { activeCreditProducts, payModeFor } from "@/lib/config/domains/growth";
 import { isReviewerUser } from "@/lib/reviewer";
 import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
+import { paymentCheckoutEnabled } from "@/lib/pay/checkout-rollout";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
 import { refundRpcErrorResponsePayload } from "@/lib/refund-saga";
 import { rateLimit } from "@/lib/rate-limit";
@@ -27,6 +28,11 @@ const REUSE_WINDOW_MS = 10 * 60 * 1000;
  * 그대로 전달해야 하며, 최종 신뢰는 웹훅/폴링의 단건 조회 재검증(금액 대사)이 담당.
  */
 export async function POST(req: NextRequest) {
+  // DB expand/contract rollout 동안 reviewer bypass까지 포함한 checkout
+  // 전체를 fail-closed한다. 명시적인 post-smoke opt-in 전에는 열지 않는다.
+  if (!paymentCheckoutEnabled()) {
+    return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
+  }
   if (!portoneConfigured()) {
     return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
   }
