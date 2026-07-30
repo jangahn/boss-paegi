@@ -30,6 +30,12 @@ test("route-level freeze runs before auth, reviewer bypass, and order mutation",
   const handler = route.indexOf("export async function POST");
   const freeze = route.indexOf("if (!paymentCheckoutEnabled())", handler);
   assert.ok(handler >= 0 && freeze > handler);
+  assert.ok(
+    route.indexOf(
+      '"X-Boss-Paegi-Payment-Rollout": "frozen"',
+      freeze,
+    ) > freeze,
+  );
   for (const laterBoundary of [
     "portoneConfigured()",
     "requireMember()",
