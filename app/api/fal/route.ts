@@ -16,6 +16,11 @@ import { checkFalBalance } from "@/lib/fal-balance";
 import { SERVER_ENV } from "@/lib/env.server";
 import { isRoleId } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
+import {
+  GENERATION_COST_FROZEN_BODY,
+  GENERATION_COST_ROLLOUT_HEADER,
+  generationCostPathEnabled,
+} from "@/lib/generation-cost-rollout";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -24,6 +29,16 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  // Rollout bootstrap: this must remain the first executable boundary. Old
+  // application instances must not upload a face or start paid Moondream work
+  // before the DB-authoritative cost reservation migration is present.
+  if (!generationCostPathEnabled()) {
+    return NextResponse.json(GENERATION_COST_FROZEN_BODY, {
+      status: 503,
+      headers: { [GENERATION_COST_ROLLOUT_HEADER]: "frozen" },
+    });
+  }
+
   // 회원 전용 게이트 (비회원/무세션/멤버화 미완 → 401/403)
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
