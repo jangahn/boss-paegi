@@ -1,4 +1,5 @@
 import "server-only";
+import { resolvePortoneApiBaseUrl } from "@/lib/pay/portone-api-origin";
 
 export const SERVER_ENV = {
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -15,7 +16,8 @@ export const SERVER_ENV = {
   PORTONE_WEBHOOK_SECRET_TEST: process.env.PORTONE_WEBHOOK_SECRET_TEST ?? "",
   // 대사 cron(cron-job.org → /api/ops/reconcile) 보호 시크릿. 미설정 시 reconcile 비활성(503).
   CRON_SECRET: process.env.CRON_SECRET ?? "",
-  // 포트원 API base URL 오버라이드 — 컷오버 리허설의 stub E2E(__tests__/refund/portone-stub.ts) 전용.
-  // 프로덕션은 미설정(기본 https://api.portone.io).
-  PORTONE_API_BASE_URL: process.env.PORTONE_API_BASE_URL ?? "https://api.portone.io",
+  // 포트원 API base URL 오버라이드 — 컷오버 리허설의 loopback stub E2E 전용.
+  // production은 exact https://api.portone.io 외 값을 시작 시 거부해 Authorization
+  // secret이 오설정된 외부 origin으로 나가지 못하게 한다.
+  PORTONE_API_BASE_URL: resolvePortoneApiBaseUrl(process.env),
 };

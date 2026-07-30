@@ -77,13 +77,32 @@ function firstString(...vals: unknown[]): string | null {
 const STATIC_EXT = /\.(?:png|jpe?g|webp|gif|svg|ico|css|js|map|txt|xml|json|woff2?)$/i;
 // open-redirect 검사용 더미 base — 이 origin 으로만 풀리는 값(=내부 절대경로)만 허용.
 const SAFE_BASE = "http://internal.invalid";
+// 인증/동의 흐름 자체로 돌아가는 목적지는 trailing slash·하위 경로까지 전부 차단한다.
+// `/login/` 같은 값은 Next의 trailing-slash canonical redirect와 결합하면 불필요한
+// 재진입/루프가 되고, 앞으로 하위 라우트가 생겨도 인증 경계로 next를 돌려보내면 안 된다.
+const BLOCKED_NEXT_ROOTS = [
+  "/auth",
+  "/api",
+  "/login",
+  "/consent",
+  "/signup",
+  "/reconsent",
+] as const;
+
+function isBlockedNextPath(pathname: string): boolean {
+  return BLOCKED_NEXT_ROOTS.some(
+    (root) => pathname === root || pathname.startsWith(`${root}/`)
+  );
+}
 
 /**
  * 안전한 내부 이동 경로 — proxy redirect·callback·consent·login 공용 단일 함수.
  * **WHATWG URL 파서로 정규화**해 open-redirect 우회를 봉쇄: 외부 URL·프로토콜-상대(`//`)·
  * 백슬래시/제어문자 트릭(`/\evil.com`·`/\t//evil.com` 등 브라우저가 `//evil.com` 으로 해석)이
- * 모두 `SAFE_BASE` 가 아닌 origin 으로 풀려 `/` 로 collapse 된다. pathname+search 보존, **hash 제거**.
- * 위험·자기참조 내부 경로(`/auth/*`·`/api/*`·`/login`·`/consent`·`/signup`·`/reconsent`·정적 asset)도 `/`.
+ * 모두 `SAFE_BASE` 가 아닌 origin 으로 풀려 `/` 로 collapse 된다. 파싱 전에는 내부였더라도
+ * dot-segment 정규화 뒤 `//host`가 될 수 있으므로 **직렬화 결과를 같은 base로 다시 검증**한다.
+ * pathname+search 보존, **hash 제거**. 위험·자기참조 내부 경로(`/auth`·`/api`·`/login`·
+ * `/consent`·`/signup`·`/reconsent`의 trailing slash/하위 경로 포함)와 정적 asset도 `/`.
  */
 export function safeNext(next: string | null | undefined): string {
   if (!next || typeof next !== "string") return "/";
@@ -96,16 +115,21 @@ export function safeNext(next: string | null | undefined): string {
   }
   if (parsed.origin !== SAFE_BASE) return "/"; // 다른 origin 으로 풀리면(우회) collapse
   const path = parsed.pathname; // hash 자동 제거
-  if (
-    path.startsWith("/auth/") ||
-    path.startsWith("/api/") ||
-    path === "/login" ||
-    path === "/consent" ||
-    path === "/signup" ||
-    path === "/reconsent" ||
-    STATIC_EXT.test(path)
-  ) {
+  if (isBlockedNextPath(path) || STATIC_EXT.test(path)) {
     return "/";
   }
-  return parsed.pathname + parsed.search;
+
+  const destination = parsed.pathname + parsed.search;
+  try {
+    const reparsed = new URL(destination, SAFE_BASE);
+    if (
+      reparsed.origin !== SAFE_BASE ||
+      reparsed.pathname + reparsed.search !== destination
+    ) {
+      return "/";
+    }
+  } catch {
+    return "/";
+  }
+  return destination;
 }

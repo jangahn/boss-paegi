@@ -289,6 +289,8 @@ open unique `uq_recon_issues_open (type, order_uuid, coalesce(cancellation_id,''
 
 `CANCELLED`(전액) 자동 종결만 batch 대상 — 수량 역산이 유일한 케이스(증빙된 전액취소·미지급). batch 는 pre-state 스냅샷을 불변 저장: `order_amount_snapshot`·`order_credits_snapshot`·`pre_refunded_amount`·`pre_refunded_credits`·`pre_committed_count`·`pre_legacy_contribution`·`had_cancel_intent`·`total_succeeded_amount`·`cancellation_projection`(allowlist `{cancellation_id, amount}` 배열)·`eligibility_result`·`eligibility_hash`/version·`resolved_at`. 성공 batch + events 는 같은 트랜잭션에서 `resolution_batch_id` 로 연결(`cancellation_events_batch_coupling_check`: batch 는 live·resolved·system 에만 부착).
 
+`008902_financial_projection_bounds.sql`은 배열을 만들기 전에 각 JSONB 원소의 실제 byte 합, 구분자, 대괄호를 set-wise로 계산한다. 32 KiB 이하만 결정론적 순서로 집계하며, 초과하면 금융/event 상태를 바꾸지 않고 빈 projection의 `ineligible` batch를 남긴다. 이 batch의 v2 hash와 RPC 응답은 `projection_too_large` 사유, 정확한 event 수·예상 byte·합계·credits를 결속한다. 따라서 유효하지만 매우 잘게 분할된 외부 취소도 CHECK 예외로 사라지지 않고 기존 단건 수동 화해 큐에 그대로 남는다.
+
 **배분**: `floor(event.amount × credits / total)` · 잔여 credits 는 fractional 내림차순 → tie `requested_at asc` → `cancellation_id asc`. Σ event qty = credits, Σ amount = order.amount, Σ mapping = event qty.
 
 **G-42 eligibility(batch pre-state)**: cancel_intent 존재 조건·pre-refunded 0·pre-committed 0·pre-legacy 0·quarantine 무소비/환불/예약·unknown/REQUESTED 0·SUCCEEDED 합=amount·결제/통화/채널/mode 일치·전액 종결. batch table 은 manifest·RLS·권한·append-only·ACL·테스트·gate 에 포함.
@@ -306,11 +308,29 @@ open unique `uq_recon_issues_open (type, order_uuid, coalesce(cancellation_id,''
 
 ### 13.1 외부 RPC 인벤토리 (정확 signature — `service_role` execute grant · 0062 실측 32-sig)
 
-`create_pending_order` · `mark_paid_and_grant`(6-arg) · `create_generation_and_consume` · `mark_generation_failed_and_refund` · `create_generation_row`(ops 무소비 생성행 — 0063 이 ai_generations INSERT 를 회수하므로 RPC 경유) · `admin_refund_begin` · `admin_refund_mark_pg_requested` · `admin_refund_record_pg_result` · `admin_refund_commit` · `admin_refund_switch_to_manual` · `admin_refund_commit_manual` · `admin_refund_release` · `admin_refund_replan_pre_pg` · `admin_refund_replan_after_pg` · `cancel_intent_begin` · `cancel_intent_resolve` · `resolve_external_cancellation` · `resolve_external_cancellation_auto_full` · `admin_resolve_reconciliation_issue` · `record_payment_cancellation_observation`(외부 관측 이벤트 ingest — 웹훅/폴링/reconcile) · `mark_order_failed`(pending→failed 종단) · `mark_order_canceled_unpaid`(무결제 취소 관측 종단) · `create_or_update_member_consent`(v2 재정의 — 가입 보너스=signup_bonus 로트 원자, 불변식 1) · `admin_adjust_credits` · `admin_cancel_order`(5-arg + 4-arg wrapper — 무결제 로컬 취소 전용·paid 는 `use_refund_saga`) · `admin_soft_delete_account` · `sweep_expired` · `ops_cron_heartbeat` · `get_my_credits` · `get_admin_order_summary` · `admin_settle_stuck_order`.
+`create_pending_order` · `mark_paid_and_grant`(6-arg) · `create_generation_and_consume` · `mark_generation_failed_and_refund` · `create_generation_row`(ops 무소비 생성행 — 0063 이 ai_generations INSERT 를 회수하므로 RPC 경유) · `admin_refund_begin` · `admin_refund_mark_pg_requested` · `admin_refund_record_pg_result` · `admin_refund_commit` · `admin_refund_switch_to_manual` · `admin_refund_commit_manual` · `admin_refund_release` · `admin_refund_replan_pre_pg` · `admin_refund_replan_after_pg` · `cancel_intent_begin` · `cancel_intent_resolve` · `resolve_external_cancellation` · `resolve_external_cancellation_auto_full` · `admin_resolve_reconciliation_issue` · `record_payment_cancellation_observation`(외부 관측 이벤트 ingest — 웹훅/폴링/reconcile) · `mark_order_failed`(pending→failed 종단) · `mark_order_canceled_unpaid`(무결제 취소 관측 종단) · `create_or_update_member_consent`(v2 재정의 — 가입 보너스=signup_bonus 로트 원자) · `admin_adjust_credits`(5-arg request UUID exactly-once; 구 4-arg 외부 이름 제거) · `get_admin_credit_adjust_receipt`(3-arg admin/request/target 결합 + POST/복구 도착순서 직렬화) · `admin_cancel_order`(5-arg + 4-arg wrapper — 무결제 로컬 취소 전용·paid 는 `use_refund_saga`) · `admin_soft_delete_account` · `sweep_expired` · `ops_cron_heartbeat` · `get_admin_order_summary` · `admin_settle_stuck_order`.
+
+`get_my_credits(uuid)`는 0062 expand에 추가됐지만 배포된 앱 호출자가 없고 live lot 전부를 JSON 배열로 반환하므로 영구 contract가 아니다. 구 요청 drain 뒤 `0092_rollout_contract_cleanup.sql`이 execute 권한과 함수를 제거하며, 잔액 조회는 bounded `member_accounts` projection을 사용한다.
 
 core/helper(직접 execute 0): `bp_sha256_hex`·`bp_canonical_json`·`bp_versioned_hash`·`jsonb_has_sensitive_key`·`bp_refund_rate_bps`·`bp_refund_amount`·`bp_credit_ledger_write`·`bp_apply_attempt_commit`·`bp_apply_attempt_release`·`bp_apply_external_resolution`·`derive_refund_request_state`·**`consume_gen_credit_v2`·`refund_gen_credit_v2`(internal — 외부 표면은 `create_generation_and_consume`/`mark_generation_failed_and_refund`)** + 전 trigger 함수.
 
-정확 signature 는 `0062` S11 의 `grant execute` 줄이 정본.
+0084 이후 mutation의 정확 signature/ACL 정본은 `0084_user_mutation_lock_order.sql`의 42-entry contract manifest다. 0084 비대상 read/ops RPC는 기존 migration의 최종 grant가 정본이다.
+
+### 13.2 전역 user mutation 잠금 순서 (0084)
+
+금융·크레딧·계정 lifecycle 외부 mutation은 모두 다음 순서로만 row에 진입한다.
+
+1. 인자에 있는 불변 order/attempt/event/generation/job/request 등 object advisory를 선취한다.
+2. owner를 잠금 없는 조회로 식별한 뒤 기존 score/report/ban과 같은 `hashtext('member:' || user_id)` transaction advisory를 잡는다. 여러 회원이면 UUID 오름차순이다.
+3. 격리된 `bp_0084_*_impl`만 호출해 기존 row-lock/상태전이/오류/반환 계약을 수행한다.
+
+request receipt, legal terms/privacy, anonymous reassignment의 기존 advisory도 wrapper가 user보다 먼저 같은 key로 선취하므로 내부 구현의 재호출은 reentrant다. 내부 구현에서 public wrapper를 다시 이름 해석하는 edge는 금지하고, 허용된 private edge는 `settle→mark_paid`, 구 4-arg cancel→5-arg cancel, reviewer finalize→consent 세 개뿐이다. trigger가 rename된 impl OID를 직접 가리키는 경우도 postflight에서 중단한다.
+
+`sweep_expired`는 lot을 먼저 `FOR UPDATE SKIP LOCKED`하지 않는다. `(expires_at,id)`로 bounded exact ID set과 distinct user set을 읽고, user UUID 총순서로 모두 잠근 뒤 exact ID만 다시 `FOR UPDATE`·만료 재검증한다. 따라서 adjust의 member→lot과 generation/sweep의 lot→member, delete의 profile/order→attempt/event/lot과 commit/resolver의 반대 순서가 동시에 실행돼도 cycle이 만들어지지 않는다.
+
+`admin_settle_stuck_order`는 독자적인 live-lot 지급 코드를 제거하고 `mark_paid_and_grant`의 격리 core를 사용한다. 탈퇴 또는 cancel-intent 계정은 paid 증빙과 expired quarantine lot만 남고 `credit_delta=0`으로 감사된다. `admin_reactivate_account`는 전역 이메일 namespace→user를 잡은 뒤 profile 첫 읽기에서 `FOR UPDATE`하며, lifecycle SECURITY DEFINER 함수와 Auth profile trigger의 `search_path`는 모두 빈 값이다. 구 4-arg `admin_adjust_credits` 외부 이름은 제거되어 owner도 request-id receipt를 우회할 수 없다.
+
+검증 정본은 `supabase/tests/user_mutation_lock_order.pgtap.sql`(34 assertions)과 `scripts/qa/test-user-mutation-lock-races.sh`다. 후자는 실제 두 세션 barrier에서 P↔O, M↔L, O↔A, O↔E 양방향과 다중 lot/user sweep을 모두 advisory wait로 관측하고, `pg_stat_database.deadlocks` 증가 0 및 최종 credit envelope를 검사한다.
 
 ---
 
@@ -359,6 +379,8 @@ gate: Q10(cross-user/order) · Q11(gen v2 중복 0).
 | payment ID/amount/currency/channel/mode 불일치 | 자동 금지 | — |
 
 `paid_at` 은 explicit → `p_raw.paid_at` → 둘 다 없으면 `paid_at_required`(now 대체 금지)·`clock_timestamp()+5m` 상한. canceled 유지 금지(strict CHECK 충돌) — late PAID 는 `status='paid'` 전환 + quarantine + issue. gate: Q6(canceled-paid live credit 0).
+
+`late_paid`는 단순 운영 확인으로 종결할 수 있는 알림이 아니라 미해결 경제 부채다. cancellation ID가 없어도 `ignored`는 항상 거부하고, `resolved`는 주문의 `refunded_credits >= credits`와 `refunded_amount >= amount`가 같은 영속 주문행에서 확인된 뒤에만 허용한다. 이전 구현에서 이 조건 없이 닫힌 행은 migration이 기존 resolution 값을 `detail` 감사 필드에 보존하고 `open`으로 되돌린다.
 
 ---
 

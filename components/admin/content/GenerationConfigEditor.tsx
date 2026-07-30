@@ -10,6 +10,7 @@ import {
 } from "@/lib/config/domains/generation";
 import { PromptFields } from "@/components/admin/content/generation/PromptFields";
 import { PromptPreview } from "@/components/admin/content/generation/PromptPreview";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -60,6 +61,7 @@ export function GenerationConfigEditor({
   invalid: boolean;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [steps, setSteps] = useState(String(initial.numbers.numInferenceSteps));
   const [guidance, setGuidance] = useState(String(initial.numbers.guidanceScale));
   const [trueCfg, setTrueCfg] = useState(String(initial.numbers.trueCfg));
@@ -85,22 +87,16 @@ export function GenerationConfigEditor({
         },
         prompt,
       };
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "generation_config", value, baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "generation_config", value, baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        version?: number;
-        error?: string;
-      };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 다음 생성부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

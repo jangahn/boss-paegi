@@ -39,11 +39,14 @@ export class ShootInput {
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
-    this.active = active;
-    this.currentWeapon = weapon;
-    if (!active) {
+    const weaponChanged = this.currentWeapon?.key !== weapon?.key;
+    if (!active || weaponChanged) {
+      // 같은 category 안에서 무기만 바뀌더라도 이전 pointer sequence가
+      // 새 무기로 이어지지 않게 한다.
       this.cancel();
     }
+    this.active = active;
+    this.currentWeapon = weapon;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {

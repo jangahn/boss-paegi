@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { moveItem } from "@/lib/reorder";
 import type { SiteContent, FaqItem } from "@/lib/config/domains/site-content";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -28,6 +29,7 @@ export function SiteContentEditor({
   invalid: boolean;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [form, setForm] = useState<SiteContent>(initial);
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
@@ -51,18 +53,16 @@ export function SiteContentEditor({
     setMsg(null);
     const value: SiteContent = { ...form, keywords };
     try {
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "site_content", value, baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "site_content", value, baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as { ok?: boolean; version?: number; error?: string };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 다음 로드부터 홈·/faq·검색 메타에 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

@@ -5,6 +5,7 @@ import { OrdersTable } from "@/components/admin/OrdersTable";
 import { OrdersFilter } from "@/components/admin/OrdersFilter";
 import { Pagination } from "@/components/Pagination";
 import { firstParam } from "@/lib/admin-format";
+import { parsePageParam } from "@/lib/pagination";
 
 // 전체 주문 — 실시간 운영이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export default async function AdminOrdersPage({
   const statusRaw = firstParam(sp.status);
   const status = statusRaw && STATUSES.includes(statusRaw) ? statusRaw : null;
   const q = firstParam(sp.q)?.trim() || null;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
 
   const buildHref = (p: number) => {
     const u = new URLSearchParams();

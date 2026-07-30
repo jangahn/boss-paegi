@@ -46,18 +46,153 @@ export type GenerationPlan = {
   candidates: GenCandidatePlan[];
 };
 
+function exactObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** Strictly validate the immutable plan snapshot read on continuation. */
+export function parsePersistedGenerationPlan(
+  value: unknown,
+): GenerationPlan | null {
+  const row = exactObject(value);
+  const request = exactObject(row?.request);
+  const snapshot = exactObject(row?.snapshot);
+  if (
+    !row ||
+    Object.keys(row).sort().join(",") !==
+      "candidates,negative,request,snapshot" ||
+    !request ||
+    !snapshot ||
+    typeof row.negative !== "string" ||
+    row.negative.length < 1 ||
+    row.negative.length > 4000 ||
+    !Array.isArray(row.candidates) ||
+    row.candidates.length !== FIXED_FLUX.candidateCount ||
+    request.idWeight !== FIXED_FLUX.idWeight ||
+    request.candidateCount !== FIXED_FLUX.candidateCount ||
+    request.enableSafetyChecker !== FIXED_FLUX.enableSafetyChecker ||
+    request.maxSequenceLength !== FIXED_FLUX.maxSequenceLength ||
+    typeof request.imageSize !== "string" ||
+    !Number.isSafeInteger(request.numInferenceSteps) ||
+    typeof request.guidanceScale !== "number" ||
+    !Number.isFinite(request.guidanceScale) ||
+    typeof request.trueCfg !== "number" ||
+    !Number.isFinite(request.trueCfg)
+  ) {
+    return null;
+  }
+  const snapshotKeys = [
+    "attireTemplate",
+    "expression",
+    "glassesIdentityPrompt",
+    "glassesPrompt",
+    "headTemplate",
+    "identity",
+    "negative",
+    "subject",
+    "tail",
+  ];
+  if (
+    Object.keys(snapshot).sort().join(",") !== snapshotKeys.join(",") ||
+    snapshotKeys.some(
+      (key) =>
+        typeof snapshot[key] !== "string" ||
+        (snapshot[key] as string).length > 4000,
+    )
+  ) {
+    return null;
+  }
+  const candidates: GenCandidatePlan[] = [];
+  for (let index = 0; index < row.candidates.length; index += 1) {
+    const candidate = exactObject(row.candidates[index]);
+    if (
+      !candidate ||
+      Object.keys(candidate).sort().join(",") !==
+        "index,positivePrompt,suitColor" ||
+      candidate.index !== index ||
+      typeof candidate.suitColor !== "string" ||
+      candidate.suitColor.length < 1 ||
+      candidate.suitColor.length > 100 ||
+      typeof candidate.positivePrompt !== "string" ||
+      candidate.positivePrompt.length < 1 ||
+      candidate.positivePrompt.length > 8000
+    ) {
+      return null;
+    }
+    candidates.push({
+      index,
+      suitColor: candidate.suitColor,
+      positivePrompt: candidate.positivePrompt,
+    });
+  }
+  return {
+    request: request as GenerationPlan["request"],
+    snapshot: snapshot as GenerationPlan["snapshot"],
+    negative: row.negative,
+    candidates,
+  };
+}
+
 /**
  * 순수 계획 — config + role + 안경 + 후보수 → 후보별 최종 positive prompt·정장색 + 고정/config 수치 스냅샷.
  * 외부 호출(fal) 없음. route 가 제출 **전에** 이 계획을 provenance 로 선저장한 뒤 submit 한다(부분실패 손실 방지).
- * 색 셔플만 랜덤(후보 베리에이션) — 그 외 결정적.
+ * 색 셔플은 요청 identity로 seed된 Fisher-Yates다. 같은 durable request가
+ * commit 전 충돌·재시작·배포를 거쳐도 정확히 같은 계획을 다시 계산한다.
  */
+function seededRandom(seed: string): () => number {
+  if (seed.length < 1 || seed.length > 512) {
+    throw new Error("generation_plan_seed_invalid");
+  }
+  let state = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    state ^= seed.charCodeAt(index);
+    state = Math.imul(state, 16777619);
+  }
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function fisherYatesShuffle<T>(
+  values: readonly T[],
+  random: () => number,
+): T[] {
+  const shuffled = [...values];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const sample = random();
+    if (!Number.isFinite(sample) || sample < 0 || sample >= 1) {
+      throw new Error("generation_plan_rng_invalid");
+    }
+    const swapIndex = Math.floor(sample * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [
+      shuffled[swapIndex],
+      shuffled[index],
+    ];
+  }
+  return shuffled;
+}
+
 export function buildGenerationPlan(
   config: GenerationConfig,
-  opts: { role: RoleId; wearsGlasses: boolean; numImages: number }
+  opts: {
+    role: RoleId;
+    wearsGlasses: boolean;
+    numImages: number;
+    seed: string;
+  },
 ): GenerationPlan {
-  const { role, wearsGlasses, numImages } = opts;
+  const { role, wearsGlasses, numImages, seed } = opts;
   const rv = config.prompt.roles[role];
-  const colors = [...config.prompt.suitColors].sort(() => Math.random() - 0.5).slice(0, numImages);
+  const colors = fisherYatesShuffle(
+    config.prompt.suitColors,
+    seededRandom(seed),
+  ).slice(0, numImages);
   const candidates: GenCandidatePlan[] = colors.map((suitColor, index) => {
     const { positive } = assembleGenerationPrompts(config.prompt, role, { wearsGlasses, suitColor });
     return { index, suitColor, positivePrompt: positive };

@@ -9,6 +9,7 @@ import {
   getCreditHistory,
   getUserLots,
   getUserRefundActivity,
+  getPendingAccountReactivation,
 } from "@/lib/admin-users";
 import { getLedger } from "@/lib/admin-ledger";
 import { CreditLedgerTable } from "@/components/admin/CreditLedgerTable";
@@ -27,11 +28,13 @@ import {
 } from "@/components/admin/refund-saga-ui";
 import type { UserLotRow, RefundRequestRow, ReconIssueRow } from "@/lib/admin-types";
 import { fmtKst, shortId, firstParam, won } from "@/lib/admin-format";
+import { parsePageParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const pageOf = (v: string | string[] | undefined) => Math.max(1, Number(firstParam(v)) || 1);
+const pageOf = (v: string | string[] | undefined) =>
+  parsePageParam(firstParam(v));
 
 /** 로트 잔여 = 부여 − 소비 − 환불 − 환불 예약(refund_reserved). 0062 카운터 규약. */
 const lotRemaining = (l: UserLotRow) => l.qty - l.consumed - l.refunded - l.refund_reserved;
@@ -182,7 +185,17 @@ export default async function AdminUserDetailPage({
     );
   }
 
-  const [orders, adjustments, creditHistory, generations, dolls, lots, refundActivity, roleCfg] =
+  const [
+    orders,
+    adjustments,
+    creditHistory,
+    generations,
+    dolls,
+    lots,
+    refundActivity,
+    roleCfg,
+    pendingReactivation,
+  ] =
     await Promise.all([
       getUserOrders(id, pages.ordersPage),
       getLedger({ targetUserId: id, page: pages.adjPage }),
@@ -192,6 +205,7 @@ export default async function AdminUserDetailPage({
       getUserLots(id), // 로트 현황 — 페이징 없음(상한 100).
       getUserRefundActivity(id), // 진행 중 request + open issue.
       getRoleConfig(), // 어드민 유저표 역할 호칭 = DB 발행값(roleFrom)
+      getPendingAccountReactivation(gate.user.id, id),
     ]);
 
   // overshoot(존재 행보다 큰 섹션 page) → 1페이지로(빈 화면·페이저 소실 방지). 한 번에 하나씩 수렴.
@@ -243,10 +257,29 @@ export default async function AdminUserDetailPage({
         </section>
 
         {/* 탈퇴 계정 재활성 — 탈퇴 상태에서만 노출(0037) */}
-        {member.deletedAt && (
+        {member.deletedAt && member.withdrawalGeneration !== null && (
           <section>
             <ReactivateAccountForm
-              target={{ userId: member.userId, originalEmail: member.email }}
+              target={{
+                userId: member.userId,
+                originalEmail: member.email,
+                deletedAt: member.deletedAt,
+                withdrawalGeneration: member.withdrawalGeneration,
+              }}
+              initialPending={
+                pendingReactivation.found
+                  ? {
+                      operationRequestId:
+                        pendingReactivation.operationRequestId,
+                      expectedDeletedAt:
+                        pendingReactivation.expectedDeletedAt,
+                      expectedWithdrawalGeneration:
+                        pendingReactivation.expectedWithdrawalGeneration,
+                      cancelRequested:
+                        pendingReactivation.cancelRequested,
+                    }
+                  : null
+              }
             />
           </section>
         )}

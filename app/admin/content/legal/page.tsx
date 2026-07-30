@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getLegalAdmin, kstToday } from "@/lib/legal";
 import { DOC_TYPES, DOC_LABEL } from "@/lib/legal/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function LegalIndexPage() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const today = kstToday();
   const docs = await Promise.all(
     DOC_TYPES.map(async (dt) => {

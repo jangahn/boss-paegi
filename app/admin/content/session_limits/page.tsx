@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getSessionLimitsWithMeta } from "@/lib/config/getters";
 import { MAX_PLAY_SECONDS } from "@/lib/config/domains/session";
 import { MAX_SCORE_HARD } from "@/lib/score-limits";
@@ -7,6 +9,9 @@ import { SessionLimitsEditor } from "@/components/admin/content/SessionLimitsEdi
 export const dynamic = "force-dynamic";
 
 export default async function SessionLimitsPage() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { value, version, source, invalid } = await getSessionLimitsWithMeta();
   return (
     <main className="flex flex-1 flex-col px-5 py-8">

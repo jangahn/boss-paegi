@@ -1,6 +1,13 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  requireSupabaseOptionalData,
+  requireSupabasePage,
+  requireSupabaseRows,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import { validateAdminRows } from "@/lib/admin-read-contract";
 
 /**
  * 어드민 무결성(어뷰징) 큐·상세 조회 — server-only(requireAdmin 뒤에서만 호출).
@@ -46,6 +53,23 @@ type ScoreJoinRow = {
   } | null;
 };
 
+function singleEmbed<T>(
+  operation: string,
+  value: T | T[] | null,
+  schema: Parameters<typeof validateAdminRows>[2],
+  required: boolean,
+): T | null {
+  const rows = value === null ? [] : Array.isArray(value) ? value : [value];
+  const parsed = validateAdminRows<T>(operation, rows, schema);
+  if (parsed.length > 1 || (required && parsed.length !== 1)) {
+    throw new SupabaseOperationError(
+      operation,
+      new Error("missing_or_ambiguous_embed"),
+    );
+  }
+  return parsed[0] ?? null;
+}
+
 export async function getIntegrityQueue(
   state: IntegrityState,
   page: number,
@@ -66,26 +90,83 @@ export async function getIntegrityQueue(
     );
   if (state !== "all") q = q.eq("score_flags.status", state);
   if (ownerId) q = q.eq("owner_id", ownerId); // 특정 유저 필터(?ownerId=)
-  const { data, count } = await q
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .range(from, to);
+  const pageResult = await requireSupabasePage(
+    "integrity.queue",
+    () =>
+      q
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+      .range(from, to),
+  );
+  const data = validateAdminRows<
+    Omit<ScoreJoinRow, "profiles" | "score_flags"> & {
+      profiles:
+        | { display_name: string | null }
+        | { display_name: string | null }[]
+        | null;
+      score_flags:
+        | {
+            abuse_score: number;
+            status: string;
+            signals: Array<{ id?: string }> | null;
+            created_at: string;
+          }
+        | Array<{
+            abuse_score: number;
+            status: string;
+            signals: Array<{ id?: string }> | null;
+            created_at: string;
+          }>
+        | null;
+    }
+  >("integrity.queue", pageResult.rows, {
+    id: "uuid",
+    score: "nonnegativeInteger",
+    owner_id: "uuid",
+    review_status: "string",
+    created_at: "timestamp",
+    profiles: "embed",
+    score_flags: "embed",
+  });
+  const count = pageResult.count;
 
-  const rows: IntegrityRow[] = ((data ?? []) as unknown as ScoreJoinRow[]).map((r) => ({
-    scoreId: r.id,
-    ownerId: r.owner_id ?? "",
-    ownerName: r.profiles?.display_name ?? "익명",
-    score: r.score ?? 0,
-    reviewStatus: r.review_status ?? "",
-    abuseScore: r.score_flags?.abuse_score ?? 0,
-    status: r.score_flags?.status ?? "",
-    signalIds: Array.isArray(r.score_flags?.signals)
-      ? r.score_flags.signals.map((s) => s?.id ?? "").filter(Boolean)
-      : [],
-    scoreCreatedAt: r.created_at,
-    flaggedAt: r.score_flags?.created_at ?? r.created_at,
-  }));
-  return { rows, total: count ?? 0, page, pageSize: INTEGRITY_PAGE_SIZE };
+  const rows: IntegrityRow[] = data.map((r) => {
+    const profile = singleEmbed(
+      "integrity.queue.profile",
+      r.profiles,
+      { display_name: "nullableString" },
+      true,
+    );
+    const flag = singleEmbed(
+      "integrity.queue.flag",
+      r.score_flags,
+      {
+        abuse_score: "nonnegativeInteger",
+        status: "string",
+        signals: "array",
+        created_at: "timestamp",
+      },
+      true,
+    )!;
+    const signals = validateAdminRows<{ id: string }>(
+      "integrity.queue.flag.signals",
+      flag.signals,
+      { id: "string" },
+    );
+    return {
+      scoreId: r.id,
+      ownerId: r.owner_id,
+      ownerName: profile?.display_name ?? "익명",
+      score: r.score,
+      reviewStatus: r.review_status,
+      abuseScore: flag.abuse_score,
+      status: flag.status,
+      signalIds: signals.map((signal) => signal.id),
+      scoreCreatedAt: r.created_at,
+      flaggedAt: flag.created_at,
+    };
+  });
+  return { rows, total: count, page, pageSize: INTEGRITY_PAGE_SIZE };
 }
 
 export type IntegrityDetail = {
@@ -99,6 +180,8 @@ export type IntegrityDetail = {
   durationMs: number;
   maxCombo: number | null;
   reviewStatus: string;
+  reviewVersion: number;
+  abuseVersion: number;
   createdAt: string;
   flag: {
     abuseScore: number;
@@ -129,98 +212,253 @@ export type IntegrityDetail = {
 
 export async function getIntegrityDetail(scoreId: string): Promise<IntegrityDetail | null> {
   const admin = createAdminClient();
-  const { data: s } = await admin
-    .from("scores")
-    .select(
-      "id, owner_id, score, weapon, duration_ms, max_combo, review_status, created_at, telemetry_session_id, profiles(display_name)"
-    )
-    .eq("id", scoreId)
-    .maybeSingle();
-  if (!s) return null;
-  const ownerId = (s as { owner_id: string }).owner_id;
+  const scoreRow = await requireSupabaseOptionalData("integrity.detail.score", () =>
+    admin
+      .from("scores")
+      .select(
+        "id, owner_id, score, weapon, duration_ms, max_combo, review_status, integrity_version, created_at, telemetry_session_id, profiles(display_name)"
+      )
+      .eq("id", scoreId)
+      .maybeSingle(),
+  );
+  type DetailScoreRow = {
+    id: string;
+    owner_id: string;
+    score: number;
+    weapon: string;
+    duration_ms: number;
+    max_combo: number | null;
+    review_status: string;
+    integrity_version: number;
+    created_at: string;
+    telemetry_session_id: string | null;
+    profiles:
+      | { display_name: string | null }
+      | { display_name: string | null }[]
+      | null;
+  };
+  if (!scoreRow) return null;
+  const s = validateAdminRows<DetailScoreRow>(
+    "integrity.detail.score",
+    [scoreRow],
+    {
+      id: "uuid",
+      owner_id: "uuid",
+      score: "nonnegativeInteger",
+      weapon: "string",
+      duration_ms: "nonnegativeInteger",
+      max_combo: "nullableNonnegativeInteger",
+      review_status: "string",
+      integrity_version: "nonnegativeInteger",
+      created_at: "timestamp",
+      telemetry_session_id: "nullableUuid",
+      profiles: "embed",
+    },
+  )[0];
+  const scoreProfile = singleEmbed(
+    "integrity.detail.score.profile",
+    s.profiles,
+    { display_name: "nullableString" },
+    true,
+  );
+  const ownerId = s.owner_id;
 
-  const [{ data: flag }, { data: member }] = await Promise.all([
-    admin.from("score_flags").select("*").eq("score_id", scoreId).maybeSingle(),
-    admin.from("member_accounts").select("email, abuse_status").eq("user_id", ownerId).maybeSingle(),
+  const [rawFlag, rawMember] = await Promise.all([
+    requireSupabaseOptionalData("integrity.detail.flag", () =>
+      admin.from("score_flags").select("*").eq("score_id", scoreId).maybeSingle(),
+    ),
+    requireSupabaseOptionalData("integrity.detail.member", () =>
+      admin
+        .from("member_accounts")
+        .select("email, abuse_status, integrity_version")
+        .eq("user_id", ownerId)
+        .maybeSingle(),
+    ),
   ]);
+  const flag = rawFlag
+    ? validateAdminRows<Record<string, unknown>>(
+        "integrity.detail.flag",
+        [rawFlag],
+        {
+          abuse_score: "nonnegativeInteger",
+          status: "string",
+          rules_version: "string",
+          signals: "array",
+          evidence: "jsonObject",
+          reason: "nullableString",
+          reviewed_at: "nullableTimestamp",
+        },
+      )[0]
+    : null;
+  const member = rawMember
+    ? validateAdminRows<{
+        email: string | null;
+        abuse_status: string;
+        integrity_version: number;
+      }>(
+        "integrity.detail.member",
+        [rawMember],
+        {
+          email: "nullableString",
+          abuse_status: "string",
+          integrity_version: "nonnegativeInteger",
+        },
+      )[0]
+    : null;
 
   let telemetry: IntegrityDetail["telemetry"] = null;
   const tsId = (s as { telemetry_session_id: string | null }).telemetry_session_id;
   if (tsId) {
-    const { data: ts } = await admin
-      .from("telemetry_sessions")
-      .select(
-        "score, duration_ms, apm, tap_share, max_touch, distinct_weapons, suspicious, interval_cv, device_class, refresh_hz, timeline"
-      )
-      .eq("id", tsId)
-      .maybeSingle();
+    const rawTs = await requireSupabaseOptionalData(
+      "integrity.detail.telemetry",
+      () =>
+        admin
+          .from("telemetry_sessions")
+          .select(
+            "score, duration_ms, apm, tap_share, max_touch, distinct_weapons, suspicious, interval_cv, device_class, refresh_hz, timeline"
+          )
+          .eq("id", tsId)
+          .maybeSingle(),
+    );
+    const ts = rawTs
+      ? validateAdminRows<{
+          score: number | string | null;
+          duration_ms: number | null;
+          apm: number | null;
+          tap_share: number | string | null;
+          max_touch: number | null;
+          distinct_weapons: number | null;
+          suspicious: boolean;
+          interval_cv: number | string | null;
+          device_class: string;
+          refresh_hz: number | string | null;
+          timeline: Array<Record<string, unknown>> | null;
+        }>("integrity.detail.telemetry", [rawTs], {
+          score: "nullableNonnegativeNumeric",
+          duration_ms: "nullableNonnegativeInteger",
+          apm: "nullableNonnegativeInteger",
+          tap_share: "nullableNonnegativeNumeric",
+          max_touch: "nullableNonnegativeInteger",
+          distinct_weapons: "nullableNonnegativeInteger",
+          suspicious: "boolean",
+          interval_cv: "nullableNonnegativeNumeric",
+          device_class: "string",
+          refresh_hz: "nullableNonnegativeNumeric",
+          timeline: "nullableArray",
+        })[0]
+      : null;
     if (ts) {
-      const tl = Array.isArray((ts as { timeline?: unknown }).timeline)
-        ? ((ts as { timeline: Array<Record<string, unknown>> }).timeline)
-        : [];
+      if (ts.tap_share !== null && Number(ts.tap_share) > 1) {
+        throw new SupabaseOperationError(
+          "integrity.detail.telemetry",
+          new Error("invalid_tap_share"),
+        );
+      }
+      const tl = ts.timeline ?? [];
       const bucketApm = tl
-        .filter((e) => e?.type === "hit_bucket" && typeof e.apm === "number")
-        .map((e) => e.apm as number);
+        .filter((e) => e?.type === "hit_bucket")
+        .map((event) => {
+          if (
+            !Number.isSafeInteger(event.apm) ||
+            (event.apm as number) < 0
+          ) {
+            throw new SupabaseOperationError(
+              "integrity.detail.telemetry.timeline",
+              new Error("invalid_bucket_apm"),
+            );
+          }
+          return event.apm as number;
+        });
       telemetry = {
-        score: numOrNull(ts.score),
-        durationMs: numOrNull(ts.duration_ms),
-        apm: numOrNull(ts.apm),
-        tapShare: numOrNull(ts.tap_share),
-        maxTouch: numOrNull(ts.max_touch),
-        distinctWeapons: numOrNull(ts.distinct_weapons),
-        suspicious: !!ts.suspicious,
-        intervalCv: numOrNull(ts.interval_cv),
-        deviceClass: (ts.device_class as string) ?? null,
-        refreshHz: numOrNull(ts.refresh_hz),
+        score: ts.score === null ? null : Number(ts.score),
+        durationMs: ts.duration_ms,
+        apm: ts.apm,
+        tapShare: ts.tap_share === null ? null : Number(ts.tap_share),
+        maxTouch: ts.max_touch,
+        distinctWeapons: ts.distinct_weapons,
+        suspicious: ts.suspicious,
+        intervalCv:
+          ts.interval_cv === null ? null : Number(ts.interval_cv),
+        deviceClass: ts.device_class,
+        refreshHz:
+          ts.refresh_hz === null ? null : Number(ts.refresh_hz),
         bucketApm,
       };
     }
   }
 
-  const { data: others } = await admin
-    .from("scores")
-    .select("id, score, review_status, created_at")
-    .eq("owner_id", ownerId)
-    .neq("id", scoreId)
-    .order("created_at", { ascending: false })
-    .limit(10);
+  const others = await requireSupabaseRows(
+    "integrity.detail.other_scores",
+    () =>
+      admin
+        .from("scores")
+        .select("id, score, review_status, created_at")
+        .eq("owner_id", ownerId)
+        .neq("id", scoreId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(10),
+  );
+
+  const otherRows = validateAdminRows<{
+    id: string;
+    score: number;
+    review_status: string;
+    created_at: string;
+  }>("integrity.detail.other_scores", others, {
+    id: "uuid",
+    score: "nonnegativeInteger",
+    review_status: "string",
+    created_at: "timestamp",
+  });
+  const flagSignals = flag
+    ? validateAdminRows<{
+        id: string;
+        value: number | string | null;
+        threshold: number | string | null;
+        source: string;
+      }>("integrity.detail.flag.signals", flag.signals, {
+        id: "string",
+        value: "nullableNumeric",
+        threshold: "nullableNumeric",
+        source: "string",
+      }).map((signal) => ({
+        id: signal.id,
+        value: signal.value === null ? null : Number(signal.value),
+        threshold:
+          signal.threshold === null ? null : Number(signal.threshold),
+        source: signal.source,
+      }))
+    : [];
 
   return {
     scoreId,
     ownerId,
-    ownerName: (s as { profiles?: { display_name?: string } }).profiles?.display_name ?? "익명",
-    email: (member as { email?: string } | null)?.email ?? null,
-    abuseStatus: (member as { abuse_status?: string } | null)?.abuse_status ?? "clean",
-    score: (s as { score: number }).score,
-    weapon: (s as { weapon: string }).weapon,
-    durationMs: (s as { duration_ms: number }).duration_ms,
-    maxCombo: numOrNull((s as { max_combo: number | null }).max_combo),
-    reviewStatus: (s as { review_status: string }).review_status,
-    createdAt: (s as { created_at: string }).created_at,
+    ownerName: scoreProfile?.display_name ?? "익명",
+    email: member?.email ?? null,
+    abuseStatus: member?.abuse_status ?? "clean",
+    score: s.score,
+    weapon: s.weapon,
+    durationMs: s.duration_ms,
+    maxCombo: s.max_combo,
+    reviewStatus: s.review_status,
+    reviewVersion: s.integrity_version,
+    abuseVersion: member?.integrity_version ?? 0,
+    createdAt: s.created_at,
     flag: flag
       ? {
-          abuseScore: (flag as { abuse_score: number }).abuse_score,
-          status: (flag as { status: string }).status,
-          rulesVersion: (flag as { rules_version: string }).rules_version,
-          signals:
-            ((flag as { signals?: unknown }).signals as {
-              id: string;
-              value: number | null;
-              threshold: number | null;
-              source: string;
-            }[]) ?? [],
-          evidence: ((flag as { evidence?: Record<string, unknown> }).evidence) ?? {},
-          reason: (flag as { reason: string | null }).reason ?? null,
-          reviewedAt: (flag as { reviewed_at: string | null }).reviewed_at ?? null,
+          abuseScore: flag.abuse_score as number,
+          status: flag.status as string,
+          rulesVersion: flag.rules_version as string,
+          signals: flagSignals,
+          evidence: flag.evidence as Record<string, unknown>,
+          reason: flag.reason as string | null,
+          reviewedAt: flag.reviewed_at as string | null,
         }
       : null,
     telemetry,
-    otherScores: ((others ?? []) as Array<{ id: string; score: number; review_status: string; created_at: string }>).map(
+    otherScores: otherRows.map(
       (o) => ({ id: o.id, score: o.score, reviewStatus: o.review_status, createdAt: o.created_at })
     ),
   };
-}
-
-function numOrNull(v: unknown): number | null {
-  return typeof v === "number" ? v : v == null ? null : Number(v);
 }

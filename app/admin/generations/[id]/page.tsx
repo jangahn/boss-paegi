@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: "거부",
   failed: "기타 실패",
   unpicked: "선택 전",
+  expired: "미선택 만료",
   picked: "선택완료",
 };
 
@@ -95,9 +96,26 @@ export default async function AdminGenerationDetailPage({
           <Row label="롤">{gen.role}</Row>
           <Row label="생성 시각">{fmtKst(gen.createdAt)}</Row>
           <Row label="후보 수">{gen.candidateCount}</Row>
+          <Row label="크레딧">
+            {gen.adminStatus === "expired"
+              ? "−1 차감 · 생성 성공 후 미선택 만료(환불 없음)"
+              : gen.creditNote === "consumed"
+                ? "−1 차감"
+                : gen.creditNote === "refunded"
+                  ? "차감 후 환불"
+                  : "미차감"}
+          </Row>
           {gen.pickedIndex != null && <Row label="선택 후보">#{gen.pickedIndex}</Row>}
           {gen.failReason && (
-            <Row label={gen.adminStatus === "rejected" ? "거부 사유" : "실패 사유"}>
+            <Row
+              label={
+                gen.adminStatus === "rejected"
+                  ? "거부 사유"
+                  : gen.adminStatus === "expired"
+                    ? "만료 사유"
+                    : "실패 사유"
+              }
+            >
               {FAIL_KO[gen.failReason] ?? gen.failReason}
             </Row>
           )}
@@ -105,7 +123,16 @@ export default async function AdminGenerationDetailPage({
 
         {gen.adminStatus === "rejected" && (
           <p className="mt-4 rounded-xl border border-dashed border-orange-500/40 bg-orange-500/5 p-4 text-sm text-orange-600">
-            입력 사진이 부적합해 <b>제출·차감 전 반려</b>됐어요(크레딧 미차감). 아래 얼굴 분석에서 원인을 볼 수 있어요.
+            입력 사진이 부적합해 <b>유료 이미지 생성 제출 전 반려</b>됐어요. 일반 회원은
+            선차감 영수증을 원자 환급하고, 운영 계정은 미차감합니다. 위 크레딧 표시는 실제
+            소비 lot·환급 시각 기준이며 아래 얼굴 분석에서 원인을 볼 수 있어요.
+          </p>
+        )}
+
+        {gen.adminStatus === "expired" && (
+          <p className="mt-4 rounded-xl border border-dashed border-zinc-500/40 bg-zinc-500/5 p-4 text-sm text-zinc-500">
+            생성은 정상 완료됐지만 후보를 고르지 않아 만료됐어요. 생성권은 이미 사용돼 환불되지 않으며,
+            후보 파일은 정리 대상이라 이 화면에서도 서명 썸네일을 만들지 않아요.
           </p>
         )}
 
@@ -195,7 +222,11 @@ export default async function AdminGenerationDetailPage({
                             <FadeImg src={thumb} className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-center text-[10px] text-zinc-400">
-                              {gen.adminStatus === "picked" ? "선택 후 삭제됨" : "이미지 없음"}
+                              {gen.adminStatus === "picked"
+                                ? "선택 후 삭제됨"
+                                : gen.adminStatus === "expired"
+                                  ? "미선택 만료로 정리됨"
+                                  : "이미지 없음"}
                             </div>
                           )}
                         </div>

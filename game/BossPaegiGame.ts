@@ -1,6 +1,6 @@
 import { Application, Texture, Ticker } from "pixi.js";
-import { PlayScene, HitInfo } from "@/game/scenes/PlayScene";
-import { Weapon } from "@/lib/weapons";
+import { PlayScene, type HitInfo } from "@/game/scenes/PlayScene";
+import type { Weapon } from "@/lib/weapons";
 
 export type GameEvents = {
   onHit?: (info: HitInfo) => number | void;
@@ -16,6 +16,16 @@ export type CreateGameOptions = GameEvents & {
 
 export type GameHandle = {
   destroy: () => void;
+  /** pointercancel과 동일하게 현재 held gesture만 폐기한다. */
+  cancelActiveInput: () => void;
+  /** blur/hidden 동안 입력·물리·충돌·점수를 함께 동결한다. */
+  pause: () => void;
+  /** focus/visible 복귀. 종료된 판은 resume으로 다시 열리지 않는다. */
+  resume: () => void;
+  /** 결과 스냅샷 전에 모든 점수 생산자와 비행체를 닫는다. */
+  end: () => void;
+  /** 명시적 재시작에서만 종료 fence를 다시 연다. */
+  start: () => void;
   setWeapon: (w: Weapon) => void;
   /** 배경 텍스처만 교체 — 점수/낙서 등 게임 상태 유지 */
   setBackground: (t: Texture) => void;
@@ -32,6 +42,66 @@ export type GameHandle = {
   /** 렉 진단용 perf 통계 — DPR·추정 주사율·평균/p95 프레임타임(ms). 종료 시 텔레메트리로. */
   getPerfStats: () => { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number };
 };
+
+type GameLifecycleScene = Pick<
+  PlayScene,
+  "pause" | "resume"
+>;
+type GamePointerCancellationScene = Pick<PlayScene, "cancelActivePointers">;
+
+/** Pixi가 전달하지 않는 native pointercancel을 scene 취소 경계로 연결한다. */
+export function bindGamePointerCancellation(
+  scene: GamePointerCancellationScene,
+  canvasTarget: EventTarget,
+): () => void {
+  const onPointerCancel = () => scene.cancelActivePointers();
+  canvasTarget.addEventListener("pointercancel", onPointerCancel);
+  return () => {
+    canvasTarget.removeEventListener("pointercancel", onPointerCancel);
+  };
+}
+
+/**
+ * blur와 document.hidden은 독립 원인이다. visible 이벤트 하나만으로 아직
+ * blur 상태인 게임을 재개하지 않으며, cleanup 뒤에는 어떤 이벤트도 scene을
+ * 건드리지 않는다.
+ */
+export function bindGameVisibilityLifecycle(
+  scene: GameLifecycleScene,
+  windowTarget: EventTarget,
+  documentTarget: EventTarget,
+  visibilityState: () => DocumentVisibilityState,
+): () => void {
+  let blurred = false;
+  let hidden = visibilityState() === "hidden";
+  const sync = () => {
+    if (blurred || hidden) scene.pause();
+    else scene.resume();
+  };
+  const onBlur = () => {
+    blurred = true;
+    sync();
+  };
+  const onFocus = () => {
+    blurred = false;
+    sync();
+  };
+  const onVisibilityChange = () => {
+    hidden = visibilityState() === "hidden";
+    sync();
+  };
+
+  windowTarget.addEventListener("blur", onBlur);
+  windowTarget.addEventListener("focus", onFocus);
+  documentTarget.addEventListener("visibilitychange", onVisibilityChange);
+  sync();
+
+  return () => {
+    windowTarget.removeEventListener("blur", onBlur);
+    windowTarget.removeEventListener("focus", onFocus);
+    documentTarget.removeEventListener("visibilitychange", onVisibilityChange);
+  };
+}
 
 /**
  * PixiJS Application 생성 + PlayScene 마운트.
@@ -99,10 +169,16 @@ export async function createGame(
     return { w: Math.floor(rect.width), h: Math.floor(rect.height) };
   };
   const initial = measure();
-  let lastW = initial.w;
-  let lastH = initial.h;
-  app.renderer.resize(initial.w, initial.h);
-  scene.layout(initial.w, initial.h);
+  let lastW = 0;
+  let lastH = 0;
+  // display:none/전환 중인 flex container는 잠깐 0×0일 수 있다.
+  // 0 scale을 Matter body에 적용하면 이후 양수 resize에서 복구할 수 없다.
+  if (initial.w > 0 && initial.h > 0) {
+    lastW = initial.w;
+    lastH = initial.h;
+    app.renderer.resize(initial.w, initial.h);
+    scene.layout(initial.w, initial.h);
+  }
 
   // 프레임타임 표본(렉 진단용) — 초기 N프레임(에셋 디코드 잰크) 스킵 후 deltaMS 수집(캡).
   const frameSamples: number[] = [];
@@ -138,19 +214,33 @@ export async function createGame(
   // pixi 8.19 는 native pointercancel 을 display object 로 전달하지 않음 —
   // 브라우저가 제스처를 가로채 cancel 하면 진행 중이던 드래그 상태(fling 등)가
   // 영영 안 풀리므로 DOM 레벨에서 직접 받아 리셋.
-  const onPointerCancel = () => scene.cancelActivePointers();
-  app.canvas.addEventListener("pointercancel", onPointerCancel);
+  const unbindPointerCancellation = bindGamePointerCancellation(
+    scene,
+    app.canvas,
+  );
+  const unbindVisibility = bindGameVisibilityLifecycle(
+    scene,
+    window,
+    document,
+    () => document.visibilityState,
+  );
 
   return {
     destroy: () => {
+      unbindVisibility();
       ro.disconnect();
       window.removeEventListener("resize", applyResize);
       window.visualViewport?.removeEventListener("resize", applyResize);
-      app.canvas.removeEventListener("pointercancel", onPointerCancel);
+      unbindPointerCancellation();
       app.ticker.remove(onTick);
       scene.destroy();
       app.destroy(true, { children: true });
     },
+    cancelActiveInput: () => scene.cancelActivePointers(),
+    pause: () => scene.pause(),
+    resume: () => scene.resume(),
+    end: () => scene.end(),
+    start: () => scene.start(),
     setWeapon: (w: Weapon) => scene.setWeapon(w),
     setBackground: (t: Texture) => scene.setBackground(t),
     clearDrawing: () => scene.clearDrawing(),

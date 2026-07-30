@@ -24,21 +24,33 @@ function isDismissed(id: string): boolean {
  */
 export function EventPopup() {
   const { popup } = useActiveEvents();
-  const [open, setOpen] = useState(false);
-  const [dontShow, setDontShow] = useState(false);
+  const [visiblePopupId, setVisiblePopupId] = useState<string | null>(null);
+  const [dontShowChoice, setDontShowChoice] = useState<{
+    popupId: string;
+    checked: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!popup) return;
     let alive = true;
     void (async () => {
       await Promise.resolve(); // render 밖 비동기 경계
-      if (alive && !isDismissed(popup.id)) setOpen(true);
+      if (alive) {
+        setVisiblePopupId(isDismissed(popup.id) ? null : popup.id);
+      }
     })();
     return () => {
       alive = false;
     };
   }, [popup]);
 
+  // popup identity가 바뀌면 effect가 돌기 전 render부터 닫힌 상태다. 이전
+  // 이벤트의 체크값도 동일 id에만 귀속되어 새 이벤트 dismissal로 새지 않는다.
+  const open = !!popup && visiblePopupId === popup.id;
+  const dontShow =
+    !!popup &&
+    dontShowChoice?.popupId === popup.id &&
+    dontShowChoice.checked;
   if (!popup || !open) return null;
 
   const close = () => {
@@ -49,11 +61,11 @@ export function EventPopup() {
         /* noop */
       }
     }
-    setOpen(false);
+    setVisiblePopupId(null);
   };
 
   return (
-    <ModalShell onClose={close}>
+    <ModalShell ariaLabel={popup.title} onClose={close}>
       <div className="flex flex-col gap-3">
         <span className="w-fit rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] font-semibold text-zinc-500">
           {EVENT_TYPE_LABEL[popup.type]}
@@ -71,7 +83,16 @@ export function EventPopup() {
 
         <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
           <label className="inline-flex cursor-pointer items-center gap-1.5">
-            <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={dontShow}
+              onChange={(e) =>
+                setDontShowChoice({
+                  popupId: popup.id,
+                  checked: e.target.checked,
+                })
+              }
+            />
             {popup.popupDismissDays}일 동안 안보기
           </label>
           <button type="button" onClick={close} className="underline-offset-4 hover:text-foreground hover:underline">

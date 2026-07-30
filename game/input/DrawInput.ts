@@ -33,11 +33,12 @@ export class DrawInput {
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
-    this.active = active;
-    this.currentWeapon = weapon;
-    if (!active) {
+    const weaponChanged = this.currentWeapon?.key !== weapon?.key;
+    if (!active || weaponChanged) {
       this.endIfActive();
     }
+    this.active = active;
+    this.currentWeapon = weapon;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {

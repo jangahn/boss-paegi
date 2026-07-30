@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import { HighlightPlayer } from "@/components/HighlightPlayer";
 import { FadeImg } from "@/components/FadeImg";
 import { PUBLIC_ENV } from "@/lib/env";
-import { SERVICE_NAME } from "@/lib/policy";
 import {
   bossReaction,
   formatDuration,
@@ -27,9 +26,10 @@ import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
 
-// signed doll/clip URL(TTL 600/900) 박히는 페이지 — revalidate 는 짧은 TTL(600) 안쪽이어야 만료 URL 안 박힘.
-//   60→480s(TTL 600 안, 120s 마진): 크롤러 차단(robots) 후 ISR write 대폭 감소. takedown 등 변경은 명시 revalidatePath(즉시).
-export const revalidate = 480;
+// signed doll/clip URL(TTL 600/900)을 HTML에 직접 넣는다. ISR은 revalidate
+// 이후 첫 방문자에게 오래된 결과를 먼저 줄 수 있으므로 TTL보다 짧은 주기도
+// 만료를 보장하지 못한다. 요청 시점마다 새 URL을 발급한다.
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -39,7 +39,7 @@ export async function generateMetadata({
   const { scoreId } = await params;
   const score = await fetchScoreDetail(scoreId);
   if (!score) {
-    return { title: SERVICE_NAME };
+    return { title: "게임 기록을 찾을 수 없음" };
   }
   const name = score.profiles?.display_name ?? "익명";
   const role = asRole(score.dolls?.role);
@@ -147,7 +147,7 @@ export default async function SharePage({
               className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
               fit="contain"
               placeholder="shimmer"
-              fallbackSrc="/sprites/boss-default.png"
+              errorText="캐릭터 이미지를 불러오지 못했어요."
             />
             <table className="border-collapse text-center text-[10px]">
               <tbody>
@@ -193,7 +193,7 @@ export default async function SharePage({
             <Row label="판정 등급">
               <span className="font-bold">{grade.label}</span>
               <span className="ml-1.5 text-xs text-zinc-500">
-                {grade.comment}
+                — {grade.comment}
               </span>
             </Row>
           </dl>

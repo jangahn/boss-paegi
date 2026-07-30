@@ -1,7 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { log, errInfo } from "@/lib/log";
 import type { LedgerRow, LedgerPage, LedgerActionType } from "@/lib/admin-types";
+import { requireSupabasePage } from "@/lib/supabase-operation";
+import { validateAdminRows } from "@/lib/admin-read-contract";
 
 /**
  * 처리 내역(admin_actions_ledger) — server-only, service_role.
@@ -23,7 +24,13 @@ type RawLedgerRow = Omit<LedgerRow, "admin_name" | "target_name"> & {
 };
 
 const name = (e: Embed): string | null => {
-  const v = Array.isArray(e) ? e[0] : e;
+  const values = e === null ? [] : Array.isArray(e) ? e : [e];
+  const parsed = validateAdminRows<{ display_name: string | null }>(
+    "admin.ledger.profile",
+    values,
+    { display_name: "nullableString" },
+  );
+  const v = parsed[0] ?? null;
   return v?.display_name ?? null;
 };
 
@@ -44,12 +51,31 @@ export async function getLedger(opts: {
   if (opts.actionType) qb = qb.eq("action_type", opts.actionType);
   if (opts.targetUserId) qb = qb.eq("target_user_id", opts.targetUserId);
 
-  const { data, count, error } = await qb.range(from, to);
-  if (error) {
-    log.warn("admin.ledger_fail", errInfo(error));
-    return { rows: [], total: 0, page, pageSize: LEDGER_PAGE_SIZE };
-  }
-  const rows: LedgerRow[] = ((data ?? []) as unknown as RawLedgerRow[]).map((r) => ({
+  const result = await requireSupabasePage(
+    "admin.ledger",
+    () => qb.range(from, to),
+  );
+  const raw = validateAdminRows<RawLedgerRow>(
+    "admin.ledger",
+    result.rows,
+    {
+      id: "uuid",
+      created_at: "timestamp",
+      action_type: "string",
+      admin_user_id: "uuid",
+      target_user_id: "uuid",
+      order_uuid: "nullableUuid",
+      credit_delta: "safeInteger",
+      order_amount: "nullableNonnegativeInteger",
+      before_credits: "nonnegativeInteger",
+      after_credits: "nonnegativeInteger",
+      reason: "string",
+      metadata: "nullableJsonObject",
+      admin: "embed",
+      target: "embed",
+    },
+  );
+  const rows: LedgerRow[] = raw.map((r) => ({
     id: r.id,
     created_at: r.created_at,
     action_type: r.action_type,
@@ -65,5 +91,10 @@ export async function getLedger(opts: {
     reason: r.reason,
     metadata: r.metadata,
   }));
-  return { rows, total: count ?? 0, page, pageSize: LEDGER_PAGE_SIZE };
+  return {
+    rows,
+    total: result.count,
+    page,
+    pageSize: LEDGER_PAGE_SIZE,
+  };
 }

@@ -275,8 +275,8 @@ select version, applied_at, app_commit from public.schema_migration_journal orde
 
 - **① 목적**: cron 2종과 경보 채널이 **실제로 동작**함을 증거로 남긴다("설정한다" 로 통과 불가).
 - **② 실행**:
-  - `credit-expire`(신규·일 1회): 유효 `x-cron-secret` POST → 200 + snake_case 응답(`{ok,expired_lots,iterations,done}` — sweep_expired(p_limit) 반복 drain), 무효 secret → 401 실측.
-  - `reconcile`(5분 주기): refund-sweep 확장 경로 200 실측(`{ok,attemptsChecked,transitions,issuesOpened}`).
+  - `credit-expire`(신규·일 1회): 유효 `x-cron-secret` POST → 빈 큐까지 증명한 `done:true`만 200 + snake_case 응답(`{ok,expired_lots,iterations,done,retry_pending}` — sweep_expired(p_limit) 반복 drain), 공통 20초 soft deadline에서 멈춘 `done:false`는 `429 + Retry-After: 60` + failure heartbeat, RPC/손상 응답은 503, 무효 secret → 401 실측.
+  - `reconcile`(5분 주기): 주문·refund-sweep 모두 비었음이 증명된 경로만 200 실측(`{ok,attemptsChecked,transitions,issuesOpened,retryPending,boundedBacklogs,systemErrors}`); 미해결/`pending`·`blocked`·`outstanding`/배치 상한은 `429 + Retry-After: 60`, 권위 의존성·항목 예외는 503 + failure heartbeat. 두 route를 포함한 현재 8개 ops route는 20초 soft deadline/25초 platform ceiling이고 scheduler request timeout은 90초다. 테스트 inventory는 `app/api/ops/**/route.ts`에서 동적으로 산출되어 새 route도 같은 gate에 자동 편입하며, 207은 사용하지 않는다.
   - `ops_cron_heartbeat` RPC 가 두 job 의 `last_started_at`/`last_succeeded_at`/`last_failed_at` 기록.
   - 실패 alert test(의도적 실패 주입 → 경보 발화)·Sentry 이벤트 확인.
 - **③ 합격 기준**: G-47 violations 0 — `ops_cron_heartbeats` 에 `reconcile`(성공 ≤15분)·`credit-expire`(성공 ≤26h) 행 존재·`last_succeeded_at` 최신. 중복 호출 멱등.

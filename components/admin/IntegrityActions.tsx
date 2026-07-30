@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
+import { parseAdminIntegrityMutationResult } from "@/lib/admin-mutation";
+import {
+  clientMutationResponseNeedsReconciliation,
+  readBoundedClientJsonResponse,
+  runClientMutation,
+  type ClientMutationEvidence,
+} from "@/lib/client-mutation";
 
 /**
  * 무결성 상세 조치 — 정상확인(clear)·무효(void)·유저정지(ban)·정지해제(unban).
@@ -53,54 +60,145 @@ export function IntegrityActions({
   scoreId,
   ownerId,
   reviewStatus,
+  reviewVersion,
   abuseStatus,
+  abuseVersion,
 }: {
   scoreId: string;
   ownerId: string;
   reviewStatus: string;
+  reviewVersion: number;
   abuseStatus: string;
+  abuseVersion: number;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<ActionKey | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const lifecycleRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    lifecycleRef.current = controller;
+    return () => {
+      controller.abort(new Error("integrity_actions_unmounted"));
+      if (lifecycleRef.current === controller) lifecycleRef.current = null;
+    };
+  }, []);
 
   const submit = async () => {
-    if (busy || !mode || reason.trim().length < 5) return;
+    if (busyRef.current || !mode || reason.trim().length < 5) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
-    const meta = ACTION_META[mode];
+    const submittedMode = mode;
+    const meta = ACTION_META[submittedMode];
+    const payload =
+      meta.target === "score"
+        ? {
+            scoreId,
+            reason: reason.trim(),
+            expectedState: reviewStatus,
+            expectedVersion: reviewVersion,
+          }
+        : {
+            memberId: ownerId,
+            reason: reason.trim(),
+            expectedState: abuseStatus,
+            expectedVersion: abuseVersion,
+          };
+    // This exact string is replayed after response loss. Changing any field
+    // would create a different deterministic server receipt.
+    const requestBody = JSON.stringify(payload);
+    const expectedNextState: Record<ActionKey, string> = {
+      clear: "cleared",
+      void: "voided",
+      ban: "banned",
+      unban: "clean",
+    };
+    const lifecycleSignal = lifecycleRef.current?.signal;
     try {
-      const res = await fetch(meta.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          meta.target === "score"
-            ? { scoreId, reason: reason.trim() }
-            : { memberId: ownerId, reason: reason.trim() }
-        ),
+      const deliver = async (
+        signal: AbortSignal,
+      ): Promise<
+        ClientMutationEvidence<
+          NonNullable<ReturnType<typeof parseAdminIntegrityMutationResult>>
+        >
+      > => {
+        const res = await fetch(meta.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+          signal,
+        });
+        const responseBody =
+          await readBoundedClientJsonResponse(res, signal);
+        const body: unknown = responseBody.ok
+          ? responseBody.value
+          : null;
+        const result = res.ok
+          ? parseAdminIntegrityMutationResult(body)
+          : null;
+        if (result?.nextStatus === expectedNextState[submittedMode]) {
+          return { kind: "confirmed", value: result };
+        }
+        const apiError =
+          body && typeof body === "object" && !Array.isArray(body)
+            ? (body as { error?: unknown }).error
+            : undefined;
+        if (
+          clientMutationResponseNeedsReconciliation(res.status, res.ok)
+        ) {
+          return {
+            kind: "unconfirmed",
+            reason: "integrity_response_unconfirmed",
+            error: apiError,
+          };
+        }
+        return {
+          kind: "rejected",
+          error:
+            typeof apiError === "string"
+              ? apiError
+              : `integrity_http_${res.status}`,
+        };
+      };
+      const outcome = await runClientMutation({
+        attempt: deliver,
+        reconcile: deliver,
+        signal: lifecycleSignal,
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      if (res.ok) {
+      if (outcome.kind === "aborted") return;
+      if (outcome.kind === "confirmed") {
         setMode(null);
         setReason("");
         router.refresh();
         return;
       }
+      const apiError =
+        outcome.kind === "rejected" ? outcome.error : undefined;
       setError(
-        body.error === "reason_invalid"
+        apiError === "reason_invalid"
           ? "사유는 5~500자여야 해요."
-          : body.error === "score_not_found"
+          : apiError === "score_not_found"
             ? "점수를 찾을 수 없어요(새로고침 후 확인)."
-            : body.error === "not_admin"
+            : apiError === "state_conflict"
+              ? "다른 작업이 먼저 반영됐어요. 새로고침 후 현재 상태를 확인하세요."
+            : apiError === "not_admin"
               ? "권한이 없어요."
-              : "처리 실패 — 잠시 후 다시 시도하세요."
+              : outcome.kind === "unconfirmed"
+                ? "처리 결과를 확인하지 못했어요. 성공으로 간주하지 않았습니다. 새로고침해 현재 상태를 확인하세요."
+                : "처리 실패 — 잠시 후 다시 시도하세요."
       );
     } catch {
-      setError("네트워크 오류 — 다시 시도하세요.");
+      if (!lifecycleSignal?.aborted) {
+        setError("처리 결과를 확인하지 못했어요. 새로고침해 현재 상태를 확인하세요.");
+      }
     } finally {
-      setBusy(false);
+      busyRef.current = false;
+      if (!lifecycleSignal?.aborted) setBusy(false);
     }
   };
 
@@ -141,7 +239,7 @@ export function IntegrityActions({
       </div>
 
       {mode && meta && (
-        <ModalShell onClose={() => !busy && setMode(null)}>
+        <ModalShell ariaLabel={meta.title} onClose={() => !busy && setMode(null)}>
           <h3 className="text-base font-bold">{meta.title}</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">{meta.desc}</p>
           <textarea

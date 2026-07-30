@@ -7,7 +7,12 @@ import {
   GRAB_FLING_POWER_BONUS,
 } from "@/lib/weapons";
 import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
-import { VARIETY_CAP, ULT_HITS, FRESH_WEAPON_BONUS } from "@/lib/game-tuning";
+import {
+  VARIETY_CAP,
+  ULT_HITS,
+  FRESH_WEAPON_BONUS,
+  SWITCH_ULT_BONUS_RATIO,
+} from "@/lib/game-tuning";
 import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
 
 /**
@@ -46,8 +51,15 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * → S7 = 장기 세션 AND 점수 하한(S7_LONG_SESSION_SCORE_FLOOR=126만, S3 의 15분 봉투 상수).
  * 무플래그 위조 상한 126만이 duration 전 구간에서 불변(공격자 이득 정확히 0)이고, 실측 어뷰저
  * 패턴(4be023f8: 2.19M/29.6분 — score/초 1,231 이라 S3 침묵)은 계속 포착.
+ *
+ * v6(2026-07-29, 제출 봉투 완결): S2의 무기당 20타 표본 게이트는 측정 노이즈를
+ * 전제로 했지만, 현재 값은 클라이언트 집계의 exact integer이고 fresh 300도 정확히
+ * 한 번 귀속된다. 따라서 1~19타를 여러 무기에 분산하면 물리 상한 검사가 전부
+ * 사라지는 우회만 만들었다. S2를 1타부터 적용하고, S10 궁극기 횟수 상한도 실제
+ * 게이지 식(첫 타 +0.01, 이후 매 타 최대 +0.11)에서 유도해 0~9타로 1~2회
+ * 궁극기를 위조하던 여유치를 제거한다.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v5";
+export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v6";
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
@@ -75,8 +87,9 @@ export const SCORE_PER_SEC_MAX = 1_400;
  *  인간이 이 하한을 넘으려면 700/s+ 를 15분 이상 지속해야 함(검증 최대: 버스트 1,267/s·최장 12.2분). */
 export const S7_LONG_SESSION_SCORE_FLOOR =
   SCORE_PER_SEC_MAX * (MAX_REASONABLE_DURATION_MS / 1000); // 1,260,000
-/** S2 무기별 타당성 최소 타격수(소량 표본 노이즈 방지 — fresh 는 정확 차감으로 별도 처리). */
-export const S2_MIN_HITS = 20;
+/** S2 무기별 타당성 최소 타격수. 점수/타격은 exact integer이고 fresh도 정확 차감되므로
+ *  1타부터 이론 상한을 적용해 소량 타격 분산 우회를 남기지 않는다. */
+export const S2_MIN_HITS = 1;
 /** S2 실효 이론상한 대비 허용 배수 — 상한이 정확한 supremum(실측 극값이 캡에 정확 안착)이라
  *  구현 드리프트 보험만. 클린 v2 535튜플 전수에서 FP 0 (2026-07-03). */
 export const S2_MARGIN = 1.05;
@@ -140,6 +153,20 @@ function effectiveMaxBase(weaponKey: string): number {
 /** 무기 1타 이론 최대 점수 = 실효 max base × 콤보캡 × 다양성캡. */
 function theoreticalMaxPerHit(weaponKey: string): number {
   return effectiveMaxBase(weaponKey) * MAX_COMBO_MULTIPLIER * (1 + VARIETY_CAP);
+}
+
+/**
+ * 수동 타격 N회로 가능한 궁극기 발동 횟수의 보수적 수학 상한.
+ * 첫 타는 switch가 아니어서 +1/100, 이후 각 타는 매번 switch bonus까지 받는다고
+ * 가정해 최대 +11/100이다. 실제 300ms cooldown은 무시하므로 정상 플레이보다
+ * 항상 같거나 큰 상한이지만, 과거의 무조건 +2회 여유처럼 0타 궁극기는 허용하지 않는다.
+ */
+export function maxUltimateUsesForHits(hitCount: number): number {
+  const hits = Math.max(0, Math.floor(hitCount));
+  if (hits === 0) return 0;
+  const maxProgress =
+    hits / ULT_HITS + (hits - 1) * SWITCH_ULT_BONUS_RATIO;
+  return Math.floor(maxProgress + Number.EPSILON * hits);
 }
 
 /**
@@ -214,8 +241,7 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (stats) {
     const ultScore = Math.max(0, stats.ultScore ?? 0);
     const ultUses = Math.max(0, stats.ultimateCount ?? 0);
-    // switch 가속·마진 반영해 관대하게(FP 방지): ULT_HITS/2 마다 1회 + 2회 여유.
-    const maxUltUses = Math.floor((stats.hitCount ?? 0) / (ULT_HITS / 2)) + 2;
+    const maxUltUses = maxUltimateUsesForHits(stats.hitCount ?? 0);
     if (ultScore > 0 && ultUses === 0)
       signals.push({ id: "S10_ULT_NO_USES", value: ultScore, threshold: 0, source: "submit" });
     else if (ultUses > maxUltUses)

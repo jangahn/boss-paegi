@@ -5,9 +5,16 @@
 // 캐시는 edge **isolate별** 모듈레벨 60s(전 region 동시 아님 — app server `requireMember`가 최종 백스톱).
 import { createClient } from "@supabase/supabase-js";
 import type { LegalVersions } from "@/lib/consent";
+import {
+  legalEdgeCacheIdentityAt,
+  legalEdgeCacheUsable,
+} from "./edge-cache-policy";
 
-const TTL_MS = 60_000;
-let cache: { v: LegalVersions; at: number } | null = null;
+let cache: {
+  v: LegalVersions;
+  kstDate: string;
+  expiresAt: number;
+} | null = null;
 
 // KST 기준 오늘(YYYY-MM-DD) — getCurrentLegal.kstToday 와 동일.
 function kstToday(): string {
@@ -19,7 +26,9 @@ function kstToday(): string {
  * 성공만 캐시(실패는 다음 요청에 재시도).
  */
 export async function readCurrentLegalVersionsEdge(): Promise<LegalVersions> {
-  if (cache && Date.now() - cache.at < TTL_MS) return cache.v;
+  const now = Date.now();
+  const cached = cache;
+  if (cached && legalEdgeCacheUsable(cached, now)) return cached.v;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,22 +37,46 @@ export async function readCurrentLegalVersionsEdge(): Promise<LegalVersions> {
   const admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await admin
-    .from("legal_documents")
-    .select("doc_type, version")
-    .eq("status", "published")
-    .lte("effective_date", kstToday())
-    .order("effective_date", { ascending: false })
-    .order("version", { ascending: false });
+  const today = kstToday();
+  // Read each document independently with limit(1). A combined history query
+  // can hit PostgREST's max-row cap before the other document type appears.
+  const [termsResult, privacyResult] = await Promise.all(
+    (["terms", "privacy"] as const).map((docType) =>
+      admin
+        .from("legal_documents")
+        .select("doc_type, version")
+        .eq("doc_type", docType)
+        .eq("status", "published")
+        .lte("effective_date", today)
+        .order("effective_date", { ascending: false })
+        .order("version", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ),
+  );
+  const error = termsResult.error ?? privacyResult.error;
   if (error) throw error;
-
-  let terms: number | null = null;
-  let privacy: number | null = null;
-  for (const r of (data as { doc_type: string; version: number }[] | null) ?? []) {
-    if (r.doc_type === "terms" && terms === null) terms = r.version;
-    if (r.doc_type === "privacy" && privacy === null) privacy = r.version;
-  }
+  const version = (
+    expectedType: "terms" | "privacy",
+    row: unknown,
+  ): number | null => {
+    if (row === null) return null;
+    if (
+      !row ||
+      typeof row !== "object" ||
+      Array.isArray(row) ||
+      (row as { doc_type?: unknown }).doc_type !== expectedType ||
+      !Number.isSafeInteger((row as { version?: unknown }).version) ||
+      ((row as { version: number }).version as number) < 1
+    ) {
+      throw new Error(`invalid edge legal version (${expectedType})`);
+    }
+    return (row as { version: number }).version;
+  };
+  const terms = version("terms", termsResult.data);
+  const privacy = version("privacy", privacyResult.data);
   const v: LegalVersions = { terms, privacy };
-  cache = { v, at: Date.now() };
+  cache = { v, ...legalEdgeCacheIdentityAt(Date.now()) };
   return v;
 }

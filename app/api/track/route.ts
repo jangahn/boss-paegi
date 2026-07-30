@@ -4,12 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { PUBLIC_ENV } from "@/lib/env";
 import { sanitizeTrackPayload, type MemberState } from "@/lib/analytics/core";
 import { recordTrackEvent, memberStateFromUser } from "@/lib/analytics/server";
+import {
+  readTrackJsonRequest,
+} from "@/lib/analytics/request-boundary";
+import { publicWriteNetworkActorKey } from "@/lib/public-write-quota";
 
 export const runtime = "nodejs";
 
 // 공유·유입 분석 수집 — **공개**(anon 허용·requireAdmin/Member 아님). 성공/드롭 모두 204 + no-store.
 // 무PII: 식별자/원본 URL/query/IP/UA 미저장. 클라 값 불신 — sanitize(core) + member_state 서버 판정.
-const MAX_BYTES = 4096;
 const HEADERS = { "Cache-Control": "no-store" } as const;
 function noContent() {
   return new NextResponse(null, { status: 204, headers: HEADERS });
@@ -43,22 +46,12 @@ function originAllowed(req: NextRequest): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  // Public policy does not yet enumerate first-party UTM/referrer acquisition
+  // fields. Keep collection inert unless the build explicitly opts in.
+  if (!PUBLIC_ENV.ANALYTICS_ENABLED) return noContent();
   if (!originAllowed(req)) return noContent();
-
-  let text: string;
-  try {
-    text = await req.text();
-  } catch {
-    return noContent();
-  }
-  if (text.length > MAX_BYTES) return noContent();
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return noContent();
-  }
+  const raw = await readTrackJsonRequest(req);
+  if (raw === null) return noContent();
 
   const row = sanitizeTrackPayload(raw);
   if (!row) return noContent();
@@ -75,6 +68,11 @@ export async function POST(req: NextRequest) {
     /* 세션 조회 실패 → anon 취급 */
   }
 
-  await recordTrackEvent(row, memberState); // best-effort
+  // This best-effort endpoint deliberately performs no unbounded membership
+  // DB read before quota. Network HMAC therefore applies to every track event;
+  // an anonymous/pre-consent Auth UUID can never mint fresh actor buckets.
+  const actorKey = publicWriteNetworkActorKey(req.headers);
+  if (!actorKey) return noContent();
+  await recordTrackEvent(row, memberState, actorKey); // bounded best-effort
   return noContent();
 }

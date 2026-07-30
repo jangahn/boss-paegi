@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PhotoCropper } from "@/components/PhotoCropper";
@@ -13,6 +13,23 @@ import { getMyProfile, notifyCreditsChanged } from "@/lib/profile";
 import { setSentryGenStage, setSentryLastAction } from "@/lib/sentry-context";
 import { type RoleId } from "@/lib/roles";
 import { log, errInfo } from "@/lib/log";
+import { parsePendingGenerationsResponse } from "@/lib/pending-generations-response";
+import {
+  parseDollPickHttpResponse,
+  parseGenerationSubmitHttpResponse,
+} from "@/lib/character-gen/http-contract";
+import {
+  clearClientUploadOperation,
+  stableClientOperation,
+  stableClientUploadOperation,
+} from "@/lib/client-upload-operation";
+import {
+  parseClientPollDirective,
+  waitForClientPoll,
+} from "@/lib/client-operation-poll";
+import {
+  runBoundedClientJsonFetch,
+} from "@/lib/client-mutation";
 import {
   useGenerationPolling,
   type Stage,
@@ -30,47 +47,78 @@ function GeneratePageInner() {
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<RoleId>("boss");
   const [error, setError] = useState<string | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const operationAbortRef = useRef<AbortController | null>(null);
+
+  const beginOperation = () => {
+    operationAbortRef.current?.abort();
+    const controller = new AbortController();
+    operationAbortRef.current = controller;
+    return controller;
+  };
 
   // 폴링 대상 genId — resume(URL) 우선, fresh 는 state. 리로드 시 URL 이 살아있어 이어짐.
   const activeGenId = resumeId ?? generationId;
 
   // 진입 가드: 생성권 확인(getMyProfile 가 세션 워밍업도 겸함). resume 은 이미 진행 중이라 스킵.
   // **법적 동의는 서버 proxy 가 렌더 전 게이트** → 여기 도달 = 로그인+동의완료. 생성권 0 만 차단,
-  // 그 외는 photo 동의 단계("consent" = ConsentDialog). 조회 실패도 동의 단계(서버가 최종 판단).
+  // 그 외는 photo 동의 단계("consent" = ConsentDialog). 조회 실패는 생성 가능으로 축소하지 않는다.
   useEffect(() => {
     if (resumeId) return;
     let cancelled = false;
+    const entryAbort = new AbortController();
     (async () => {
-      // 진행 중(in-flight) 생성이 있으면 자동 이어보기 — resume URL 없이 재진입해도 새 생성(중복 과금)
-      // 대신 그 생성으로 복귀. replaceState 로 URL 도 심어 이후 새로고침 안전.
       try {
-        const res = await fetch("/api/generations");
-        if (res.ok) {
-          const { pending } = (await res.json()) as {
-            pending?: { id: string; kind: string }[];
-          };
-          const active = pending?.find((g) => g.kind === "generating");
-          if (active && !cancelled) {
-            setGenerationId(active.id);
-            setStage("generating");
-            window.history.replaceState(null, "", `/generate?resume=${active.id}`);
-            return;
-          }
+        // 먼저 세션/프로필을 확인해 익명 세션 생성 경쟁과 pending 401을 피한다. pending 권위
+        // 조회까지 모두 성공해야만 새 생성 funnel을 연다.
+        const profile = await getMyProfile();
+        if (cancelled) return;
+        const delivery = await runBoundedClientJsonFetch({
+          input: "/api/generations",
+          init: { cache: "no-store" },
+          signal: entryAbort.signal,
+        });
+        if (delivery.kind === "aborted") return;
+        if (delivery.kind !== "confirmed") {
+          throw new Error("pending_generations_response_unconfirmed");
         }
-      } catch {
-        /* 조회 실패는 무시하고 정상 funnel 로 */
-      }
-      if (cancelled) return;
-      // 진행 중 없음 → 생성권 게이트(getMyProfile 가 세션 워밍업도 겸함).
-      try {
-        const p = await getMyProfile();
-        if (!cancelled) setStage(p?.isLoggedIn && p.genCredits === 0 ? "no_credits" : "consent");
-      } catch {
-        if (!cancelled) setStage("consent");
+        const { response: res, body } = delivery.value;
+        if (!res.ok) {
+          throw new Error(`pending_generations_http_${res.status}`);
+        }
+        const pending = parsePendingGenerationsResponse(body);
+        // ready도 아직 pick되지 않은 소비 완료 생성이다. generating과 동일하게 먼저
+        // 복귀시켜 새 요청/중복 차감을 막는다.
+        const active =
+          pending.find((generation) => generation.kind === "ready") ??
+          pending.find((generation) => generation.kind === "generating");
+        if (active) {
+          setGenerationId(active.id);
+          setStage("generating");
+          window.history.replaceState(
+            null,
+            "",
+            `/generate?resume=${active.id}`,
+          );
+          return;
+        }
+        setStage(
+          profile?.isLoggedIn && profile.genCredits === 0
+            ? "no_credits"
+            : "consent",
+        );
+      } catch (loadError) {
+        log.warn("gen.client_entry_guard_fail", errInfo(loadError));
+        if (!cancelled) {
+          setProfileLoadError(
+            "계정·생성권·진행 중인 생성 상태를 모두 확인하지 못했어요. 새 생성은 시작하지 않았습니다. 잠시 후 다시 확인해 주세요.",
+          );
+        }
       }
     })();
     return () => {
       cancelled = true;
+      entryAbort.abort(new Error("generation_entry_inactive"));
     };
   }, [resumeId]);
 
@@ -89,6 +137,12 @@ function GeneratePageInner() {
   useEffect(() => {
     setSentryGenStage(stage);
   }, [stage]);
+
+  useEffect(() => {
+    return () => {
+      operationAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -119,13 +173,81 @@ function GeneratePageInner() {
     setSentryLastAction("generate");
     setStage("generating");
     setError(null);
-    const form = new FormData();
-    form.append("image", target);
-    form.append("role", role);
+    const scope = "generation-submit";
+    const controller = beginOperation();
     try {
-      const res = await fetch("/api/fal", { method: "POST", body: form });
+      const operation = await stableClientUploadOperation({
+        scope,
+        binding: role,
+        blob: target,
+      });
+      let res: Response;
+      let payload: unknown;
+      const pollStartedAt = Date.now();
+      const pollStartedAtMonotonic = performance.now();
+      let pollDeadline: number | null = null;
+      let pollMonotonicDeadline: number | null = null;
+      for (;;) {
+        const form = new FormData();
+        form.append("image", target);
+        form.append("role", role);
+        form.append("requestId", operation.requestId);
+        const delivery = await runBoundedClientJsonFetch({
+          input: "/api/fal",
+          init: {
+            method: "POST",
+            body: form,
+          },
+          signal: controller.signal,
+          deadlineMs: 55_000,
+          attemptMs: 45_000,
+        });
+        if (delivery.kind !== "confirmed") {
+          throw new Error("generation_delivery_unconfirmed");
+        }
+        res = delivery.value.response;
+        payload = delivery.value.body;
+        const submitted = parseGenerationSubmitHttpResponse(payload);
+        if (submitted) break;
+        const pending =
+          res.status === 202 &&
+          payload !== null &&
+          typeof payload === "object" &&
+          !Array.isArray(payload) &&
+          (payload as Record<string, unknown>).error ===
+            "generation_preflight_processing";
+        if (!pending) break;
+        const directive = parseClientPollDirective({
+          retryAfter: res.headers.get("Retry-After"),
+          pollUntil:
+            payload !== null &&
+            typeof payload === "object" &&
+            !Array.isArray(payload)
+              ? (payload as Record<string, unknown>).pollUntil
+              : null,
+          startedAtMs: pollStartedAt,
+          startedAtMonotonicMs: pollStartedAtMonotonic,
+          priorDeadlineMs: pollDeadline,
+          priorMonotonicDeadlineMs: pollMonotonicDeadline,
+        });
+        if (!directive) throw new Error("operation_poll_deadline");
+        pollDeadline = directive.deadlineMs;
+        pollMonotonicDeadline = directive.monotonicDeadlineMs;
+        await waitForClientPoll(directive, controller.signal);
+      }
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "failed" }));
+        const err =
+          payload !== null &&
+          typeof payload === "object" &&
+          !Array.isArray(payload)
+            ? (payload as { error?: string })
+            : { error: "failed" };
+        if (
+          (res.status < 500 && res.status !== 429) ||
+          err.error === "generation_preflight_terminal"
+        ) {
+          clearClientUploadOperation(scope, operation.requestId);
+        }
         if (err.error === "no_credits") {
           // 진입 후 크레딧 소진(드문 레이스) — 충전 화면으로.
           router.push("/credits");
@@ -161,9 +283,12 @@ function GeneratePageInner() {
         throw new Error(err.error ?? "generation_failed");
       }
       // 비동기: 제출만 됨 → fal 이 생성 중. 폴링은 useGenerationPolling 이 담당.
-      const data = (await res.json()) as { generationId?: string };
+      const data = parseGenerationSubmitHttpResponse(
+        payload,
+      );
+      if (!data) throw new Error("generation_failed");
       const genId = data.generationId;
-      if (!genId) throw new Error("generation_failed");
+      clearClientUploadOperation(scope, operation.requestId);
       setGenerationId(genId);
       // 제출 성공 = 서버에서 생성권 1개 차감됨 → 헤더 잔액 즉시 갱신(새로고침 불필요).
       notifyCreditsChanged();
@@ -172,30 +297,117 @@ function GeneratePageInner() {
       // 안 일으킨다. (전환 안 돼도 activeGenId=generationId 라 이펙트가 폴링 시작.)
       window.history.replaceState(null, "", `/generate?resume=${genId}`);
     } catch (e) {
+      if (controller.signal.aborted) return;
       log.warn("gen.client_request_fail", errInfo(e));
-      setError(e instanceof Error ? e.message : "알 수 없는 오류");
+      setError(
+        e instanceof Error && e.message === "operation_poll_deadline"
+          ? "처리가 오래 걸리고 있어 자동 확인을 멈췄어요. 다시 시도하면 같은 요청을 안전하게 이어갑니다."
+          : e instanceof Error
+            ? e.message
+            : "알 수 없는 오류",
+      );
       setStage("upload");
     }
   };
 
   const handlePick = async (img: GeneratedImage) => {
     setStage("saving");
+    const controller = beginOperation();
     try {
       // 서버 권위 pick — candidateIndex(후보 경로 .../{index}.jpg 에서 파싱)를 보낸다. 서버가 소유·
       // done·candidate_urls 멤버십을 검증하고 경로를 재구성·서명하므로 클라 URL 자체는 신뢰되지 않음.
       const m = /\/candidates\/[^/]+\/(\d+)\.jpg/.exec(img.url);
       const candidateIndex = m ? Number(m[1]) : undefined;
-      const res = await fetch("/api/doll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ generationId, candidateIndex, imageUrl: img.url }),
+      const expectedGenerationId = activeGenId;
+      if (!expectedGenerationId) throw new Error("저장 실패");
+      if (
+        !Number.isInteger(candidateIndex) ||
+        (candidateIndex as number) < 0 ||
+        (candidateIndex as number) > 2
+      ) {
+        throw new Error("저장 실패");
+      }
+      const scope = `doll-pick:${expectedGenerationId}`;
+      const operation = await stableClientOperation({
+        scope,
+        binding: `${expectedGenerationId}:${candidateIndex}`,
       });
+      let res: Response;
+      let payload: unknown;
+      const pollStartedAt = Date.now();
+      const pollStartedAtMonotonic = performance.now();
+      let pollDeadline: number | null = null;
+      let pollMonotonicDeadline: number | null = null;
+      for (;;) {
+        const requestBody = JSON.stringify({
+          generationId: expectedGenerationId,
+          candidateIndex,
+          requestId: operation.requestId,
+        });
+        const delivery = await runBoundedClientJsonFetch({
+          input: "/api/doll",
+          init: {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          },
+          signal: controller.signal,
+        });
+        if (delivery.kind !== "confirmed") {
+          throw new Error("doll_pick_delivery_unconfirmed");
+        }
+        res = delivery.value.response;
+        payload = delivery.value.body;
+        if (res.status !== 202) break;
+        const directive = parseClientPollDirective({
+          retryAfter: res.headers.get("Retry-After"),
+          pollUntil:
+            payload !== null &&
+            typeof payload === "object" &&
+            !Array.isArray(payload)
+              ? (payload as Record<string, unknown>).pollUntil
+              : null,
+          startedAtMs: pollStartedAt,
+          startedAtMonotonicMs: pollStartedAtMonotonic,
+          priorDeadlineMs: pollDeadline,
+          priorMonotonicDeadlineMs: pollMonotonicDeadline,
+        });
+        if (!directive) throw new Error("operation_poll_deadline");
+        pollDeadline = directive.deadlineMs;
+        pollMonotonicDeadline = directive.monotonicDeadlineMs;
+        await waitForClientPoll(directive, controller.signal);
+      }
+      const providerRejected =
+        res.status === 502 &&
+        payload !== null &&
+        typeof payload === "object" &&
+        !Array.isArray(payload) &&
+        (payload as Record<string, unknown>).error ===
+          "provider_rejected";
+      if (
+        !res.ok &&
+        ((res.status !== 429 && res.status < 500) || providerRejected)
+      ) {
+        clearClientUploadOperation(scope, operation.requestId);
+      }
       if (!res.ok) throw new Error("저장 실패");
-      const { doll } = (await res.json()) as { doll: { id: string } };
-      router.push(`/play?doll=${doll.id}`);
+      const data = parseDollPickHttpResponse(
+        payload,
+        expectedGenerationId,
+      );
+      if (!data) throw new Error("저장 실패");
+      clearClientUploadOperation(scope, operation.requestId);
+      router.push(`/play?doll=${data.doll.id}`);
     } catch (e) {
+      if (controller.signal.aborted) return;
       log.warn("doll.client_save_fail", { genId: generationId, ...errInfo(e) });
-      setError(e instanceof Error ? e.message : "저장 실패");
+      setError(
+        e instanceof Error && e.message === "operation_poll_deadline"
+          ? "저장이 오래 걸리고 있어 자동 확인을 멈췄어요. 다시 선택하면 같은 저장 요청을 안전하게 이어갑니다."
+          : e instanceof Error
+            ? e.message
+            : "저장 실패",
+      );
       setStage("pick");
     }
   };
@@ -203,7 +415,22 @@ function GeneratePageInner() {
   return (
     <>
       <main className="flex flex-1 flex-col px-6 py-8">
-      {stage === "checking" && <LoadingStage label="생성권 확인 중…" />}
+      <h1 className="sr-only">캐릭터 만들기</h1>
+      {stage === "checking" &&
+        (profileLoadError ? (
+          <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-red-500/30 bg-red-500/5 p-10 text-center">
+            <p className="text-sm text-red-500">{profileLoadError}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-full border border-red-500/30 px-5 py-2.5 text-sm font-semibold"
+            >
+              다시 확인
+            </button>
+          </div>
+        ) : (
+          <LoadingStage label="생성권 확인 중…" />
+        ))}
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
       {stage === "upload" && (
         <UploadStage preview={preview} onFile={handleFile} error={error} />
@@ -224,7 +451,31 @@ function GeneratePageInner() {
           }}
         />
       )}
-      {stage === "generating" && <GeneratingProgress />}
+      {stage === "generating" &&
+        (error ? (
+          <div
+            role="alert"
+            className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-red-500/30 bg-red-500/5 p-10 text-center"
+          >
+            <p className="text-sm leading-relaxed text-red-500">{error}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-full border border-red-500/30 px-5 py-2.5 text-sm font-semibold"
+            >
+              생성 상태 다시 확인
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/gallery")}
+              className="text-sm text-zinc-500 underline"
+            >
+              갤러리에서 확인
+            </button>
+          </div>
+        ) : (
+          <GeneratingProgress />
+        ))}
       {stage === "pick" && (
         <PickStage results={results} onPick={handlePick} error={error} />
       )}

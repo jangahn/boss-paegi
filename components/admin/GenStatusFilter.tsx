@@ -8,6 +8,7 @@ const STATUSES = [
   { v: "all", l: "전체" },
   { v: "requested", l: "생성요청" },
   { v: "unpicked", l: "선택 전" },
+  { v: "expired", l: "미선택 만료" },
   { v: "picked", l: "선택완료" },
   { v: "rejected", l: "거부(입력 부적합)" },
   { v: "failed", l: "기타 실패" },

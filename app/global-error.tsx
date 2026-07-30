@@ -3,6 +3,8 @@
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
+const ERROR_TITLE = "오류 · 부장님 패기";
+
 /**
  * 루트 에러 바운더리 — 루트 레이아웃까지 깨지는 렌더 에러를 Sentry 로 포착.
  * (일반 라우트 에러는 각 segment 의 error.tsx / onRequestError 가 담당.)
@@ -17,10 +19,17 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     Sentry.captureException(error);
+    // global-error replaces the root layout (and therefore its generated
+    // metadata). Keep a deterministic title even when React/Next cannot
+    // retain the failed document head.
+    document.title = ERROR_TITLE;
   }, [error]);
 
   return (
     <html lang="ko">
+      <head>
+        <title>{ERROR_TITLE}</title>
+      </head>
       <body
         style={{
           minHeight: "100vh",
@@ -35,9 +44,9 @@ export default function GlobalError({
         }}
       >
         <div style={{ fontSize: 48 }}>😵</div>
-        <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
           앗, 문제가 발생했어요
-        </h2>
+        </h1>
         <p style={{ color: "#71717a", margin: 0 }}>
           잠시 후 다시 시도해 주세요.
         </p>

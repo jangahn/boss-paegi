@@ -1,12 +1,29 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
 import { won, fmtKst } from "@/lib/admin-format";
 import { PROCESS_OUTCOME_LABELS, refundErrMsg } from "@/components/admin/refund-saga-ui";
+import {
+  AdminRefundIntentError,
+  beginOrRecoverAdminRefund,
+  clearPendingAdminRefundIntent,
+  recoverPendingAdminRefund,
+} from "@/lib/admin-refund-intent";
+import {
+  parseRefundPreviewHttpAck,
+  parseRefundProcessHttpAck,
+  type RefundPreviewPlan,
+  type RefundProcessHttpAck,
+} from "@/lib/pay/refund-http-contract";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
+import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 /**
  * 수량 환불 saga 진입 버튼 + 확인 모달(v0.76 §B.8.1).
@@ -27,19 +44,11 @@ export type RefundButtonOrder = {
 const ENDPOINT = "/api/admin/refund-credits";
 
 /** preview plan(§B.8.1) — 표시용. 확정 권위는 begin locked planner. */
-type PreviewPlan = {
-  qty: number;
-  amount: number;
-  rateBps: number;
-  lotAvailable: number;
-  orderRemainingQty: number;
-  remainingCash: number;
-  paidAt: string;
-  deadline: string;
-};
-
 /** process 결과 — 재시도/큐 안내 분기용(attemptId 는 begin 반환값을 그대로 승계). */
 type ProcessResult = { outcome: string; detail?: string; attemptId: string };
+type RefundDelivery =
+  | { kind: "preview"; plan: RefundPreviewPlan }
+  | { kind: "process"; result: RefundProcessHttpAck };
 
 type Phase = "input" | "preview" | "result";
 
@@ -70,8 +79,13 @@ export function RefundButton({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [plan, setPlan] = useState<PreviewPlan | null>(null);
+  const [plan, setPlan] = useState<RefundPreviewPlan | null>(null);
   const [result, setResult] = useState<ProcessResult | null>(null);
+  const [intentState, setIntentState] = useState<
+    "idle" | "checking" | "ready" | "blocked"
+  >("idle");
+  const busyRef = useRef(false);
+  const runScopedOperation = useClientOperationScope();
 
   const trimmedReason = reason.trim();
   const reasonOk = trimmedReason.length >= 5 && trimmedReason.length <= 500;
@@ -83,110 +97,282 @@ export function RefundButton({
     return Number.isNaN(d.getTime()) ? "" : d.toISOString();
   };
 
-  const post = async <T,>(
-    payload: Record<string, unknown>
-  ): Promise<{ ok: boolean; body: T & { error?: string } }> => {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-    return { ok: res.ok, body };
+  const post = async (
+    payload: Record<string, unknown>,
+    expected:
+      | { mode: "preview"; qty: number }
+      | { mode: "process"; attemptId: string },
+  ) => {
+    const requestBody = JSON.stringify(payload);
+    return runScopedOperation((signal) =>
+      runReplayedJsonMutation<RefundDelivery>({
+        input: ENDPOINT,
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        },
+        signal,
+        classify: (response, body) => {
+          if (response.ok && expected.mode === "preview") {
+            const plan = parseRefundPreviewHttpAck(
+              body,
+              expected.qty,
+            );
+            if (plan) {
+              return {
+                kind: "confirmed",
+                value: { kind: "preview", plan },
+              };
+            }
+          }
+          if (response.ok && expected.mode === "process") {
+            const result = parseRefundProcessHttpAck(
+              body,
+              expected.attemptId,
+            );
+            if (result) {
+              return {
+                kind: "confirmed",
+                value: { kind: "process", result },
+              };
+            }
+          }
+          const error =
+            body &&
+            typeof body === "object" &&
+            !Array.isArray(body) &&
+            typeof (body as Record<string, unknown>).error === "string"
+              ? String((body as Record<string, unknown>).error)
+              : null;
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "refund_response_unconfirmed",
+              error,
+            };
+          }
+          return {
+            kind: "rejected",
+            error: error ?? `refund_http_${response.status}`,
+          };
+        },
+      }),
+    );
   };
 
   // ② preview — plan 계산·표시(무기록, 재시도 무해)
   const runPreview = async () => {
-    if (busy || !qtyOk || !reasonOk) return;
+    if (
+      busyRef.current ||
+      intentState !== "ready" ||
+      !qtyOk ||
+      !reasonOk
+    ) return;
     const cra = craIso();
     if (!cra) {
       setError("고객 요청 시각이 올바르지 않아요.");
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const { ok, body } = await post<{ plan?: PreviewPlan }>({
-        mode: "preview",
-        userId: order.userId,
-        orderUuid: order.orderUuid,
-        qty,
-        customerRequestedAt: cra,
-      });
-      if (ok && body.plan) {
-        setPlan(body.plan);
+      const outcome = await post(
+        {
+          mode: "preview",
+          userId: order.userId,
+          orderUuid: order.orderUuid,
+          qty,
+          customerRequestedAt: cra,
+        },
+        { mode: "preview", qty },
+      );
+      if (outcome.kind === "aborted") return;
+      if (
+        outcome.kind === "confirmed" &&
+        outcome.value.kind === "preview"
+      ) {
+        setPlan(outcome.value.plan);
         setPhase("preview");
       } else {
-        setError(refundErrMsg(body.error));
+        const responseError =
+          outcome.kind === "rejected" &&
+          typeof outcome.error === "string"
+            ? outcome.error
+            : "action_unconfirmed";
+        setError(refundErrMsg(responseError));
       }
     } catch {
       setError(refundErrMsg("action_failed"));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   // ③ 확정 — begin(requestId 멱등) → ④ process(auto)
   const confirm = async () => {
-    if (busy) return;
+    if (busyRef.current || intentState !== "ready") return;
     const cra = craIso();
     if (!cra) {
       setError("고객 요청 시각이 올바르지 않아요.");
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const requestId = crypto.randomUUID();
-      const begin = await post<{ attempt_id?: string }>({
-        mode: "begin",
-        requestId,
-        userId: order.userId,
-        orderUuid: order.orderUuid,
-        qty,
-        customerRequestedAt: cra,
-        reason: trimmedReason,
-      });
-      if (!begin.ok || !begin.body.attempt_id) {
-        setError(refundErrMsg(begin.body.error));
-        setBusy(false);
-        return;
-      }
-      await runProcess(begin.body.attempt_id);
-    } catch {
-      setError(refundErrMsg("action_failed"));
+      const begin = await runScopedOperation((signal) =>
+        beginOrRecoverAdminRefund(
+          {
+            orderUuid: order.orderUuid,
+            userId: order.userId,
+            qty,
+            customerRequestedAt: cra,
+            reason: trimmedReason,
+          },
+          { storage: localStorage, signal },
+        ),
+      );
+      busyRef.current = false;
+      await runProcess(begin.pending.attemptId!);
+    } catch (caught) {
+      busyRef.current = false;
+      setIntentState("blocked");
+      setError(
+        caught instanceof AdminRefundIntentError
+          ? `${refundErrMsg(caught.message)} 결과 확인 전에는 새 환불을 시작할 수 없어요.`
+          : "환불 영수증을 확인할 수 없어 새 환불을 차단했어요.",
+      );
       setBusy(false);
     }
   };
 
   // ④ process(auto) — 최초 실행·재시도 공용(pending/outstanding 는 같은 attempt 재호출)
   const runProcess = async (attemptId: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const { ok, body } = await post<{ outcome?: string; detail?: string }>({
-        mode: "process",
-        attemptId,
-        action: "auto",
-      });
-      if (!ok || !body.outcome) {
-        setError(refundErrMsg(body.error));
-        setBusy(false);
+      const outcome = await post(
+        {
+          mode: "process",
+          attemptId,
+          action: "auto",
+        },
+        { mode: "process", attemptId },
+      );
+      if (outcome.kind === "aborted") return;
+      if (
+        outcome.kind !== "confirmed" ||
+        outcome.value.kind !== "process"
+      ) {
+        const responseError =
+          outcome.kind === "rejected" &&
+          typeof outcome.error === "string"
+            ? outcome.error
+            : "action_unconfirmed";
+        setResult({
+          outcome: "outstanding",
+          detail: responseError,
+          attemptId,
+        });
+        setPhase("result");
+        setError(
+          "처리 결과가 불확실해 같은 환불 시도만 재시도할 수 있어요.",
+        );
         return;
       }
-      setResult({ outcome: body.outcome, detail: body.detail, attemptId });
+      const process = outcome.value.result;
+      setResult({
+        outcome: process.outcome,
+        detail: process.detail,
+        attemptId,
+      });
       setPhase("result");
+      if (
+        process.outcome === "processed" ||
+        process.outcome === "no_op" ||
+        process.outcome === "manual_review"
+      ) {
+        try {
+          clearPendingAdminRefundIntent(
+            order.orderUuid,
+            attemptId,
+            localStorage,
+          );
+        } catch {
+          setError(
+            "처리는 확인됐지만 로컬 영수증 정리에 실패했어요. 다음 열기에서 같은 시도를 다시 확인합니다.",
+          );
+        }
+      }
     } catch {
-      setError(refundErrMsg("action_failed"));
+      setResult({
+        outcome: "outstanding",
+        detail: "action_failed",
+        attemptId,
+      });
+      setPhase("result");
+      setError(
+        "네트워크 응답이 불확실해 같은 환불 시도만 재시도할 수 있어요.",
+      );
     } finally {
+      busyRef.current = false;
       setBusy(false);
       // 성공/부분/실패 모든 결과 후 목록·잔액·상태 배지·대시보드 경고 재조회.
       startRefresh(() => router.refresh());
     }
   };
 
+  const openRefund = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setOpen(true);
+    setIntentState("checking");
+    setBusy(true);
+    setError(null);
+    try {
+      const recovery = await runScopedOperation((signal) =>
+        recoverPendingAdminRefund(order.orderUuid, {
+          storage: localStorage,
+          signal,
+        }),
+      );
+      if (recovery.kind === "none") {
+        setIntentState("ready");
+        return;
+      }
+      const pending = recovery.pending;
+      setQty(pending.qty);
+      setCraLocal(toLocalInput(new Date(pending.customerRequestedAt)));
+      setReason(pending.reason);
+      setPlan(null);
+      setIntentState("ready");
+      busyRef.current = false;
+      await runProcess(pending.attemptId!);
+    } catch (caught) {
+      setIntentState("blocked");
+      setError(
+        caught instanceof AdminRefundIntentError
+          ? `${refundErrMsg(caught.message)} 이전 환불 결과 확인이 필요해요.`
+          : "이전 환불 영수증을 확인할 수 없어 새 환불을 차단했어요.",
+      );
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
   const close = () => {
-    if (busy) return;
+    if (busyRef.current) return;
     setOpen(false);
     // 다음 오픈을 위해 초기화(결과 무관).
     setPhase("input");
@@ -196,6 +382,7 @@ export function RefundButton({
     setPlan(null);
     setResult(null);
     setError(null);
+    setIntentState("idle");
   };
 
   const done = result?.outcome === "processed" || result?.outcome === "no_op";
@@ -206,14 +393,14 @@ export function RefundButton({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => void openRefund()}
         className="rounded-lg border border-red-400/50 px-2 py-1 text-xs font-medium text-red-500"
       >
         {label ?? "환불"}
       </button>
 
       {open && (
-        <ModalShell onClose={close}>
+        <ModalShell ariaLabel="수량 환불" onClose={close}>
           <h3 className="text-base font-bold">수량 환불</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
             주문 결제액 {won(order.amount)} · {order.credits}개.
@@ -267,7 +454,12 @@ export function RefundButton({
                 <button
                   type="button"
                   onClick={() => void runPreview()}
-                  disabled={busy || !qtyOk || !reasonOk}
+                  disabled={
+                    busy ||
+                    intentState !== "ready" ||
+                    !qtyOk ||
+                    !reasonOk
+                  }
                   className="flex items-center gap-1 rounded-lg bg-foreground px-3 py-1.5 text-sm font-semibold text-paper-2 disabled:opacity-40"
                 >
                   {busy && <Spinner className="h-3.5 w-3.5" />}미리보기
@@ -314,7 +506,7 @@ export function RefundButton({
                     setPhase("input");
                     setError(null);
                   }}
-                  disabled={busy}
+                  disabled={busy || intentState !== "ready"}
                   className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm disabled:opacity-40"
                 >
                   뒤로

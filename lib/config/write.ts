@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { configTag } from "./get";
 import type { DomainKey } from "./keys";
+import { parseConfigWriteResult } from "./write-result";
 
 export type UpdateResult =
   | { ok: true; version: number }
@@ -19,21 +20,29 @@ export async function updateSetting(
   value: unknown,
   baseVersion: number,
   adminId: string,
-  note: string | null
+  note: string | null,
+  requestId: string,
 ): Promise<UpdateResult> {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("admin_update_app_setting", {
+  const { data, error } = await admin.rpc("admin_update_app_setting_idempotent", {
     p_key: key,
     p_value: value,
     p_base_version: baseVersion,
     p_admin_id: adminId,
     p_note: note,
+    p_request_id: requestId,
   });
   if (error) return { ok: false, error: classifyError(error.message) };
+  let committed: { version: number };
+  try {
+    committed = parseConfigWriteResult(data, key);
+  } catch {
+    return { ok: false, error: "update_failed" };
+  }
 
   // Next 16: revalidateTag(tag, profile). 'max' = stale-while-revalidate(문서 권장). 발행 후 다음 읽기에 갱신.
   revalidateTag(configTag(key), "max");
-  return { ok: true, version: (data as { version: number }).version };
+  return { ok: true, version: committed.version };
 }
 
 function classifyError(message: string | undefined): ConfigWriteError {

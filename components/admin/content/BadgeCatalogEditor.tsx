@@ -6,6 +6,7 @@ import { Spinner } from "@/components/Spinner";
 import { ModalShell } from "@/components/ModalShell";
 import { moveItem } from "@/lib/reorder";
 import type { BadgeCatalog } from "@/lib/config/domains/badges";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -15,8 +16,9 @@ const ERR_KO: Record<string, string> = {
 
 type FamilyD = { key: string; name: string; emoji: string };
 type BadgeD = {
-  uid: string; // 세션 내 안정 식별자(slug 편집해도 유지 — React key·setter용)
+  uid: string;
   slug: string;
+  slugLocked: boolean;
   familyKey: string;
   threshold: string;
   label: string;
@@ -40,10 +42,16 @@ export function BadgeCatalogEditor({
   impact?: Impact;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const uidc = useRef(0);
   const [fams, setFams] = useState<FamilyD[]>(initial.families.map((f) => ({ ...f })));
   const [badges, setBadges] = useState<BadgeD[]>(
-    initial.badges.map((b, i) => ({ ...b, threshold: String(b.threshold), uid: `i${i}` }))
+    initial.badges.map((b, i) => ({
+      ...b,
+      threshold: String(b.threshold),
+      uid: `i${i}`,
+      slugLocked: true,
+    }))
   );
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
@@ -61,7 +69,16 @@ export function BadgeCatalogEditor({
     while (taken.has(slug)) slug = `${familyKey}_c${++n}`;
     setBadges((bs) => [
       ...bs,
-      { uid: `n${uidc.current++}`, slug, familyKey, threshold: "0", label: "", desc: "", active: true },
+      {
+        uid: `n${uidc.current++}`,
+        slug,
+        slugLocked: false,
+        familyKey,
+        threshold: "0",
+        label: "",
+        desc: "",
+        active: true,
+      },
     ]);
   };
   const removeBadge = (uid: string) =>
@@ -116,22 +133,16 @@ export function BadgeCatalogEditor({
           active: b.active,
         })),
       };
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "badge_catalog", value, baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "badge_catalog", value, baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        version?: number;
-        error?: string;
-      };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 신규 획득 판정부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
@@ -226,9 +237,15 @@ export function BadgeCatalogEditor({
                     <input
                       value={b.slug}
                       maxLength={40}
+                      readOnly={b.slugLocked}
+                      aria-label={
+                        b.slugLocked
+                          ? `${b.label || b.slug} 고정 키`
+                          : "새 뱃지 키"
+                      }
                       onChange={(e) => setBadge(b.uid, "slug", e.target.value)}
                       placeholder="키(slug)"
-                      className="w-32 rounded-lg border border-foreground/15 ui-field p-1.5 font-mono text-[11px] outline-none focus:border-foreground/40"
+                      className="w-32 rounded-lg border border-foreground/15 ui-field p-1.5 font-mono text-[11px] outline-none read-only:cursor-not-allowed read-only:opacity-60 focus:border-foreground/40"
                     />
                     <input
                       type="number"
@@ -280,7 +297,7 @@ export function BadgeCatalogEditor({
       </button>
 
       {pendingDelete && (
-        <ModalShell onClose={() => setPendingDelete(null)}>
+        <ModalShell ariaLabel="획득된 뱃지 삭제 확인" onClose={() => setPendingDelete(null)}>
           <h2 className="text-lg font-bold">이미 획득된 뱃지예요</h2>
           <p className="mt-2 text-sm text-zinc-500">
             <b>{pendingDelete.label || pendingDelete.slug}</b> 은(는){" "}

@@ -30,6 +30,7 @@ export function ScoreReport({
   badgeCatalog,
   submitting,
   submitError,
+  onRetrySubmit,
   pending,
 }: {
   docNo: string;
@@ -57,6 +58,7 @@ export function ScoreReport({
   badgeCatalog: BadgeCatalog;
   submitting: boolean;
   submitError: string | null;
+  onRetrySubmit?: () => void;
   /** 어뷰징 의심으로 운영자 검토 대기(pending/voided) — 안내+경고 문구. null=정상. */
   pending?: { notice: string; warning: string } | null;
 }) {
@@ -85,7 +87,7 @@ export function ScoreReport({
           className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100"
           fit="contain"
           placeholder="shimmer"
-          fallbackSrc="/sprites/boss-default.png"
+          errorText="캐릭터 이미지를 불러오지 못했어요."
         />
         <table className="border-collapse text-center text-[10px]">
           <tbody>
@@ -134,7 +136,9 @@ export function ScoreReport({
         <ReportRow label="소요 시간">{formatDuration(durationMs)}</ReportRow>
         <ReportRow label="판정 등급">
           <span className="font-bold">{grade.label}</span>
-          <span className="ml-1.5 text-xs text-zinc-500">{grade.comment}</span>
+          <span className="ml-1.5 text-xs text-zinc-500">
+            — {grade.comment}
+          </span>
         </ReportRow>
       </dl>
 
@@ -160,9 +164,18 @@ export function ScoreReport({
         </p>
       )}
       {submitError && (
-        <p className="mt-3 rounded-md bg-red-500/10 p-2 text-xs text-red-500">
-          점수 등록 실패: {submitError}
-        </p>
+        <div className="mt-3 rounded-md bg-red-500/10 p-2 text-center text-xs text-red-500">
+          <p>점수 등록 실패: {submitError}</p>
+          {onRetrySubmit && !submitting && (
+            <button
+              type="button"
+              onClick={onRetrySubmit}
+              className="mt-2 rounded-full border border-red-500/40 px-3 py-1 font-semibold hover:bg-red-500/10"
+            >
+              다시 시도
+            </button>
+          )}
+        </div>
       )}
       {pending && !submitting && (
         <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-center">

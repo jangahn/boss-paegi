@@ -44,7 +44,8 @@ export async function LegalPublicPage({
         <div className="mx-auto w-full max-w-2xl">
           {!viewed ? (
             <div className="rounded-2xl border border-dashed border-foreground/15 p-8 text-center text-sm text-zinc-500">
-              {label}은 준비 중입니다.
+              <h1 className="text-xl font-bold text-foreground">{label}</h1>
+              <p className="mt-2">{label}은 준비 중입니다.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
@@ -8,10 +8,32 @@ import { ModalShell } from "@/components/ModalShell";
 import { moveItem } from "@/lib/reorder";
 import { LegalDocView } from "@/components/legal/LegalDocView";
 import { DOC_PATH, type DocType, type LegalDocRow, type LegalSection } from "@/lib/legal/types";
+import { kstDateAt } from "@/lib/legal/kst-boundary";
+import { LegalOperationIds } from "@/lib/legal/operation-ids";
+import {
+  parseLegalPublishResult,
+  parseLegalSaveResult,
+  parseLegalUnpublishResult,
+} from "@/lib/legal/mutation-result";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
 
 function kstToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  return kstDateAt();
 }
+
+type MutationOutput = {
+  ok?: boolean;
+  code?: string;
+  version?: number;
+  effective_date?: string;
+  restored_draft?: boolean;
+  draft_id?: string;
+  draft_updated_at?: string;
+  error?: string;
+};
 
 /**
  * 법무문서 버전 편집기 — 상태머신: 편집 중(draft) ⇄ 예약(미래 시행) → 시행 중 → 지난.
@@ -53,12 +75,25 @@ export function LegalDocEditor({
   );
   const [publicNote, setPublicNote] = useState(draft?.public_note ?? "");
   const [adminNote, setAdminNote] = useState(draft?.admin_note ?? "");
+  const [draftBaseUpdatedAt, setDraftBaseUpdatedAt] = useState<string | null>(
+    draft?.updated_at ?? null
+  );
   const [effectiveDate, setEffectiveDate] = useState(today);
   const [busy, setBusy] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [confirmUnpub, setConfirmUnpub] = useState(false);
   const [preview, setPreview] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const pendingOperations = useRef(new LegalOperationIds());
+  const lifecycleRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    lifecycleRef.current = controller;
+    return () => {
+      controller.abort(new Error("legal_editor_unmounted"));
+    };
+  }, []);
 
   const setSec = (i: number, key: keyof LegalSection, v: string) =>
     setSections((ss) => ss.map((s, si) => (si === i ? { ...s, [key]: v } : s)));
@@ -81,20 +116,105 @@ export function LegalDocEditor({
   // 발행 전 문서가 이미 있거나(draft) 예약본이 있으면 새 버전 시작 불가(Model A: 발행 전 문서 1개).
   const canStartNew = !draft && !scheduled;
 
-  const post = async (body: Record<string, unknown>) => {
-    const res = await fetch("/api/admin/legal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+  const operationFor = (slot: string, body: Record<string, unknown>) => {
+    return pendingOperations.current.get(slot, body);
+  };
+
+  const clearOperation = (...slots: string[]) => {
+    pendingOperations.current.clear(...slots);
+  };
+
+  const post = async (body: Record<string, unknown>, slot: string) => {
+    const operationId = operationFor(slot, body);
+    const serializedBody = JSON.stringify({ ...body, operationId });
+    const outcome = await runReplayedJsonMutation({
+      input: "/api/admin/legal",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: serializedBody,
+      },
+      signal: lifecycleRef.current?.signal,
+      classify: (response, raw) => {
+        let out =
+          raw && typeof raw === "object" && !Array.isArray(raw)
+            ? (raw as MutationOutput)
+            : {};
+        if (response.ok) {
+          try {
+            out =
+              body.action === "save_draft"
+                ? parseLegalSaveResult(raw)
+                : body.action === "publish"
+                  ? parseLegalPublishResult(raw)
+                  : parseLegalUnpublishResult(raw);
+            return {
+              kind: "confirmed",
+              value: { status: response.status, out },
+            };
+          } catch {
+            // A malformed 2xx is uncertain; replay the same operation UUID.
+          }
+        }
+        if (
+          clientMutationResponseNeedsReconciliation(
+            response.status,
+            response.ok,
+          )
+        ) {
+          return {
+            kind: "unconfirmed",
+            reason: "legal_response_unconfirmed",
+            error: out.error,
+          };
+        }
+        return {
+          kind: "rejected",
+          error: { status: response.status, out },
+        };
+      },
     });
-    const out = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      version?: number;
-      effective_date?: string;
-      restored_draft?: boolean;
-      error?: string;
+    if (outcome.kind === "confirmed") {
+      return {
+        ok: true,
+        status: outcome.value.status,
+        out: outcome.value.out,
+        aborted: false,
+      };
+    }
+    if (outcome.kind === "aborted") {
+      return { ok: false, status: 0, out: {}, aborted: true };
+    }
+    if (
+      outcome.kind === "rejected" &&
+      outcome.error &&
+      typeof outcome.error === "object" &&
+      !Array.isArray(outcome.error)
+    ) {
+      const rejection = outcome.error as {
+        status?: unknown;
+        out?: unknown;
+      };
+      return {
+        ok: false,
+        status: Number.isSafeInteger(rejection.status)
+          ? (rejection.status as number)
+          : 0,
+        out:
+          rejection.out &&
+          typeof rejection.out === "object" &&
+          !Array.isArray(rejection.out)
+            ? (rejection.out as MutationOutput)
+            : {},
+        aborted: false,
+      };
+    }
+    return {
+      ok: false,
+      status: 0,
+      out: { error: "처리 결과를 확인하지 못했어요. 같은 작업으로 다시 확인하세요." },
+      aborted: false,
     };
-    return { ok: res.ok && !!out.ok, out };
   };
 
   const draftBody = () => ({
@@ -104,6 +224,7 @@ export function LegalDocEditor({
     sections: norm,
     publicNote: publicNote.trim() || null,
     adminNote: adminNote.trim() || null,
+    baseUpdatedAt: draftBaseUpdatedAt,
   });
 
   const startNew = (from: LegalDocRow | null) => {
@@ -111,11 +232,13 @@ export function LegalDocEditor({
     setSections(from?.sections?.length ? from.sections.map((s) => ({ ...s })) : [{ heading: "", body: "" }]);
     setPublicNote("");
     setAdminNote("");
+    setDraftBaseUpdatedAt(null);
     setEffectiveDate(today);
     setSeedLabel(from ? `버전 ${from.version} 내용에서 시작한 새 문서` : "새 문서");
     setEditing(true);
     setPreview(false);
     setMsg(null);
+    pendingOperations.current.clearAll();
   };
 
   const saveDraft = async () => {
@@ -123,15 +246,34 @@ export function LegalDocEditor({
     setBusy(true);
     setMsg(null);
     try {
-      const { ok, out } = await post(draftBody());
-      if (ok) {
+      const { ok, status, out, aborted } = await post(draftBody(), "save");
+      if (aborted) return;
+      if (
+        ok &&
+        typeof out.draft_id === "string" &&
+        typeof out.draft_updated_at === "string"
+      ) {
+        setDraftBaseUpdatedAt(out.draft_updated_at);
+        clearOperation("save");
         setMsg({ ok: true, text: "임시 저장했어요(비공개)." });
         router.refresh();
-      } else setMsg({ ok: false, text: out.error ?? "저장 실패" });
+      } else {
+        // 4xx is a definite non-commit. A network/5xx/malformed-success result
+        // may have committed, so retain the exact operation UUID for replay.
+        if (status >= 400 && status < 500) clearOperation("save");
+        setMsg({
+          ok: false,
+          text:
+            out.error ??
+            (ok ? "서버 응답을 확인할 수 없어요. 다시 시도하세요." : "저장 실패"),
+        });
+      }
     } catch {
-      setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
+      if (!lifecycleRef.current?.signal.aborted) {
+        setMsg({ ok: false, text: "처리 결과를 확인하지 못했어요. 다시 확인하세요." });
+      }
     } finally {
-      setBusy(false);
+      if (!lifecycleRef.current?.signal.aborted) setBusy(false);
     }
   };
 
@@ -141,13 +283,38 @@ export function LegalDocEditor({
     setConfirmPublish(false);
     setMsg(null);
     try {
-      const saved = await post(draftBody()); // 발행은 저장된 draft 스냅샷 → 선행 저장
-      if (!saved.ok) {
+      // 발행은 저장된 draft identity를 CAS로 소비한다. 응답 유실 시 동일
+      // operation UUID를 재사용해 save/publish receipt를 그대로 재생한다.
+      const saved = await post(draftBody(), "publish-save");
+      if (saved.aborted) return;
+      if (
+        !saved.ok ||
+        typeof saved.out.draft_id !== "string" ||
+        typeof saved.out.draft_updated_at !== "string"
+      ) {
+        if (saved.status >= 400 && saved.status < 500) {
+          clearOperation("publish-save");
+        }
         setMsg({ ok: false, text: saved.out.error ?? "저장 실패" });
         return;
       }
-      const pub = await post({ action: "publish", docType, effectiveDate });
-      if (pub.ok) {
+      const pub = await post(
+        {
+          action: "publish",
+          docType,
+          effectiveDate,
+          draftId: saved.out.draft_id,
+          draftUpdatedAt: saved.out.draft_updated_at,
+        },
+        "publish"
+      );
+      if (pub.aborted) return;
+      if (
+        pub.ok &&
+        Number.isSafeInteger(pub.out.version) &&
+        typeof pub.out.effective_date === "string"
+      ) {
+        clearOperation("publish-save", "publish", "save");
         const future = effectiveDate > today;
         setMsg({
           ok: true,
@@ -156,32 +323,64 @@ export function LegalDocEditor({
           }.`,
         });
         router.refresh();
-      } else setMsg({ ok: false, text: pub.out.error ?? "발행 실패" });
+      } else {
+        if (pub.status >= 400 && pub.status < 500) {
+          // save committed, publish definitely did not. Adopt the saved CAS
+          // identity so the editor can continue without a stale-base loop.
+          setDraftBaseUpdatedAt(saved.out.draft_updated_at);
+          clearOperation("publish-save", "publish", "save");
+        }
+        setMsg({
+          ok: false,
+          text:
+            pub.out.error ??
+            (pub.ok
+              ? "서버 응답을 확인할 수 없어요. 다시 시도하세요."
+              : "발행 실패"),
+        });
+      }
     } catch {
-      setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
+      if (!lifecycleRef.current?.signal.aborted) {
+        setMsg({ ok: false, text: "처리 결과를 확인하지 못했어요. 다시 확인하세요." });
+      }
     } finally {
-      setBusy(false);
+      if (!lifecycleRef.current?.signal.aborted) setBusy(false);
     }
   };
 
   const unpublish = async () => {
-    if (busy) return;
+    if (busy || !scheduled) return;
     setBusy(true);
     setConfirmUnpub(false);
     setMsg(null);
     try {
-      const { ok, out } = await post({ action: "unpublish", docType });
+      const { ok, status, out, aborted } = await post(
+        {
+          action: "unpublish",
+          docType,
+          reservationId: scheduled.id,
+          reservationVersion: scheduled.version,
+        },
+        "unpublish"
+      );
+      if (aborted) return;
       if (ok) {
+        clearOperation("unpublish");
         setMsg({
           ok: true,
           text: "예약 발행을 취소했어요. 발행 전 문서로 되돌렸어요 — 수정 후 다시 발행하세요.",
         });
         router.refresh();
-      } else setMsg({ ok: false, text: out.error ?? "발행취소 실패" });
+      } else {
+        if (status >= 400 && status < 500) clearOperation("unpublish");
+        setMsg({ ok: false, text: out.error ?? "발행취소 실패" });
+      }
     } catch {
-      setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
+      if (!lifecycleRef.current?.signal.aborted) {
+        setMsg({ ok: false, text: "처리 결과를 확인하지 못했어요. 다시 확인하세요." });
+      }
     } finally {
-      setBusy(false);
+      if (!lifecycleRef.current?.signal.aborted) setBusy(false);
     }
   };
 
@@ -323,7 +522,7 @@ export function LegalDocEditor({
       {!editing && msg && <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-400"}`}>{msg.text}</p>}
 
       {confirmPublish && (
-        <ModalShell onClose={() => setConfirmPublish(false)}>
+        <ModalShell ariaLabel={`${label} 발행 확인`} onClose={() => setConfirmPublish(false)}>
           <h2 className="text-lg font-bold">{label}을 발행할까요?</h2>
           <p className="mt-2 text-sm text-zinc-500">
             시행일 <b>{effectiveDate}</b>
@@ -338,7 +537,7 @@ export function LegalDocEditor({
       )}
 
       {confirmUnpub && scheduled && (
-        <ModalShell onClose={() => setConfirmUnpub(false)}>
+        <ModalShell ariaLabel="예약 발행 취소 확인" onClose={() => setConfirmUnpub(false)}>
           <h2 className="text-lg font-bold">예약 발행을 취소할까요?</h2>
           <p className="mt-2 text-sm text-zinc-500">
             버전 {scheduled.version}(<b>{scheduled.effective_date}</b> 시행 예정)의 예약을 취소합니다. 아직 시행 전이라 공개에 영향은 없으며, 내용은 <b>발행 전 문서</b>로 되돌아가 수정 후 다시 발행할 수 있어요.

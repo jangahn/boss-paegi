@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "그 사이 다른 발행이 있었어요. 새로고침 후 다시 시도하세요.",
@@ -30,6 +31,7 @@ export function RestoreButton({
   isCurrent: boolean;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -48,21 +50,19 @@ export function RestoreButton({
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const result = await submitAdminConfigMutation({
+        body: {
           action: "restore",
           key: configKey,
           auditId,
           baseVersion: currentVersion,
-        }),
+        },
+        baseVersion: currentVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (res.ok && out.ok) {
+      if (result.ok) {
         router.refresh();
       } else {
-        setErr(ERR_KO[out.error ?? ""] ?? out.error ?? "복원 실패");
+        setErr(ERR_KO[result.error] ?? result.error);
       }
     } catch {
       setErr("네트워크 오류 — 다시 시도하세요.");

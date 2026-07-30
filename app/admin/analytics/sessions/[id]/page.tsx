@@ -35,18 +35,32 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
               />
               <Field label="종료" value={s.end_reason ?? "—"} />
               <Field label="기기" value={s.device_class} />
-              <Field label="시간(초)" value={String(Math.round((s.duration_ms ?? 0) / 1000))} />
-              <Field label="점수" value={(s.score ?? 0).toLocaleString()} />
-              <Field label="타격" value={(s.hit_count ?? 0).toLocaleString()} />
-              <Field label="최대콤보" value={String(s.max_combo ?? 0)} />
-              <Field label="궁극기" value={String(s.ult_fire_count ?? 0)} />
-              <Field label="무기종수" value={String(s.distinct_weapons ?? 0)} />
-              <Field label="맵순회" value={String(s.distinct_maps ?? 0)} />
-              <Field label="APM" value={String(s.apm ?? 0)} />
-              <Field label="tap비중" value={`${Math.round((s.tap_share ?? 0) * 100)}%`} />
+              <Field
+                label="시간(초)"
+                value={
+                  s.duration_ms === null
+                    ? "—"
+                    : String(Math.round(s.duration_ms / 1000))
+                }
+              />
+              <Field label="점수" value={metric(s.score)} />
+              <Field label="타격" value={metric(s.hit_count)} />
+              <Field label="최대콤보" value={metric(s.max_combo)} />
+              <Field label="궁극기" value={metric(s.ult_fire_count)} />
+              <Field label="무기종수" value={metric(s.distinct_weapons)} />
+              <Field label="맵순회" value={metric(s.distinct_maps)} />
+              <Field label="APM" value={metric(s.apm)} />
+              <Field
+                label="tap비중"
+                value={
+                  s.tap_share === null
+                    ? "—"
+                    : `${Math.round(s.tap_share * 100)}%`
+                }
+              />
               <Field label="첫타(ms)" value={s.first_hit_ms == null ? "—" : String(s.first_hit_ms)} />
               <Field label="첫전환(ms)" value={s.first_switch_ms == null ? "—" : String(s.first_switch_ms)} />
-              <Field label="동시터치" value={String(s.max_touch ?? 0)} />
+              <Field label="동시터치" value={metric(s.max_touch)} />
               <Field label="플래그" value={`${s.suspicious ? "의심 " : ""}${s.has_gap ? "gap" : ""}`.trim() || "—"} />
             </div>
 
@@ -68,6 +82,10 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       </div>
     </main>
   );
+}
+
+function metric(value: number | null): string {
+  return value === null ? "—" : value.toLocaleString();
 }
 
 function Field({ label, value, href }: { label: string; value: string; href?: string }) {

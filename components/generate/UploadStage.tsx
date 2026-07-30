@@ -10,7 +10,7 @@ export function UploadStage({
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-5">
       <div className="text-center">
-        <h1 className="text-3xl font-bold">사진 업로드</h1>
+        <h2 className="text-3xl font-bold">사진 업로드</h2>
         <p className="mt-2 text-sm text-zinc-500">
           다음 화면에서 얼굴 영역을 직접 맞출 수 있어요.
         </p>

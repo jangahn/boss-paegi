@@ -1,4 +1,4 @@
-import { resolveWeapon } from "@/lib/weapons";
+import { resolveWeapon, WEAPONS } from "@/lib/weapons";
 
 /**
  * 게임 플레이 상세 스탯 — "플레이 해석 리포트"(페르소나/뱃지)의 입력.
@@ -67,8 +67,40 @@ export function buildGameplayStats(input: {
 
 function sumValues(obj: Record<string, number>): number {
   let s = 0;
-  for (const v of Object.values(obj)) s += v;
+  for (const v of Object.values(obj)) {
+    s += v;
+    if (!Number.isSafeInteger(s)) return Number.NaN;
+  }
   return s;
+}
+
+const WEAPON_KEYS = new Set<string>(WEAPONS.map((weapon) => weapon.key));
+
+function exactKnownWeaponMaps(stats: GameplayStats): boolean {
+  const countKeys = Object.keys(stats.weaponCounts);
+  const scoreKeys = Object.keys(stats.weaponScores);
+  if (
+    countKeys.length > WEAPONS.length ||
+    scoreKeys.length !== countKeys.length
+  ) {
+    return false;
+  }
+  const scoreKeySet = new Set(scoreKeys);
+  for (const key of countKeys) {
+    const count = stats.weaponCounts[key];
+    const weaponScore = stats.weaponScores[key];
+    if (
+      !WEAPON_KEYS.has(key) ||
+      !scoreKeySet.has(key) ||
+      !Number.isSafeInteger(count) ||
+      count <= 0 ||
+      !Number.isSafeInteger(weaponScore) ||
+      weaponScore < 0
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** 페르소나/뱃지 룰이 쓰는 파생 지표 */
@@ -117,15 +149,54 @@ export function validateGameplayStats(
 ): boolean {
   // v1/v2 둘 다 수용(배포 전환기 stale 클라). v1 은 ultScore 없음 → 0 으로 tolerant.
   if (!stats || (stats.v !== 1 && stats.v !== 2)) return false;
-  const ultScore = stats.v >= 2 ? Math.max(0, stats.ultScore ?? 0) : 0;
-  const hitsSum = sumValues(stats.weaponCounts);
-  // 타격수 정합 (작은 오차 허용 — 현행 전 득점 경로는 weaponKey 전달 확인(2026-07-03), 관용은 구버전/미래 경로 방어용)
-  if (Math.abs(hitsSum - stats.hitCount) > Math.max(5, stats.hitCount * 0.1))
+  if (
+    !Number.isSafeInteger(submittedScore) ||
+    submittedScore < 0 ||
+    !Number.isSafeInteger(stats.hitCount) ||
+    stats.hitCount < 0 ||
+    !Number.isSafeInteger(stats.maxCombo) ||
+    stats.maxCombo < 0 ||
+    stats.maxCombo > stats.hitCount ||
+    !Number.isSafeInteger(stats.durationMs) ||
+    stats.durationMs <= 0 ||
+    !Number.isSafeInteger(stats.ultimateCount) ||
+    stats.ultimateCount < 0
+  ) {
     return false;
+  }
+  if (stats.hitCount === 0) {
+    if (
+      Object.keys(stats.weaponCounts).length !== 0 ||
+      Object.keys(stats.weaponScores).length !== 0
+    ) {
+      return false;
+    }
+  } else if (!exactKnownWeaponMaps(stats)) {
+    return false;
+  }
+  const ultScore = stats.v >= 2 ? Math.max(0, stats.ultScore ?? 0) : 0;
+  if (!Number.isSafeInteger(ultScore) || ultScore > submittedScore) return false;
+  const hitsSum = sumValues(stats.weaponCounts);
+  // v2는 서버가 현행 payload를 canonical 재구성하므로 정확 일치가 계약이다.
+  // v1 관용은 저장된 전환기 데이터 해석 호환만 유지한다.
+  if (
+    stats.v >= 2
+      ? hitsSum !== stats.hitCount
+      : Math.abs(hitsSum - stats.hitCount) >
+        Math.max(5, stats.hitCount * 0.1)
+  ) {
+    return false;
+  }
   // 점수 정합 — 무기별 final gain 합 ≈ (제출 score − 궁극기 점수). v1 은 ultScore=0.
   const scoreSum = sumValues(stats.weaponScores);
   const manualScore = submittedScore - ultScore;
-  if (Math.abs(scoreSum - manualScore) > Math.max(50, submittedScore * 0.05))
+  if (
+    stats.v >= 2
+      ? scoreSum !== manualScore
+      : Math.abs(scoreSum - manualScore) >
+        Math.max(50, submittedScore * 0.05)
+  ) {
     return false;
+  }
   return true;
 }

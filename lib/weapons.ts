@@ -1,16 +1,8 @@
 import { roleObj, type RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
+import type { WeaponKey } from "@/lib/weapon-keys";
 
-export type WeaponKey =
-  | "fist"
-  | "hammer"
-  | "slap"
-  | "book"
-  | "keyboard"
-  | "paper"
-  | "gun"
-  | "grab"
-  | "pen";
+export type { WeaponKey } from "@/lib/weapon-keys";
 
 /**
  * tap   — 캐릭터 탭 한 번 = 타격 1회 (주먹/뿅망치)

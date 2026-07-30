@@ -5,6 +5,7 @@ import { ModerationQueueTable } from "@/components/admin/ModerationQueueTable";
 import { ReportFilter } from "@/components/admin/ReportFilter";
 import { Pagination } from "@/components/Pagination";
 import { firstParam } from "@/lib/admin-format";
+import { parsePageParam } from "@/lib/pagination";
 
 // 신고 큐 — 실시간 운영이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function AdminModerationPage({
         ? "all"
         : "pending";
   const queryState: ModState | null = stateParam === "all" ? null : (stateParam as ModState);
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
 
   const buildHref = (p: number) => {
     const u = new URLSearchParams();

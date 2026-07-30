@@ -7,7 +7,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { interpretFaceChecks } from "../../lib/character-gen/face-analysis.ts";
+import { readFileSync } from "node:fs";
+import {
+  FaceAnalysisUnavailableError,
+  interpretFaceChecks,
+} from "../../lib/character-gen/face-analysis.ts";
 
 test("정상 단독 얼굴 — 전부 통과", () => {
   const r = interpretFaceChecks({ face: "yes", count: "1", covered: "no", glasses: "no" });
@@ -38,13 +42,17 @@ test("안경 — wearsGlasses true (반려 아님)", () => {
   assert.equal(interpretFaceChecks({ face: "yes", count: "1", covered: "no", glasses: "yes" }).wearsGlasses, true);
 });
 
-test("fail-open — 전부 null 이면 통과 판정", () => {
-  const r = interpretFaceChecks({ face: null, count: null, covered: null, glasses: null });
-  assert.equal(r.faceVisible, true);
-  assert.equal(r.peopleCount, null);
-  assert.equal(r.singlePerson, true); // count 미검출 → 통과
-  assert.equal(r.faceClear, true);
-  assert.equal(r.wearsGlasses, false);
+test("필수 체크의 null·빈값·모호 응답은 생성 승인으로 강등하지 않는다", () => {
+  const base = { face: "yes", count: "1", covered: "no", glasses: "no" };
+  for (const key of ["face", "count", "covered", "glasses"] as const) {
+    for (const value of [null, "", "maybe", "yes and no"]) {
+      assert.throws(
+        () => interpretFaceChecks({ ...base, [key]: value }),
+        FaceAnalysisUnavailableError,
+        `${key}=${String(value)}`,
+      );
+    }
+  }
 });
 
 test("단어경계 — 'nose' 는 'no' 로 오인하지 않음", () => {
@@ -66,4 +74,56 @@ test("대소문자 무시 — YES/NO 도 판정", () => {
   assert.equal(r.faceVisible, true);
   assert.equal(r.faceClear, false);
   assert.equal(r.wearsGlasses, true);
+});
+
+test("얼굴 유무와 인원수가 상충하면 재시도 대상으로 차단한다", () => {
+  for (const raw of [
+    { face: "yes", count: "0", covered: "no", glasses: "no" },
+    { face: "no", count: "1", covered: "no", glasses: "no" },
+    { face: "no", count: "2", covered: "no", glasses: "no" },
+  ]) {
+    assert.throws(
+      () => interpretFaceChecks(raw),
+      FaceAnalysisUnavailableError,
+    );
+  }
+});
+
+test("인원수는 하나의 안전 정수 증거만 허용한다", () => {
+  const base = { face: "yes", covered: "no", glasses: "no" };
+  for (const count of [
+    "1 or 2",
+    "-1",
+    "1.5",
+    "9007199254740992",
+    "one",
+  ]) {
+    assert.throws(
+      () => interpretFaceChecks({ ...base, count }),
+      FaceAnalysisUnavailableError,
+      count,
+    );
+  }
+});
+
+test("분석 불확실성은 generation row·크레딧·외부 생성 제출 전에 durable terminal로 끝난다", () => {
+  const route = readFileSync(
+    new URL("../../app/api/fal/route.ts", import.meta.url),
+    "utf8",
+  );
+  const childSubmit = route.indexOf("submitFaceCheckOnce(");
+  const commit = route.indexOf('"commit_generation_preflight"');
+  const submit = route.indexOf("provider.submitPlan");
+  assert.ok(childSubmit > 0);
+  assert.ok(commit > childSubmit);
+  assert.ok(submit > commit);
+  assert.doesNotMatch(route, /analyzeInputFace|fal\.subscribe/);
+
+  const webhook = readFileSync(
+    new URL("../../app/api/fal/face-webhook/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(webhook, /buildFaceAnalysis\(raw\)/);
+  assert.match(webhook, /p_failure_reason: failureReason/);
+  assert.match(webhook, /finalize_generation_face_checks/);
 });

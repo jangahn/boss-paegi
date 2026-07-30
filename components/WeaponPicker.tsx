@@ -23,7 +23,11 @@ export function WeaponPicker({
   onClearDrawing,
 }: Props) {
   return (
-    <div className="pointer-events-auto absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-black/55 p-1 backdrop-blur-sm sm:bottom-14 sm:gap-1.5 sm:p-2">
+    <div
+      role="toolbar"
+      aria-label="무기 선택"
+      className="pointer-events-auto absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-black/55 p-1 backdrop-blur-sm sm:bottom-14 sm:gap-1.5 sm:p-2"
+    >
       {WEAPONS.map((w, i) => {
         const prev = WEAPONS[i - 1];
         const newGroup = prev && prev.category !== w.category;
@@ -34,6 +38,7 @@ export function WeaponPicker({
               <span className="mx-0.5 h-6 w-px bg-white/20 sm:mx-1 sm:h-8" />
             )}
             <button
+              type="button"
               onClick={() => {
                 if (isEraser) {
                   onClearDrawing?.();
@@ -42,6 +47,7 @@ export function WeaponPicker({
                 }
               }}
               aria-label={isEraser ? "낙서 지우기" : w.label}
+              aria-pressed={w.key === active}
               className={`flex h-8 w-8 items-center justify-center rounded-full text-base shadow transition sm:h-11 sm:w-11 sm:text-2xl ${
                 w.key === active
                   ? "scale-110 bg-white text-black"

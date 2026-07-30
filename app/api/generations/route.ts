@@ -5,15 +5,24 @@ import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import {
   CANDIDATE_TTL_MS,
   QUEUED_STALE_MS,
+  SUBMIT_ACK_STALE_MS,
   INCOMPLETE_RECLAIM_MS,
   cleanupCandidateStorage,
   type PendingGeneration,
 } from "@/lib/generation";
 import { recoverQueuedGeneration, failGeneration } from "@/lib/generation-recovery";
+import {
+  candidateRequests,
+  hasIncompleteCandidates,
+  hasUnresolvedSubmitAcknowledgement,
+} from "@/lib/character-gen/generation-state";
 import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
+import { terminateDeletedOwnerGeneration } from "@/lib/character-gen/deleted-owner-generation";
+import { completeGenerationArtifactCleanup } from "@/lib/character-gen/generation-artifact-cleanup";
 import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
 import { SERVER_ENV } from "@/lib/env.server";
+import { validateAdminRows } from "@/lib/admin-read-contract";
 
 export const runtime = "nodejs";
 // 복구가 fal queue.status/result + 후보 복사를 할 수 있어 여유 둠. 행별 복구는 병렬.
@@ -42,21 +51,79 @@ export async function GET() {
       .from("ai_generations")
       .select(cols)
       .eq("owner_id", user.id)
-      // failed 도 포함 — 타임아웃으로 실패 마킹됐지만 fal 은 완성한 건을 되찾기 위해.
-      .in("status", ["queued", "done", "failed"])
+      .eq("cost_preflight_pending", false)
+      // failed/expired/picked는 terminal이라 복구가 되살리면 안 된다.
+      .in("status", ["queued", "done"])
       .order("created_at", { ascending: false })
       .limit(20);
 
   // migration 0006(fal_request_ids) 미적용 환경이면 컬럼 없이 재조회 (복구만 비활성)
-  let rows: Record<string, unknown>[];
+  let rawRows: unknown;
   const sel = await baseQuery(
-    "id, status, candidate_urls, created_at, role, fal_request_ids"
+    "id, status, candidate_urls, created_at, role, fal_request_ids, gen_params, refunded_at, version"
   );
   if (sel.error && sel.error.message.includes("fal_request_ids")) {
-    const fb = await baseQuery("id, status, candidate_urls, created_at, role");
-    rows = (fb.data as Record<string, unknown>[] | null) ?? [];
+    const fb = await baseQuery(
+      "id, status, candidate_urls, created_at, role, refunded_at, version"
+    );
+    if (fb.error) {
+      log.error("gen.pending_list_fail", {
+        userId: user.id,
+        ...errInfo(fb.error),
+      });
+      return NextResponse.json(
+        { error: "generations_unavailable" },
+        { status: 503 },
+      );
+    }
+    rawRows = fb.data;
   } else {
-    rows = (sel.data as Record<string, unknown>[] | null) ?? [];
+    if (sel.error) {
+      log.error("gen.pending_list_fail", {
+        userId: user.id,
+        ...errInfo(sel.error),
+      });
+      return NextResponse.json(
+        { error: "generations_unavailable" },
+        { status: 503 },
+      );
+    }
+    rawRows = sel.data;
+  }
+  let rows: Record<string, unknown>[];
+  try {
+    rows = validateAdminRows<Record<string, unknown>>(
+      "generations.pending_list",
+      rawRows,
+      {
+        id: "uuid",
+        status: "string",
+        candidate_urls: "array",
+        created_at: "timestamp",
+        role: "string",
+        refunded_at: "nullableTimestamp",
+        version: "nonnegativeInteger",
+      },
+    );
+    for (const row of rows) {
+      if (
+        !["queued", "done"].includes(row.status as string) ||
+        !(row.candidate_urls as unknown[]).every(
+          (path) => typeof path === "string" && path.length > 0,
+        )
+      ) {
+        throw new Error("invalid_pending_generation_row");
+      }
+    }
+  } catch (error) {
+    log.error("gen.pending_list_invalid", {
+      userId: user.id,
+      ...errInfo(error),
+    });
+    return NextResponse.json(
+      { error: "generations_unavailable" },
+      { status: 503 },
+    );
   }
 
   const now = Date.now();
@@ -80,42 +147,65 @@ export async function GET() {
     const candidateUrls = Array.isArray(r.candidate_urls)
       ? (r.candidate_urls as string[])
       : [];
-    const requestIds = Array.isArray(r.fal_request_ids)
-      ? (r.fal_request_ids as string[])
-      : [];
+    const requestSlots = r.fal_request_ids;
+    const requests = candidateRequests(requestSlots, r.gen_params);
+    const awaitingSubmitAck = hasUnresolvedSubmitAcknowledgement(r.gen_params);
+    const queuedDeadline = awaitingSubmitAck
+      ? SUBMIT_ACK_STALE_MS
+      : QUEUED_STALE_MS;
     // 저장 후보가 fal 요청 수보다 적음 = 일부/전부 누락 → 되찾을 여지
-    const incomplete =
-      requestIds.length > 0 && candidateUrls.length < requestIds.length;
+    const incomplete = hasIncompleteCandidates(
+      candidateUrls,
+      requestSlots,
+      r.gen_params
+    );
 
     if (r.status === "queued") {
-      if (requestIds.length > 0) {
+      if (requests.length > 0) {
         // 30분 넘으면 마감 — 완료분만으로 확정(받은 만큼 살림). 그 전엔 계속 대기.
         const rec = await recoverQueuedGeneration(
           admin,
           ownerId,
           id,
-          requestIds,
-          age > QUEUED_STALE_MS
+          requestSlots,
+          !awaitingSubmitAck && age > QUEUED_STALE_MS
         );
         if (rec.status === "ready") {
           await cleanupFace(id);
           log.info("gen.recovered_ready", { userId: ownerId, genId: id, ageMs: age });
           return { id, kind: "ready", candidateUrls: rec.candidateUrls, createdAt };
         }
+        if (rec.status === "owner_deleted") {
+          await terminateDeletedOwnerGeneration(admin, {
+            genId: id,
+            ownerId,
+            isOps,
+          });
+          return null;
+        }
+        if (rec.status === "terminal") return null;
         // 결정적 실패(fal 전부 멈춤인데 결과 0 = facexlib no-face 등) → 30분 대기 없이 즉시 실패+환불+안내.
         if (rec.status === "failed" && rec.definitive) {
-          await failGeneration(admin, id, ownerId, isOps, rec.reason);
+          const failed = await failGeneration(
+            admin,
+            id,
+            ownerId,
+            isOps,
+            rec.reason,
+            r.version as number,
+          );
+          if (!failed) return null;
           await cleanupFace(id);
           log.info("gen.definitive_failed", { userId: ownerId, genId: id, ageMs: age });
           return { id, kind: "interrupted", reason: "photo", candidateUrls: [], createdAt };
         }
         // pending, 또는 transient(copy 실패 등) → 마감(30분)까지 생성중 유지(조기 실패 방지)
-        if (age <= QUEUED_STALE_MS) {
+        if (age <= queuedDeadline) {
           return { id, kind: "generating", candidateUrls: [], createdAt };
         }
-        // age > 30분 & not ready → 끊김 확정 (아래)
-      } else if (age <= QUEUED_STALE_MS) {
-        // request_id 없음(구버전 row) — 시간 기반으로 30분까진 생성중
+        // acknowledgement는 fal webhook 재전송 창까지, 일반 복구는 30분까지 대기.
+      } else if (age <= queuedDeadline) {
+        // request_id 없음: claimed/uncertain이면 signed webhook 창, 레거시는 30분.
         return { id, kind: "generating", candidateUrls: [], createdAt };
       }
 
@@ -124,45 +214,30 @@ export async function GET() {
         userId: ownerId,
         genId: id,
         ageMs: age,
-        hadRequestIds: requestIds.length,
+        hadRequestIds: requests.length,
+        awaitedSubmitAck: awaitingSubmitAck,
       });
-      await failGeneration(admin, id, ownerId, isOps, "timeout");
+      const failed = await failGeneration(
+        admin,
+        id,
+        ownerId,
+        isOps,
+        "timeout",
+        r.version as number,
+      );
+      if (!failed) return null;
       await cleanupFace(id);
       return { id, kind: "interrupted", candidateUrls: [], createdAt };
     }
 
-    if (r.status === "failed") {
-      // 타임아웃 등으로 failed 마킹됐지만 fal 은 완성했을 수 있음 → 최근이면 되찾기.
-      if (incomplete && age <= INCOMPLETE_RECLAIM_MS) {
-        const rec = await recoverQueuedGeneration(
-          admin,
-          ownerId,
-          id,
-          requestIds,
-          true
-        );
-        if (rec.status === "ready") {
-          await cleanupFace(id);
-          log.info("gen.reclaimed_failed", {
-            userId: ownerId,
-            genId: id,
-            ageMs: age,
-            recovered: rec.candidateUrls.length,
-          });
-          return { id, kind: "ready", candidateUrls: rec.candidateUrls, createdAt };
-        }
-      }
-      return null; // 되찾기 실패/대상 아님 → 노출 안 함
-    }
-
-    // status === "done" (미선택 — picked 는 쿼리에서 제외)
+    // status === "done" (미선택 — terminal 상태는 쿼리에서 제외)
     // 후보 일부 누락 + 최근이면 빠진 것 재확보.
     if (incomplete && age <= INCOMPLETE_RECLAIM_MS) {
       const rec = await recoverQueuedGeneration(
         admin,
         ownerId,
         id,
-        requestIds,
+        requestSlots,
         true
       );
       if (rec.status === "ready" && rec.candidateUrls.length > candidateUrls.length) {
@@ -176,20 +251,79 @@ export async function GET() {
         });
         return { id, kind: "ready", candidateUrls: rec.candidateUrls, createdAt };
       }
+      if (rec.status === "owner_deleted") {
+        await terminateDeletedOwnerGeneration(admin, {
+          genId: id,
+          ownerId,
+          isOps,
+        });
+        return null;
+      }
     }
     if (age <= CANDIDATE_TTL_MS && candidateUrls.length > 0) {
       return { id, kind: "ready", candidateUrls, createdAt };
     }
-    // 만료 또는 후보 없음 — 정리
+    // 만료 또는 후보 없음 — done→expired 전이를 DB row-lock RPC로 먼저 확정한다.
+    // pick과 경합해 pick이 이기면 후보를 절대 지우지 않는다. 만료는 생성 성공 뒤
+    // 사용자가 선택하지 않은 결과라 제품 정책상 크레딧을 환급하지 않는다.
     log.info("gen.candidate_expired", {
       userId: ownerId,
       genId: id,
       ageMs: age,
       candidateCount: candidateUrls.length,
     });
-    await cleanupCandidateStorage(admin, ownerId, id);
-    await failGeneration(admin, id, ownerId, isOps, "expired");
-    await cleanupFace(id);
+    const { data: expiryData, error: expiryError } = await admin.rpc(
+      "expire_generation",
+      {
+        p_gen_id: id,
+        p_expected_version:
+          typeof r.version === "number" ? r.version : null,
+      }
+    );
+    if (expiryError) {
+      log.warn("gen.expire_transition_fail", {
+        userId: ownerId,
+        genId: id,
+        ...errInfo(expiryError),
+      });
+      return null;
+    }
+    const expiryOutcome = (
+      expiryData as { outcome?: string } | null
+    )?.outcome;
+    if (expiryOutcome !== "expired" && expiryOutcome !== "already_expired") {
+      log.info("gen.expire_conflict", {
+        userId: ownerId,
+        genId: id,
+        outcome: expiryOutcome ?? "unknown",
+      });
+      return null;
+    }
+    const cleanup = await completeGenerationArtifactCleanup({
+      beginCleanup: () =>
+        admin.rpc("begin_generation_artifact_cleanup", {
+          p_gen_id: id,
+          p_expected_status: "expired",
+        }),
+      cleanupCandidates: () =>
+        cleanupCandidateStorage(admin, ownerId, id),
+      cleanupFace: () => deleteFaceTmp(tmpFacePath(ownerId, id)),
+      markComplete: () =>
+        admin.rpc("complete_generation_artifact_cleanup", {
+          p_gen_id: id,
+          p_expected_status: "expired",
+        }),
+    });
+    if (!cleanup.ok) {
+      // expired + candidate_urls 유지가 cron의 durable retry manifest다.
+      log.warn("gen.expire_cleanup_deferred", {
+        userId: ownerId,
+        genId: id,
+        stage: cleanup.stage,
+        outcome: cleanup.outcome,
+        ...errInfo(cleanup.error),
+      });
+    }
     return null;
   };
 
@@ -219,7 +353,7 @@ export async function GET() {
       candidateUrls: await Promise.all(
         p.candidateUrls.map(async (u) =>
           u.includes("/dolls/") || !u.includes("://")
-            ? (await signedDollUrl(u, 21600)) ?? u
+            ? await signedDollUrl(u, 21600)
             : u
         )
       ),

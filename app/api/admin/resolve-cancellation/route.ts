@@ -1,9 +1,19 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
+import { readAdminJsonRequest } from "@/lib/http/admin-json-request";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  isExternalCancellationResolutionPostcondition,
+  parseExternalCancellationResolutionResult,
+} from "@/lib/pay/refund-mutation-result";
 import { refundRpcErrorResponsePayload } from "@/lib/refund-saga";
-import { log } from "@/lib/log";
+import {
+  requireSupabaseExactCount,
+  requireSupabaseOptionalData,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import { errInfo, log } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -16,12 +26,25 @@ export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
-  const body = (await req.json().catch(() => null)) as
+  const requestBody = await readAdminJsonRequest(req);
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as
     | { cancellationId?: string; note?: string; economicQty?: number }
     | null;
   const cancellationId = body?.cancellationId;
   const note = body?.note?.trim() ?? "";
-  if (!cancellationId || typeof cancellationId !== "string") {
+  if (
+    !cancellationId ||
+    typeof cancellationId !== "string" ||
+    cancellationId.length > 256 ||
+    cancellationId !== cancellationId.trim() ||
+    /[\u0000-\u001f\u007f]/.test(cancellationId)
+  ) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
   if (note.length < 5 || note.length > 500) {
@@ -36,18 +59,92 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("resolve_external_cancellation", {
-    p_cancellation_id: cancellationId,
-    p_resolved_by: gate.user.id,
-    p_note: note,
-    p_economic_qty: economicQty ?? null,
-  });
-  if (error) {
-    const p = refundRpcErrorResponsePayload(error, {
-      route: "admin/resolve-cancellation", cancellationId,
+  const expectedEconomicQty = economicQty ?? null;
+  try {
+    const { data, error } = await admin.rpc("resolve_external_cancellation", {
+      p_cancellation_id: cancellationId,
+      p_resolved_by: gate.user.id,
+      p_note: note,
+      p_economic_qty: expectedEconomicQty,
     });
-    return NextResponse.json(p.body, { status: p.status });
+    if (error) {
+      const p = refundRpcErrorResponsePayload(error, {
+        route: "admin/resolve-cancellation",
+        cancellationId,
+      });
+      return NextResponse.json(p.body, { status: p.status });
+    }
+    const receipt = parseExternalCancellationResolutionResult(
+      data,
+      expectedEconomicQty,
+    );
+    if (!receipt) {
+      return unconfirmed(cancellationId, "invalid_receipt");
+    }
+    const [proof, openIssueCount] = await Promise.all([
+      requireSupabaseOptionalData(
+        "admin.resolve_cancellation.proof",
+        () =>
+          admin
+            .from("payment_cancellation_events")
+            .select(
+              "cancellation_id, resolution_state, resolved_economic_qty, resolved_at",
+            )
+            .eq("cancellation_id", cancellationId)
+            .maybeSingle(),
+      ),
+      requireSupabaseExactCount(
+        "admin.resolve_cancellation.issue_postcondition",
+        () =>
+          admin
+            .from("reconciliation_issues")
+            .select("id", { count: "exact", head: true })
+            .eq("cancellation_id", cancellationId)
+            .eq("type", "unmatched_cancellation")
+            .eq("state", "open"),
+      ),
+    ]);
+    if (
+      !isExternalCancellationResolutionPostcondition(proof, {
+        cancellationId,
+        economicQty: expectedEconomicQty,
+      }) ||
+      openIssueCount !== 0
+    ) {
+      return unconfirmed(cancellationId, "postcondition_mismatch");
+    }
+    log.info("admin.resolve_cancellation_ok", {
+      cancellationId,
+      adminId: gate.user.id,
+    });
+    return NextResponse.json({
+      ok: true,
+      outcome: receipt.kind === "no_op" ? "no_op" : "resolved",
+      ...(receipt.kind === "no_op"
+        ? { idempotent: true }
+        : { result: receipt.result }),
+      cancellation_id: cancellationId,
+    });
+  } catch (error) {
+    log.error("admin.resolve_cancellation_unavailable", {
+      cancellationId,
+      ...errInfo(
+        error instanceof SupabaseOperationError
+          ? error.operationError
+          : error,
+      ),
+    });
+    return unconfirmed(cancellationId, "dependency_unavailable");
   }
-  log.info("admin.resolve_cancellation_ok", { cancellationId, adminId: gate.user.id });
-  return NextResponse.json(data ?? { ok: true });
+}
+
+function unconfirmed(cancellationId: string, phase: string): NextResponse {
+  log.error("admin.resolve_cancellation_unconfirmed", {
+    cancellationId,
+    phase,
+  });
+  return NextResponse.json(
+    { error: "action_unconfirmed", retryable: true },
+    { status: 503 },
+  );
 }

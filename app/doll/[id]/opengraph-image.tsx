@@ -7,8 +7,13 @@ import { asRole } from "@/lib/roles";
 import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
-import { log, errInfo } from "@/lib/log";
 import { PUBLIC_ENV } from "@/lib/env";
+import { requireSupabaseOptionalData } from "@/lib/supabase-operation";
+import { validateAdminRows } from "@/lib/admin-read-contract";
+import {
+  fetchMediaBlob,
+  OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
+} from "@/lib/media-download";
 
 export const runtime = "nodejs";
 // 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
@@ -18,15 +23,15 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 /** Satori 는 외부 URL <img> 가 조용히 실패할 수 있어 data URI 로 embed */
-async function dollDataUri(url: string): Promise<string | null> {
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!r.ok) return null;
-    const buf = Buffer.from(await r.arrayBuffer());
-    return `data:image/png;base64,${buf.toString("base64")}`;
-  } catch {
-    return null;
-  }
+async function dollDataUri(url: string): Promise<string> {
+  const downloaded = await fetchMediaBlob(url, {
+    kind: "image",
+    maxBytes: OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
+    signal: AbortSignal.timeout(5000),
+    redirect: "error",
+  });
+  const buf = Buffer.from(await downloaded.blob.arrayBuffer());
+  return `data:${downloaded.type};base64,${buf.toString("base64")}`;
 }
 
 export default async function OgImage({
@@ -36,26 +41,45 @@ export default async function OgImage({
 }) {
   const { id } = await params;
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("dolls")
-    .select("id, image_url, created_at, role, deleted_at, profiles(display_name)")
-    .eq("id", id)
-    .single();
-  // 조회 실패해도 기본 카드로 fallback — 단 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
-  if (error) log.warn("og.doll_query_fail", { dollId: id, ...errInfo(error) });
-
-  const d = data as
-    | {
+  const data = await requireSupabaseOptionalData(
+    "og.doll.query",
+    () =>
+      admin
+        .from("dolls")
+        .select("id, image_url, created_at, role, deleted_at, profiles(display_name)")
+        .eq("id", id)
+        .maybeSingle(),
+  );
+  const d = data
+    ? validateAdminRows<{
         id: string;
         image_url: string;
         created_at: string;
         role: string | null;
         deleted_at: string | null;
-        profiles: { display_name: string } | null;
-      }
-    | null;
+        profiles:
+          | { display_name: string | null }
+          | { display_name: string | null }[]
+          | null;
+      }>("og.doll.query", [data], {
+        id: "uuid",
+        image_url: "string",
+        created_at: "timestamp",
+        role: "nullableString",
+        deleted_at: "nullableTimestamp",
+        profiles: "embed",
+      })[0]
+    : null;
+  const profile = Array.isArray(d?.profiles)
+    ? d.profiles[0] ?? null
+    : d?.profiles ?? null;
+  if (profile) {
+    validateAdminRows("og.doll.profile", [profile], {
+      display_name: "nullableText",
+    });
+  }
 
-  const name = d?.profiles?.display_name ?? "익명";
+  const name = profile?.display_name ?? "익명";
   const role = asRole(d?.role);
   const cfg = await getRoleConfig();
   const mk = await getMarketingCopy();

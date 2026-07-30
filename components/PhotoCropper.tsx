@@ -35,16 +35,19 @@ export function PhotoCropper({
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
   const [busy, setBusy] = useState(false);
   const [reject, setReject] = useState<FaceQualityReason | null>(null);
+  const [processError, setProcessError] = useState(false);
 
   const onCropComplete = useCallback((_: Area, pixels: Area) => {
     setCroppedArea(pixels);
     setReject(null); // 크롭 조정하면 이전 거부 메시지 초기화
+    setProcessError(false);
   }, []);
 
   const handleConfirm = async () => {
     if (!croppedArea) return;
     setBusy(true);
     setReject(null);
+    setProcessError(false);
     try {
       const img = await loadImage(imageUrl);
       // 저화질(작거나 흐린) 얼굴은 깨진 캐릭터를 만들므로 생성 전 차단 (캐릭터 전용)
@@ -57,6 +60,10 @@ export function PhotoCropper({
       }
       const blob = await cropToBlob(img, croppedArea);
       onConfirm(blob);
+    } catch {
+      // decode/canvas/toBlob 오류를 unhandled rejection으로 숨기지 않고 재시도 가능한
+      // 사용자 상태로 노출한다. 원본 URL·브라우저 오류는 개인정보라 화면/로그에 복사하지 않는다.
+      setProcessError(true);
     } finally {
       setBusy(false);
     }
@@ -119,6 +126,15 @@ export function PhotoCropper({
             밝은 곳에서 · 정면으로 · 또렷하게 찍힌 사진일수록 더 닮게 나와요.
           </p>
         </div>
+      )}
+
+      {processError && (
+        <p
+          role="alert"
+          className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200"
+        >
+          사진을 처리하지 못했어요. 다른 사진을 선택하거나 다시 시도해 주세요.
+        </p>
       )}
 
       <div className="grid grid-cols-2 gap-3">

@@ -1,7 +1,7 @@
--- 0012b: scores 의 highlight_* 컬럼 제거 (contract 단계)
+-- 001201: scores 의 highlight_* 컬럼 제거 (contract 단계)
 --
 -- 적용: management API. **반드시 코드가 score_highlights 로 전환·배포된 뒤** 실행.
--- 0012a backfill 이후 전환 윈도우 중 구 코드가 scores 에 쓴 하이라이트가 있을 수 있어
+-- 001200 backfill 이후 전환 윈도우 중 구 코드가 scores 에 쓴 하이라이트가 있을 수 있어
 -- drop 직전 동일 OR 조건으로 재-backfill(on conflict do nothing) 후 컬럼 제거.
 
 insert into public.score_highlights (

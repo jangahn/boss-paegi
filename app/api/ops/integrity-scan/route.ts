@@ -3,9 +3,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVER_ENV } from "@/lib/env.server";
 import { ANTI_ABUSE_RULES_VERSION } from "@/lib/anti-abuse-rules";
+import { parseIntegrityScanAck, resolveOpsRpc } from "@/lib/ops-rpc-result";
 import { log, errInfo } from "@/lib/log";
+import { cronSecretMatches } from "@/lib/ops-auth";
+import {
+  createOpsMaintenanceDeadline,
+  opsMaintenanceDeadlineReached,
+  opsMaintenanceResponseInit,
+  runOpsMaintenanceWithDeadline,
+} from "@/lib/ops-maintenance-status";
 
 export const runtime = "nodejs";
+export const maxDuration = 25;
+
+function maintenanceTimeBudgetResponse() {
+  return NextResponse.json(
+    { ok: false, error: "maintenance_time_budget", retryPending: 1 },
+    opsMaintenanceResponseInit(429),
+  );
+}
 
 /**
  * 어뷰징 백스톱 스캔 — cron-job.org 가 x-cron-secret 로 호출(머신, requireAdmin 아님).
@@ -15,21 +31,64 @@ export const runtime = "nodejs";
  */
 export async function POST(req: NextRequest) {
   const secret = SERVER_ENV.CRON_SECRET;
-  if (!secret) return NextResponse.json({ error: "scan_disabled" }, { status: 503 });
-  if (req.headers.get("x-cron-secret") !== secret) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!secret) {
+    return NextResponse.json(
+      { error: "scan_disabled" },
+      opsMaintenanceResponseInit(503),
+    );
+  }
+  if (!cronSecretMatches(req.headers.get("x-cron-secret"), secret)) {
+    return NextResponse.json(
+      { error: "unauthorized" },
+      opsMaintenanceResponseInit(401),
+    );
   }
 
-  const admin = createAdminClient();
-  const { data, error } = await admin.rpc("integrity_scan_recent", {
-    p_hours: 6,
-    p_rules: ANTI_ABUSE_RULES_VERSION,
-  });
-  if (error) {
-    log.error("integrity.scan_fail", errInfo(error));
-    return NextResponse.json({ error: "scan_failed" }, { status: 500 });
-  }
-  const result = (data ?? {}) as { scanned?: number; flagged?: number };
-  log.info("integrity.scan_ok", { scanned: result.scanned ?? 0, flagged: result.flagged ?? 0 });
-  return NextResponse.json({ ok: true, ...result });
+  const deadline = createOpsMaintenanceDeadline();
+  return runOpsMaintenanceWithDeadline<NextResponse>(
+    deadline,
+    async () => {
+      const admin = createAdminClient();
+      const scanRpc = await resolveOpsRpc(() =>
+        admin
+          .rpc("integrity_scan_recent", {
+            p_hours: 6,
+            p_rules: ANTI_ABUSE_RULES_VERSION,
+          })
+          .abortSignal(deadline.signal),
+      );
+      if (opsMaintenanceDeadlineReached(deadline)) {
+        return maintenanceTimeBudgetResponse();
+      }
+      if (!scanRpc.ok) {
+        log.error("integrity.scan_fail", errInfo(scanRpc.error));
+        return NextResponse.json(
+          { error: "scan_failed" },
+          opsMaintenanceResponseInit(500),
+        );
+      }
+      const result = parseIntegrityScanAck(scanRpc.data);
+      if (!result) {
+        log.error("integrity.scan_invalid", {
+          error: "invalid_scan_response",
+        });
+        return NextResponse.json(
+          { error: "scan_failed" },
+          opsMaintenanceResponseInit(500),
+        );
+      }
+      if (opsMaintenanceDeadlineReached(deadline)) {
+        return maintenanceTimeBudgetResponse();
+      }
+      log.info("integrity.scan_ok", result);
+      return NextResponse.json(
+        { ok: true, ...result },
+        opsMaintenanceResponseInit(200),
+      );
+    },
+    () => {
+      log.error("integrity.maintenance_time_budget");
+      return maintenanceTimeBudgetResponse();
+    },
+  );
 }

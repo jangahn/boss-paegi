@@ -61,7 +61,12 @@ function IssueRow({ issue: i }: { issue: ReconIssueRow }) {
           </div>
         </div>
         <div className="shrink-0">
-          <RefundQueueActions kind="issue" issueId={i.id} cancellationId={i.cancellation_id} />
+          <RefundQueueActions
+            kind="issue"
+            issueId={i.id}
+            issueType={i.type}
+            cancellationId={i.cancellation_id}
+          />
         </div>
       </div>
     </li>

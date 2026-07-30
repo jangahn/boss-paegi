@@ -12,6 +12,10 @@ import {
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
+import { resolveOwnedBadgeRead } from "@/lib/badge-owned";
+import { activeGameElapsedMs } from "@/lib/game-clock";
+import { errInfo, log } from "@/lib/log";
+import { runBoundedClientOperation } from "@/lib/client-operation";
 
 /**
  * 인게임 뱃지 도전 — 단일 소스(lib/badges)로 구동되는 라이브 체크리스트 + 획득 토스트.
@@ -38,13 +42,19 @@ export function useBadgeChallenge({
 }: {
   recording: boolean;
   getBgVisits: () => string[];
-}): { slots: ChallengeSlot[]; toasts: EarnToast[] } {
+}): {
+  slots: ChallengeSlot[];
+  toasts: EarnToast[];
+  loadError: string | null;
+} {
   const [slots, setSlots] = useState<ChallengeSlot[]>([]);
   const [toasts, setToasts] = useState<EarnToast[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const catalog = useBadgeCatalog(); // 마케터 편집 카탈로그(라이브). 프로바이더 값=레이아웃 고정.
 
   useEffect(() => {
     if (!recording) return;
+    const controller = new AbortController();
     const defs = activeBadges(catalog); // 활성 뱃지만 도전 후보
     let cancelled = false;
     let loaded = false; // owned 로드 전엔 earn 감지 안 함(오탐 방지)
@@ -61,7 +71,11 @@ export function useBadgeChallenge({
         stats: buildGameplayStats({
           hitCount: s.hitCount,
           maxCombo: s.maxCombo,
-          durationMs: s.startedAt ? performance.now() - s.startedAt : 0,
+          durationMs: activeGameElapsedMs(
+            s.isPlaying,
+            s.startedAt,
+            performance.now(),
+          ),
           weaponCounts: s.weaponCounts,
           weaponScores: s.weaponScores,
           ultScore: s.ultScore,
@@ -149,25 +163,42 @@ export function useBadgeChallenge({
 
     (async () => {
       try {
-        await ensureAuth();
-        const sb = createClient();
-        const { data } = await sb.from("user_badges").select("badge_id");
+        await ensureAuth(controller.signal);
+        const result = await runBoundedClientOperation(
+          (signal) =>
+            createClient(signal)
+              .from("user_badges")
+              .select("badge_id")
+              .abortSignal(signal),
+          { signal: controller.signal },
+        );
         if (cancelled) return;
-        for (const r of data ?? []) owned.add(r.badge_id as string);
-      } catch {
-        /* 로드 실패 — 빈 owned 로 진행 */
+        for (const badgeId of resolveOwnedBadgeRead(result)) {
+          owned.add(badgeId);
+        }
+        loaded = true;
+        setLoadError(null);
+        recompute();
+      } catch (error) {
+        if (cancelled) return;
+        // 보유 목록 불확실성을 빈 목록으로 축소하면 기존 뱃지를 신규 획득으로
+        // 오인한다. 도전을 중지하고 장애를 명시적으로 노출한다.
+        loaded = false;
+        setSlots([]);
+        setToasts([]);
+        setLoadError("배지 도전을 불러오지 못했어요.");
+        log.warn("play.badge_challenge_unavailable", errInfo(error));
       }
-      loaded = true;
-      recompute();
     })();
 
     const unsub = useGameStore.subscribe(() => recompute());
     return () => {
       cancelled = true;
+      controller.abort(new Error("badge_challenge_disposed"));
       unsub();
       timers.forEach(clearTimeout);
     };
   }, [recording, getBgVisits, catalog]);
 
-  return { slots, toasts };
+  return { slots, toasts, loadError };
 }

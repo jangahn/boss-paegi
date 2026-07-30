@@ -3,16 +3,18 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const {
+  FAL_EXTERNAL_COMPLIANCE_APPROVED,
   GENERATION_COST_FROZEN_BODY,
   GENERATION_COST_ROLLOUT_HEADER,
   generationCostPathEnabled,
 } = await import("../../lib/generation-cost-rollout.ts");
 
-test("paid generation paths require the exact opt-in value", () => {
+test("paid generation paths remain compile-time closed despite every env value", () => {
   for (const value of [undefined, "", "0", "true", "yes", " 1", "1 "]) {
     assert.equal(generationCostPathEnabled(value), false);
   }
-  assert.equal(generationCostPathEnabled("1"), true);
+  assert.equal(FAL_EXTERNAL_COMPLIANCE_APPROVED, false);
+  assert.equal(generationCostPathEnabled("1"), false);
   assert.deepEqual(GENERATION_COST_FROZEN_BODY, {
     error: "generation_unavailable",
   });
@@ -32,10 +34,11 @@ test("the fal freeze is before body, auth, storage, and provider work", async ()
     "the fal freeze must expose the validated deployment identity",
   );
   for (const later of [
+    "generationContentLengthAllowed(",
     "requireMember()",
-    "req.formData()",
+    "readGenerationFormData(req)",
     "uploadFaceTmp(",
-    "analyzeInputFace(",
+    "submitFaceCheckOnce(",
   ]) {
     assert.ok(gate < handler.indexOf(later), `${later} must follow freeze`);
   }
@@ -54,11 +57,15 @@ test("only doll POST is frozen and its gate precedes paid work", async () => {
   );
   for (const later of [
     "requireMember()",
-    "req.json()",
+    "readApiJsonObjectRequest(req)",
+    '"claim_generation_pick"',
     "createSignedUrl(",
-    "removeBackground(",
+    '"prepare_generation_pick_submit"',
+    "submitDollPickOnce(",
+    "materializeGenerationPick(",
   ]) {
     assert.ok(gate < post.indexOf(later), `${later} must follow freeze`);
   }
+  assert.doesNotMatch(post, /removeBackground\(/);
   assert.doesNotMatch(source.slice(getStart), /generationCostPathEnabled/);
 });

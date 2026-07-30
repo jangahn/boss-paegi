@@ -58,6 +58,7 @@ export type EventRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  mutation_version: number;
 };
 
 /**
@@ -92,12 +93,53 @@ export const coverPathSchema = z
     "invalid_cover"
   );
 
+function isValidKstLocalDateTime(value: string): boolean {
+  const match =
+    /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})$/.exec(
+      value,
+    );
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (
+    year < 1 ||
+    month < 1 ||
+    month > 12 ||
+    hour > 23 ||
+    minute > 59
+  ) {
+    return false;
+  }
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [
+    31,
+    leap ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return day >= 1 && day <= days[month - 1];
+}
+
 /** KST 로컬 datetime-local(YYYY-MM-DDTHH:mm) 또는 null/빈값 허용. 서버에서 timestamptz 로 변환. */
 const optionalDateTime = z
   .string()
   .trim()
+  .max(16)
   .nullish()
-  .transform((v) => (v ? v : null));
+  .transform((v) => (v ? v : null))
+  .refine((v) => v === null || isValidKstLocalDateTime(v), "invalid_datetime");
 
 /** 어드민 저장 페이로드(에디터 → /api/admin/events save). */
 export const eventSaveSchema = z.object({

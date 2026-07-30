@@ -6,6 +6,7 @@ import { MemberSearch } from "@/components/admin/MemberSearch";
 import { Pagination } from "@/components/Pagination";
 import { fmtKst, shortId, firstParam } from "@/lib/admin-format";
 import type { MemberInfo } from "@/lib/admin-types";
+import { parsePageParam } from "@/lib/pagination";
 
 // 회원 목록/검색 — 실시간 운영이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export default async function AdminUsersPage({
 
   const sp = await searchParams;
   const q = firstParam(sp.q)?.trim() || null;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
 
   // q 있으면 검색(부분일치 + 탈퇴 원본 이메일 0037), 없으면 전체 회원 페이징(기본 목록).
   const all = q ? null : await listMembers(page);

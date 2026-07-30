@@ -11,6 +11,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Spinner } from "@/components/Spinner";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
+import { ownRecordValue } from "@/lib/own-record";
+import { runClientMutation } from "@/lib/client-mutation";
 
 function KakaoIcon() {
   return (
@@ -64,63 +66,174 @@ export function LoginForm() {
   const [rvPw, setRvPw] = useState("");
   const [rvBusy, setRvBusy] = useState(false);
   const [rvErr, setRvErr] = useState<string | null>(null);
-
-  const onReviewerLogin = async () => {
-    if (rvBusy || !rvEmail.trim() || !rvPw) return;
-    setRvBusy(true);
-    setRvErr(null);
-    const sb = createClient();
-    const { error } = await sb.auth.signInWithPassword({
-      email: rvEmail.trim(),
-      password: rvPw,
-    });
-    if (error) {
-      setRvErr("아이디 또는 비밀번호가 올바르지 않아요.");
-      setRvBusy(false);
-      return;
-    }
-    // 성공 — 심사 동선 기본값은 충전 페이지(next 지정 시 그 경로).
-    window.location.assign(params.get("next") ? next : "/credits");
-  };
   const rawAuto = params.get("auto");
   const auto: OAuthProvider | null =
     rawAuto === "kakao" || rawAuto === "google" ? rawAuto : null; // allowlist
   const errorKey = params.get("error");
-  const errorMsg = errorKey ? ERROR_MESSAGES[errorKey] ?? ERROR_MESSAGES.oauth : null;
+  const errorMsg = errorKey
+    ? ownRecordValue(ERROR_MESSAGES, errorKey) ?? ERROR_MESSAGES.oauth
+    : null;
 
   const [busy, setBusy] = useState<OAuthProvider | null>(auto);
   const [err, setErr] = useState<string | null>(null);
   const [autoFailed, setAutoFailed] = useState(false);
   const autoStarted = useRef(false);
+  const mountedRef = useRef(false);
+  const authBusyRef = useRef(Boolean(auto));
+  const authOperationEpochRef = useRef(0);
+  const authAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      authAbortRef.current?.abort(
+        new Error("login_form_unmounted"),
+      );
+      authAbortRef.current = null;
+    };
+  }, []);
 
   // 자동 재로그인 (identity_already_exists 후) — useRef 로 StrictMode/재렌더 중복 실행 방지, 1회만.
   useEffect(() => {
     if (!auto || autoStarted.current) return;
     autoStarted.current = true;
-    startOAuth(auto, { next, forceSignIn: true }).catch(() => {
-      setAutoFailed(true);
-      setBusy(null);
-    });
+    authBusyRef.current = true;
+    const operationEpoch = authOperationEpochRef.current + 1;
+    authOperationEpochRef.current = operationEpoch;
+    authAbortRef.current?.abort(new Error("oauth_replaced"));
+    const controller = new AbortController();
+    authAbortRef.current = controller;
+    startOAuth(auto, {
+      next,
+      forceSignIn: true,
+      signal: controller.signal,
+    })
+      .catch(() => {
+        if (
+          mountedRef.current &&
+          authOperationEpochRef.current === operationEpoch
+        ) {
+          authBusyRef.current = false;
+          setAutoFailed(true);
+          setBusy(null);
+        }
+      })
+      .finally(() => {
+        if (authAbortRef.current === controller) {
+          authAbortRef.current = null;
+        }
+      });
   }, [auto, next]);
 
   // OAuth 페이지에서 뒤로가기 → bfcache 복원 시 React 상태(busy 스피너)가 그대로 살아나
   // 버튼이 로딩 상태로 방치되는 문제 해결(공유 훅 — credits/signup/reconsent 와 동일 패턴).
   useBfcacheReset(() => {
+    authAbortRef.current?.abort(new Error("login_bfcache_restored"));
+    authAbortRef.current = null;
+    authOperationEpochRef.current += 1;
+    authBusyRef.current = false;
     setBusy(null); // 멈춘 스피너 해제 → 버튼 재활성
+    setRvBusy(false);
     autoStarted.current = false;
     if (auto) setAutoFailed(true); // 자동 재로그인 변형도 스피너 화면 풀고 버튼 노출
   });
 
+  const onReviewerLogin = async () => {
+    if (authBusyRef.current || !rvEmail.trim() || !rvPw) return;
+    authBusyRef.current = true;
+    const operationEpoch = authOperationEpochRef.current + 1;
+    authOperationEpochRef.current = operationEpoch;
+    setRvBusy(true);
+    setRvErr(null);
+    authAbortRef.current?.abort(new Error("auth_replaced"));
+    const controller = new AbortController();
+    authAbortRef.current = controller;
+    try {
+      const outcome = await runClientMutation({
+        attempt: async (requestSignal) => {
+          try {
+            const result = await createClient(
+              requestSignal,
+            ).auth.signInWithPassword({
+              email: rvEmail.trim(),
+              password: rvPw,
+            });
+            return {
+              kind: "confirmed" as const,
+              value: result,
+            };
+          } catch (error) {
+            return { kind: "rejected" as const, error };
+          }
+        },
+        signal: controller.signal,
+      });
+      if (outcome.kind !== "confirmed") {
+        throw outcome.kind === "rejected"
+          ? outcome.error
+          : new Error("reviewer_login_unconfirmed");
+      }
+      const { error } = outcome.value;
+      if (
+        !mountedRef.current ||
+        authOperationEpochRef.current !== operationEpoch
+      ) {
+        return;
+      }
+      if (error) {
+        authBusyRef.current = false;
+        setRvErr("아이디 또는 비밀번호가 올바르지 않아요.");
+        setRvBusy(false);
+        return;
+      }
+      // 성공 — 심사 동선 기본값은 충전 페이지(next 지정 시 그 경로).
+      window.location.assign(params.get("next") ? next : "/credits");
+    } catch {
+      if (
+        mountedRef.current &&
+        authOperationEpochRef.current === operationEpoch
+      ) {
+        authBusyRef.current = false;
+        setRvErr("로그인을 완료하지 못했어요. 잠시 후 다시 시도해주세요.");
+        setRvBusy(false);
+      }
+    } finally {
+      if (authAbortRef.current === controller) {
+        authAbortRef.current = null;
+      }
+    }
+  };
+
   const onLogin = async (provider: OAuthProvider) => {
-    if (busy) return;
+    if (authBusyRef.current) return;
+    authBusyRef.current = true;
+    const operationEpoch = authOperationEpochRef.current + 1;
+    authOperationEpochRef.current = operationEpoch;
     setBusy(provider);
     setErr(null);
+    authAbortRef.current?.abort(new Error("oauth_replaced"));
+    const controller = new AbortController();
+    authAbortRef.current = controller;
     try {
-      await startOAuth(provider, { next });
+      await startOAuth(provider, {
+        next,
+        signal: controller.signal,
+      });
       // 성공 시 OAuth 페이지로 리다이렉트됨 (이 줄 도달 안 함).
     } catch {
-      setErr("로그인을 시작하지 못했어요. 잠시 후 다시 시도해주세요.");
-      setBusy(null);
+      if (
+        mountedRef.current &&
+        authOperationEpochRef.current === operationEpoch
+      ) {
+        authBusyRef.current = false;
+        setErr("로그인을 시작하지 못했어요. 잠시 후 다시 시도해주세요.");
+        setBusy(null);
+      }
+    } finally {
+      if (authAbortRef.current === controller) {
+        authAbortRef.current = null;
+      }
     }
   };
 
@@ -128,6 +241,7 @@ export function LoginForm() {
   if (auto && !autoFailed) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+        <h1 className="sr-only">로그인</h1>
         <div className="flex flex-col items-center gap-4">
           <Spinner className="h-8 w-8" />
           <p className="text-sm text-zinc-500">로그인 중…</p>
@@ -138,6 +252,7 @@ export function LoginForm() {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+      <h1 className="sr-only">로그인</h1>
       <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 shadow-sm">
         <Paperclip className="left-7" />
         <CornerFold />
@@ -148,6 +263,7 @@ export function LoginForm() {
             alt="부장님 패기"
             width={640}
             height={640}
+            unoptimized
             priority
             className="w-32 max-w-full object-contain"
           />
@@ -159,12 +275,18 @@ export function LoginForm() {
         </p>
 
         {autoFailed && (
-          <p className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+          <p
+            role="alert"
+            className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400"
+          >
             자동 로그인에 실패했어요. 아래 버튼으로 다시 시도해주세요.
           </p>
         )}
         {errorMsg && (
-          <p className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+          <p
+            role="alert"
+            className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500"
+          >
             {errorMsg}
           </p>
         )}
@@ -182,26 +304,40 @@ export function LoginForm() {
               결제 심사(PG)용 테스트 계정 전용이에요. 일반 이용은 아래 카카오/Google 로그인을
               이용해주세요.
             </p>
+            <label htmlFor="reviewer-email" className="sr-only">
+              심사용 계정 이메일
+            </label>
             <input
+              id="reviewer-email"
               type="email"
               autoComplete="username"
               value={rvEmail}
+              disabled={rvBusy || !!busy}
               onChange={(e) => setRvEmail(e.target.value)}
               placeholder="아이디(이메일)"
               className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
             />
+            <label htmlFor="reviewer-password" className="sr-only">
+              심사용 계정 비밀번호
+            </label>
             <input
+              id="reviewer-password"
               type="password"
               autoComplete="current-password"
               value={rvPw}
+              disabled={rvBusy || !!busy}
               onChange={(e) => setRvPw(e.target.value)}
               placeholder="비밀번호"
               className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
             />
-            {rvErr && <p className="text-xs text-red-500">{rvErr}</p>}
+            {rvErr && (
+              <p role="alert" className="text-xs text-red-500">
+                {rvErr}
+              </p>
+            )}
             <button
               type="submit"
-              disabled={rvBusy || !rvEmail.trim() || !rvPw}
+              disabled={rvBusy || !!busy || !rvEmail.trim() || !rvPw}
               className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-foreground py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-50"
             >
               {rvBusy && <Spinner className="h-4 w-4" />}
@@ -214,7 +350,7 @@ export function LoginForm() {
           <button
             type="button"
             onClick={() => void onLogin("kakao")}
-            disabled={!!busy}
+            disabled={!!busy || rvBusy}
             className="flex items-center justify-center gap-2 rounded-xl bg-[#FEE500] py-4 text-base font-semibold text-[#191600] transition hover:opacity-90 disabled:opacity-50"
           >
             {busy === "kakao" ? <Spinner className="h-5 w-5" /> : <KakaoIcon />}
@@ -223,7 +359,7 @@ export function LoginForm() {
           <button
             type="button"
             onClick={() => void onLogin("google")}
-            disabled={!!busy}
+            disabled={!!busy || rvBusy}
             className="flex items-center justify-center gap-2 rounded-xl border border-foreground/20 bg-white py-4 text-base font-semibold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
           >
             {busy === "google" ? <Spinner className="h-5 w-5" /> : <GoogleIcon />}
@@ -231,7 +367,11 @@ export function LoginForm() {
           </button>
         </div>
 
-        {err && <p className="text-sm text-red-400">{err}</p>}
+        {err && (
+          <p role="alert" className="text-sm text-red-400">
+            {err}
+          </p>
+        )}
 
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">
           새 계정으로 가입하면 현재 비회원 기록(점수 등)이 이전됩니다. 기존 계정으로

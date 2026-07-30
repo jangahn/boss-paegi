@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
@@ -8,6 +8,14 @@ import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { shortId, fmtKst } from "@/lib/admin-format";
 import type { ModerationRow, ModState, ModReport } from "@/lib/admin-moderation";
+import { parsePermanentDeleteHttpOutcome } from "@/lib/moderation-action-response";
+import { parseAdminModerationMutationResult } from "@/lib/admin-mutation";
+import {
+  clientMutationResponseNeedsReconciliation,
+  readBoundedClientJsonResponse,
+  runClientMutation,
+  type ClientMutationEvidence,
+} from "@/lib/client-mutation";
 
 const REASON_KO: Record<string, string> = {
   portrait: "비동의 얼굴/초상권",
@@ -25,6 +33,17 @@ const STATE_META: Record<ModState, { label: string; cls: string }> = {
 };
 
 type ActionMode = "hide" | "dismiss" | "restore" | "permanent";
+
+type PermanentDeleteIntent = {
+  requestId: string;
+  expectedState: "hidden";
+  expectedVersion: number;
+  reason: string | null;
+};
+
+type ModerationDelivery =
+  | { kind: "completed" }
+  | { kind: "pending"; jobId: string };
 
 const MODE_META: Record<
   ActionMode,
@@ -67,7 +86,6 @@ const ACTIONS_BY_STATE: Record<ModState, ActionMode[]> = {
   dismissed: ["hide"],
 };
 
-
 export function ModerationQueueTable({ rows }: { rows: ModerationRow[] }) {
   return (
     <ul className="space-y-2">
@@ -80,45 +98,184 @@ export function ModerationQueueTable({ rows }: { rows: ModerationRow[] }) {
 
 function ModerationRowItem({ row }: { row: ModerationRow }) {
   const router = useRouter();
+  const reportListId = useId();
   const [mode, setMode] = useState<ActionMode | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [purgePendingJobId, setPurgePendingJobId] = useState<string | null>(
+    null,
+  );
+  const [permanentIntent, setPermanentIntent] =
+    useState<PermanentDeleteIntent | null>(null);
   const [open, setOpen] = useState(false);
+  const busyRef = useRef(false);
+  const lifecycleRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    lifecycleRef.current = controller;
+    return () => {
+      controller.abort(new Error("moderation_row_unmounted"));
+      if (lifecycleRef.current === controller) lifecycleRef.current = null;
+    };
+  }, []);
 
   const st = STATE_META[row.state];
   const purged = row.state === "purged";
 
+  const closeModal = () => {
+    if (busyRef.current) return;
+    setMode(null);
+    setPermanentIntent(null);
+  };
+
   const submit = async () => {
-    if (busy || !mode || reason.trim().length < 5) return;
+    if (busyRef.current || !mode || reason.trim().length < 5) return;
+    const submittedMode = mode;
+    let submittedReason = reason.trim();
+    let expectedState: ModState = row.state;
+    let expectedVersion = row.moderationVersion;
+    let requestId: string | undefined;
+    if (submittedMode === "permanent") {
+      if (!permanentIntent) {
+        setError("삭제 요청을 시작할 수 없어요. 창을 닫고 다시 시도하세요.");
+        return;
+      }
+      submittedReason = permanentIntent.reason ?? submittedReason;
+      expectedState = permanentIntent.expectedState;
+      expectedVersion = permanentIntent.expectedVersion;
+      requestId = permanentIntent.requestId;
+      if (permanentIntent.reason === null) {
+        // From the first delivery onward, every retry must carry the exact
+        // same payload even if a 202 refresh changes the row snapshot.
+        setPermanentIntent({ ...permanentIntent, reason: submittedReason });
+      }
+    }
+    const payload = {
+      dollId: row.dollId,
+      reason: submittedReason,
+      expectedState,
+      expectedVersion,
+      ...(requestId ? { requestId } : {}),
+    };
+    // Keep both the operation UUID and the byte-equivalent JSON payload
+    // stable across delivery and reconciliation.
+    const requestBody = JSON.stringify(payload);
+    const lifecycleSignal = lifecycleRef.current?.signal;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(MODE_META[mode].endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dollId: row.dollId, reason: reason.trim() }),
+      const deliver = async (
+        signal: AbortSignal,
+      ): Promise<ClientMutationEvidence<ModerationDelivery>> => {
+        const res = await fetch(MODE_META[submittedMode].endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+          signal,
+        });
+        const responseBody =
+          await readBoundedClientJsonResponse(res, signal);
+        const body: unknown = responseBody.ok
+          ? responseBody.value
+          : null;
+        if (submittedMode === "permanent" && res.ok) {
+          const outcome = parsePermanentDeleteHttpOutcome(res.status, body);
+          if (outcome) {
+            return {
+              kind: "confirmed",
+              value:
+                outcome.kind === "pending"
+                  ? { kind: "pending", jobId: outcome.jobId }
+                  : { kind: "completed" },
+            };
+          }
+        } else if (res.ok) {
+          const result = parseAdminModerationMutationResult(body);
+          const expectedNextState: Record<
+            Exclude<ActionMode, "permanent">,
+            string
+          > = {
+            hide: "hidden",
+            dismiss: "dismissed",
+            restore: "dismissed",
+          };
+          if (
+            result !== null &&
+            submittedMode !== "permanent" &&
+            result.nextState === expectedNextState[submittedMode]
+          ) {
+            return { kind: "confirmed", value: { kind: "completed" } };
+          }
+        }
+        const apiError =
+          body && typeof body === "object" && !Array.isArray(body)
+            ? (body as { error?: unknown }).error
+            : undefined;
+        if (
+          clientMutationResponseNeedsReconciliation(res.status, res.ok)
+        ) {
+          return {
+            kind: "unconfirmed",
+            reason: "moderation_response_unconfirmed",
+            error: apiError,
+          };
+        }
+        return {
+          kind: "rejected",
+          error:
+            typeof apiError === "string"
+              ? apiError
+              : `moderation_http_${res.status}`,
+        };
+      };
+      const outcome = await runClientMutation({
+        attempt: deliver,
+        reconcile: deliver,
+        signal: lifecycleSignal,
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      if (res.ok) {
+      if (outcome.kind === "aborted") return;
+      if (outcome.kind === "confirmed") {
+        if (outcome.value.kind === "pending") {
+          setPurgePendingJobId(outcome.value.jobId);
+          router.refresh();
+          return;
+        }
         setMode(null);
         setReason("");
+        setPurgePendingJobId(null);
+        setPermanentIntent(null);
         router.refresh();
         return;
       }
+      const apiError =
+        outcome.kind === "rejected" ? outcome.error : undefined;
       setError(
-        body.error === "reason_invalid"
+        apiError === "reason_invalid"
           ? "사유는 5~500자여야 해요."
-          : body.error === "already_purged"
+          : apiError === "already_purged"
             ? "이미 영구삭제되어 복구할 수 없어요."
-            : body.error === "not_taken_down"
+            : apiError === "not_taken_down"
               ? "숨김 상태가 아니에요(새로고침 후 확인)."
-              : "처리 실패 — 잠시 후 다시 시도하세요."
+              : apiError === "state_conflict"
+                ? "다른 작업이 먼저 반영됐어요. 새로고침 후 현재 상태를 확인하세요."
+                : apiError === "idempotency_conflict"
+                  ? "이 삭제 요청의 내용이 달라졌어요. 창을 닫고 현재 상태에서 다시 시작하세요."
+                  : apiError === "request_aborted"
+                    ? "이전 요청은 취소된 것으로 확인됐어요. 창을 닫고 다시 시작하세요."
+                    : outcome.kind === "unconfirmed"
+                      ? "처리 결과를 확인하지 못했어요. 성공으로 간주하지 않았습니다. 새로고침해 현재 상태를 확인하세요."
+                      : "처리 실패 — 잠시 후 다시 시도하세요.",
       );
     } catch {
-      setError("네트워크 오류 — 다시 시도하세요.");
+      if (!lifecycleSignal?.aborted) {
+        setError("처리 결과를 확인하지 못했어요. 새로고침해 현재 상태를 확인하세요.");
+      }
     } finally {
-      setBusy(false);
+      busyRef.current = false;
+      if (!lifecycleSignal?.aborted) setBusy(false);
     }
   };
 
@@ -129,7 +286,7 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
         <div className="relative aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-md border border-foreground/10 bg-foreground/10">
           {purged || !row.image_url ? (
             <div className="flex h-full w-full items-center justify-center text-xl">
-              {purged ? "🗑️" : "😠"}
+              {purged ? "🗑️" : row.image_error ? "⚠️" : "😠"}
             </div>
           ) : (
             <>
@@ -152,6 +309,8 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                aria-controls={reportListId}
                 className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-500"
               >
                 신고 {row.report_count}건
@@ -163,14 +322,45 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
               <span className="text-[11px] text-zinc-400">· {fmtKst(row.latest_report_at)}</span>
             )}
           </div>
+          {row.image_error === "invalid_path" && (
+            <p
+              role="alert"
+              className="mt-1 rounded-md bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-600"
+            >
+              저장 이미지 경로가 손상되어 미리보기를 차단했습니다. 콘텐츠를
+              공개 유지하기 전에 원본과 저장소 원장을 확인하세요.
+            </p>
+          )}
 
           {/* 신고 상세(접힘) — 펼치면 각 신고 사유·내용·연락처·시각 전체 */}
-          {open && row.reports.length > 0 && (
-            <ul className="mt-2 space-y-1.5 rounded-lg border border-foreground/10 bg-background/40 p-2">
-              {row.reports.map((rep) => (
-                <ReportDetail key={rep.id} rep={rep} />
-              ))}
-            </ul>
+          {open && (
+            <div
+              id={reportListId}
+              className="mt-2 rounded-lg border border-foreground/10 bg-background/40 p-2"
+            >
+              {row.reports_truncated && (
+                <p
+                  role="status"
+                  className="mb-2 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                >
+                  최근 100건만 표시 · 전체 {row.report_count.toLocaleString()}건
+                </p>
+              )}
+              {row.reports.length > 0 ? (
+                <ul
+                  aria-label="신고 상세"
+                  className="space-y-1.5"
+                >
+                  {row.reports.map((rep) => (
+                    <ReportDetail key={rep.id} rep={rep} />
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-zinc-500">
+                  표시할 신고 상세가 없습니다.
+                </p>
+              )}
+            </div>
           )}
 
           {/* 클릭 필터: 캐릭터 / 제작자 + 회원 링크 */}
@@ -214,6 +404,17 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
                   setMode(m);
                   setReason("");
                   setError(null);
+                  setPurgePendingJobId(null);
+                  setPermanentIntent(
+                    m === "permanent"
+                      ? {
+                          requestId: crypto.randomUUID(),
+                          expectedState: "hidden",
+                          expectedVersion: row.moderationVersion,
+                          reason: null,
+                        }
+                      : null,
+                  );
                 }}
                 className={`rounded-lg border px-2 py-1 text-xs font-medium ${
                   MODE_META[m].danger
@@ -244,22 +445,37 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
       </div>
 
       {mode && (
-        <ModalShell onClose={() => !busy && setMode(null)}>
+        <ModalShell ariaLabel={MODE_META[mode].title} onClose={closeModal}>
           <h3 className="text-base font-bold">{MODE_META[mode].title}</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">{MODE_META[mode].desc}</p>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            disabled={
+              mode === "permanent" && permanentIntent?.reason !== null
+            }
             placeholder="사유(5~500자)"
             maxLength={500}
             rows={2}
             className="mt-3 w-full rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none"
           />
+          {purgePendingJobId && (
+            <div
+              role="status"
+              className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-600"
+            >
+              영구삭제 작업이 접수됐지만 아직 완료되지 않았어요. 백그라운드
+              재시도 후 상태가 &quot;영구삭제&quot;로 바뀝니다.
+              <span className="mt-1 block font-mono text-[10px] opacity-75">
+                작업 {shortId(purgePendingJobId)}
+              </span>
+            </div>
+          )}
           {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
           <div className="mt-3 flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => !busy && setMode(null)}
+              onClick={closeModal}
               disabled={busy}
               className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm disabled:opacity-40"
             >
@@ -274,7 +490,9 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
               }`}
             >
               {busy && <Spinner className="h-3.5 w-3.5" />}
-              {MODE_META[mode].btn}
+              {mode === "permanent" && purgePendingJobId
+                ? "처리 다시 시도"
+                : MODE_META[mode].btn}
             </button>
           </div>
         </ModalShell>

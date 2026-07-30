@@ -432,7 +432,9 @@ with manifest(sig, kind) as (values
   ('public.resolve_external_cancellation(text,uuid,text,int)','external'),
   ('public.resolve_external_cancellation_auto_full(uuid)','external'),
   ('public.admin_resolve_reconciliation_issue(uuid,uuid,text,text)','external'),
-  ('public.admin_adjust_credits(uuid,uuid,int,text)','external'),
+  ('public.bp_0084_admin_adjust_credits_legacy_impl(uuid,uuid,int,text)','internal'),
+  ('public.admin_adjust_credits(uuid,uuid,int,text,uuid)','external'),
+  ('public.get_admin_credit_adjust_receipt(uuid,uuid,uuid)','external'),
   ('public.admin_cancel_order(uuid,uuid,boolean,text,boolean)','external'),
   ('public.admin_cancel_order(uuid,uuid,boolean,text)','external'),
   ('public.admin_soft_delete_account(uuid)','external'),
@@ -540,7 +542,8 @@ viol as (
        'admin_refund_commit_manual','admin_refund_release','admin_refund_replan_pre_pg',
        'admin_refund_replan_after_pg','cancel_intent_begin','cancel_intent_resolve',
        'resolve_external_cancellation','resolve_external_cancellation_auto_full',
-       'admin_resolve_reconciliation_issue','admin_adjust_credits','admin_cancel_order',
+       'admin_resolve_reconciliation_issue','admin_adjust_credits',
+       'get_admin_credit_adjust_receipt','admin_cancel_order',
        'admin_soft_delete_account','sweep_expired','ops_cron_heartbeat','get_my_credits',
        'get_admin_order_summary','admin_settle_stuck_order','consume_gen_credit','refund_gen_credit',
        'consume_gen_credit_v2','refund_gen_credit_v2','bp_credit_ledger_write','bp_apply_attempt_commit',
@@ -560,7 +563,7 @@ select 'G-32' as gate, count(*)::int as violations, 'structural' as scope,
                ('payment_cancellation_events'),('reconciliation_issues'),('credit_refund_shortfalls'),
                ('legacy_refund_backfill_evidence'),('cancellation_resolution_batches'),
                ('ops_cron_heartbeats'),('schema_migration_journal'),
-               ('credit_ledger'),('admin_actions_ledger')) t(tbl)
+               ('credit_ledger'),('admin_actions_ledger'),('admin_operation_receipts')) t(tbl)
   join pg_class c on c.oid = ('public.' || t.tbl)::regclass
  where c.relrowsecurity = false
     or (select count(*) from pg_policy p where p.polrelid = c.oid) > 0;

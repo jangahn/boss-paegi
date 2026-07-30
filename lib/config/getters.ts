@@ -4,6 +4,8 @@ import {
   getSettingWithMeta,
   getSettingUncached,
   getSettingWithMetaUncached,
+  getSettingStrictUncached,
+  getSettingWithMetaStrictUncached,
 } from "./get";
 import {
   generationConfigSchema,
@@ -91,9 +93,24 @@ export function getGrowthLevers(): Promise<GrowthLevers> {
 export function getGrowthLeversWithMeta() {
   return getSettingWithMeta("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
 }
+export function getGrowthLeversStrict(): Promise<GrowthLevers> {
+  return getSettingStrictUncached(
+    "growth_levers",
+    growthLeversSchema,
+    GROWTH_LEVERS_DEFAULT,
+  );
+}
 
 export function getBadgeCatalog(): Promise<BadgeCatalog> {
   return getSetting("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
+}
+/** Score report grants are immutable, so read/validation errors must retry. */
+export function getBadgeCatalogStrictUncached(): Promise<BadgeCatalog> {
+  return getSettingStrictUncached(
+    "badge_catalog",
+    badgeCatalogSchema,
+    BADGE_CATALOG_DEFAULT,
+  );
 }
 export function getBadgeCatalogWithMeta() {
   return getSettingWithMeta("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
@@ -130,5 +147,12 @@ export function getGenerationConfigWithMeta() {
     "generation_config",
     generationConfigSchema,
     GENERATION_CONFIG_DEFAULT
+  );
+}
+export function getGenerationConfigWithMetaStrict() {
+  return getSettingWithMetaStrictUncached(
+    "generation_config",
+    generationConfigSchema,
+    GENERATION_CONFIG_DEFAULT,
   );
 }

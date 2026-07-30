@@ -4,6 +4,19 @@ import { log, errInfo } from "@/lib/log";
 import { SERVICE_NAME } from "@/lib/policy";
 import { isMobileOS } from "@/lib/device";
 import type { HighlightClip } from "@/lib/highlight";
+import {
+  parseHighlightMutationHttpAck,
+  parseHighlightUploadInitAck,
+} from "@/lib/highlight-http-contract";
+import {
+  clearClientUploadOperation,
+  stableClientUploadOperation,
+} from "@/lib/client-upload-operation";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runClientMutation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
 
 export type ShareResult = "shared" | "copied" | "cancelled" | "failed";
 
@@ -17,46 +30,146 @@ const HIGHLIGHT_BUCKET = "highlights";
  */
 export async function uploadHighlightClip(
   scoreId: string,
-  clip: HighlightClip
+  clip: HighlightClip,
+  options: { signal?: AbortSignal } = {},
 ): Promise<"attached" | "failed"> {
   try {
-    const r = await fetch("/api/highlight", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scoreId, mime: clip.mime }),
+    const scope = `highlight:${scoreId}`;
+    const operation = await stableClientUploadOperation({
+      scope,
+      binding: `${scoreId}:${clip.mime}`,
+      blob: clip.blob,
     });
-    if (!r.ok) {
-      if (r.status === 413 || r.status === 400)
-        log.warn("highlight.upload_rejected_size", { scoreId, status: r.status });
+    const initBody = JSON.stringify({
+        scoreId,
+        mime: clip.mime,
+        requestId: operation.requestId,
+    });
+    const initOutcome = await runReplayedJsonMutation({
+      input: "/api/highlight",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: initBody,
+      },
+      signal: options.signal,
+      classify: (response, body) => {
+        const acknowledgement = response.ok
+          ? parseHighlightUploadInitAck(body, {
+              scoreId,
+              mime: clip.mime,
+            })
+          : null;
+        if (acknowledgement) {
+          return {
+            kind: "confirmed",
+            value: acknowledgement,
+          };
+        }
+        if (
+          clientMutationResponseNeedsReconciliation(
+            response.status,
+            response.ok,
+          )
+        ) {
+          return {
+            kind: "unconfirmed",
+            reason: "highlight_upload_init_unconfirmed",
+          };
+        }
+        return {
+          kind: "rejected",
+          error: { status: response.status },
+        };
+      },
+    });
+    if (initOutcome.kind !== "confirmed") {
+      if (
+        initOutcome.kind === "rejected" &&
+        initOutcome.error &&
+        typeof initOutcome.error === "object" &&
+        "status" in initOutcome.error &&
+        (initOutcome.error.status === 413 ||
+          initOutcome.error.status === 400)
+      ) {
+        log.warn("highlight.upload_rejected_size", {
+          scoreId,
+          status: initOutcome.error.status,
+        });
+      }
       return "failed";
     }
-    const { uploadId, ext, path, token } = (await r.json()) as {
-      uploadId: string;
-      ext: string;
-      path: string;
-      token: string;
-    };
+    const init = initOutcome.value;
+    const { uploadId, ext, path, token } = init;
     const sb = createClient();
-    const { error } = await sb.storage
-      .from(HIGHLIGHT_BUCKET)
-      .uploadToSignedUrl(path, token, clip.blob, { contentType: clip.mime });
-    if (error) {
-      log.warn("highlight.upload_fail", { scoreId, ...errInfo(error) });
+    const uploadOutcome = await runClientMutation({
+      attempt: async () => {
+        const { error } = await sb.storage
+          .from(HIGHLIGHT_BUCKET)
+          .uploadToSignedUrl(path, token, clip.blob, {
+            contentType: clip.mime,
+          });
+        return error
+          ? { kind: "rejected" as const, error }
+          : { kind: "confirmed" as const, value: true };
+      },
+      signal: options.signal,
+      deadlineMs: 60_000,
+      attemptMs: 45_000,
+    });
+    if (uploadOutcome.kind !== "confirmed") {
+      log.warn("highlight.upload_fail", {
+        scoreId,
+        outcome: uploadOutcome.kind,
+      });
       return "failed";
     }
-    const patch = await fetch("/api/highlight", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const confirmBody = JSON.stringify({
         scoreId,
         mode: "clip",
         uploadId,
         ext,
         delta: clip.delta,
         windowMs: clip.windowMs,
-      }),
     });
-    return patch.ok ? "attached" : "failed";
+    const confirmOutcome = await runReplayedJsonMutation({
+      input: "/api/highlight",
+      init: {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: confirmBody,
+      },
+      signal: options.signal,
+      classify: (response, body) => {
+        const acknowledgement = response.ok
+          ? parseHighlightMutationHttpAck(body)
+          : null;
+        if (acknowledgement) {
+          return {
+            kind: "confirmed",
+            value: acknowledgement,
+          };
+        }
+        if (
+          clientMutationResponseNeedsReconciliation(
+            response.status,
+            response.ok,
+          )
+        ) {
+          return {
+            kind: "unconfirmed",
+            reason: "highlight_confirm_unconfirmed",
+          };
+        }
+        return {
+          kind: "rejected",
+          error: `highlight_confirm_http_${response.status}`,
+        };
+      },
+    });
+    if (confirmOutcome.kind !== "confirmed") return "failed";
+    clearClientUploadOperation(scope, operation.requestId);
+    return "attached";
   } catch (e) {
     log.warn("highlight.upload_fail", { scoreId, ...errInfo(e) });
     return "failed";
@@ -69,20 +182,49 @@ export async function uploadHighlightClip(
  */
 export async function saveCardHighlight(
   scoreId: string,
-  h: { delta: number; windowMs: number }
+  h: { delta: number; windowMs: number },
+  options: { signal?: AbortSignal } = {},
 ): Promise<"card" | "failed"> {
   try {
-    const r = await fetch("/api/highlight", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const requestBody = JSON.stringify({
         scoreId,
         mode: "card",
         delta: h.delta,
         windowMs: h.windowMs,
-      }),
     });
-    return r.ok ? "card" : "failed";
+    const outcome = await runReplayedJsonMutation({
+      input: "/api/highlight",
+      init: {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody,
+      },
+      signal: options.signal,
+      classify: (response, body) => {
+        if (
+          response.ok &&
+          parseHighlightMutationHttpAck(body)
+        ) {
+          return { kind: "confirmed", value: true };
+        }
+        if (
+          clientMutationResponseNeedsReconciliation(
+            response.status,
+            response.ok,
+          )
+        ) {
+          return {
+            kind: "unconfirmed",
+            reason: "highlight_card_unconfirmed",
+          };
+        }
+        return {
+          kind: "rejected",
+          error: `highlight_card_http_${response.status}`,
+        };
+      },
+    });
+    return outcome.kind === "confirmed" ? "card" : "failed";
   } catch (e) {
     log.warn("highlight.card_save_fail", { scoreId, ...errInfo(e) });
     return "failed";

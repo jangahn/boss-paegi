@@ -17,7 +17,7 @@ export const TIER_COUNT = 10;
 
 /** 점수 → 0~9 단계 인덱스. 갭 10000, 90000+ 는 최상위(9). */
 export function scoreTier(score: number): number {
-  if (score <= 0) return 0;
+  if (!Number.isFinite(score) || score <= 0) return 0;
   return Math.min(TIER_COUNT - 1, Math.floor(score / TIER_STEP));
 }
 
@@ -96,6 +96,7 @@ export function weaponLabel(key: string): string {
 }
 
 export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
   const sec = Math.round(ms / 1000);
   if (sec < 60) return `${sec}초`;
   return `${Math.floor(sec / 60)}분 ${sec % 60}초`;
@@ -103,7 +104,9 @@ export function formatDuration(ms: number): string {
 
 /** ISO 시각 → "방금/N분 전/N시간 전/N일 전" 상대 표기 (목록·랭킹 공용). */
 export function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const at = new Date(iso).getTime();
+  if (!Number.isFinite(at)) return "—";
+  const diff = Date.now() - at;
   const min = Math.floor(diff / 60000);
   if (min < 1) return "방금";
   if (min < 60) return `${min}분 전`;
@@ -115,8 +118,12 @@ export function timeAgo(iso: string): string {
 /** 보고서 문서번호 — 공유 링크마다 고정 (scoreId 앞 8자) */
 export function reportNo(scoreId: string, createdAt: string | Date): string {
   const d = new Date(createdAt);
-  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(
-    d.getDate()
+  if (!Number.isFinite(d.getTime())) return "문서번호 확인 불가";
+  // 서버(Vercel UTC)·한국 사용자 브라우저가 자정 경계에서도 같은 번호를 만들도록
+  // 서비스 기준 시각인 KST(+09:00, DST 없음)를 명시적으로 사용한다.
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const ymd = `${kst.getUTCFullYear()}${String(kst.getUTCMonth() + 1).padStart(2, "0")}${String(
+    kst.getUTCDate()
   ).padStart(2, "0")}`;
   return `제${ymd}-${scoreId.slice(0, 4).toUpperCase()}호`;
 }

@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { DomainEntry } from "../registry";
-// type-only(런타임 erase) — generation.ts 는 zod 외 런타임 의존 없음(node --test 로 golden 실행 가능).
+// roles는 type-only(런타임 erase), 공용 own-property guard는 상대 경로로 import해
+// node --test golden에서도 Next 별칭 해석 없이 실행 가능하게 유지한다.
 import type { RoleId } from "@/lib/roles";
+import { ownRecordValue } from "../../own-record.ts";
 
 // 캐릭터 생성(fal-ai/flux-pulid) 파라미터·프롬프트 도메인.
 // 수치는 스키마 하드경계 대신 **앱 안전 서브레인지**(identity 붕괴·원가·지연 방지).
@@ -112,7 +114,10 @@ export type GenerationPromptConfig = z.infer<typeof promptSchema>;
 
 // 단일 pass 치환 — 치환된 값 안의 "{...}" 는 재치환하지 않음(String.replace 특성).
 function fill(template: string, map: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in map ? map[k] : m));
+  return template.replace(
+    /\{(\w+)\}/g,
+    (match, key: string) => ownRecordValue(map, key) ?? match,
+  );
 }
 
 /**

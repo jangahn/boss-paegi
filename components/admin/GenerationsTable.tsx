@@ -11,6 +11,7 @@ const STATUS_META: Record<AdminGenStatus, { label: string; cls: string; icon: st
   rejected: { label: "거부", cls: "bg-orange-500/15 text-orange-600", icon: "🚫" },
   failed: { label: "기타 실패", cls: "bg-red-500/15 text-red-500", icon: "⚠️" },
   unpicked: { label: "선택 전", cls: "bg-amber-500/15 text-amber-600", icon: "🖼️" },
+  expired: { label: "미선택 만료", cls: "bg-zinc-500/15 text-zinc-500", icon: "⌛" },
   picked: { label: "선택완료", cls: "bg-emerald-500/15 text-emerald-600", icon: "✅" },
 };
 
@@ -55,7 +56,7 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
   return (
     <li className="rounded-2xl border border-foreground/10 ui-surface p-3">
       <div className="flex gap-3">
-        {/* 대표 썸네일 — done/picked 만 이미지, 그 외 상태 아이콘 */}
+        {/* 대표 썸네일 — 선택 전/선택완료만 이미지, 만료 포함 그 외는 상태 아이콘 */}
         <div className="flex aspect-[3/4] w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-foreground/10 bg-foreground/10 text-xl">
           {thumb ? (
             <FadeImg src={thumb} placeholder="shimmer" fit="contain" className="h-full w-full" />
@@ -129,7 +130,7 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
 function GenDetail({ row }: { row: AdminGeneration }) {
   return (
     <div className="mt-2 space-y-2 rounded-lg border border-foreground/10 bg-background/40 p-2 text-[11px]">
-      {/* 후보 — 선택 전: 3장 / 선택완료: 고른 1장(나머지는 pick 시 삭제) */}
+      {/* 후보 — 선택 전: 최대 3장 / 선택완료: 고른 1장 / 미선택 만료: 서명·노출 안 함 */}
       {row.candidateThumbs.length > 0 ? (
         <div>
           <p className="mb-1 text-zinc-500">
@@ -161,6 +162,10 @@ function GenDetail({ row }: { row: AdminGeneration }) {
         <p className="text-zinc-500">
           {row.adminStatus === "requested"
             ? "생성 진행 중 — 아직 후보 없음."
+            : row.adminStatus === "expired"
+              ? row.candidateCount > 0
+                ? `미선택 만료 — 후보 썸네일 미노출 (스토리지 정리 재시도 ${row.candidateCount}건).`
+                : "미선택 만료 — 후보 스토리지 정리 완료(썸네일 없음)."
             : row.adminStatus === "rejected"
               ? "입력 사진 부적합으로 제출·차감 전 반려 — 생성 미진행."
               : `후보 이미지 없음${row.candidateCount > 0 ? ` (후보 ${row.candidateCount}건 기록·만료/삭제)` : ""}.`}

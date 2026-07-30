@@ -38,12 +38,20 @@ function send(payload: Record<string, unknown>): boolean {
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       if (navigator.sendBeacon(TRACK_URL, new Blob([body], { type: "application/json" }))) return true;
     }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(new Error("track_delivery_timeout")),
+      5_000,
+    );
     void fetch(TRACK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
       keepalive: true,
-    }).catch(() => {});
+      signal: controller.signal,
+    })
+      .catch(() => {})
+      .finally(() => window.clearTimeout(timeoutId));
     return true;
   } catch {
     return false;

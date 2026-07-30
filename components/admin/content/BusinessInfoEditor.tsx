@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import type { BusinessInfo, BusinessInfoConfig } from "@/lib/config/domains/business-info";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -31,6 +32,7 @@ export function BusinessInfoEditor({
   invalid: boolean;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [biz, setBiz] = useState<BusinessInfo>(initial.info ?? EMPTY_BIZ);
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
@@ -58,14 +60,12 @@ export function BusinessInfoEditor({
         }
       : {};
     try {
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "business_info", value, baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "business_info", value, baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as { ok?: boolean; version?: number; error?: string };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({
           ok: true,
           text: filled
@@ -74,7 +74,7 @@ export function BusinessInfoEditor({
         });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

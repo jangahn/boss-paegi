@@ -6,6 +6,7 @@ import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/type
 import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { firstParam, fmtKst } from "@/lib/admin-format";
+import { parsePageParam } from "@/lib/pagination";
 
 // 운영 목록 — 항상 최신.
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function AdminEventsPage({
   const status = statusRaw === "draft" || statusRaw === "published" ? statusRaw : undefined;
   const typeRaw = firstParam(sp.type);
   const type: EventType | undefined = typeRaw && isEventType(typeRaw) ? typeRaw : undefined;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
 
   const { items, total, totalPages } = await getAdminEvents({ status, type, page });
   if (items.length === 0 && page > 1) redirect("/admin/events");

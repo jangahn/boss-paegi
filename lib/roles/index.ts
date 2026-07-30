@@ -4,6 +4,7 @@ import { exec } from "./exec";
 import { teamlead } from "./teamlead";
 import { client } from "./client";
 import { coworker } from "./coworker";
+import { ownRecordValue } from "@/lib/own-record";
 
 /**
  * 캐릭터 롤 레지스트리 — 단일 소스. 셀렉터(lib/report·taunts)가 role 로 인덱싱한다.
@@ -87,7 +88,7 @@ const CONTENT: Record<RoleId, RoleContent> = {
 };
 
 export function getRoleContent(role: RoleId): RoleContent {
-  return CONTENT[role] ?? boss;
+  return ownRecordValue(CONTENT, role) ?? boss;
 }
 
 // dev assert — 빈 tier / 빈 배열 조기 검출 (10단계 길이는 TieredLines 튜플이 컴파일 강제).

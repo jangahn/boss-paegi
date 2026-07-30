@@ -1,35 +1,27 @@
 import { NextResponse } from "next/server";
-import { getActivePopupEvent, getActiveBanner } from "@/lib/events";
-import { type EventView } from "@/lib/events/types";
+import { getActiveEventSurfaces } from "@/lib/events";
 
 export const runtime = "nodejs";
-
-const slimBanner = (b: EventView | null) =>
-  b ? { id: b.id, type: b.type, summary: b.summary } : null;
+export const dynamic = "force-dynamic";
+export const maxDuration = 20;
 
 /**
  * 공개 — 현재 활성 팝업 1건 + 지면별(홈·갤러리·랭킹) 배너 각 1건(슬림 DTO). anon 포함 누구나(/api 는 proxy 예외).
- * lib/events 의 unstable_cache(60s·tag 'events') 백킹 + 발행/수정/삭제 시 revalidateTag 로 즉시 갱신.
- * 본문(body)·커버 경로는 노출 안 함 — 상세는 /news/[id] 로.
+ * 단일 service_role RPC의 한 MVCC snapshot에서 4지면과 다음 예약 경계를
+ * 함께 고른다. 본문(body)·커버 경로는 DB RPC 단계부터 노출하지 않는다.
  */
 export async function GET() {
-  const [popup, home, gallery, leaderboard] = await Promise.all([
-    getActivePopupEvent(),
-    getActiveBanner("home"),
-    getActiveBanner("gallery"),
-    getActiveBanner("leaderboard"),
-  ]);
+  const snapshot = await getActiveEventSurfaces();
   return NextResponse.json(
+    snapshot,
     {
-      popup: popup
-        ? { id: popup.id, type: popup.type, title: popup.title, summary: popup.summary, popupDismissDays: popup.popup_dismiss_days }
-        : null,
-      banners: {
-        home: slimBanner(home),
-        gallery: slimBanner(gallery),
-        leaderboard: slimBanner(leaderboard),
+      headers: {
+        // starts_at/ends_at 1ms 경계를 공유 cache TTL로 양자화하지 않는다.
+        // 클라이언트는 nextTransitionAt에 현재 snapshot을 먼저 폐기한 뒤
+        // 동일 endpoint를 다시 조회한다.
+        "Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
       },
     },
-    { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } }
   );
 }

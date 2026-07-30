@@ -37,12 +37,12 @@ import { SwipeInput } from "@/game/input/SwipeInput";
 import { ShootInput } from "@/game/input/ShootInput";
 import { DrawInput } from "@/game/input/DrawInput";
 import {
-  Weapon,
-  WeaponCategory,
   WEAPONS,
   SWIPE_FACTOR_MAX,
   THROW_FACTOR_MAX,
   GRAB_FLING_POWER_BONUS,
+  type Weapon,
+  type WeaponCategory,
 } from "@/lib/weapons";
 import { playHitSound, unlockAudio } from "@/lib/sound";
 
@@ -111,6 +111,7 @@ export class PlayScene extends Container {
   private shootInput: ShootInput;
   private drawInput: DrawInput;
   private mode: WeaponCategory = "tap";
+  private lifecycle: "running" | "paused" | "ended" = "running";
   // 비비탄
   private pellets: Pellet[] = [];
 
@@ -230,8 +231,40 @@ export class PlayScene extends Container {
     this.updateMode();
   }
 
+  /** blur/hidden 동안 ticker가 돌더라도 입력·물리·충돌·점수를 함께 동결한다. */
+  pause() {
+    if (this.lifecycle === "ended") return;
+    this.lifecycle = "paused";
+    this.cancelActivePointers();
+  }
+
+  /** blur와 hidden이 모두 해제됐을 때만 BossPaegiGame이 호출한다. */
+  resume() {
+    if (this.lifecycle === "paused") this.lifecycle = "running";
+  }
+
+  /** 새 판 시작. 이전 판의 비행체/held input/궁극기 상태는 재사용하지 않는다. */
+  start() {
+    this.cancelActivePointers();
+    this.stopUltimate();
+    this.clearTransientAttacks();
+    this.lifecycle = "running";
+  }
+
+  /** 결과 스냅샷보다 먼저 호출해 Pixi 쪽 점수 생산자를 원자적으로 닫는다. */
+  end() {
+    if (this.lifecycle === "ended") return;
+    this.lifecycle = "ended";
+    this.cancelActivePointers();
+    this.stopUltimate();
+    this.clearTransientAttacks();
+  }
+
   setWeapon(w: Weapon) {
     if (this.weapon.key === w.key) return;
+    // 같은 category(book→keyboard)도 down/up 사이에 무기가 바뀌면
+    // 혼합 gesture가 된다. 전환 경계에서 항상 기존 sequence를 폐기.
+    this.cancelActivePointers();
     this.weapon = w;
     this.updateMode();
   }
@@ -252,6 +285,7 @@ export class PlayScene extends Container {
     weapon: Weapon["key"],
     charge = true
   ): number {
+    if (this.lifecycle !== "running") return 0;
     const local = this.doll.bodyWrap.toLocal({ x, y }, this);
     this.damageLayer.noteHit(local.x, local.y);
     // 궁극기 연출 중 어떤 타격(난타·비행 중이던 투척물/비비탄 명중 포함)도
@@ -276,7 +310,7 @@ export class PlayScene extends Container {
 
   /** 궁극기 발동 — 난사타 연출 시작. 진행 중엔 입력 차단. */
   triggerUltimate() {
-    if (this.ultActive) return;
+    if (this.lifecycle !== "running" || this.ultActive) return;
     // 진행 중이던 드래그/연사 정리 후 난타 시작
     this.cancelActivePointers();
     this.ultActive = true;
@@ -394,7 +428,7 @@ export class PlayScene extends Container {
 
   // ── doll pointer — tap / fling ──────────────────────────────────────
   private handleDollPointerDown = (e: FederatedPointerEvent) => {
-    if (this.ultActive) return; // 궁극기 연출 중 입력 차단
+    if (this.lifecycle !== "running" || this.ultActive) return;
     unlockAudio();
     if (this.mode === "tap") {
       // 연타가 생명 — down 즉시 타격, 포인터 잠금 없음 (멀티터치 동시 연타 전부 접수).
@@ -416,6 +450,7 @@ export class PlayScene extends Container {
   };
 
   private handleDollPointerMove = (e: FederatedPointerEvent) => {
+    if (this.lifecycle !== "running") return;
     if (this.dollPointerId === null || e.pointerId !== this.dollPointerId)
       return;
     const local = this.toLocal(e.global);
@@ -477,6 +512,7 @@ export class PlayScene extends Container {
   }
 
   private handleDollPointerUp = (e: FederatedPointerEvent) => {
+    if (this.lifecycle !== "running") return;
     if (this.dollPointerId === null || e.pointerId !== this.dollPointerId)
       return;
     this.dollPointerId = null;
@@ -549,7 +585,13 @@ export class PlayScene extends Container {
   };
 
   private cancelFling() {
-    if (!this.flingActive && this.dollPointerId === null) return;
+    if (
+      !this.flingActive &&
+      this.dollPointerId === null &&
+      this.springRestoreTimer === null
+    ) {
+      return;
+    }
     this.dollPointerId = null;
     this.flingActive = false;
     this.flingHistory = [];
@@ -614,6 +656,7 @@ export class PlayScene extends Container {
     dirY: number;
     weapon: Weapon;
   }) => {
+    if (this.lifecycle !== "running") return;
     // 속도 비례 데미지 (0.6×~상한) + 볼륨
     const factor = Math.min(SWIPE_FACTOR_MAX, Math.max(0.6, speed / 1100));
     const points = Math.round(weapon.strength * factor);
@@ -632,7 +675,7 @@ export class PlayScene extends Container {
 
   // ── stage pointer 라우팅 ────────────────────────────────────────────
   private handleStagePointerDown = (e: FederatedPointerEvent) => {
-    if (this.ultActive) return; // 궁극기 연출 중 입력 차단
+    if (this.lifecycle !== "running" || this.ultActive) return;
     unlockAudio();
     if (this.mode === "throw") this.throwInput.handlePointerDown(e);
     else if (this.mode === "swipe") this.swipeInput.handlePointerDown(e);
@@ -641,6 +684,7 @@ export class PlayScene extends Container {
   };
 
   private handleStagePointerMove = (e: FederatedPointerEvent) => {
+    if (this.lifecycle !== "running") return;
     if (this.mode === "throw") this.throwInput.handlePointerMove(e);
     else if (this.mode === "swipe") this.swipeInput.handlePointerMove(e);
     else if (this.mode === "shoot") this.shootInput.handlePointerMove(e);
@@ -648,6 +692,7 @@ export class PlayScene extends Container {
   };
 
   private handleStagePointerUp = (e: FederatedPointerEvent) => {
+    if (this.lifecycle !== "running") return;
     if (this.mode === "throw") this.throwInput.handlePointerUp(e);
     else if (this.mode === "swipe") this.swipeInput.handlePointerUp(e);
     else if (this.mode === "shoot") this.shootInput.handlePointerUp(e);
@@ -670,6 +715,7 @@ export class PlayScene extends Container {
     power: number;
     weapon: Weapon;
   }) => {
+    if (this.lifecycle !== "running") return;
     const size = weapon.projectileSize ?? 48;
     const mass = weapon.mass ?? 1;
     // px/sec → matter px/step
@@ -698,6 +744,7 @@ export class PlayScene extends Container {
     y: number;
     weapon: Weapon;
   }) => {
+    if (this.lifecycle !== "running") return;
     const dx = this.doll.x - x;
     const dy = this.doll.y - y;
     const len = Math.hypot(dx, dy) || 1;
@@ -753,6 +800,7 @@ export class PlayScene extends Container {
 
   // ── draw (펜) ───────────────────────────────────────────────────────
   private handleDrawStroke = (length: number, weapon: Weapon) => {
+    if (this.lifecycle !== "running") return;
     void length;
     playHitSound("scribble");
     this.reportHit(
@@ -765,6 +813,7 @@ export class PlayScene extends Container {
 
   // ── collision (projectile ↔ doll) ──────────────────────────────────
   private handleCollision = (a: Body, b: Body) => {
+    if (this.lifecycle !== "running") return;
     let projBody: Body | null = null;
     if (a.label === "projectile" && b.label === "doll") projBody = a;
     else if (b.label === "projectile" && a.label === "doll") projBody = b;
@@ -808,6 +857,7 @@ export class PlayScene extends Container {
   };
 
   update(deltaSec: number) {
+    if (this.lifecycle !== "running") return;
     // 궁극기 난사타 — 일정 간격으로 랜덤 무기 타격을 퍼부음
     if (this.ultActive) {
       this.ultTimer -= deltaSec;
@@ -908,6 +958,14 @@ export class PlayScene extends Container {
   }
 
   layout(width: number, height: number) {
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      return;
+    }
     this.viewW = width;
     this.viewH = height;
     this.layoutBg();
@@ -948,8 +1006,26 @@ export class PlayScene extends Container {
 
   }
 
+  private clearTransientAttacks() {
+    for (const p of this.projectiles) {
+      if (p.parent === this.projectileLayer) {
+        this.projectileLayer.removeChild(p);
+      }
+      this.physics.remove(p.body);
+      p.destroy({ children: true });
+    }
+    this.projectiles = [];
+    for (const p of this.pellets) {
+      if (p.g.parent === this.projectileLayer) {
+        this.projectileLayer.removeChild(p.g);
+      }
+      p.g.destroy();
+    }
+    this.pellets = [];
+  }
+
   destroy() {
-    if (this.springRestoreTimer) clearTimeout(this.springRestoreTimer);
+    this.end();
     this.removeCollisionListener?.();
     this.doll.off("pointerdown", this.handleDollPointerDown);
     this.doll.off("globalpointermove", this.handleDollPointerMove);
@@ -962,13 +1038,6 @@ export class PlayScene extends Container {
     this.throwInput.destroy();
     this.swipeInput.destroy();
     this.shootInput.destroy();
-    for (const p of this.projectiles) {
-      this.physics.remove(p.body);
-      p.destroy({ children: true });
-    }
-    this.projectiles = [];
-    for (const p of this.pellets) p.g.destroy();
-    this.pellets = [];
     this.physics.destroy();
     super.destroy({ children: true });
   }

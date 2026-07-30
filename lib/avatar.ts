@@ -1,6 +1,21 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { PUBLIC_ENV } from "@/lib/env";
+import {
+  parseAvatarClearHttpAck,
+  parseAvatarReplaceHttpAck,
+  parseAvatarUploadInitAck,
+} from "@/lib/avatar-http-contract";
+import {
+  clearClientUploadOperation,
+  stableClientUploadOperation,
+} from "@/lib/client-upload-operation";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runClientMutation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
 
 const BUCKET = "avatars";
 const MIN_DIM = 128;
@@ -57,37 +72,165 @@ function loadImage(src: Blob): Promise<HTMLImageElement> {
  * @param cropped PhotoCropper 가 만든 1:1 crop blob
  * @returns 반영된 public avatar URL
  */
-export async function uploadAvatar(cropped: Blob): Promise<string> {
+export async function uploadAvatar(
+  cropped: Blob,
+  options: { signal?: AbortSignal } = {},
+): Promise<string> {
   const blob = await normalizeSquare(cropped);
   const mime = blob.type || "image/webp";
-
-  const r1 = await fetch("/api/avatar", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mime }),
+  const operation = await stableClientUploadOperation({
+    scope: "avatar",
+    binding: mime,
+    blob,
   });
-  if (!r1.ok) throw new Error("업로드 준비에 실패했어요");
-  const { path, token } = (await r1.json()) as { path: string; token: string };
+
+  const initBody = JSON.stringify({
+    mime,
+    requestId: operation.requestId,
+  });
+  const initOutcome = await runReplayedJsonMutation({
+    input: "/api/avatar",
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: initBody,
+    },
+    signal: options.signal,
+    classify: (response, body) => {
+      const acknowledgement = response.ok
+        ? parseAvatarUploadInitAck(body, mime)
+        : null;
+      if (acknowledgement) {
+        return {
+          kind: "confirmed",
+          value: acknowledgement,
+        };
+      }
+      if (
+        clientMutationResponseNeedsReconciliation(
+          response.status,
+          response.ok,
+        )
+      ) {
+        return {
+          kind: "unconfirmed",
+          reason: "avatar_upload_init_unconfirmed",
+        };
+      }
+      return {
+        kind: "rejected",
+        error: `avatar_upload_init_http_${response.status}`,
+      };
+    },
+  });
+  if (initOutcome.kind !== "confirmed") {
+    throw new Error("업로드 준비 응답을 확인하지 못했어요");
+  }
+  const init = initOutcome.value;
+  const { path, token } = init;
 
   const sb = createClient();
-  const { error: upErr } = await sb.storage
-    .from(BUCKET)
-    // URL 은 uuid 로 콘텐츠-주소(변경 시 새 path) → 장기 immutable 캐시 안전(재방문 즉시).
-    .uploadToSignedUrl(path, token, blob, { contentType: mime, cacheControl: "31536000" });
-  if (upErr) throw new Error("업로드에 실패했어요");
-
-  const r2 = await fetch("/api/avatar", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
+  const uploadOutcome = await runClientMutation({
+    attempt: async () => {
+      const { error } = await sb.storage
+        .from(BUCKET)
+        // URL 은 uuid 로 콘텐츠-주소(변경 시 새 path) → 장기 immutable 캐시 안전(재방문 즉시).
+        .uploadToSignedUrl(path, token, blob, {
+          contentType: mime,
+          cacheControl: "31536000",
+        });
+      return error
+        ? { kind: "rejected" as const, error }
+        : { kind: "confirmed" as const, value: true };
+    },
+    signal: options.signal,
+    deadlineMs: 60_000,
+    attemptMs: 45_000,
   });
-  if (!r2.ok) throw new Error("프로필 반영에 실패했어요");
-  const { avatarUrl } = (await r2.json()) as { avatarUrl: string };
-  return avatarUrl;
+  if (uploadOutcome.kind !== "confirmed") {
+    throw new Error("업로드에 실패했어요");
+  }
+
+  const confirmBody = JSON.stringify({ path });
+  const confirmOutcome = await runReplayedJsonMutation({
+    input: "/api/avatar",
+    init: {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: confirmBody,
+    },
+    signal: options.signal,
+    classify: (response, body) => {
+      const acknowledgement = response.ok
+        ? parseAvatarReplaceHttpAck(body, {
+            path,
+            storageUrl: PUBLIC_ENV.SUPABASE_URL,
+          })
+        : null;
+      if (acknowledgement) {
+        return {
+          kind: "confirmed",
+          value: acknowledgement,
+        };
+      }
+      if (
+        clientMutationResponseNeedsReconciliation(
+          response.status,
+          response.ok,
+        )
+      ) {
+        return {
+          kind: "unconfirmed",
+          reason: "avatar_replace_unconfirmed",
+        };
+      }
+      return {
+        kind: "rejected",
+        error: `avatar_replace_http_${response.status}`,
+      };
+    },
+  });
+  if (confirmOutcome.kind !== "confirmed") {
+    throw new Error("프로필 반영 응답을 확인하지 못했어요");
+  }
+  const acknowledgement = confirmOutcome.value;
+  clearClientUploadOperation("avatar", operation.requestId);
+  return acknowledgement.avatarUrl;
 }
 
 /** 프로필 사진 삭제 → 기본 프사로 복귀. */
-export async function removeAvatar(): Promise<void> {
-  const r = await fetch("/api/avatar", { method: "DELETE" });
-  if (!r.ok) throw new Error("기본 사진으로 되돌리지 못했어요");
+export async function removeAvatar(
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  const outcome = await runReplayedJsonMutation({
+    input: "/api/avatar",
+    init: { method: "DELETE" },
+    signal: options.signal,
+    classify: (response, body) => {
+      const acknowledgement = response.ok
+        ? parseAvatarClearHttpAck(body)
+        : null;
+      if (acknowledgement) {
+        return { kind: "confirmed", value: true };
+      }
+      if (
+        clientMutationResponseNeedsReconciliation(
+          response.status,
+          response.ok,
+        )
+      ) {
+        return {
+          kind: "unconfirmed",
+          reason: "avatar_clear_unconfirmed",
+        };
+      }
+      return {
+        kind: "rejected",
+        error: `avatar_clear_http_${response.status}`,
+      };
+    },
+  });
+  if (outcome.kind !== "confirmed") {
+    throw new Error("프로필 삭제 응답을 확인하지 못했어요");
+  }
 }

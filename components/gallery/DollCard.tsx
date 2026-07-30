@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
@@ -11,6 +11,12 @@ import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { ROLE_IDS, asRole, josaEuro, type RoleId } from "@/lib/roles";
+import { parseDollRoleUpdateAck } from "@/lib/storage-mutation-result";
+import { isCurrentClientEpoch } from "@/lib/client-lifecycle";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
 
 export type Doll = {
   id: string;
@@ -39,10 +45,51 @@ export function DollCard({
   const [sharing, setSharing] = useState(false);
   const [savingRole, setSavingRole] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+  const actionEpochRef = useRef(0);
+  const sharingRef = useRef(false);
+  const savingRoleRef = useRef(false);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roleAbortRef = useRef<AbortController | null>(null);
 
-  const flash = (msg: string) => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      actionEpochRef.current += 1;
+      roleAbortRef.current?.abort();
+      roleAbortRef.current = null;
+      if (flashTimerRef.current !== null) {
+        clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const flash = (msg: string, actionEpoch: number) => {
+    if (
+      !isCurrentClientEpoch(
+        actionEpoch,
+        actionEpochRef.current,
+        mountedRef.current,
+      )
+    ) {
+      return;
+    }
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
     setActionMsg(msg);
-    setTimeout(() => setActionMsg(null), 1800);
+    flashTimerRef.current = setTimeout(() => {
+      flashTimerRef.current = null;
+      if (
+        isCurrentClientEpoch(
+          actionEpoch,
+          actionEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        setActionMsg(null);
+      }
+    }, 1800);
   };
 
   const closeMenu = () => {
@@ -50,46 +97,131 @@ export function DollCard({
     setRoleMenu(false);
   };
 
+  const beginAction = () => {
+    const actionEpoch = actionEpochRef.current + 1;
+    actionEpochRef.current = actionEpoch;
+    if (flashTimerRef.current !== null) {
+      clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = null;
+    }
+    setActionMsg(null);
+    return actionEpoch;
+  };
+
   const handleShare = async () => {
     closeMenu();
-    if (sharing) return;
+    if (sharingRef.current || savingRoleRef.current || deleting) return;
+    sharingRef.current = true;
+    const actionEpoch = beginAction();
     setSharing(true);
     // 공유 시도(분석) — 갤러리 캐릭터. (surface×target×session) 3초 디바운스.
-    trackShare({ surface: "gallery", target: "doll" });
+    try {
+      trackShare({ surface: "gallery", target: "doll" });
+    } catch {
+      // Analytics must never block the share action.
+    }
     try {
       const result = await shareDoll(doll.image_url, doll.id, role, undefined, mk);
-      if (result === "copied") flash("링크 복사됨");
-      else if (result === "failed") flash("공유 실패");
+      if (result === "copied") flash("링크 복사됨", actionEpoch);
+      else if (result === "failed") flash("공유 실패", actionEpoch);
+    } catch {
+      flash("공유 실패", actionEpoch);
     } finally {
-      setSharing(false);
+      if (
+        isCurrentClientEpoch(
+          actionEpoch,
+          actionEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        sharingRef.current = false;
+        setSharing(false);
+      }
     }
   };
 
   const handleRole = async (next: RoleId) => {
-    if (savingRole) return;
+    if (savingRoleRef.current || sharingRef.current || deleting) return;
     if (next === role) {
       closeMenu();
       return;
     }
     closeMenu(); // 메뉴 닫고 카드 오버레이("변경 중…")로 진행 표시
+    savingRoleRef.current = true;
+    const actionEpoch = beginAction();
+    const controller = new AbortController();
+    roleAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
     setSavingRole(true);
     try {
-      const r = await fetch("/api/doll", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: doll.id, role: next }),
+      const requestBody = JSON.stringify({
+        id: doll.id,
+        role: next,
       });
-      if (!r.ok) {
-        flash("역할 변경 실패");
+      const outcome = await runReplayedJsonMutation({
+        input: "/api/doll",
+        init: {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        },
+        signal: controller.signal,
+        classify: (response, body) => {
+          if (
+            response.ok &&
+            parseDollRoleUpdateAck(body, next)
+          ) {
+            return { kind: "confirmed", value: true };
+          }
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "doll_role_response_unconfirmed",
+            };
+          }
+          return {
+            kind: "rejected",
+            error: `doll_role_http_${response.status}`,
+          };
+        },
+      });
+      if (outcome.kind !== "confirmed") {
+        flash("역할 변경 실패", actionEpoch);
         return;
       }
-      onRoleChange(doll.id, next);
-      const nextLabel = roleFrom(next, cfg).label;
-      flash(`${nextLabel}${josaEuro(nextLabel)} 변경`);
+      if (
+        isCurrentClientEpoch(
+          actionEpoch,
+          actionEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        onRoleChange(doll.id, next);
+        const nextLabel = roleFrom(next, cfg).label;
+        flash(`${nextLabel}${josaEuro(nextLabel)} 변경`, actionEpoch);
+      }
     } catch {
-      flash("역할 변경 실패");
+      flash("역할 변경 실패", actionEpoch);
     } finally {
-      setSavingRole(false);
+      window.clearTimeout(timeoutId);
+      if (roleAbortRef.current === controller) {
+        roleAbortRef.current = null;
+      }
+      if (
+        isCurrentClientEpoch(
+          actionEpoch,
+          actionEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        savingRoleRef.current = false;
+        setSavingRole(false);
+      }
     }
   };
 
@@ -153,7 +285,7 @@ export function DollCard({
           setRoleMenu(false);
           setMenuOpen((v) => !v);
         }}
-        disabled={deleting}
+        disabled={deleting || savingRole || sharing}
         aria-label="옵션"
         className="absolute right-2 top-2 z-20 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-lg font-bold leading-none text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 active:scale-90 disabled:opacity-40"
       >

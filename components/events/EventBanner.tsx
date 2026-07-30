@@ -9,7 +9,25 @@ import { useActiveEvents } from "./useActiveEvents";
  * 없으면 미렌더. (기존 가입 배너 SignupBanner 와 별개 구좌로 공존.)
  */
 export function EventBanner({ surface }: { surface: BannerSurface }) {
-  const banner = useActiveEvents().banners[surface];
+  const { banners, error, retry } = useActiveEvents();
+  const banner = banners[surface];
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-500"
+      >
+        <span>공지 정보를 불러오지 못했어요.</span>
+        <button
+          type="button"
+          onClick={retry}
+          className="shrink-0 font-semibold underline underline-offset-4"
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  }
   if (!banner) return null;
   return (
     <Link

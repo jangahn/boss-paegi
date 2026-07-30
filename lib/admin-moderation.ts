@@ -1,7 +1,19 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signedDollUrl } from "@/lib/storage";
-import { log, errInfo } from "@/lib/log";
+import {
+  requireSupabaseData,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import {
+  parseAdminRpcPage,
+  validateAdminRows,
+} from "@/lib/admin-read-contract";
+import {
+  assertModerationQueueContract,
+  MODERATION_REPORT_DETAIL_LIMIT,
+} from "@/lib/moderation-queue-contract";
+import { resolveModerationImagePath } from "@/lib/moderation-image-path";
 
 /**
  * 모더레이션 큐 — **캐릭터 단위**(신고된 / 숨김 / 영구삭제된 doll). server-only, service_role.
@@ -28,14 +40,18 @@ export type ModReport = {
 export type ModerationRow = {
   dollId: string;
   image_url: string | null; // 서명됨(공개/숨김) 또는 null(영구삭제)
+  image_error: "invalid_path" | null;
   owner_id: string | null;
   owner_name: string | null;
   deleted_at: string | null;
   artifacts_purged_at: string | null;
+  moderationVersion: number;
   state: ModState;
   report_count: number;
   pending_count: number;
   latest_report_at: string | null;
+  /** exact count가 preview보다 클 때 true. reports는 최신순 최대 100건. */
+  reports_truncated: boolean;
   reports: ModReport[];
 };
 
@@ -70,30 +86,75 @@ export async function getModerationQueue(
   if (f.ownerId && !UUID_RE.test(f.ownerId)) return EMPTY(page);
 
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("admin_moderation_queue", {
-    p_admin_id: adminId,
-    p_state: f.state ?? null,
-    p_doll_id: f.dollId ?? null,
-    p_owner_id: f.ownerId ?? null,
-    p_limit: REPORT_PAGE_SIZE,
-    p_offset: (page - 1) * REPORT_PAGE_SIZE,
-  });
-  if (error) {
-    log.warn("admin.mod_queue_fail", errInfo(error));
-    return EMPTY(page);
-  }
-  const result = (data ?? { rows: [], total: 0 }) as {
-    rows: Omit<ModerationRow, never>[];
-    total: number;
-  };
+  const data = await requireSupabaseData(
+    "admin.moderation.queue",
+    () =>
+      admin.rpc("admin_moderation_queue", {
+        p_admin_id: adminId,
+        p_state: f.state ?? null,
+        p_doll_id: f.dollId ?? null,
+        p_owner_id: f.ownerId ?? null,
+        p_limit: REPORT_PAGE_SIZE,
+        p_offset: (page - 1) * REPORT_PAGE_SIZE,
+      }),
+  );
+  const result = parseAdminRpcPage<ModerationRow>(
+    "admin.moderation.queue",
+    data,
+    {
+      dollId: "uuid",
+      image_url: "string",
+      owner_id: "nullableUuid",
+      owner_name: "nullableString",
+      deleted_at: "nullableTimestamp",
+      artifacts_purged_at: "nullableTimestamp",
+      moderationVersion: "nonnegativeInteger",
+      state: "string",
+      report_count: "nonnegativeInteger",
+      pending_count: "nonnegativeInteger",
+      latest_report_at: "nullableTimestamp",
+      reports_truncated: "boolean",
+      reports: "array",
+    },
+  );
 
   // 이미지 서명: 영구삭제(purged)면 객체 없음→null(플레이스홀더). 아니면 서명(공개·숨김 모두 어드민은 얼굴 확인).
   const rows: ModerationRow[] = [];
   for (const r of result.rows as ModerationRow[]) {
+    r.reports = validateAdminRows<ModReport>(
+      "admin.moderation.queue.reports",
+      r.reports,
+      {
+        id: "uuid",
+        reason: "string",
+        detail: "nullableString",
+        contact: "nullableString",
+        status: "string",
+        created_at: "timestamp",
+      },
+    );
+    assertModerationQueueContract(r);
+    const imageState = resolveModerationImagePath(
+      r.image_url,
+      r.artifacts_purged_at,
+    );
+    if (imageState.kind === "missing") {
+      throw new SupabaseOperationError(
+        "admin.moderation.queue",
+        new Error("active_doll_image_missing"),
+      );
+    }
+    const signedImage =
+      imageState.kind === "signable"
+        ? await signedDollUrl(imageState.path, 600, { thumb: true })
+        : null;
     rows.push({
       ...r,
-      image_url: r.artifacts_purged_at ? null : await signedDollUrl(r.image_url, 600, { thumb: true }),
+      image_url: signedImage,
+      image_error: imageState.kind === "invalid" ? "invalid_path" : null,
     });
   }
-  return { rows, total: result.total ?? 0, page, pageSize: REPORT_PAGE_SIZE };
+  return { rows, total: result.total, page, pageSize: REPORT_PAGE_SIZE };
 }
+
+export { MODERATION_REPORT_DETAIL_LIMIT };

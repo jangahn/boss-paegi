@@ -2,10 +2,15 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
+import {
+  ADMIN_DOCUMENT_JSON_BODY_MAX_BYTES,
+  readAdminJsonRequest,
+} from "@/lib/http/admin-json-request";
 import { isDomainKey } from "@/lib/config/keys";
 import { getEntry } from "@/lib/config/registry";
 import { updateSetting } from "@/lib/config/write";
 import { getConfigAuditEntry } from "@/lib/config/audit";
+import { deterministicAdminRequestId } from "@/lib/admin-operation-id";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -21,7 +26,17 @@ export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
-  const body = (await req.json().catch(() => null)) as
+  const requestBody = await readAdminJsonRequest(
+    req,
+    ADMIN_DOCUMENT_JSON_BODY_MAX_BYTES,
+  );
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as
     | {
         action?: "publish" | "restore";
         key?: string;
@@ -31,7 +46,13 @@ export async function POST(req: NextRequest) {
         auditId?: string;
       }
     | null;
-  if (!body || typeof body.key !== "string" || typeof body.baseVersion !== "number") {
+  if (
+    !body ||
+    typeof body.key !== "string" ||
+    typeof body.baseVersion !== "number" ||
+    !Number.isSafeInteger(body.baseVersion) ||
+    body.baseVersion < 0
+  ) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
   if (!isDomainKey(body.key)) {
@@ -70,12 +91,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const res = await updateSetting(body.key, parsed.data, body.baseVersion, gate.user.id, note);
+  const requestId = deterministicAdminRequestId(
+    "config_update",
+    gate.user.id,
+    body.key,
+    {
+      baseVersion: body.baseVersion,
+      key: body.key,
+      note,
+      value: parsed.data,
+    },
+  );
+  const res = await updateSetting(
+    body.key,
+    parsed.data,
+    body.baseVersion,
+    gate.user.id,
+    note,
+    requestId,
+  );
   if (!res.ok) {
     log.warn("config.update_fail", { key: body.key, adminId: gate.user.id, error: res.error });
     return NextResponse.json(
       { error: res.error },
-      { status: res.error === "version_conflict" ? 409 : 400 }
+      {
+        status:
+          res.error === "version_conflict"
+            ? 409
+            : res.error === "update_failed"
+              ? 500
+              : 400,
+      }
     );
   }
   // media_config·business_info 는 텍스트 config 와 달리 렌더(layout metadata·로고·푸터)에 박힘 →

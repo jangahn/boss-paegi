@@ -3,7 +3,16 @@ import { unstable_cache } from "next/cache";
 import type { ZodType } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { log, errInfo } from "@/lib/log";
+import {
+  InvalidStrictConfigError,
+  resolveStrictSettingResult,
+} from "./strict";
 import type { DomainKey } from "./keys";
+
+export {
+  InvalidStrictConfigError,
+  resolveStrictSettingResult,
+} from "./strict";
 
 /** 도메인별 캐시 태그 — 쓰기 시 revalidateTag 로 무효화. */
 export function configTag(key: DomainKey): string {
@@ -113,4 +122,57 @@ export async function getSettingUncached<T>(
   codeDefault: T
 ): Promise<T> {
   return (await getSettingWithMetaUncached(key, schema, codeDefault)).value;
+}
+
+/**
+ * Economic/external-side-effect getter: a genuinely absent row uses the code
+ * seed, while a read failure or invalid published row throws. Immutable
+ * business output must never be committed from a silent fallback.
+ */
+export async function getSettingWithMetaStrictUncached<T>(
+  key: DomainKey,
+  schema: ZodType<T>,
+  codeDefault: T,
+): Promise<WithMeta<T>> {
+  const admin = createAdminClient();
+  let result;
+  try {
+    result = await admin
+      .from("app_settings")
+      .select("value, version")
+      .eq("key", key)
+      .maybeSingle();
+  } catch (error) {
+    log.error("config.strict_read_throw", { key, ...errInfo(error) });
+    throw error;
+  }
+  if (result.error) {
+    log.error("config.strict_read_fail", {
+      key,
+      ...errInfo(result.error),
+    });
+  }
+  try {
+    const value = resolveStrictSettingResult(key, schema, codeDefault, result);
+    return result.data
+      ? { value, source: "db", version: result.data.version }
+      : { value, source: "default", version: null };
+  } catch (error) {
+    if (!(error instanceof InvalidStrictConfigError)) throw error;
+    log.error("config.strict_invalid", {
+      key,
+      version: result.data?.version ?? null,
+    });
+    throw error;
+  }
+}
+
+export async function getSettingStrictUncached<T>(
+  key: DomainKey,
+  schema: ZodType<T>,
+  codeDefault: T,
+): Promise<T> {
+  return (
+    await getSettingWithMetaStrictUncached(key, schema, codeDefault)
+  ).value;
 }

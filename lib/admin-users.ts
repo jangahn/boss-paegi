@@ -1,7 +1,17 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signedDollUrl } from "@/lib/storage";
-import { log, errInfo } from "@/lib/log";
+import {
+  requireSupabaseData,
+  requireSupabaseOptionalData,
+  requireSupabasePage,
+  requireSupabaseRows,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import {
+  parseAdminWindowTotal,
+  validateAdminRows,
+} from "@/lib/admin-read-contract";
 import type {
   AdminOrder,
   MemberInfo,
@@ -14,6 +24,10 @@ import type {
   ReconIssueRow,
 } from "@/lib/admin-types";
 import { ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
+import {
+  parsePendingAccountReactivation,
+  type PendingAccountReactivation,
+} from "@/lib/admin-mutation";
 
 /**
  * 유저 검색 + 상세 데이터 — server-only, service_role.
@@ -25,9 +39,32 @@ export const USER_PAGE_SIZE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type ProfEmbed = { display_name: string | null; deleted_at: string | null };
+type ProfEmbed = {
+  display_name: string | null;
+  deleted_at: string | null;
+  withdrawal_generation: number;
+};
 type Embed = ProfEmbed | ProfEmbed[] | null;
-const emb = (e: Embed): ProfEmbed | null => (Array.isArray(e) ? e[0] ?? null : e);
+
+function emb(operation: string, value: Embed): ProfEmbed {
+  const rows = value === null ? [] : Array.isArray(value) ? value : [value];
+  const parsed = validateAdminRows<ProfEmbed>(
+    operation,
+    rows,
+    {
+      display_name: "nullableString",
+      deleted_at: "nullableTimestamp",
+      withdrawal_generation: "nonnegativeInteger",
+    },
+  );
+  if (parsed.length !== 1) {
+    throw new SupabaseOperationError(
+      operation,
+      new Error("member_profile_missing_or_ambiguous"),
+    );
+  }
+  return parsed[0];
+}
 
 type MemberRow = {
   user_id: string;
@@ -38,34 +75,87 @@ type MemberRow = {
   abuse_status: string | null;
   profiles: Embed;
 };
-const toMemberInfo = (m: MemberRow): MemberInfo => ({
-  userId: m.user_id,
-  displayName: emb(m.profiles)?.display_name ?? null,
-  email: m.email,
-  genCredits: m.gen_credits,
-  memberSince: m.member_since,
-  isAdmin: m.is_admin,
-  deletedAt: emb(m.profiles)?.deleted_at ?? null,
-  abuseStatus: m.abuse_status ?? "clean",
-});
+const MEMBER_ROW_SCHEMA = {
+  user_id: "uuid",
+  gen_credits: "nonnegativeInteger",
+  member_since: "timestamp",
+  email: "nullableString",
+  is_admin: "boolean",
+  abuse_status: "nullableString",
+  profiles: "embed",
+} as const;
+
+function memberRows(operation: string, value: unknown): MemberRow[] {
+  return validateAdminRows<MemberRow>(operation, value, MEMBER_ROW_SCHEMA);
+}
+
+const toMemberInfo = (m: MemberRow, operation: string): MemberInfo => {
+  const profile = emb(`${operation}.profile`, m.profiles);
+  return {
+    userId: m.user_id,
+    displayName: profile.display_name,
+    email: m.email,
+    genCredits: m.gen_credits,
+    memberSince: m.member_since,
+    isAdmin: m.is_admin,
+    deletedAt: profile.deleted_at,
+    withdrawalGeneration: profile.withdrawal_generation,
+    abuseStatus: m.abuse_status ?? "clean",
+  };
+};
 
 const MEMBER_SELECT =
-  "user_id, gen_credits, member_since, email, is_admin, abuse_status, profiles(display_name, deleted_at)";
+  "user_id, gen_credits, member_since, email, is_admin, abuse_status, profiles(display_name, deleted_at, withdrawal_generation)";
 
 /** 단일 회원 정보(UUID). 비회원/미존재면 null. */
 export async function getUserMemberInfo(userId: string): Promise<MemberInfo | null> {
   if (!UUID_RE.test(userId)) return null;
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("member_accounts")
-    .select(MEMBER_SELECT)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error || !data) {
-    if (error) log.warn("admin.member_info_fail", errInfo(error));
-    return null;
+  const data = await requireSupabaseOptionalData(
+    "admin.member_info",
+    () =>
+      admin
+        .from("member_accounts")
+        .select(MEMBER_SELECT)
+        .eq("user_id", userId)
+        .maybeSingle(),
+  );
+  if (!data) return null;
+  return toMemberInfo(
+    memberRows("admin.member_info", [data])[0],
+    "admin.member_info",
+  );
+}
+
+/**
+ * 새로고침·새 탭에서도 정확한 pending reactivation correlation을 복구한다.
+ * 원본 job/receipt 테이블은 service_role에도 비공개이며, 활성 관리자를 재검증하는
+ * SECURITY DEFINER RPC가 이 사용자에게 필요한 최소 lifecycle fence만 반환한다.
+ */
+export async function getPendingAccountReactivation(
+  adminId: string,
+  userId: string,
+): Promise<PendingAccountReactivation> {
+  if (!UUID_RE.test(adminId) || !UUID_RE.test(userId)) {
+    return { ok: true, found: false };
   }
-  return toMemberInfo(data as unknown as MemberRow);
+  const admin = createAdminClient();
+  const data = await requireSupabaseData(
+    "admin.pending_account_reactivation",
+    () =>
+      admin.rpc("get_pending_account_reactivation", {
+        p_admin_id: adminId,
+        p_user_id: userId,
+      }),
+  );
+  const parsed = parsePendingAccountReactivation(data, userId);
+  if (!parsed) {
+    throw new SupabaseOperationError(
+      "admin.pending_account_reactivation",
+      new Error("pending_account_reactivation_result_invalid"),
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -76,17 +166,22 @@ export async function findWithdrawnByEmail(email: string): Promise<WithdrawnMatc
   const q = email.trim();
   if (q.length < 3) return [];
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("admin_find_withdrawn_by_email", { p_email: q });
-  if (error) {
-    log.warn("admin.find_withdrawn_fail", errInfo(error));
-    return [];
-  }
-  return ((data ?? []) as {
+  const data = await requireSupabaseRows(
+    "admin.find_withdrawn",
+    () => admin.rpc("admin_find_withdrawn_by_email", { p_email: q }),
+  );
+  const rows = validateAdminRows<{
     user_id: string;
     original_email: string | null;
     deleted_at: string;
     last_sign_in_at: string | null;
-  }[]).map((r) => ({
+  }>("admin.find_withdrawn", data, {
+    user_id: "uuid",
+    original_email: "nullableString",
+    deleted_at: "timestamp",
+    last_sign_in_at: "nullableTimestamp",
+  });
+  return rows.map((r) => ({
     userId: r.user_id,
     originalEmail: r.original_email,
     deletedAt: r.deleted_at,
@@ -103,11 +198,10 @@ export async function searchMembers(q: string): Promise<MemberInfo[]> {
     return one ? [one] : [];
   }
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("search_members", { p_q: query, p_limit: 30 });
-  if (error) {
-    log.warn("admin.search_members_fail", errInfo(error));
-    return [];
-  }
+  const data = await requireSupabaseRows(
+    "admin.search_members",
+    () => admin.rpc("search_members", { p_q: query, p_limit: 30 }),
+  );
   type Row = {
     user_id: string;
     display_name: string | null;
@@ -116,7 +210,15 @@ export async function searchMembers(q: string): Promise<MemberInfo[]> {
     member_since: string;
     is_admin: boolean;
   };
-  return ((data ?? []) as Row[]).map((r) => ({
+  const rows = validateAdminRows<Row>("admin.search_members", data, {
+    user_id: "uuid",
+    display_name: "nullableString",
+    email: "nullableString",
+    gen_credits: "nonnegativeInteger",
+    member_since: "timestamp",
+    is_admin: "boolean",
+  });
+  return rows.map((r) => ({
     userId: r.user_id,
     displayName: r.display_name,
     email: r.email,
@@ -124,6 +226,7 @@ export async function searchMembers(q: string): Promise<MemberInfo[]> {
     memberSince: r.member_since,
     isAdmin: r.is_admin,
     deletedAt: null, // search_members 는 활성 회원 검색 경로 — 탈퇴 상태는 상세에서 재조회.
+    withdrawalGeneration: null,
     abuseStatus: "clean", // 검색 결과엔 없음 — 정지 여부는 상세(getUserMemberInfo)에서 재조회.
   }));
 }
@@ -136,21 +239,23 @@ export async function listMembers(page = 1): Promise<Paged<MemberInfo>> {
   const p = Math.max(1, page);
   const from = (p - 1) * USER_PAGE_SIZE;
   const admin = createAdminClient();
-  const { data, count, error } = await admin
-    .from("member_accounts")
-    .select(
-      "user_id, gen_credits, member_since, email, is_admin, abuse_status, profiles!inner(display_name, deleted_at)",
-      { count: "exact" }
-    )
-    .is("profiles.deleted_at", null)
-    .order("member_since", { ascending: false })
-    .range(from, from + USER_PAGE_SIZE - 1);
-  if (error) {
-    log.warn("admin.list_members_fail", errInfo(error));
-    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
-  }
-  const rows = ((data ?? []) as unknown as MemberRow[]).map(toMemberInfo);
-  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+  const result = await requireSupabasePage(
+    "admin.list_members",
+    () =>
+      admin
+        .from("member_accounts")
+        .select(
+          "user_id, gen_credits, member_since, email, is_admin, abuse_status, profiles!inner(display_name, deleted_at, withdrawal_generation)",
+          { count: "exact" },
+        )
+        .is("profiles.deleted_at", null)
+        .order("member_since", { ascending: false })
+        .range(from, from + USER_PAGE_SIZE - 1),
+  );
+  const rows = memberRows("admin.list_members", result.rows).map((row) =>
+    toMemberInfo(row, "admin.list_members"),
+  );
+  return { rows, total: result.count, page: p, pageSize: USER_PAGE_SIZE };
 }
 
 /** 유저 결제(주문) 내역 — 10/page, count:exact. 환불 누계(0062) 포함(환불 액션 노출 판정용). */
@@ -158,42 +263,90 @@ export async function getUserOrders(userId: string, page = 1): Promise<Paged<Adm
   const p = Math.max(1, page);
   const from = (p - 1) * USER_PAGE_SIZE;
   const admin = createAdminClient();
-  const { data, count, error } = await admin
-    .from("orders")
-    .select(
-      "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refunded_credits, refunded_amount",
-      { count: "exact" }
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .range(from, from + USER_PAGE_SIZE - 1);
-  if (error) {
-    log.warn("admin.user_orders_fail", errInfo(error));
-    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
-  }
-  const rows = ((data ?? []) as Array<Omit<AdminOrder, "display_name">>).map((r) => ({
+  const result = await requireSupabasePage(
+    "admin.user_orders",
+    () =>
+      admin
+        .from("orders")
+        .select(
+          "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, error_message, user_id, refunded_credits, refunded_amount",
+          { count: "exact" },
+        )
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(from, from + USER_PAGE_SIZE - 1),
+  );
+  const orderRows = validateAdminRows<Omit<AdminOrder, "display_name">>(
+    "admin.user_orders",
+    result.rows,
+    {
+      order_uuid: "uuid",
+      status: "string",
+      amount: "nonnegativeInteger",
+      credits: "nonnegativeInteger",
+      product_id: "string",
+      pg_tx_id: "nullableString",
+      payment_id: "nullableString",
+      provider: "string",
+      is_test: "boolean",
+      pay_channel: "nullableString",
+      created_at: "timestamp",
+      paid_at: "nullableTimestamp",
+      error_message: "nullableString",
+      user_id: "uuid",
+      refunded_credits: "nonnegativeInteger",
+      refunded_amount: "nonnegativeInteger",
+    },
+  );
+  const rows = orderRows.map((r) => ({
     ...r,
     display_name: null,
   }));
-  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+  return { rows, total: result.count, page: p, pageSize: USER_PAGE_SIZE };
 }
 
 /** 유저 AI 생성 내역 — get_user_generations RPC(candidate_urls 배열 미반환, count 만). 10/page. */
 export async function getUserGenerations(userId: string, page = 1): Promise<Paged<GenerationRow>> {
   const p = Math.max(1, page);
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("get_user_generations", {
-    p_owner: userId,
-    p_limit: USER_PAGE_SIZE,
-    p_offset: (p - 1) * USER_PAGE_SIZE,
-  });
-  if (error) {
-    log.warn("admin.user_generations_fail", errInfo(error));
-    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
-  }
   type Row = GenerationRow & { total_count: number | string };
-  const raw = (data ?? []) as Row[];
-  const total = raw.length ? Number(raw[0].total_count) : 0;
+  const readRows = async (
+    operation: string,
+    limit: number,
+    offset: number,
+  ): Promise<Row[]> => {
+    const data = await requireSupabaseRows(
+      operation,
+      () =>
+        admin.rpc("get_user_generations", {
+          p_owner: userId,
+          p_limit: limit,
+          p_offset: offset,
+        }),
+    );
+    return validateAdminRows<Row>(operation, data, {
+      id: "uuid",
+      status: "string",
+      role: "string",
+      picked_doll_id: "nullableUuid",
+      created_at: "timestamp",
+      candidate_count: "nonnegativeInteger",
+      total_count: "nonnegativeNumeric",
+    });
+  };
+  const raw = await readRows(
+    "admin.user_generations",
+    USER_PAGE_SIZE,
+    (p - 1) * USER_PAGE_SIZE,
+  );
+  const totalRows =
+    raw.length > 0 || p === 1
+      ? raw
+      : await readRows("admin.user_generations_total_probe", 1, 0);
+  const total = parseAdminWindowTotal(
+    "admin.user_generations",
+    totalRows as unknown as Record<string, unknown>[],
+  );
   const rows = raw.map((r) => ({
     id: r.id,
     status: r.status,
@@ -210,30 +363,52 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
   const p = Math.max(1, page);
   const from = (p - 1) * USER_PAGE_SIZE;
   const admin = createAdminClient();
-  const { data, count, error } = await admin
-    .from("dolls")
-    .select("id, image_url, role, created_at, deleted_at, artifacts_purged_at", {
-      count: "exact",
-    })
-    .eq("owner_id", userId)
-    .order("created_at", { ascending: false })
-    .range(from, from + USER_PAGE_SIZE - 1);
-  if (error) {
-    log.warn("admin.user_dolls_fail", errInfo(error));
-    return { rows: [], total: 0, page: p, pageSize: USER_PAGE_SIZE };
-  }
-  const dollList = (data ?? []) as DollRow[];
+  const result = await requireSupabasePage(
+    "admin.user_dolls",
+    () =>
+      admin
+        .from("dolls")
+        .select(
+          "id, image_url, role, created_at, deleted_at, artifacts_purged_at",
+          { count: "exact" },
+        )
+        .eq("owner_id", userId)
+        .order("created_at", { ascending: false })
+        .range(from, from + USER_PAGE_SIZE - 1),
+  );
+  const dollList = validateAdminRows<DollRow>(
+    "admin.user_dolls",
+    result.rows,
+    {
+      id: "uuid",
+      image_url: "string",
+      role: "string",
+      created_at: "timestamp",
+      deleted_at: "nullableTimestamp",
+      artifacts_purged_at: "nullableTimestamp",
+    },
+  );
 
   // 소스 생성 배치 조회(N+1 금지) — 이 페이지 doll 들을 채택한 ai_generations 한 번에.
   const srcMap = new Map<string, string>();
   const dollIds = dollList.map((d) => d.id);
   if (dollIds.length > 0) {
-    const { data: gens, error: gErr } = await admin
-      .from("ai_generations")
-      .select("id, picked_doll_id")
-      .in("picked_doll_id", dollIds);
-    if (gErr) log.warn("admin.user_dolls_src_fail", errInfo(gErr));
-    for (const g of (gens ?? []) as { id: string; picked_doll_id: string | null }[]) {
+    const gens = await requireSupabaseRows(
+      "admin.user_doll_sources",
+      () =>
+        admin
+          .from("ai_generations")
+          .select("id, picked_doll_id")
+          .in("picked_doll_id", dollIds),
+    );
+    const sourceRows = validateAdminRows<{
+      id: string;
+      picked_doll_id: string | null;
+    }>("admin.user_doll_sources", gens, {
+      id: "uuid",
+      picked_doll_id: "nullableUuid",
+    });
+    for (const g of sourceRows) {
       if (g.picked_doll_id) srcMap.set(g.picked_doll_id, g.id);
     }
   }
@@ -245,11 +420,16 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
       ...d,
       image_url: d.artifacts_purged_at
         ? d.image_url
-        : (await signedDollUrl(d.image_url, 600, { thumb: true })) ?? d.image_url,
+        : await signedDollUrl(d.image_url, 600, { thumb: true }),
       sourceGenerationId: srcMap.get(d.id) ?? null,
     });
   }
-  return { rows, total: count ?? 0, page: p, pageSize: USER_PAGE_SIZE };
+  return {
+    rows,
+    total: result.count,
+    page: p,
+    pageSize: USER_PAGE_SIZE,
+  };
 }
 
 /** 통합 크레딧 변동 종류 — 3소스 병합 후의 표시 단위(원장 event_type 과 1:1 아님: refund_commit→refund). */
@@ -288,7 +468,8 @@ const HISTORY_SOURCE_CAP = 1000;
  *   2) admin_actions_ledger(cs_adjust) — 운영자 조정.
  *   3) credit_lots(source='signup_bonus') — 가입 보너스(첫 이벤트라 잔액=qty).
  * 각 소스가 그 시점 잔액을 이미 보유 → 병합만으로 연속 타임라인. created_at desc 정렬 후 in-memory 페이징(10/page).
- * 소스별 에러는 빈 배열로 폴백(부분 실패에도 페이지 안전).
+ * 세 소스가 모두 성공해야만 완전한 타임라인이다. 하나라도 실패하면 부분
+ * 내역을 "전체"처럼 보여주지 않고 호출 전체를 unavailable로 승격한다.
  */
 export async function getCreditHistory(
   userId: string,
@@ -297,34 +478,43 @@ export async function getCreditHistory(
   const p = Math.max(1, page);
   const admin = createAdminClient();
 
-  const [ledgerRes, adjustRes, lotsRes] = await Promise.all([
-    admin
-      .from("credit_ledger")
-      .select(
-        "id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, ref_lot_id, ref_attempt_id, ref_cancellation_id, created_at"
-      )
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(HISTORY_SOURCE_CAP),
-    admin
-      .from("admin_actions_ledger")
-      .select("id, credit_delta, after_credits, reason, created_at")
-      .eq("target_user_id", userId)
-      .eq("action_type", "cs_adjust")
-      .order("created_at", { ascending: false })
-      .limit(HISTORY_SOURCE_CAP),
-    admin
-      .from("credit_lots")
-      .select("id, qty, granted_at")
-      .eq("user_id", userId)
-      .eq("source", "signup_bonus")
-      .order("granted_at", { ascending: false })
-      .limit(HISTORY_SOURCE_CAP),
+  const [ledgerRowsUnknown, adjustRowsUnknown, lotRowsUnknown] =
+    await Promise.all([
+      requireSupabaseRows(
+        "admin.credit_history.ledger",
+        () =>
+          admin
+            .from("credit_ledger")
+            .select(
+              "id, delta, event_type, balance_after, ref_gen_id, ref_order_uuid, ref_lot_id, ref_attempt_id, ref_cancellation_id, created_at",
+            )
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(HISTORY_SOURCE_CAP),
+      ),
+      requireSupabaseRows(
+        "admin.credit_history.adjustments",
+        () =>
+          admin
+            .from("admin_actions_ledger")
+            .select("id, credit_delta, after_credits, reason, created_at")
+            .eq("target_user_id", userId)
+            .eq("action_type", "cs_adjust")
+            .order("created_at", { ascending: false })
+            .limit(HISTORY_SOURCE_CAP),
+      ),
+      requireSupabaseRows(
+        "admin.credit_history.signup_lots",
+        () =>
+          admin
+            .from("credit_lots")
+            .select("id, qty, granted_at")
+            .eq("user_id", userId)
+            .eq("source", "signup_bonus")
+            .order("granted_at", { ascending: false })
+            .limit(HISTORY_SOURCE_CAP),
+      ),
   ]);
-
-  if (ledgerRes.error) log.warn("admin.credit_history_ledger_fail", errInfo(ledgerRes.error));
-  if (adjustRes.error) log.warn("admin.credit_history_adjust_fail", errInfo(adjustRes.error));
-  if (lotsRes.error) log.warn("admin.credit_history_lots_fail", errInfo(lotsRes.error));
 
   type LedgerRaw = {
     id: string;
@@ -338,7 +528,22 @@ export async function getCreditHistory(
     ref_cancellation_id: string | null;
     created_at: string;
   };
-  const ledgerRows = (ledgerRes.data ?? []) as LedgerRaw[];
+  const ledgerRows = validateAdminRows<LedgerRaw>(
+    "admin.credit_history.ledger",
+    ledgerRowsUnknown,
+    {
+      id: "uuid",
+      delta: "safeInteger",
+      event_type: "string",
+      balance_after: "nullableNonnegativeInteger",
+      ref_gen_id: "nullableUuid",
+      ref_order_uuid: "nullableUuid",
+      ref_lot_id: "nullableUuid",
+      ref_attempt_id: "nullableUuid",
+      ref_cancellation_id: "nullableUuid",
+      created_at: "timestamp",
+    },
+  );
 
   // refund_commit(내부환불)이 참조할 예약 delta(−N) 맵 — reserve 를 버리기 전에 먼저 구성.
   const reserveDeltaByAttempt = new Map<string, number>();
@@ -399,7 +604,18 @@ export async function getCreditHistory(
     reason: string;
     created_at: string;
   };
-  for (const a of (adjustRes.data ?? []) as AdjustRaw[]) {
+  const adjustmentRows = validateAdminRows<AdjustRaw>(
+    "admin.credit_history.adjustments",
+    adjustRowsUnknown,
+    {
+      id: "uuid",
+      credit_delta: "safeInteger",
+      after_credits: "nonnegativeInteger",
+      reason: "string",
+      created_at: "timestamp",
+    },
+  );
+  for (const a of adjustmentRows) {
     events.push({
       id: `aa:${a.id}`,
       kind: "cs_adjust",
@@ -412,7 +628,16 @@ export async function getCreditHistory(
   }
 
   type LotRaw = { id: string; qty: number; granted_at: string };
-  for (const l of (lotsRes.data ?? []) as LotRaw[]) {
+  const signupLotRows = validateAdminRows<LotRaw>(
+    "admin.credit_history.signup_lots",
+    lotRowsUnknown,
+    {
+      id: "uuid",
+      qty: "nonnegativeInteger",
+      granted_at: "timestamp",
+    },
+  );
+  for (const l of signupLotRows) {
     events.push({
       id: `lot:${l.id}`,
       kind: "signup_bonus",
@@ -450,20 +675,32 @@ export async function getCreditHistory(
  */
 export async function getUserLots(userId: string): Promise<UserLotRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("credit_lots")
-    .select(
-      "id, source, order_uuid, qty, consumed, refunded, refund_reserved, granted_at, expires_at, expired_at, expiration_reason"
-    )
-    .eq("user_id", userId)
-    .order("granted_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(100);
-  if (error) {
-    log.warn("admin.user_lots_fail", errInfo(error));
-    return [];
-  }
-  return (data ?? []) as UserLotRow[];
+  const data = await requireSupabaseRows(
+    "admin.user_lots",
+    () =>
+      admin
+        .from("credit_lots")
+        .select(
+          "id, source, order_uuid, qty, consumed, refunded, refund_reserved, granted_at, expires_at, expired_at, expiration_reason",
+        )
+        .eq("user_id", userId)
+        .order("granted_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(100),
+  );
+  return validateAdminRows<UserLotRow>("admin.user_lots", data, {
+    id: "uuid",
+    source: "string",
+    order_uuid: "nullableUuid",
+    qty: "nonnegativeInteger",
+    consumed: "nonnegativeInteger",
+    refunded: "nonnegativeInteger",
+    refund_reserved: "nonnegativeInteger",
+    granted_at: "timestamp",
+    expires_at: "timestamp",
+    expired_at: "nullableTimestamp",
+    expiration_reason: "nullableString",
+  });
 }
 
 export type UserRefundActivity = {
@@ -477,30 +714,66 @@ export type UserRefundActivity = {
 export async function getUserRefundActivity(userId: string): Promise<UserRefundActivity> {
   const admin = createAdminClient();
   const [requests, issues] = await Promise.all([
-    admin
-      .from("refund_requests")
-      .select("id, user_id, origin, scope_order_uuid, requested_qty, approved_amount, state, reason, created_at")
-      .eq("user_id", userId)
-      .in("state", [...ACTIVE_REQUEST_STATES])
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(20),
-    admin
-      .from("reconciliation_issues")
-      .select("id, type, order_uuid, user_id, cancellation_id, state, created_at")
-      .eq("user_id", userId)
-      .eq("state", "open")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(20),
+    requireSupabaseRows(
+      "admin.user_refund_requests",
+      () =>
+        admin
+          .from("refund_requests")
+          .select(
+            "id, user_id, origin, scope_order_uuid, requested_qty, approved_amount, state, reason, created_at",
+          )
+          .eq("user_id", userId)
+          .in("state", [...ACTIVE_REQUEST_STATES])
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(20),
+    ),
+    requireSupabaseRows(
+      "admin.user_refund_issues",
+      () =>
+        admin
+          .from("reconciliation_issues")
+          .select(
+            "id, type, order_uuid, user_id, cancellation_id, state, created_at",
+          )
+          .eq("user_id", userId)
+          .eq("state", "open")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(20),
+    ),
   ]);
-  if (requests.error) log.warn("admin.user_refund_requests_fail", errInfo(requests.error));
-  if (issues.error) log.warn("admin.user_refund_issues_fail", errInfo(issues.error));
   // 본인 상세 페이지 문맥이라 display_name 채움 불필요(헤더가 이미 표기) — null 고정.
-  const withName = <T>(rows: T[] | null | undefined) =>
-    (rows ?? []).map((r) => ({ ...r, display_name: null as string | null }));
+  const withName = <T>(rows: T[]) =>
+    rows.map((r) => ({ ...r, display_name: null as string | null }));
+  const requestRows = validateAdminRows<
+    Omit<RefundRequestRow, "display_name">
+  >("admin.user_refund_requests", requests, {
+    id: "uuid",
+    user_id: "uuid",
+    origin: "string",
+    scope_order_uuid: "nullableUuid",
+    requested_qty: "nonnegativeInteger",
+    approved_amount: "nullableNonnegativeInteger",
+    state: "string",
+    reason: "string",
+    created_at: "timestamp",
+  });
+  const issueRows = validateAdminRows<Omit<ReconIssueRow, "display_name">>(
+    "admin.user_refund_issues",
+    issues,
+    {
+      id: "uuid",
+      type: "string",
+      order_uuid: "uuid",
+      user_id: "uuid",
+      cancellation_id: "nullableUuid",
+      state: "string",
+      created_at: "timestamp",
+    },
+  );
   return {
-    requests: withName(requests.data as Omit<RefundRequestRow, "display_name">[] | null),
-    issues: withName(issues.data as Omit<ReconIssueRow, "display_name">[] | null),
+    requests: withName(requestRows),
+    issues: withName(issueRows),
   };
 }

@@ -19,9 +19,14 @@ export function isConsentExempt(pathname: string): boolean {
   );
 }
 
-// 결제 webhook — proxy/updateSession 영향 최소화(즉시 pass-through). 외부 서버 호출이라 세션 무관,
-// 세션 리프레시 실패가 webhook 응답을 절대 막으면 안 됨. 보호는 route 내부 서명검증/order/amount.
-const WEBHOOK_PATHS: readonly string[] = ["/api/pay/webhook"];
+// 외부 webhook — proxy/updateSession 영향 최소화(즉시 pass-through). 세션 무관이며
+// route 내부의 공급자 서명 + durable binding이 권위를 검증한다.
+const WEBHOOK_PATHS: readonly string[] = [
+  "/api/pay/webhook",
+  "/api/fal/webhook",
+  "/api/fal/face-webhook",
+  "/api/fal/pick-webhook",
+];
 
 export function isWebhookPath(pathname: string): boolean {
   return WEBHOOK_PATHS.includes(pathname);

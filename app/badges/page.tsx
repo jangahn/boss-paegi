@@ -9,6 +9,8 @@ import {
   type CatalogBadge,
 } from "@/lib/config/domains/badges";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
+import { resolveOwnedBadgeRead } from "@/lib/badge-owned";
+import { runBoundedClientOperation } from "@/lib/client-operation";
 
 /**
  * 뱃지 수집 페이지 — 프로필 메뉴("내 뱃지")에서 진입. 익명/회원 공통(self-RLS).
@@ -16,28 +18,38 @@ import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
  */
 export default function BadgesPage() {
   const [owned, setOwned] = useState<Set<string> | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const catalog = useBadgeCatalog();
   const families = familyGroups(catalog);
   const total = activeBadges(catalog).length;
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        await ensureAuth();
-        const sb = createClient();
+        await ensureAuth(controller.signal);
         // self-RLS: 본인 owner_id 행만 반환. 구 badge_id 고아는 BADGE_FAMILIES 에 없어 자동 미표시.
-        const { data } = await sb.from("user_badges").select("badge_id");
-        if (!cancelled)
-          setOwned(new Set((data ?? []).map((r) => r.badge_id as string)));
+        const result = await runBoundedClientOperation(
+          (signal) =>
+            createClient(signal)
+              .from("user_badges")
+              .select("badge_id")
+              .abortSignal(signal),
+          { signal: controller.signal },
+        );
+        const nextOwned = resolveOwnedBadgeRead(result);
+        if (!cancelled) setOwned(nextOwned);
       } catch {
-        if (!cancelled) setOwned(new Set());
+        if (!cancelled) setLoadFailed(true);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort(new Error("badges_page_disposed"));
     };
-  }, []);
+  }, [loadAttempt]);
 
   const collected = owned
     ? families.reduce(
@@ -62,7 +74,30 @@ export default function BadgesPage() {
             )}
           </div>
 
-          {owned === null ? (
+          {loadFailed ? (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm"
+            >
+              <p className="font-semibold text-red-500">
+                보유 뱃지를 불러오지 못했어요.
+              </p>
+              <p className="mt-1 text-zinc-500">
+                미보유로 처리하지 않았습니다. 연결 상태를 확인하고 다시 시도해 주세요.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOwned(null);
+                  setLoadFailed(false);
+                  setLoadAttempt((value) => value + 1);
+                }}
+                className="mt-3 font-semibold text-sky-600 underline underline-offset-2"
+              >
+                다시 시도
+              </button>
+            </div>
+          ) : owned === null ? (
             <BadgeSkeleton />
           ) : (
             families.map((f) => (

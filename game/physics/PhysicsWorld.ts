@@ -8,6 +8,7 @@ import {
   Events,
   type IEventCollision,
 } from "matter-js";
+import { planPhysicsSteps } from "@/lib/physics-clock";
 
 export type CollisionListener = (
   bodyA: Body,
@@ -56,9 +57,10 @@ export class PhysicsWorld {
   }
 
   step(deltaMs: number) {
-    // 모바일에서 큰 dt 안전 처리: cap + sub-step
-    const capped = Math.min(deltaMs, 32);
-    Engine.update(this.engine, capped);
+    const plan = planPhysicsSteps(deltaMs);
+    for (let i = 0; i < plan.steps; i += 1) {
+      Engine.update(this.engine, plan.stepMs);
+    }
   }
 
   destroy() {

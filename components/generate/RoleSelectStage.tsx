@@ -38,7 +38,7 @@ export function RoleSelectStage({
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6">
       <div className="text-center">
-        <h1 className="text-xl font-bold">누구로 만들까요?</h1>
+        <h2 className="text-xl font-bold">누구로 만들까요?</h2>
         <p className="mt-1 text-sm text-zinc-500">
           고른 역할에 따라 표정·복장·대사가 달라져요
         </p>

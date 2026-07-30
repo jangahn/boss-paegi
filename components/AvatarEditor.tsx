@@ -5,6 +5,7 @@ import { PhotoCropper } from "@/components/PhotoCropper";
 import { ModalShell } from "@/components/ModalShell";
 import { uploadAvatar, removeAvatar } from "@/lib/avatar";
 import { Spinner } from "@/components/Spinner";
+import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 /**
  * 프로필 사진 변경/삭제 — 캐릭터 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
@@ -25,6 +26,8 @@ export function AvatarEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const busyRef = useRef(false);
+  const runScopedOperation = useClientOperationScope();
 
   const pickFile = (f: File) => {
     setError(null);
@@ -37,25 +40,33 @@ export function AvatarEditor({
   };
 
   const onRemove = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      await removeAvatar();
+      await runScopedOperation((signal) => removeAvatar({ signal }));
       onSaved(null);
     } catch (e) {
+      busyRef.current = false;
       setError(e instanceof Error ? e.message : "삭제 실패");
       setBusy(false);
     }
   };
 
   const onConfirm = async (blob: Blob) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const url = await uploadAvatar(blob);
+      const url = await runScopedOperation((signal) =>
+        uploadAvatar(blob, { signal }),
+      );
       if (src) URL.revokeObjectURL(src);
       onSaved(url);
     } catch (e) {
+      busyRef.current = false;
       setError(e instanceof Error ? e.message : "업로드 실패");
       setBusy(false);
     }
@@ -64,7 +75,7 @@ export function AvatarEditor({
   // ── 크롭 단계 ──
   if (src) {
     return (
-      <ModalShell wide onClose={busy ? () => {} : onClose}>
+      <ModalShell ariaLabel="프로필 사진 맞추기" wide onClose={busy ? () => {} : onClose}>
         {busy ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <Spinner className="h-6 w-6" />
@@ -93,7 +104,7 @@ export function AvatarEditor({
 
   // ── 사진 선택 단계 ──
   return (
-    <ModalShell onClose={onClose}>
+    <ModalShell ariaLabel="프로필 사진 변경" onClose={onClose}>
       <h2 className="text-lg font-bold">프로필 사진 변경</h2>
       <p className="mt-1 text-xs text-zinc-500">
         랭킹에 표시되는 사진이에요. 정사각형으로 잘려요.

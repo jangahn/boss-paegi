@@ -1,32 +1,77 @@
 import "server-only";
-import * as Sentry from "@sentry/nextjs";
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
-import { dollPath } from "@/lib/storage-path";
-import { removeBackground } from "@/lib/fal";
-import { normalizeDollImage } from "@/lib/image-utils";
 import {
   DOLLS_BUCKET as BUCKET,
-  cleanupCandidateStorage,
   candidatePrefix,
 } from "@/lib/generation";
-import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
-import { PROVENANCE_SCHEMA_VERSION } from "@/lib/character-gen/provenance";
+import { processStorageObjectCleanupJob } from "@/lib/storage-cleanup-jobs";
+import { isUuid } from "@/lib/upload-write-safety";
 import { log, errInfo } from "@/lib/log";
-import { asRole, isRoleId } from "@/lib/roles";
+import { isRoleId } from "@/lib/roles";
+import { requireSupabaseRows } from "@/lib/supabase-operation";
+import { validateAdminRows } from "@/lib/admin-read-contract";
+import {
+  cleanupJobToRun,
+  parseDollDeleteAck,
+  parseDollRoleUpdateAck,
+} from "@/lib/storage-mutation-result";
+import { parseDollPickHttpResponse } from "@/lib/character-gen/http-contract";
+import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
 import {
   GENERATION_COST_FROZEN_BODY,
   GENERATION_COST_ROLLOUT_HEADER,
   generationCostPathEnabled,
 } from "@/lib/generation-cost-rollout";
 import { paymentRolloutIdentityHeaders } from "@/lib/pay/checkout-rollout";
+import {
+  createDollPickSubmitIntent,
+  dollPickSubmitIntentRpcPayload,
+  parseDollPickClaim,
+  parseDollPickSubmitRecord,
+  submitDollPickOnce,
+  validDollPickPrepare,
+} from "@/lib/character-gen/doll-pick-submit";
+import { materializeGenerationPick } from "@/lib/character-gen/doll-pick-materialize";
+import { publicFalWebhookOrigin } from "@/lib/character-gen/generation-submit-saga";
+import { PUBLIC_ENV } from "@/lib/env";
+import { SERVER_ENV } from "@/lib/env.server";
+import { readGenerationProviderAcceptance } from "@/lib/generation-provider-acceptance";
 
 export const runtime = "nodejs";
 // 누끼(birefnet ~2s) + fetch/normalize/upload/insert. 30s 면 충분.
 // 명시 안 하면 플랫폼 기본값(Hobby 10s)에 묶여 느린 누끼가 잘릴 수 있음.
 export const maxDuration = 30;
+
+function dollPickResponse(doll: unknown, generationId: string) {
+  const body = parseDollPickHttpResponse(
+    { doll, generationId },
+    generationId,
+  );
+  if (!body) {
+    log.error("doll.response_invalid", { generationId });
+    return NextResponse.json({ error: "save_response_invalid" }, { status: 500 });
+  }
+  return NextResponse.json(body);
+}
+
+function dollPickProcessingResponse() {
+  return NextResponse.json(
+    {
+      status: "processing",
+      pollUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    },
+    {
+      status: 202,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": "2",
+      },
+    },
+  );
+}
 
 /**
  * 후보 선택(pick) — **서버 권위**. 클라 계약 = {generationId, candidateIndex}.
@@ -52,200 +97,272 @@ export async function POST(req: NextRequest) {
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
+  const admin = createAdminClient();
+  try {
+    const acceptance = await readGenerationProviderAcceptance(admin, user.id);
+    if (!acceptance.eligible) {
+      return NextResponse.json(
+        { error: "generation_provider_acceptance_required" },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  } catch (error) {
+    log.error("doll.provider_acceptance_read_fail", {
+      userId: user.id,
+      ...errInfo(error),
+    });
+    return NextResponse.json(
+      { error: "service_unavailable" },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
-  const body = (await req.json().catch(() => null)) as {
+  const requestBody = await readApiJsonObjectRequest(req);
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as {
     generationId?: string;
     candidateIndex?: number;
-    imageUrl?: string; // 과도기(구 클라) — 신뢰 안 하고 index 파싱에만.
-  } | null;
-  const genId = body?.generationId;
-  if (!genId) {
-    return NextResponse.json({ error: "generationId_required" }, { status: 400 });
-  }
-
-  const admin = createAdminClient();
-
-  // 소유 generation 조회(서버 권위).
-  const { data: gen, error: genErr } = await admin
-    .from("ai_generations")
-    .select("role, status, candidate_urls, picked_doll_id")
-    .eq("id", genId)
-    .eq("owner_id", user.id)
-    .maybeSingle();
-  if (genErr) {
-    log.error("doll.gen_lookup_fail", { userId: user.id, genId, ...errInfo(genErr) });
-    return NextResponse.json({ error: "lookup_failed" }, { status: 500 });
-  }
-  if (!gen) return NextResponse.json({ error: "generation_not_found" }, { status: 404 });
-
-  // candidateIndex 결정 — body 우선, 없으면 과도기 imageUrl 에서 파싱(신뢰X, 검증만).
-  let candidateIndex: number | null =
-    typeof body?.candidateIndex === "number" ? body.candidateIndex : null;
-  if (candidateIndex === null && body?.imageUrl) {
-    const m = /\/candidates\/[^/]+\/(\d+)\.jpg/.exec(body.imageUrl);
-    candidateIndex = m ? Number(m[1]) : null;
+    requestId?: string;
+  };
+  const genId = body.generationId;
+  const candidateIndex = body.candidateIndex;
+  const requestId = body.requestId;
+  if (!isUuid(genId) || !isUuid(requestId)) {
+    return NextResponse.json(
+      { error: "invalid_request" },
+      { status: 400 },
+    );
   }
   if (
-    candidateIndex === null ||
     !Number.isInteger(candidateIndex) ||
-    candidateIndex < 0 ||
-    candidateIndex > 2
+    (candidateIndex as number) < 0 ||
+    (candidateIndex as number) > 2
   ) {
-    return NextResponse.json({ error: "invalid_candidate_index" }, { status: 400 });
+    return NextResponse.json(
+      { error: "invalid_candidate_index" },
+      { status: 400 },
+    );
   }
 
-  // 멱등 — 이미 picked 면 기존 doll 반환(재제출/더블클릭 흔한 케이스, birefnet 전에 단락).
-  if (gen.status === "picked" && gen.picked_doll_id) {
-    const { data: existing } = await admin
+  const { data: claimData, error: claimError } = await admin.rpc(
+    "claim_generation_pick",
+    {
+      p_user_id: user.id,
+      p_generation_id: genId,
+      p_candidate_index: candidateIndex,
+      p_attempt_id: requestId,
+    },
+  );
+  if (claimError) {
+    log.warn("doll.pick_claim_unavailable", {
+      userId: user.id,
+      genId,
+      ...errInfo(claimError),
+    });
+    return NextResponse.json(
+      { error: "service_unavailable" },
+      { status: 503 },
+    );
+  }
+  const claim = parseDollPickClaim(claimData);
+  if (claim.kind === "invalid") {
+    log.error("doll.pick_claim_invalid", { userId: user.id, genId });
+    return NextResponse.json(
+      { error: "service_unavailable" },
+      { status: 503 },
+    );
+  }
+
+  const existingDollResponse = async (dollId: string) => {
+    const { data: doll, error } = await admin
       .from("dolls")
       .select("*")
-      .eq("id", gen.picked_doll_id)
+      .eq("id", dollId)
+      .eq("owner_id", user.id)
       .maybeSingle();
-    if (existing) return NextResponse.json({ doll: existing });
-  }
-  if (gen.status !== "done" && gen.status !== "picked") {
-    return NextResponse.json({ error: "not_selectable" }, { status: 409 });
-  }
-
-  // canonical 후보 경로 서버 구성 + candidate_urls 멤버십 검증(클라 URL 비신뢰).
-  const candidateUrls: string[] = Array.isArray(gen.candidate_urls) ? gen.candidate_urls : [];
-  const canonicalPath = `${candidatePrefix(user.id, genId)}/${candidateIndex}.jpg`;
-  if (!candidateUrls.includes(canonicalPath)) {
-    log.warn("doll.candidate_not_member", { userId: user.id, genId, candidateIndex });
-    return NextResponse.json({ error: "candidate_not_found" }, { status: 404 });
-  }
-
-  // 검증된 경로를 내부 서명 → birefnet.
-  const { data: signed, error: signErr } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrl(canonicalPath, 600);
-  if (signErr || !signed?.signedUrl) {
-    log.error("doll.sign_fail", { userId: user.id, genId, candidateIndex, ...errInfo(signErr) });
-    return NextResponse.json({ error: "sign_failed" }, { status: 500 });
-  }
-
-  // 누끼
-  let cleanedUrl: string;
-  try {
-    cleanedUrl = await Sentry.startSpan(
-      { name: "doll.bg_removal", op: "fal.birefnet", attributes: { genId } },
-      () => removeBackground(signed.signedUrl)
-    );
-  } catch (e) {
-    log.error("doll.bg_removal_fail", { userId: user.id, genId, ...errInfo(e) });
-    return NextResponse.json({ error: "bg_removal_failed" }, { status: 502 });
-  }
-
-  const srcRes = await fetch(cleanedUrl);
-  if (!srcRes.ok) {
-    log.error("doll.fetch_fail", { userId: user.id, genId, status: srcRes.status });
-    return NextResponse.json({ error: "fetch_failed" }, { status: 502 });
-  }
-  const raw = await srcRes.arrayBuffer();
-
-  let normalized: Buffer;
-  try {
-    normalized = await Sentry.startSpan(
-      { name: "doll.normalize", op: "image.process", attributes: { genId } },
-      () => normalizeDollImage(raw)
-    );
-  } catch (e) {
-    log.error("doll.normalize_fail", { userId: user.id, genId, ...errInfo(e) });
-    return NextResponse.json({ error: "normalize_failed" }, { status: 500 });
-  }
-
-  const dollId = crypto.randomUUID();
-  const path = `${user.id}/${dollId}.png`;
-  const dollRole = asRole(gen.role); // 롤은 ai_generations 권위.
-
-  const { error: uploadError } = await admin.storage
-    .from(BUCKET)
-    .upload(path, normalized, { contentType: "image/png", upsert: false });
-  if (uploadError) {
-    log.error("doll.upload_fail", { userId: user.id, genId, dollId, ...errInfo(uploadError) });
-    return NextResponse.json({ error: "upload_failed" }, { status: 500 });
-  }
-
-  // doll insert — style_meta = 비민감 포인터만(전체 프롬프트/파라미터는 어드민 전용 gen_params 정본).
-  const stylePointer = {
-    schemaVersion: PROVENANCE_SCHEMA_VERSION,
-    sourceGenerationId: genId,
-    candidateIndex,
+    if (error || !doll) {
+      log.error("doll.picked_lookup_fail", {
+        userId: user.id,
+        genId,
+        dollId,
+        ...errInfo(error),
+      });
+      return NextResponse.json(
+        { error: "lookup_failed" },
+        { status: 503 },
+      );
+    }
+    return dollPickResponse(doll, genId);
   };
-  const { data: doll, error: insertError } = await admin
-    .from("dolls")
-    .insert({ id: dollId, owner_id: user.id, image_url: path, style_meta: stylePointer, role: dollRole })
-    .select()
-    .single();
-  if (insertError) {
-    await admin.storage.from(BUCKET).remove([path]); // 보상: 업로드 객체 제거.
-    log.error("doll.insert_fail", { userId: user.id, genId, dollId, ...errInfo(insertError) });
-    return NextResponse.json({ error: "insert_failed" }, { status: 500 });
-  }
 
-  // 조건부 done→picked (동시성 1승). picked_index = 서버 검증 candidateIndex.
-  const { data: claimed, error: pickErr } = await admin
-    .from("ai_generations")
-    .update({ status: "picked", picked_doll_id: dollId, picked_index: candidateIndex })
-    .eq("id", genId)
-    .eq("owner_id", user.id)
-    .eq("status", "done")
-    .select("id");
-  if (pickErr) {
-    // 전이 DB 오류 — doll 은 저장됨. generation done 유지(재노출) → 후보 정리하지 않음(전이 성공 전).
-    log.error("doll.pick_transition_fail", { userId: user.id, genId, dollId, ...errInfo(pickErr) });
-    return NextResponse.json({ doll });
+  if (claim.kind === "already_picked") {
+    return existingDollResponse(claim.dollId);
   }
-  if ((claimed?.length ?? 0) === 0) {
-    // 레이스 패배(다른 pick 이 먼저 picked) — 방금 만든 doll/storage 보상삭제 + 기존 picked doll 반환.
-    await admin.from("dolls").delete().eq("id", dollId);
-    await admin.storage.from(BUCKET).remove([path]);
-    const { data: after2 } = await admin
-      .from("ai_generations")
-      .select("picked_doll_id")
-      .eq("id", genId)
-      .maybeSingle();
-    if (after2?.picked_doll_id) {
-      const { data: winner } = await admin
-        .from("dolls")
-        .select("*")
-        .eq("id", after2.picked_doll_id)
-        .maybeSingle();
-      if (winner) return NextResponse.json({ doll: winner });
+  if (claim.kind === "blocked") {
+    if (claim.outcome === "manual_review") {
+      return NextResponse.json(
+        { error: "reconciliation_required" },
+        { status: 503 },
+      );
     }
-    return NextResponse.json({ error: "pick_conflict" }, { status: 409 });
+    const status =
+      claim.outcome === "not_found" ||
+      claim.outcome === "candidate_not_found"
+        ? 404
+        : claim.outcome === "account_deleted"
+          ? 403
+          : claim.outcome.endsWith("_quota")
+            ? 429
+            : 409;
+    return NextResponse.json(
+      { error: claim.outcome },
+      { status },
+    );
+  }
+  if (claim.kind === "processing" || claim.kind === "resume") {
+    return dollPickProcessingResponse();
   }
 
-  // pick 성공 → gen_params 에 postprocess/picked 추가(status·picked_doll_id·picked_index 정합). best-effort.
+  if (claim.kind === "provider_done") {
+    try {
+      const result = await materializeGenerationPick({
+        admin,
+        userId: user.id,
+        generationId: genId,
+        workerId: requestId,
+      });
+      if (result.kind === "committed") {
+        return dollPickResponse(result.doll, genId);
+      }
+      return dollPickProcessingResponse();
+    } catch (error) {
+      log.warn("doll.pick_materialization_deferred", {
+        userId: user.id,
+        genId,
+        ...errInfo(error),
+      });
+      return dollPickProcessingResponse();
+    }
+  }
+
+  const canonicalPath =
+    `${candidatePrefix(user.id, genId)}/${candidateIndex}.jpg`;
+  const { data: signed, error: signError } = await admin.storage
+    .from(BUCKET)
+    .createSignedUrl(canonicalPath, 20 * 60);
+  if (signError || !signed?.signedUrl) {
+    log.warn("doll.pick_candidate_sign_deferred", {
+      userId: user.id,
+      genId,
+      ...errInfo(signError),
+    });
+    return dollPickProcessingResponse();
+  }
+  const webhookOrigin = publicFalWebhookOrigin(PUBLIC_ENV.SITE_URL);
+  if (!webhookOrigin) {
+    log.error("doll.pick_webhook_origin_invalid", { genId });
+    return dollPickProcessingResponse();
+  }
+
+  let submitIntent;
   try {
-    const { data: gpRow } = await admin
-      .from("ai_generations")
-      .select("gen_params")
-      .eq("id", genId)
-      .maybeSingle();
-    const gp = gpRow?.gen_params as Record<string, unknown> | null;
-    if (gp && typeof gp === "object") {
-      const nowIso = new Date().toISOString();
-      gp.postprocess = { model: "fal-ai/birefnet", candidateIndex, completedAt: nowIso };
-      gp.picked = { candidateIndex, dollId, pickedAt: nowIso };
-      await admin.from("ai_generations").update({ gen_params: gp }).eq("id", genId);
-    }
-  } catch (e) {
-    log.warn("doll.provenance_pick_merge_fail", { genId, ...errInfo(e) });
+    submitIntent = createDollPickSubmitIntent({
+      siteOrigin: webhookOrigin,
+      generationId: genId,
+      attemptId: claim.attemptId,
+      imageUrl: signed.signedUrl,
+      credentials: SERVER_ENV.FAL_KEY,
+    });
+  } catch (error) {
+    log.error("doll.pick_submit_intent_invalid", {
+      genId,
+      ...errInfo(error),
+    });
+    return NextResponse.json(
+      { error: "service_unavailable" },
+      { status: 503 },
+    );
   }
 
-  // 정리(후보 스토리지 + 임시 얼굴) — 전이 성공 후에만. after() 로 응답 직후 실행.
-  after(async () => {
-    await cleanupCandidateStorage(admin, user.id, genId).catch((e) =>
-      log.warn("gen.candidate_cleanup_fail", { userId: user.id, genId, ...errInfo(e) })
+  const { data: prepareData, error: prepareError } = await admin.rpc(
+    "prepare_generation_pick_submit",
+    {
+      p_user_id: user.id,
+      p_generation_id: genId,
+      p_attempt_id: claim.attemptId,
+      ...dollPickSubmitIntentRpcPayload(submitIntent),
+    },
+  );
+  if (prepareError) {
+    log.warn("doll.pick_prepare_unavailable", {
+      userId: user.id,
+      genId,
+      ...errInfo(prepareError),
+    });
+    return dollPickProcessingResponse();
+  }
+  if (!validDollPickPrepare(prepareData)) {
+    const row =
+      prepareData &&
+      typeof prepareData === "object" &&
+      !Array.isArray(prepareData)
+        ? (prepareData as Record<string, unknown>)
+        : null;
+    const quota =
+      row?.outcome === "user_day_quota" ||
+      row?.outcome === "global_day_quota";
+    return NextResponse.json(
+      { error: quota ? "generation_quota_exceeded" : "service_unavailable" },
+      { status: quota ? 429 : 503 },
     );
-    await deleteFaceTmp(tmpFacePath(user.id, genId)).catch((e) =>
-      log.warn("gen.face_cleanup_fail", { userId: user.id, genId, ...errInfo(e) })
-    );
-  });
+  }
 
-  log.info("doll.save_success", { userId: user.id, genId, dollId, candidateIndex });
-  return NextResponse.json({ doll });
+  const outcome = await submitDollPickOnce({
+    intent: submitIntent,
+    credentials: SERVER_ENV.FAL_KEY,
+  });
+  const durableOutcome =
+    outcome.kind === "acknowledged"
+      ? "acknowledged"
+      : outcome.kind === "uncertain"
+        ? "uncertain"
+        : "rejected";
+  const { data: recordData, error: recordError } = await admin.rpc(
+    "record_generation_pick_submit_outcome",
+    {
+      p_generation_id: genId,
+      p_attempt_id: claim.attemptId,
+      p_payload_hash: submitIntent.payloadHash,
+      p_callback_token_hash: submitIntent.callbackTokenHash,
+      p_outcome: durableOutcome,
+      p_request_id:
+        outcome.kind === "acknowledged" ? outcome.requestId : null,
+      p_http_status: outcome.httpStatus,
+      p_webhook_status: null,
+    },
+  );
+  const recorded = recordError
+    ? "blocked"
+    : parseDollPickSubmitRecord(recordData);
+  if (recorded === "blocked") {
+    log.error("doll.pick_submit_record_unconfirmed", {
+      userId: user.id,
+      genId,
+      ...errInfo(recordError),
+    });
+  }
+  if (recorded === "rejected") {
+    return NextResponse.json(
+      { error: "provider_rejected" },
+      { status: 502 },
+    );
+  }
+  return dollPickProcessingResponse();
 }
 
 export async function GET() {
@@ -254,13 +371,38 @@ export async function GET() {
   if (!gate.ok) return memberGateResponse(gate);
   const supabase = await createClient();
 
-  const { data } = await supabase
-    .from("dolls")
-    .select("id, image_url, created_at, role")
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  return NextResponse.json({ dolls: data ?? [] });
+  try {
+    const data = await requireSupabaseRows(
+      "doll.list",
+      () =>
+        supabase
+          .from("dolls")
+          .select("id, image_url, created_at, role")
+          .order("created_at", { ascending: false })
+          .limit(50),
+    );
+    const dolls = validateAdminRows("doll.list", data, {
+      id: "uuid",
+      image_url: "string",
+      created_at: "timestamp",
+      role: "string",
+    });
+    if (
+      dolls.some(
+        (doll) =>
+          !isRoleId((doll as { role?: unknown }).role),
+      )
+    ) {
+      throw new Error("invalid_doll_role");
+    }
+    return NextResponse.json({ dolls });
+  } catch (error) {
+    log.error("doll.list_fail", {
+      userId: gate.user.id,
+      ...errInfo(error),
+    });
+    return NextResponse.json({ error: "list_failed" }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -268,56 +410,109 @@ export async function DELETE(req: NextRequest) {
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
-  const supabase = await createClient();
-
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
-  if (!id) {
-    return NextResponse.json({ error: "id_required" }, { status: 400 });
-  }
-
-  // owner 검증 + Storage 파일 path 받아오기
-  const { data: doll, error: selErr } = await supabase
-    .from("dolls")
-    .select("id, owner_id, image_url")
-    .eq("id", id)
-    .single();
-  if (selErr || !doll) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-  if (doll.owner_id !== user.id) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
-
-  // Storage 파일 삭제 (admin — owner 검증은 위에서 통과)
-  const admin = createAdminClient();
-  const storagePath = dollPath(doll.image_url); // private 후 image_url=경로(URL도 관용 처리)
-  if (storagePath) {
-    // remove() 는 throw 가 아니라 { error } 반환 — best-effort 지만 실패 시
-    // storage 객체가 고아로 남으므로(개인정보 정책 리스크) 추적 가능하게 남김.
-    const { error: rmErr } = await admin.storage.from(BUCKET).remove([storagePath]);
-    if (rmErr) {
-      log.warn("doll.storage_remove_fail", {
-        userId: user.id,
-        dollId: id,
-        storagePath,
-        ...errInfo(rmErr),
-      });
-    }
-  }
-
-  // dolls row 삭제 — scores.doll_id 는 FK on delete set null 이라 점수는 살아남음
-  const { error: delErr } = await supabase.from("dolls").delete().eq("id", id);
-  if (delErr) {
-    log.error("doll.delete_fail", { userId: user.id, dollId: id, ...errInfo(delErr) });
+  if (!isUuid(id)) {
     return NextResponse.json(
-      { error: "delete_failed", detail: delErr.message },
-      { status: 500 }
+      { error: id ? "invalid_id" : "id_required" },
+      { status: 400 },
     );
   }
 
-  log.info("doll.delete", { userId: user.id, dollId: id });
-  return NextResponse.json({ ok: true });
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("request_doll_delete", {
+    p_user_id: user.id,
+    p_doll_id: id,
+  });
+  if (error) {
+    const message = error.message ?? "";
+    const code = message.includes("doll_not_found")
+      ? "not_found"
+      : message.includes("forbidden")
+        ? "forbidden"
+        : message.includes("account_deleted")
+          ? "account_deleted"
+          : message.includes("doll_unavailable")
+            ? "not_found"
+            : "delete_failed";
+    log.warn("doll.delete_request_fail", {
+      userId: user.id,
+      dollId: id,
+      code,
+      ...errInfo(error),
+    });
+    return NextResponse.json(
+      { error: code },
+      {
+        status:
+          code === "not_found"
+            ? 404
+            : code === "forbidden" || code === "account_deleted"
+              ? 403
+              : 500,
+      },
+    );
+  }
+
+  const started = parseDollDeleteAck(data);
+  if (!started) {
+    log.error("doll.delete_request_invalid", { userId: user.id, dollId: id });
+    return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+  }
+
+  const { data: remaining, error: verifyError } = await admin
+    .from("dolls")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+  if (verifyError || remaining !== null) {
+    log.error("doll.delete_postcondition_fail", {
+      userId: user.id,
+      dollId: id,
+      ...errInfo(verifyError ?? new Error("doll_row_still_present")),
+    });
+    return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+  }
+
+  const cleanupJobId = cleanupJobToRun(started);
+  if (cleanupJobId) {
+    try {
+      const outcome = await processStorageObjectCleanupJob(
+        admin,
+        cleanupJobId,
+      );
+      if (outcome.kind !== "completed") {
+        log.warn("doll.delete_cleanup_pending", {
+          userId: user.id,
+          dollId: id,
+          jobId: cleanupJobId,
+          outcome,
+        });
+        return NextResponse.json(
+          { accepted: true, cleanup: "pending" },
+          { status: 202 },
+        );
+      }
+    } catch (cleanupError) {
+      log.warn("doll.delete_cleanup_claim_fail", {
+        userId: user.id,
+        dollId: id,
+        jobId: cleanupJobId,
+        ...errInfo(cleanupError),
+      });
+      return NextResponse.json(
+        { accepted: true, cleanup: "pending" },
+        { status: 202 },
+      );
+    }
+  }
+
+  log.info("doll.delete", {
+    userId: user.id,
+    dollId: id,
+    alreadyDeleted: started.alreadyDeleted,
+  });
+  return NextResponse.json({ ok: true, cleanup: "completed" });
 }
 
 /** 캐릭터 롤 변경 (갤러리 점세개 메뉴). 쓰기 API라 unknown role 은 400(렌더의 boss 폴백과 달리 엄격). */
@@ -325,38 +520,48 @@ export async function PATCH(req: NextRequest) {
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
-  const supabase = await createClient();
 
-  const body = (await req.json().catch(() => null)) as {
+  const requestBody = await readApiJsonObjectRequest(req);
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as {
     id?: string;
     role?: string;
-  } | null;
-  if (!body?.id) {
-    return NextResponse.json({ error: "id_required" }, { status: 400 });
+  };
+  if (!isUuid(body?.id)) {
+    return NextResponse.json(
+      { error: body?.id ? "invalid_id" : "id_required" },
+      { status: 400 },
+    );
   }
   if (!isRoleId(body.role)) {
     return NextResponse.json({ error: "invalid_role" }, { status: 400 });
   }
 
-  // owner 검증 (DELETE 패턴 동일)
-  const { data: doll, error: selErr } = await supabase
-    .from("dolls")
-    .select("id, owner_id")
-    .eq("id", body.id)
-    .single();
-  if (selErr || !doll) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-  if (doll.owner_id !== user.id) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
-
   const admin = createAdminClient();
-  const { error: updErr } = await admin
-    .from("dolls")
-    .update({ role: body.role })
-    .eq("id", body.id);
+  const { data: updateAck, error: updErr } = await admin.rpc(
+    "request_doll_role_update",
+    {
+    p_user_id: user.id,
+    p_doll_id: body.id,
+    p_role: body.role,
+    },
+  );
   if (updErr) {
+    const message = updErr.message ?? "";
+    const code = message.includes("doll_not_found")
+      ? "not_found"
+      : message.includes("doll_unavailable")
+        ? "not_found"
+        : message.includes("forbidden")
+          ? "forbidden"
+          : message.includes("account_deleted")
+            ? "account_deleted"
+            : "update_failed";
     log.error("doll.role_update_fail", {
       userId: user.id,
       dollId: body.id,
@@ -364,9 +569,46 @@ export async function PATCH(req: NextRequest) {
       ...errInfo(updErr),
     });
     return NextResponse.json(
-      { error: "update_failed", detail: updErr.message },
-      { status: 500 }
+      { error: code },
+      {
+        status:
+          code === "not_found"
+            ? 404
+            : code === "forbidden" || code === "account_deleted"
+              ? 403
+              : 500,
+      },
     );
+  }
+
+  if (!parseDollRoleUpdateAck(updateAck, body.role)) {
+    log.error("doll.role_update_invalid", {
+      userId: user.id,
+      dollId: body.id,
+      role: body.role,
+    });
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
+  }
+  const { data: updated, error: verifyError } = await admin
+    .from("dolls")
+    .select("id, owner_id, role, deleted_at")
+    .eq("id", body.id)
+    .maybeSingle();
+  if (
+    verifyError ||
+    !updated ||
+    updated.id !== body.id ||
+    updated.owner_id !== user.id ||
+    updated.role !== body.role ||
+    updated.deleted_at !== null
+  ) {
+    log.error("doll.role_update_postcondition_fail", {
+      userId: user.id,
+      dollId: body.id,
+      role: body.role,
+      ...errInfo(verifyError ?? new Error("doll_role_postcondition_failed")),
+    });
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
   }
 
   log.info("doll.role_change", { userId: user.id, dollId: body.id, role: body.role });

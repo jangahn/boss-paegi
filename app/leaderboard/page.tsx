@@ -5,19 +5,13 @@ import { useEffect, useState } from "react";
 import { FadeImg } from "@/components/FadeImg";
 import { EventBanner } from "@/components/events/EventBanner";
 import { timeAgo } from "@/lib/report";
+import {
+  parseLeaderboardRows,
+  type LeaderboardRow as RankRow,
+} from "@/lib/leaderboard-response";
+import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
 
 type Period = "daily" | "weekly" | "monthly";
-
-type RankRow = {
-  id: string;
-  owner_id: string;
-  score: number;
-  weapon: string;
-  duration_ms: number;
-  created_at: string;
-  display_name: string | null;
-  avatar_url: string | null;
-};
 
 const DEFAULT_AVATAR = "/avatars/default.png";
 
@@ -28,24 +22,52 @@ const DEFAULT_AVATAR = "/avatars/default.png";
 export default function LeaderboardPage() {
   const [period, setPeriod] = useState<Period>("monthly");
   const [rows, setRows] = useState<RankRow[] | null>(null); // null = 로딩(스켈레톤)
+  const [loadError, setLoadError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     // period 변경 시 스켈레톤으로 리셋 후 재조회 — 의도적 로딩 상태 동기화.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRows(null);
-    fetch(`/api/leaderboard?period=${period}`)
-      .then((r) => r.json())
+    setLoadError(false);
+    void runBoundedClientJsonFetch({
+      input: `/api/leaderboard?period=${period}`,
+      signal: controller.signal,
+      deadlineMs: 12_000,
+      attemptMs: 8_000,
+    })
+      .then((delivery) => {
+        if (delivery.kind !== "confirmed") {
+          throw new Error("leaderboard_response_unconfirmed");
+        }
+        const { response, body: rawBody } = delivery.value;
+        const body = rawBody as {
+          rows?: unknown;
+        } | null;
+        const parsed = response.ok
+          ? parseLeaderboardRows(body?.rows)
+          : null;
+        if (!parsed) {
+          throw new Error("leaderboard_unavailable");
+        }
+        return parsed;
+      })
       .then((d) => {
-        if (!cancelled) setRows((d?.rows ?? []) as RankRow[]);
+        if (!cancelled) setRows(d);
       })
       .catch(() => {
-        if (!cancelled) setRows([]);
+        if (!cancelled) {
+          setRows([]);
+          setLoadError(true);
+        }
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [period]);
+  }, [period, retryToken]);
 
   return (
     <>
@@ -75,7 +97,23 @@ export default function LeaderboardPage() {
             </Tab>
           </div>
 
-          {rows === null ? (
+          {loadError ? (
+            <div
+              role="alert"
+              className="rounded-2xl border border-red-500/30 bg-red-500/5 p-8 text-center"
+            >
+              <p className="text-sm text-red-500">
+                랭킹을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.
+              </p>
+              <button
+                type="button"
+                onClick={() => setRetryToken((value) => value + 1)}
+                className="mt-3 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold"
+              >
+                다시 불러오기
+              </button>
+            </div>
+          ) : rows === null ? (
             <RankSkeleton />
           ) : rows.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-foreground/15 p-12 text-center text-zinc-500">
@@ -129,6 +167,7 @@ function Tab({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`flex-1 rounded-full py-2 text-center transition ${
         active ? "bg-foreground text-paper-2" : "text-zinc-500 hover:text-foreground"

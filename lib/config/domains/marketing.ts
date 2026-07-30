@@ -93,7 +93,7 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
       "본 서비스는 코믹한 스트레스 해소를 위한 캐주얼 게임입니다.\n타인 비방·괴롭힘 목적의 사용은 금지됩니다.",
   },
   signupBanner: {
-    nonmemberTitle: "가입하면 가입기념 생성권 2개를 드려요",
+    nonmemberTitle: "가입하면 가입기념 생성권 1개를 드려요",
     nonmemberSub: "내 사진으로 나만의 캐릭터를 만들고 공유·롤 변경까지!",
     memberEmptyTitle: "나만의 캐릭터를 만들어보세요",
     memberEmptySub: "기본부장님 말고, 내 사진으로 만든 캐릭터로 플레이!",

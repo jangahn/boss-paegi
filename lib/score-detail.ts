@@ -3,7 +3,14 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signedHighlightUrl } from "@/lib/storage";
 import type { GameplayStats } from "@/lib/stats";
-import { isVisibleReviewStatus, type ReviewStatus } from "@/lib/score-visibility";
+import {
+  isReviewStatus,
+  isVisibleReviewStatus,
+  parseScoreVisibilityRow,
+  type ReviewStatus,
+} from "@/lib/score-visibility";
+import { log, errInfo } from "@/lib/log";
+import { SupabaseOperationError } from "@/lib/supabase-operation";
 
 /**
  * 한 게임 결과 상세 — `/share/[scoreId]` 와 `/history/[userId]/[scoreId]` 공용.
@@ -42,6 +49,33 @@ export type Score = {
 
 const HL_COLS =
   "highlight_clip_path, highlight_status, highlight_delta, highlight_window_ms, highlight_deleted_at, highlight_expires_at";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Only additive score-detail schema drift may activate the compatibility read. */
+export function isLegacyScoreDetailSchemaError(error: {
+  code?: string | null;
+  message?: string | null;
+}): boolean {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  if (!["42703", "42P01", "PGRST200", "PGRST204"].includes(code)) {
+    return false;
+  }
+  return /review_status|max_combo|score_highlights|score_stats|deleted_at|dolls.*role|relationship/i.test(
+    message,
+  );
+}
+
+function isMissingReviewStatusError(error: {
+  code?: string | null;
+  message?: string | null;
+}): boolean {
+  return (
+    ["42703", "PGRST204"].includes(error.code ?? "") &&
+    /review_status/i.test(error.message ?? "")
+  );
+}
 
 /** 삭제/만료 안 됐는지 (clip·card 공통). */
 export function highlightLive(s: Score): boolean {
@@ -116,32 +150,100 @@ export async function fetchScoreDetail(
   scoreId: string,
   opts?: { includeHidden?: boolean }
 ): Promise<Score | null> {
+  if (!UUID_RE.test(scoreId)) return null;
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("scores")
     .select(
       `id, owner_id, score, weapon, duration_ms, max_combo, created_at, review_status, profiles(display_name), dolls(id, image_url, role, deleted_at), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
     )
     .eq("id", scoreId)
     .single();
-  if (data) {
+  if (!error && data) {
     const s = flattenScore(data as Record<string, unknown>);
+    if (!isReviewStatus(s.review_status)) {
+      throw new SupabaseOperationError(
+        "score_detail.visibility",
+        new Error("invalid_score_review_status"),
+      );
+    }
     if (!opts?.includeHidden && !isVisibleReviewStatus(s.review_status)) return null;
     return s;
   }
-  // 구 스키마(migration 미적용) fallback — highlight/stats/review_status 없이(기존 행=registered).
-  const { data: legacy } = await admin
+  if (!error || error.code === "PGRST116") return null;
+  if (!isLegacyScoreDetailSchemaError(error)) {
+    log.warn("score_detail.query_fail", { scoreId, ...errInfo(error) });
+    throw new SupabaseOperationError("score_detail.query", error);
+  }
+
+  // Additive rollout fallback. Visibility is queried independently first:
+  // missing score_stats must never erase a present review_status and expose a
+  // pending/voided score. Only a specifically missing review_status column is
+  // treated as the pre-0050 all-registered schema.
+  let fallbackReviewStatus: ReviewStatus = "registered";
+  const visibility = await admin
+    .from("scores")
+    .select("id, review_status")
+    .eq("id", scoreId)
+    .single();
+  if (visibility.error) {
+    if (visibility.error.code === "PGRST116") return null;
+    if (!isMissingReviewStatusError(visibility.error)) {
+      log.warn("score_detail.visibility_fail", {
+        scoreId,
+        ...errInfo(visibility.error),
+      });
+      throw new SupabaseOperationError(
+        "score_detail.visibility",
+        visibility.error,
+      );
+    }
+  } else {
+    fallbackReviewStatus = parseScoreVisibilityRow(
+      visibility.data,
+      scoreId,
+    );
+  }
+  if (
+    !opts?.includeHidden &&
+    !isVisibleReviewStatus(fallbackReviewStatus)
+  ) {
+    return null;
+  }
+
+  // Deliberately omit optional doll/highlight/stat relations in compatibility
+  // mode. A partially migrated moderation schema must fall back to the default
+  // boss image, never to an unfiltered private/taken-down face.
+  const { data: legacy, error: legacyError } = await admin
     .from("scores")
     .select(
-      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name), dolls(id, image_url, role)"
+      "id, owner_id, score, weapon, duration_ms, created_at, profiles(display_name)"
     )
     .eq("id", scoreId)
     .single();
+  if (legacyError) {
+    if (legacyError.code === "PGRST116") return null;
+    log.warn("score_detail.legacy_query_fail", {
+      scoreId,
+      ...errInfo(legacyError),
+    });
+    throw new SupabaseOperationError(
+      "score_detail.legacy_query",
+      legacyError,
+    );
+  }
   return legacy
     ? ({
         ...legacy,
         max_combo: null,
-        review_status: "registered",
+        review_status: fallbackReviewStatus,
+        dolls: null,
+        highlight_clip_path: null,
+        highlight_status: null,
+        highlight_delta: null,
+        highlight_window_ms: null,
+        highlight_deleted_at: null,
+        highlight_expires_at: null,
         gameplay_stats: null,
         badge_ids: null,
         percentile: null,

@@ -6,6 +6,7 @@ import { LedgerFilter } from "@/components/admin/LedgerFilter";
 import { Pagination } from "@/components/Pagination";
 import { firstParam } from "@/lib/admin-format";
 import type { LedgerActionType } from "@/lib/admin-types";
+import { parsePageParam } from "@/lib/pagination";
 
 // 처리 내역 — 실시간 운영이라 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function AdminLedgerPage({
   const sp = await searchParams;
   const typeRaw = firstParam(sp.type);
   const actionType = (typeRaw && TYPES.includes(typeRaw) ? typeRaw : null) as LedgerActionType | null;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
 
   const buildHref = (p: number) => {
     const u = new URLSearchParams();

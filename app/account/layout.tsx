@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { AccountTabs } from "@/components/account/AccountTabs";
+
+export const metadata: Metadata = {
+  title: "회원정보",
+  robots: { index: false, follow: true },
+  alternates: { canonical: "/account" },
+};
 
 /**
  * 마이페이지 공통 셸 — 상단 2뎁스 탭바(회원정보 · 결제내역 · 생성권 내역) + 각 탭 page.tsx(children).

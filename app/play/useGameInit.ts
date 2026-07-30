@@ -2,11 +2,17 @@
 
 import { useEffect, type RefObject, type MutableRefObject } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { resolveBackground } from "@/lib/backgrounds";
 import { log, errInfo } from "@/lib/log";
-import { asRole, type RoleId } from "@/lib/roles";
+import type { RoleId } from "@/lib/roles";
+import {
+  parsePlayDollLookup,
+  parsePlayDollSignedUrl,
+} from "@/lib/play-doll-init";
 import type { Weapon } from "@/lib/weapons";
 import type { GameHandle, CreateGameOptions } from "@/game/BossPaegiGame";
+import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
+import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
+import { runBoundedClientOperation } from "@/lib/client-operation";
 
 /**
  * Pixi 게임 인스턴스 생성/해제 — 캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy.
@@ -17,6 +23,7 @@ import type { GameHandle, CreateGameOptions } from "@/game/BossPaegiGame";
  */
 export function useGameInit(opts: {
   dollId: string | null;
+  initAttempt: number;
   stageRef: RefObject<HTMLDivElement | null>;
   gameRef: MutableRefObject<GameHandle | null>;
   weaponRef: MutableRefObject<Weapon>;
@@ -25,12 +32,15 @@ export function useGameInit(opts: {
   onHit: NonNullable<CreateGameOptions["onHit"]>;
   onDrawingChange: (v: boolean) => void;
   setGameReady: (v: boolean) => void;
+  setGameInitError: (message: string | null) => void;
   setDollImageUrl: (url: string) => void;
   /** doll 의 롤을 호출부에 전달 (시비 멘트·게임오버 보고서 분기용). 기본 플레이(dollId 없음)는 미호출 → boss 유지. */
   setDollRole: (role: RoleId) => void;
+  onInitialBackgroundReady: (key: string) => void;
 }): void {
   const {
     dollId,
+    initAttempt,
     stageRef,
     gameRef,
     weaponRef,
@@ -39,8 +49,10 @@ export function useGameInit(opts: {
     onHit,
     onDrawingChange,
     setGameReady,
+    setGameInitError,
     setDollImageUrl,
     setDollRole,
+    onInitialBackgroundReady,
   } = opts;
 
   useEffect(() => {
@@ -49,59 +61,81 @@ export function useGameInit(opts: {
 
     let cancelled = false;
     let myHandle: GameHandle | undefined;
+    const operationAbort = new AbortController();
+    const initialBackgroundKey = bgKeyRef.current;
+    setGameReady(false);
+    setGameInitError(null);
 
     (async () => {
       const { Assets } = await import("pixi.js");
 
       const [dollTexture, bgTexture] = await Promise.all([
         (async () => {
-          // dollId 없으면 기본 부장님 이미지 — 실패 시 undefined (Graphics placeholder fallback)
+          // 기본 플레이만 public 기본 이미지를 사용한다. 커스텀 캐릭터의 조회·
+          // 서명·텍스처 오류를 기본 이미지로 위장하지 않는다.
           if (!dollId) {
-            try {
-              return await Assets.load("/sprites/boss-default.png");
-            } catch (e) {
-              log.warn("play.default_texture_fail", errInfo(e));
-              return undefined;
-            }
+            return loadClientAssetWithDeadline(
+              () => Assets.load("/sprites/boss-default.png"),
+              { signal: operationAbort.signal },
+            );
           }
-          const sb = createClient();
-          const { data } = await sb
-            .from("dolls")
-            .select("image_url, role")
-            .eq("id", dollId)
-            .single();
-          if (!data?.image_url) return undefined;
-          setDollRole(asRole((data as { role?: string }).role));
+          const lookup = await runBoundedClientOperation(
+            (signal) =>
+              createClient(signal)
+                .from("dolls")
+                .select("image_url, role")
+                .eq("id", dollId)
+                .abortSignal(signal)
+                .maybeSingle(),
+            { signal: operationAbort.signal },
+          );
+          const doll = parsePlayDollLookup(lookup.data, lookup.error);
+          if (cancelled) return undefined;
+          setDollRole(doll.role);
           // private 버킷 — image_url 은 경로. 서명 API로 signed URL 획득(본인 캐릭터·장기세션 ttl 3600).
           //   텍스처(게임 화면·녹화)는 **원본**, 게임종료 표시(ScoreReport)는 **384px 썸네일**(2개 병렬 서명).
-          let fullUrl: string | undefined;
-          let thumbUrl: string | undefined;
-          try {
-            const sign = (thumb: boolean) =>
-              fetch("/api/doll/signed-urls", {
+          const sign = async (thumb: boolean): Promise<string> => {
+            const delivery = await runBoundedClientJsonFetch({
+              input: "/api/doll/signed-urls",
+              init: {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids: [dollId], ttl: 3600, ...(thumb ? { thumb: true } : {}) }),
-              }).then((r) => r.json());
-            const [full, thumb] = await Promise.all([sign(false), sign(true)]);
-            fullUrl = full?.urls?.[dollId] ?? undefined;
-            thumbUrl = thumb?.urls?.[dollId] ?? undefined;
-          } catch (e) {
-            log.warn("play.sign_fail", { dollId, ...errInfo(e) });
-          }
-          if (!fullUrl) return undefined; // 삭제(takedown)/실패 → placeholder
-          setDollImageUrl(thumbUrl ?? fullUrl); // 게임종료 표시는 썸네일(실패 시 원본)
-          try {
-            return await Assets.load(fullUrl); // 텍스처는 원본 유지
-          } catch (e) {
-            log.warn("play.doll_texture_fail", { dollId, ...errInfo(e) });
-            return undefined;
-          }
+                body: JSON.stringify({
+                  ids: [dollId],
+                  ttl: 3600,
+                  ...(thumb ? { thumb: true } : {}),
+                }),
+              },
+              signal: operationAbort.signal,
+            });
+            if (delivery.kind !== "confirmed") {
+              throw new Error("play_doll_sign_response_unconfirmed");
+            }
+            const { response, body } = delivery.value;
+            if (!response.ok) {
+              throw new Error(`play_doll_sign_http_${response.status}`);
+            }
+            return parsePlayDollSignedUrl(dollId, body);
+          };
+          const [fullUrl, thumbUrl] = await Promise.all([
+            sign(false),
+            sign(true),
+          ]);
+          if (cancelled) return undefined;
+          setDollImageUrl(thumbUrl);
+          return loadClientAssetWithDeadline(
+            () => Assets.load(fullUrl),
+            { signal: operationAbort.signal },
+          ); // 텍스처는 원본 유지
         })(),
-        Assets.load(initialBgUrlRef.current!).catch((e) => {
-          log.warn("play.bg_texture_fail", errInfo(e));
-          return undefined;
-        }),
+        (async () => {
+          const backgroundUrl = initialBgUrlRef.current;
+          if (!backgroundUrl) throw new Error("play_background_not_decided");
+          return loadClientAssetWithDeadline(
+            () => Assets.load(backgroundUrl),
+            { signal: operationAbort.signal },
+          );
+        })(),
       ]);
       if (cancelled) return;
 
@@ -127,29 +161,26 @@ export function useGameInit(opts: {
       }
       myHandle = created;
       gameRef.current = created;
+      onInitialBackgroundReady(initialBackgroundKey);
       setGameReady(true);
       log.info("play.game_ready", { dollId: dollId ?? "default" });
 
-      // 생성하는 동안 사용자가 바꾼 무기/배경 재적용 (로딩 중 변경은
-      // gameRef 가 null 이라 hot-swap effect 에서 조용히 유실됨)
+      // 생성하는 동안 사용자가 바꾼 무기는 즉시 재적용한다. 배경은 페이지의
+      // 성공-확정 hot-swap effect가 처리해 로드 실패 시 상태를 롤백한다.
       created.setWeapon(weaponRef.current);
-      const latestBg = resolveBackground(bgKeyRef.current);
-      if (latestBg.url !== initialBgUrlRef.current) {
-        Assets.load(latestBg.url)
-          .then((tex) => {
-            if (!cancelled && tex && gameRef.current === created) {
-              created.setBackground(tex);
-            }
-          })
-          .catch(() => {});
-      }
     })().catch((e) => {
-      // 게임 init 자체 실패 — 로딩 화면이 안 풀림. 반드시 추적
       log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
+      if (!cancelled) {
+        setGameReady(false);
+        setGameInitError(
+          "게임을 불러오지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.",
+        );
+      }
     });
 
     return () => {
       cancelled = true;
+      operationAbort.abort(new Error("game_init_inactive"));
       if (myHandle) {
         myHandle.destroy();
         if (gameRef.current === myHandle) gameRef.current = null;
@@ -157,5 +188,5 @@ export function useGameInit(opts: {
     };
     // weapon/bg 변경은 별도 effect 에서 hot-swap (재마운트 X)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dollId]);
+  }, [dollId, initAttempt]);
 }

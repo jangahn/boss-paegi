@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import type { CtaTarget } from "@/lib/gallery-cta";
 
@@ -17,13 +17,23 @@ export function HookToast({
   cta: CtaTarget;
   onClose: () => void;
 }) {
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    const t = setTimeout(onClose, AUTO_DISMISS_MS);
-    return () => clearTimeout(t);
+    onCloseRef.current = onClose;
   }, [onClose]);
 
+  useEffect(() => {
+    const t = setTimeout(() => onCloseRef.current(), AUTO_DISMISS_MS);
+    return () => clearTimeout(t);
+  }, [message]);
+
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4"
+    >
       <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl border border-foreground/10 bg-paper-2/95 p-3 shadow-2xl backdrop-blur">
         <p className="flex-1 text-sm leading-snug">{message}</p>
         <Link

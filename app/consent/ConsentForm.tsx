@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { ModalShell } from "@/components/ModalShell";
@@ -10,8 +10,13 @@ import { SERVICE_NAME } from "@/lib/policy";
 import { getMyProfile, writeCachedProfile, clearProfileCache } from "@/lib/profile";
 import { signOut } from "@/lib/auth-oauth";
 import { firstTouchSourceForConversion } from "@/lib/acquisition";
+import { parseAccountConsentHttpAck } from "@/lib/account-http-contract";
 import type { ConsentItem } from "@/lib/consent";
 import type { LegalSection } from "@/lib/legal/types";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
 
 /** /consent 서버가 내려주는 약관/방침 전문(인라인 "보기" 모달용). */
 export type LegalDocLite = {
@@ -47,8 +52,29 @@ export function ConsentForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ConsentItem | null>(null);
+  const mountedRef = useRef(false);
+  const busyRef = useRef(false);
+  const operationEpochRef = useRef(0);
+  const requestAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      operationEpochRef.current += 1;
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
+    };
+  }, []);
+
   // 같은 탭 이동 → 뒤로가기(bfcache) 시 멈춘 스피너 해제.
-  useBfcacheReset(() => setBusy(false));
+  useBfcacheReset(() => {
+    operationEpochRef.current += 1;
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+    busyRef.current = false;
+    setBusy(false);
+  });
 
   const all = items.every((i) => checked[i]);
   // 약관/방침 항목인데 전문 로드 실패(서버 조회 일시 오류) → 동의 차단(읽지 못한 채 동의 방지, B10).
@@ -56,39 +82,148 @@ export function ConsentForm({
   const toggle = (id: ConsentItem) => setChecked((p) => ({ ...p, [id]: !p[id] }));
 
   const submit = async () => {
-    if (busy || !all) return;
+    if (busyRef.current || !all) return;
+    busyRef.current = true;
+    const operationEpoch = operationEpochRef.current + 1;
+    operationEpochRef.current = operationEpoch;
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
+    let navigating = false;
     setBusy(true);
     setErr(null);
     try {
-      const payload: Record<string, boolean> = {};
+      const payload: Record<string, boolean | number> = {};
       items.forEach((i) => (payload[i] = true));
-      const res = await fetch("/api/account/consent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, acqSource: firstTouchSourceForConversion() }),
+      if (items.includes("terms") && docs.terms) {
+        payload.termsVersion = docs.terms.version;
+      }
+      if (items.includes("privacy") && docs.privacy) {
+        payload.privacyVersion = docs.privacy.version;
+      }
+      const requestBody = JSON.stringify({
+        ...payload,
+        acqSource: firstTouchSourceForConversion(),
       });
-      if (res.ok) {
-        // 동의 완료 → 프로필 캐시 갱신 후 원래 목적지로(proxy 가 통과시킴).
-        clearProfileCache();
-        try {
-          const p = await getMyProfile();
-          if (p) writeCachedProfile(p.id, p);
-        } catch {
-          /* refetch 실패해도 캐시 비워졌으니 다음 진입에 신선 조회 */
-        }
-        router.replace(next);
+      const outcome = await runReplayedJsonMutation({
+        input: "/api/account/consent",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        },
+        signal: controller.signal,
+        classify: (response, body) => {
+          if (
+            response.ok &&
+            parseAccountConsentHttpAck(body)
+          ) {
+            return { kind: "confirmed", value: true };
+          }
+          const error =
+            body &&
+            typeof body === "object" &&
+            !Array.isArray(body) &&
+            typeof (body as Record<string, unknown>).error ===
+              "string"
+              ? String((body as Record<string, unknown>).error)
+              : null;
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "consent_response_unconfirmed",
+              error,
+            };
+          }
+          return {
+            kind: "rejected",
+            error: error ?? `consent_http_${response.status}`,
+          };
+        },
+      });
+      if (
+        !mountedRef.current ||
+        operationEpochRef.current !== operationEpoch
+      ) {
         return;
       }
-      const out = (await res.json().catch(() => ({}))) as { error?: string };
-      if (out.error === "account_deleted") {
+      if (outcome.kind === "confirmed") {
+        // 성공 응답 뒤 프로필 캐시 최적화가 지연돼도 목적지 이동을
+        // 막지 않는다. 캐시는 먼저 비우고 best-effort로 다시 채운다.
+        clearProfileCache();
+        void getMyProfile()
+          .then((p) => {
+            if (p) writeCachedProfile(p.id, p);
+          })
+          .catch(() => {
+            /* 캐시는 비워졌으므로 다음 계정 조회가 권위값을 다시 읽음 */
+          });
+        router.replace(next);
+        navigating = true;
+        return;
+      }
+      const error =
+        outcome.kind === "rejected" &&
+        typeof outcome.error === "string"
+          ? outcome.error
+          : null;
+      if (error === "account_deleted") {
         window.location.assign("/login?error=account_deleted");
+        navigating = true;
+        return;
+      }
+      if (error === "legal_version_changed") {
+        window.location.reload();
+        navigating = true;
         return;
       }
       setErr("처리에 실패했어요. 잠시 후 다시 시도해주세요.");
-      setBusy(false);
     } catch {
-      setErr("네트워크 오류 — 다시 시도해주세요.");
-      setBusy(false);
+      if (
+        mountedRef.current &&
+        operationEpochRef.current === operationEpoch
+      ) {
+        setErr("네트워크 오류 — 다시 시도해주세요.");
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
+      if (
+        !navigating &&
+        mountedRef.current &&
+        operationEpochRef.current === operationEpoch
+      ) {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
+  };
+
+  const logout = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const operationEpoch = operationEpochRef.current + 1;
+    operationEpochRef.current = operationEpoch;
+    setBusy(true);
+    setErr(null);
+    try {
+      await signOut();
+    } catch {
+      if (
+        mountedRef.current &&
+        operationEpochRef.current === operationEpoch
+      ) {
+        setErr("로그아웃을 완료하지 못했어요. 다시 시도해주세요.");
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -115,6 +250,7 @@ export function ConsentForm({
               >
                 <button
                   type="button"
+                  disabled={busy}
                   onClick={() => toggle(id)}
                   aria-pressed={on}
                   className="flex flex-1 items-start gap-3 text-left"
@@ -136,6 +272,7 @@ export function ConsentForm({
                 {hasDoc && (
                   <button
                     type="button"
+                    disabled={busy}
                     onClick={() => setViewing(id)}
                     className="shrink-0 text-xs text-zinc-500 underline underline-offset-2 hover:text-foreground"
                   >
@@ -148,11 +285,15 @@ export function ConsentForm({
         </div>
 
         {docLoadFailed && (
-          <p className="text-sm text-red-400">
+          <p role="alert" className="text-sm text-red-400">
             약관을 불러올 수 없어요. 잠시 후 새로고침해 다시 시도해주세요.
           </p>
         )}
-        {err && <p className="text-sm text-red-400">{err}</p>}
+        {err && (
+          <p role="alert" className="text-sm text-red-400">
+            {err}
+          </p>
+        )}
 
         <button
           type="button"
@@ -166,7 +307,7 @@ export function ConsentForm({
         <button
           type="button"
           disabled={busy}
-          onClick={() => void signOut()}
+          onClick={() => void logout()}
           className="text-center text-sm text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline disabled:opacity-40"
         >
           로그아웃
@@ -174,7 +315,11 @@ export function ConsentForm({
       </div>
 
       {viewing && viewingDoc && (
-        <ModalShell wide onClose={() => setViewing(null)}>
+        <ModalShell
+          wide
+          ariaLabel={`${viewingDoc.title} 전문`}
+          onClose={() => setViewing(null)}
+        >
           <div className="mb-1 flex justify-end">
             <button
               type="button"

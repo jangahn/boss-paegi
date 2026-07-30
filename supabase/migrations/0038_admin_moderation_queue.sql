@@ -62,7 +62,8 @@ begin
   page as (
     select * from filtered
     order by coalesce(latest_report_at, deleted_at) desc nulls last, id
-    limit greatest(coalesce(p_limit, 10), 1) offset greatest(coalesce(p_offset, 0), 0)
+    limit least(greatest(coalesce(p_limit, 10), 1), 100)
+    offset greatest(coalesce(p_offset, 0), 0)
   )
   select jsonb_build_object(
     'total', coalesce((select max(total) from filtered), 0),
@@ -78,13 +79,25 @@ begin
         'report_count', p.report_count,
         'pending_count', p.pending_count,
         'latest_report_at', p.latest_report_at,
+        'reports_truncated', p.report_count > 100,
         'reports', coalesce((
           select jsonb_agg(jsonb_build_object(
             'id', r.id, 'reason', r.reason, 'detail', r.detail,
             'contact', r.reporter_contact, 'status', r.status, 'created_at', r.created_at
-          ) order by r.created_at desc)
-          from public.content_reports r
-          where r.target_type = 'doll' and r.target_id = p.id
+          ) order by r.created_at desc, r.id desc)
+          from (
+            select
+              r.id,
+              r.reason,
+              r.detail,
+              r.reporter_contact,
+              r.status,
+              r.created_at
+            from public.content_reports r
+            where r.target_type = 'doll' and r.target_id = p.id
+            order by r.created_at desc, r.id desc
+            limit 100
+          ) r
         ), '[]'::jsonb)
       ) order by coalesce(p.latest_report_at, p.deleted_at) desc nulls last, p.id)
       from page p

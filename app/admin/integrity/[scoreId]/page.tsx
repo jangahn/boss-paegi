@@ -147,7 +147,9 @@ export default async function AdminIntegrityDetailPage({
           scoreId={d.scoreId}
           ownerId={d.ownerId}
           reviewStatus={d.reviewStatus}
+          reviewVersion={d.reviewVersion}
           abuseStatus={d.abuseStatus}
+          abuseVersion={d.abuseVersion}
         />
       </Section>
     </main>

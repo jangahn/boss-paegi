@@ -2,6 +2,16 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
+import {
+  requireSupabaseData,
+  requireSupabaseOptionalData,
+} from "@/lib/supabase-operation";
+import {
+  isExactNicknameMutationRow,
+  parseProfileMember,
+  parseProfileSelf,
+} from "@/lib/profile-read";
+import { runClientMutation } from "@/lib/client-mutation";
 
 export type MyProfile = {
   id: string;
@@ -35,61 +45,124 @@ export function notifyCreditsChanged(): void {
 /**
  * 내 프로필 조회 — 세션 없으면 익명 세션 생성 후 조회.
  * **동의 여부는 서버 proxy 가 게이트**(클라 계산 불필요) → 비익명이면 isLoggedIn=true.
- * member row 없어도(신규·동의 전) 깨지지 않음: isLoggedIn=true·genCredits=null·isAdmin=false.
+ * auth.users 생성 트리거가 보장하는 profile no-row와 모든 non-null 손상 row는 권위 데이터
+ * 장애로 throw한다. 단, 로그인 직후 /consent 전의 합법적인 member no-row는 별도 처리한다.
  */
-export async function getMyProfile(): Promise<MyProfile | null> {
-  const session = await ensureAuth();
-  const sb = createClient();
-  const { data } = await sb
-    .from("profiles")
-    .select("id, display_name, avatar_url")
-    .eq("id", session.user.id)
-    .single();
-  if (!data) return null;
+export async function getMyProfile(
+  signal?: AbortSignal,
+): Promise<MyProfile> {
+  const outcome = await runClientMutation<MyProfile>({
+    attempt: async (requestSignal) => {
+      try {
+        const session = await ensureAuth(requestSignal);
+        const sb = createClient(requestSignal);
+        const profileRow = await requireSupabaseData(
+          "profile.self",
+          () =>
+            sb
+              .from("profiles")
+              .select("id, display_name, avatar_url")
+              .eq("id", session.user.id)
+              .abortSignal(requestSignal)
+              .maybeSingle(),
+        );
+        const base = parseProfileSelf(profileRow, session.user.id);
 
-  const base = {
-    id: data.id as string,
-    display_name: data.display_name as string,
-    avatar_url: (data.avatar_url as string | null) ?? null,
-  };
+        if (session.user.is_anonymous === true) {
+          return {
+            kind: "confirmed",
+            value: {
+              ...base,
+              isLoggedIn: false,
+              genCredits: null,
+              isAdmin: false,
+            },
+          };
+        }
 
-  if (session.user.is_anonymous === true) {
-    return { ...base, isLoggedIn: false, genCredits: null, isAdmin: false };
-  }
+        // 비익명 OAuth 직후 /consent 전에는 member row가 아직 없을 수 있다.
+        // 성공 no-row만 허용하고, non-null 손상 row/transport 오류는 실패시킨다.
+        const memberRow = await requireSupabaseOptionalData(
+          "profile.member",
+          () =>
+            sb
+              .from("member_accounts")
+              .select("gen_credits, is_admin")
+              .eq("user_id", session.user.id)
+              .abortSignal(requestSignal)
+              .maybeSingle(),
+        );
+        const member =
+          memberRow === null ? null : parseProfileMember(memberRow);
 
-  // 비익명 — member_accounts self-read(없으면 null-safe).
-  const m = await sb
-    .from("member_accounts")
-    .select("gen_credits, is_admin")
-    .eq("user_id", session.user.id)
-    .maybeSingle()
-    .then((r) => r.data as Record<string, unknown> | null);
-
-  return {
-    ...base,
-    isLoggedIn: true,
-    genCredits: (m?.gen_credits as number | undefined) ?? null,
-    isAdmin: (m?.is_admin as boolean | undefined) ?? false,
-  };
+        return {
+          kind: "confirmed",
+          value: {
+            ...base,
+            isLoggedIn: true,
+            genCredits: member?.gen_credits ?? null,
+            isAdmin: member?.is_admin ?? false,
+          },
+        };
+      } catch (error) {
+        return { kind: "rejected", error };
+      }
+    },
+    signal,
+  });
+  if (outcome.kind === "confirmed") return outcome.value;
+  throw outcome.kind === "rejected"
+    ? outcome.error
+    : new Error(
+        outcome.kind === "aborted"
+          ? "profile_read_aborted"
+          : "profile_read_unconfirmed",
+      );
 }
 
 /**
  * 닉네임 수정 — RLS self update. 랭킹/공유는 profiles join 이라 즉시 반영.
  * @returns 정규화되어 저장된 닉네임
  */
-export async function updateNickname(raw: string): Promise<string> {
+export async function updateNickname(
+  raw: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const name = raw.trim().slice(0, NICKNAME_MAX);
   if (name.length < 2) {
     throw new Error("닉네임은 2자 이상이어야 해요");
   }
-  const session = await ensureAuth();
-  const sb = createClient();
-  const { error } = await sb
-    .from("profiles")
-    .update({ display_name: name })
-    .eq("id", session.user.id);
-  if (error) throw new Error("닉네임 저장 실패 — 잠시 후 다시 시도해주세요");
-  return name;
+  const session = await ensureAuth(signal);
+  const sb = createClient(signal);
+  const deliver = async (requestSignal: AbortSignal) => {
+    const { data, error } = await sb
+      .from("profiles")
+      .update({ display_name: name })
+      .eq("id", session.user.id)
+      .select("id, display_name")
+      .abortSignal(requestSignal)
+      .maybeSingle();
+    if (!error && isExactNicknameMutationRow(data, session.user.id, name)) {
+      return { kind: "confirmed" as const, value: name };
+    }
+    return {
+      kind: "unconfirmed" as const,
+      reason: "nickname_update_response_unconfirmed",
+      error,
+    };
+  };
+  const outcome = await runClientMutation({
+    attempt: deliver,
+    // Setting the same normalized display_name on the same profile is
+    // idempotent, so an exact second delivery safely reconciles response loss.
+    reconcile: deliver,
+    signal,
+  });
+  if (outcome.kind === "confirmed") return outcome.value;
+  if (outcome.kind === "aborted") {
+    throw new Error("닉네임 저장이 취소됐어요");
+  }
+  throw new Error("닉네임 저장 실패 — 잠시 후 다시 시도해주세요");
 }
 
 // ── 프로필 즉시표시 캐시 (nav 스피너 제거) — user.id 별 키. **메뉴 표시용(isLoggedIn)만** 캐시. ──

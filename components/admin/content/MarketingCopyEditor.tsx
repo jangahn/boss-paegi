@@ -9,6 +9,7 @@ import { roleFrom } from "@/lib/config/domains/roles";
 import { ROLE_IDS } from "@/lib/roles";
 import { resolveCopy, unknownTokens } from "@/lib/config/template";
 import { SurfaceDiagram, FIELD_SURFACE } from "@/components/admin/content/diagram/SurfaceDiagram";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 // 미리보기용 샘플 값(값 토큰 자리). 실제론 런타임 값이 들어감.
 const SAMPLE = {
@@ -131,6 +132,7 @@ export function MarketingCopyEditor({
   invalid: boolean;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [form, setForm] = useState<MarketingCopy>(initial);
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
@@ -148,22 +150,16 @@ export function MarketingCopyEditor({
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "marketing_copy", value: form, baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "marketing_copy", value: form, baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        version?: number;
-        error?: string;
-      };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 다음 로드부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

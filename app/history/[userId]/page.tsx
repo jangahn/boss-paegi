@@ -7,30 +7,34 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDuration, gradeFor, timeAgo, weaponLabel } from "@/lib/report";
 import { getScoreConfig } from "@/lib/config/getters";
 import { SCORE_VISIBLE_STATUSES } from "@/lib/score-visibility";
+import {
+  requireSupabaseOptionalData,
+  requireSupabaseSuccess,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import { parsePageParam } from "@/lib/pagination";
+import {
+  parsePublicHistoryGames,
+  parsePublicHistoryProfile,
+  type PublicHistoryGame,
+} from "@/lib/history-read";
 
 const DEFAULT_AVATAR = "/avatars/default.png";
 const PAGE_SIZE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Row = {
-  id: string;
-  score: number;
-  weapon: string;
-  duration_ms: number;
-  max_combo: number | null;
-  created_at: string;
-};
-
 async function fetchProfile(userId: string) {
   if (!UUID_RE.test(userId)) return null;
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("display_name, avatar_url")
-    .eq("id", userId)
-    .maybeSingle();
-  return data as { display_name: string | null; avatar_url: string | null } | null;
+  const data = await requireSupabaseOptionalData("history.profile", () =>
+    admin
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", userId)
+      .maybeSingle(),
+  );
+  return parsePublicHistoryProfile("history.profile", data);
 }
 
 async function fetchGames(userId: string, page: number) {
@@ -38,16 +42,30 @@ async function fetchGames(userId: string, page: number) {
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
   // 공개 히스토리 — visible(registered|cleared)만. pending/voided(어뷰징 의심·무효)는 공개 목록에서 제외(0050).
-  const { data, count } = await admin
-    .from("scores")
-    .select("id, score, weapon, duration_ms, max_combo, created_at", {
-      count: "exact",
-    })
-    .eq("owner_id", userId)
-    .in("review_status", SCORE_VISIBLE_STATUSES as unknown as string[])
-    .order("created_at", { ascending: false })
-    .range(from, to);
-  return { rows: (data ?? []) as Row[], total: count ?? 0 };
+  const result = await requireSupabaseSuccess("history.games", () =>
+    admin
+      .from("scores")
+      .select("id, score, weapon, duration_ms, max_combo, created_at", {
+        count: "exact",
+      })
+      .eq("owner_id", userId)
+      .in("review_status", SCORE_VISIBLE_STATUSES as unknown as string[])
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to),
+  );
+  const rows = parsePublicHistoryGames("history.games", result.data);
+  if (
+    result.count === null ||
+    !Number.isSafeInteger(result.count) ||
+    result.count < 0
+  ) {
+    throw new SupabaseOperationError(
+      "history.games",
+      new Error("exact_count_missing_or_invalid"),
+    );
+  }
+  return { rows: rows as PublicHistoryGame[], total: result.count };
 }
 
 export async function generateMetadata({
@@ -74,7 +92,7 @@ export default async function HistoryPage({
   const profile = await fetchProfile(userId);
   if (!profile) notFound();
 
-  const page = Math.max(1, Number(sp.page) || 1);
+  const page = parsePageParam(sp.page);
   const { rows, total } = await fetchGames(userId, page);
   const scoreGrades = (await getScoreConfig()).grades;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));

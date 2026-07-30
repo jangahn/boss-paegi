@@ -4,16 +4,13 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { log, errInfo } from "@/lib/log";
+export {
+  QUEUED_STALE_MS,
+  SUBMIT_ACK_STALE_MS,
+} from "@/lib/character-gen/generation-deadlines";
 
 /** dolls 버킷 재사용 — 확정 캐릭터 + 생성 후보 모두 여기에 */
 export const DOLLS_BUCKET = "dolls";
-
-/**
- * queued 인데 이만큼 지나도 안 끝나면 "중단됨"으로 노출.
- * 30분 — 그 안에는 저장된 fal request_id 로 결과를 복구 시도하므로,
- * fal 이 늦게라도 끝나면 ready 로 살아난다. (복구: lib/generation-recovery.ts)
- */
-export const QUEUED_STALE_MS = 30 * 60 * 1000;
 
 /**
  * done/failed 인데 저장 후보가 fal 요청 수보다 적은(abort 로 일부/전부 누락) row 를
@@ -37,20 +34,61 @@ export async function cleanupCandidateStorage(
   genId: string
 ): Promise<void> {
   const prefix = candidatePrefix(ownerId, genId);
-  try {
-    const { data: files } = await admin.storage.from(DOLLS_BUCKET).list(prefix);
-    if (files && files.length > 0) {
-      await admin.storage
-        .from(DOLLS_BUCKET)
-        .remove(files.map((f) => `${prefix}/${f.name}`));
+  const paths: string[] = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data: files, error: listError } = await admin.storage
+      .from(DOLLS_BUCKET)
+      .list(prefix, { limit: pageSize, offset, sortBy: { column: "name", order: "asc" } });
+    if (listError) {
+      log.warn("gen.candidate_cleanup_fail", {
+        genId,
+        stage: "list",
+        ...errInfo(listError),
+      });
+      throw listError;
     }
-  } catch (e) {
-    // 미선택 후보 정리 실패 — storage 누적/비용 모니터링용 (Sentry 가시화).
-    log.warn("gen.candidate_cleanup_fail", { genId, ...errInfo(e) });
+    if (!Array.isArray(files)) {
+      throw new Error("gen_candidate_list_response_missing");
+    }
+    for (const file of files) {
+      if (
+        !file ||
+        typeof file.name !== "string" ||
+        file.name.length === 0 ||
+        file.name.includes("/") ||
+        file.name === "." ||
+        file.name === ".."
+      ) {
+        throw new Error("gen_candidate_list_entry_invalid");
+      }
+      paths.push(`${prefix}/${file.name}`);
+    }
+    if (files.length < pageSize) break;
+  }
+  for (let offset = 0; offset < paths.length; offset += pageSize) {
+    const batch = paths.slice(offset, offset + pageSize);
+    const { error: removeError } = await admin.storage
+      .from(DOLLS_BUCKET)
+      .remove(batch);
+    if (removeError) {
+      log.warn("gen.candidate_cleanup_fail", {
+        genId,
+        stage: "remove",
+        batchSize: batch.length,
+        ...errInfo(removeError),
+      });
+      throw removeError;
+    }
   }
 }
 
-export type GenerationStatus = "queued" | "done" | "failed" | "picked";
+export type GenerationStatus =
+  | "queued"
+  | "done"
+  | "failed"
+  | "picked"
+  | "expired";
 
 /**
  * 갤러리에 노출할 미완결 생성.

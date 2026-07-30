@@ -7,6 +7,10 @@ import type { RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 import { MARKETING_COPY_DEFAULT, type MarketingCopy } from "@/lib/config/domains/marketing";
 import { resolveCopy } from "@/lib/config/template";
+import {
+  DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
+  fetchMediaBlob,
+} from "@/lib/media-download";
 
 /** 워터마크에 박을 정규 호스트 — 공유 링크 도메인(SITE_URL)과 일치시킨다. */
 function siteHost(): string {
@@ -24,12 +28,6 @@ function siteHost(): string {
  * - 공유: 이미지 + /doll/[id] 공개 페이지 링크를 Web Share 로.
  * - 워터마크: 우하단에 작고 어색하지 않게 (반투명 + 그림자) — 저장/공유 공통.
  */
-
-async function fetchBlob(url: string): Promise<Blob> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("이미지를 불러오지 못했어요");
-  return await r.blob();
-}
 
 /** 우하단 작은 워터마크 합성 — 캔버스 크기는 원본 그대로 */
 async function composeWatermark(blob: Blob): Promise<Blob> {
@@ -83,7 +81,11 @@ export async function shareDoll(
 
   let file: File | null = null;
   try {
-    const composed = await composeWatermark(await fetchBlob(imageUrl));
+    const media = await fetchMediaBlob(imageUrl, {
+      kind: "image",
+      maxBytes: DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
+    });
+    const composed = await composeWatermark(media.blob);
     file = new File([composed], `boss-${dollId.slice(0, 8)}.png`, { type: "image/png" });
   } catch {
     // 합성/로드 실패 → 파일 없이 문구+링크 공유

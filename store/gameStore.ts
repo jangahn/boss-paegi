@@ -13,6 +13,7 @@ import {
   ULT_HITS,
   type FreshWeaponBonus,
 } from "@/lib/game-tuning";
+import { firstHitElapsedMs } from "@/lib/game-clock";
 
 const COMBO_DECAY_MS = 1500;
 /** 궁극기 게이지 풀 충전에 필요한 명중 횟수 — 단일 출처는 game-tuning. */
@@ -134,12 +135,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   ...JUGGLE_INITIAL_STATE,
 
   hit: (strength, weaponKey, charge = true) => {
+    const state = get();
+    // 종료와 같은 JS turn에서 이미 큐에 있던 pellet/collision callback이
+    // 뒤늦게 도착해도 점수·통계·게이지를 다시 열 수 없다. charge=false인
+    // 궁극기 타격도 같은 gate를 반드시 통과한다.
+    if (!state.isPlaying) return 0;
     const now = performance.now();
     // 궁극기 난타(charge=false): 점수만(동결 콤보배율) + ultScore 누적 + 콤보 유지(lastHitAt).
     // combo/maxCombo/hitCount/weaponCounts/weaponScores/firstHitMs 등 뱃지·페르소나 통계엔 미반영.
     // → combo/hit/weapon 증가 전에 early return.
     if (!charge) {
-      const s = get();
+      const s = state;
       const gain = Math.round(strength * comboMultiplier(s.combo));
       set({ score: s.score + gain, ultScore: s.ultScore + gain, lastHitAt: now });
       return gain; // 난타 팝업도 콤보배율 반영
@@ -153,6 +159,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       weaponCounts,
       weaponScores,
       startedAt,
+      isPlaying,
       firstHitMs,
       ultProgress,
       ultReady,
@@ -164,7 +171,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ivN,
       ivSum,
       ivSumSq,
-    } = get();
+    } = state;
 
     // 타격 간격 CV(어뷰징 jitter) — 연속 간격(idle/decay 제외)만 러닝 누적. 봇=거의 등간격(CV≈0).
     const iv = lastHitAt > 0 ? now - lastHitAt : -1;
@@ -229,8 +236,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       hitCount: hitCount + 1,
       weaponCounts: nextCounts,
       weaponScores: nextScores,
-      firstHitMs:
-        hitCount === 0 && startedAt ? Math.round(now - startedAt) : firstHitMs,
+      firstHitMs: firstHitElapsedMs({
+        hitCount,
+        active: isPlaying,
+        startedAt,
+        now,
+        previous: firstHitMs,
+      }),
       ultProgress: nextProgress,
       ultReady: nextReady,
       lastHitAt: now,
@@ -282,9 +294,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ultProgress: 0,
       ultReady: false,
       lastHitAt: 0,
-    ivN: 0,
-    ivSum: 0,
-    ivSumSq: 0,
+      ivN: 0,
+      ivSum: 0,
+      ivSumSq: 0,
       isPlaying: true,
       startedAt: performance.now(),
       endedAt: null,
@@ -311,9 +323,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ultProgress: 0,
       ultReady: false,
       lastHitAt: 0,
-    ivN: 0,
-    ivSum: 0,
-    ivSumSq: 0,
+      ivN: 0,
+      ivSum: 0,
+      ivSumSq: 0,
       isPlaying: false,
       startedAt: 0,
       endedAt: null,

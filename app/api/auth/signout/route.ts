@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
 import { createClient } from "@/lib/supabase/server";
+import { requireSupabaseSuccess } from "@/lib/supabase-operation";
+import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -12,9 +14,13 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    await supabase.auth.signOut();
-  } catch {
-    /* 세션 없거나 만료여도 쿠키 정리는 진행 */
+    await requireSupabaseSuccess("auth.signout_revoke", () =>
+      supabase.auth.signOut(),
+    );
+  } catch (error) {
+    // 세션 없거나 원격 revoke가 실패해도 현재 브라우저의 모든 쿠키는
+    // 아래에서 명시 만료한다. 재사용 가능한 refresh token 실패는 가시화한다.
+    log.warn("auth.signout_revoke_fail", errInfo(error));
   }
   const res = NextResponse.json({ ok: true });
   for (const c of request.cookies.getAll()) {

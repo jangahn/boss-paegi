@@ -1,10 +1,21 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
+import { readAdminJsonRequest } from "@/lib/http/admin-json-request";
 import { EVENTS_BUCKET } from "@/lib/storage-path";
+import {
+  attemptUploadCleanup,
+  confirmUploadIntentWithLegacyAdoption,
+  imageContentTypeMatchesPath,
+  isFreshSignedUpload,
+  parseCreatedUploadIntent,
+  resolveUploadIntentMutation,
+  uploadIntentErrorMessage,
+  isUuid,
+} from "@/lib/upload-write-safety";
 import { log, errInfo } from "@/lib/log";
+import { publicWriteActorKey } from "@/lib/public-write-quota";
 
 export const runtime = "nodejs";
 
@@ -23,23 +34,76 @@ function mimeToExt(mime?: string): "png" | "jpg" | "webp" | "gif" | null {
 
 const PATH_RE = /^\d{6}\/[0-9a-f-]{36}\.(png|jpg|webp|gif)$/;
 
-/** YYYYMM (KST). */
-function kstYearMonth(): string {
-  const d = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // YYYY-MM-DD
-  return d.slice(0, 4) + d.slice(5, 7);
-}
-
 /** POST — 서명 업로드 URL 발급(바이트는 Vercel 안 거침). 어드민 전용. */
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
-  const body = (await req.json().catch(() => null)) as { mime?: string } | null;
+  const requestBody = await readAdminJsonRequest(req);
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as {
+    mime?: string;
+    requestId?: string;
+    month?: string;
+  } | null;
   const ext = mimeToExt(body?.mime);
-  if (!ext) return NextResponse.json({ error: "invalid_mime" }, { status: 400 });
+  if (
+    !ext ||
+    !isUuid(body?.requestId) ||
+    !body?.month ||
+    !/^\d{6}$/.test(body.month)
+  ) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+  const actorKey = publicWriteActorKey(
+    req.headers,
+    gate.user.id,
+    true,
+  );
+  if (!actorKey) {
+    return NextResponse.json({ error: "service_unavailable" }, { status: 503 });
+  }
 
   const admin = createAdminClient();
-  const path = `${kstYearMonth()}/${randomUUID()}.${ext}`;
+  const path = `${body.month}/${body.requestId}.${ext}`;
+  const intent = await resolveUploadIntentMutation(() =>
+    admin.rpc("create_admin_storage_upload_intent", {
+      p_admin_id: gate.user.id,
+      p_purpose: "event_image",
+      p_bucket: EVENTS_BUCKET,
+      p_path: path,
+      p_request_id: body.requestId,
+      p_actor_key: actorKey,
+    }),
+  );
+  if (!intent.ok) {
+    log.error("event_image.intent_create_fail", {
+      userId: gate.user.id,
+      path,
+      ...errInfo(intent.error),
+    });
+    const message = uploadIntentErrorMessage(intent.error);
+    return NextResponse.json(
+      {
+        error: message.includes("quota")
+          ? "upload_quota_exceeded"
+          : "upload_intent_failed",
+      },
+      { status: message.includes("quota") ? 429 : 503 },
+    );
+  }
+  if (!parseCreatedUploadIntent(intent.data, { expires: true })) {
+    log.error("event_image.intent_create_invalid", {
+      userId: gate.user.id,
+      path,
+    });
+    return NextResponse.json({ error: "upload_intent_failed" }, { status: 500 });
+  }
   const { data: signed, error } = await admin.storage
     .from(EVENTS_BUCKET)
     .createSignedUploadUrl(path);
@@ -55,7 +119,14 @@ export async function PATCH(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
-  const body = (await req.json().catch(() => null)) as { path?: string } | null;
+  const requestBody = await readAdminJsonRequest(req);
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as { path?: string } | null;
   const path = body?.path;
   if (!path || !PATH_RE.test(path)) {
     return NextResponse.json({ error: "invalid_path" }, { status: 400 });
@@ -70,10 +141,92 @@ export async function PATCH(req: NextRequest) {
   }
   const size = info.size ?? 0;
   const mimetype = info.contentType ?? "";
-  if (size <= 0 || size > MAX_BYTES || !mimetype.startsWith("image/") || mimetype.includes("svg")) {
-    log.warn("event_image.upload_rejected", { userId: gate.user.id, size, mimetype });
-    await admin.storage.from(EVENTS_BUCKET).remove([path]).catch(() => {});
+  const fresh = isFreshSignedUpload(info.createdAt);
+  if (
+    size <= 0 ||
+    size > MAX_BYTES ||
+    !imageContentTypeMatchesPath(path, mimetype, [
+      "png",
+      "jpg",
+      "webp",
+      "gif",
+    ]) ||
+    !fresh
+  ) {
+    log.warn("event_image.upload_rejected", {
+      userId: gate.user.id,
+      size,
+      mimetype,
+      fresh,
+    });
+    const cleanup = await attemptUploadCleanup(
+      "event_image.rejected_cleanup",
+      [path],
+      (paths) => admin.storage.from(EVENTS_BUCKET).remove(paths),
+      (target) => admin.storage.from(EVENTS_BUCKET).exists(target),
+    );
+    if (!cleanup.ok) {
+      log.error("event_image.upload_cleanup_fail", {
+        userId: gate.user.id,
+        path,
+        ...errInfo(cleanup.error),
+      });
+      return NextResponse.json(
+        { error: "upload_cleanup_failed" },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ error: "rejected" }, { status: 400 });
+  }
+
+  const confirmation = await confirmUploadIntentWithLegacyAdoption({
+    confirm: () =>
+      admin.rpc("confirm_admin_storage_upload_intent", {
+        p_admin_id: gate.user.id,
+        p_bucket: EVENTS_BUCKET,
+        p_path: path,
+      }),
+    create: () =>
+      admin.rpc("create_admin_storage_upload_intent", {
+        p_admin_id: gate.user.id,
+        p_purpose: "event_image",
+        p_bucket: EVENTS_BUCKET,
+        p_path: path,
+      }),
+  });
+  if (!confirmation.ok) {
+    const message = uploadIntentErrorMessage(confirmation.error);
+    const code = message.includes("upload_intent_expired")
+      ? "upload_intent_expired"
+      : message.includes("upload_intent_forbidden")
+        ? "upload_intent_forbidden"
+        : message.includes("upload_cleanup_in_progress")
+          ? "upload_cleanup_in_progress"
+          : "upload_intent_failed";
+    log.warn("event_image.intent_confirm_fail", {
+      userId: gate.user.id,
+      path,
+      code,
+      phase: confirmation.phase,
+      ...errInfo(confirmation.error),
+    });
+    return NextResponse.json(
+      { error: code },
+      {
+        status:
+          code === "upload_intent_forbidden"
+            ? 403
+            : code === "upload_intent_failed"
+              ? 500
+              : 409,
+      },
+    );
+  }
+  if (confirmation.adoptedLegacy) {
+    log.info("event_image.legacy_intent_adopted", {
+      userId: gate.user.id,
+      path,
+    });
   }
 
   const url = admin.storage.from(EVENTS_BUCKET).getPublicUrl(path).data.publicUrl;

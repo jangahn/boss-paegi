@@ -3,6 +3,14 @@ import { NextResponse } from "next/server";
 import { requireMember, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { log, errInfo } from "@/lib/log";
+import {
+  readSupabaseRowsPaginated,
+  requireSupabaseRows,
+} from "@/lib/supabase-operation";
+import {
+  requireExactAdminIdCoverage,
+  validateAdminRows,
+} from "@/lib/admin-read-contract";
 
 export const runtime = "nodejs";
 
@@ -16,7 +24,8 @@ export const runtime = "nodejs";
  */
 
 type PurchaseLotRow = {
-  order_uuid: string | null;
+  id: string;
+  order_uuid: string;
   qty: number;
   consumed: number;
   refunded: number;
@@ -40,44 +49,93 @@ export async function GET() {
   const userId = gate.user.id;
   const admin = createAdminClient();
 
-  const { data, error } = await admin
-    .from("credit_lots")
-    .select("order_uuid, qty, consumed, refunded, refund_reserved")
-    .eq("user_id", userId)
-    .eq("source", "purchase");
-  if (error) {
+  let lots: PurchaseLotRow[];
+  const paidAtByOrder = new Map<string, string>();
+  try {
+    const rawLots = await readSupabaseRowsPaginated(
+      "account.refundable.lots",
+      (offset, limit) =>
+        admin
+          .from("credit_lots")
+          .select("id, order_uuid, qty, consumed, refunded, refund_reserved")
+          .eq("user_id", userId)
+          .eq("source", "purchase")
+          .order("id", { ascending: true })
+          .range(offset, offset + limit - 1),
+    );
+    lots = validateAdminRows<PurchaseLotRow>(
+      "account.refundable.lots",
+      rawLots,
+      {
+        id: "uuid",
+        order_uuid: "uuid",
+        qty: "nonnegativeInteger",
+        consumed: "nonnegativeInteger",
+        refunded: "nonnegativeInteger",
+        refund_reserved: "nonnegativeInteger",
+      },
+    );
+    if (
+      lots.some(
+        (lot) =>
+          lot.consumed + lot.refunded + lot.refund_reserved > lot.qty,
+      )
+    ) {
+      throw new Error("invalid_purchase_lot_balance");
+    }
+
+    const orderUuids = [...new Set(lots.map((lot) => lot.order_uuid))];
+    for (let offset = 0; offset < orderUuids.length; offset += 200) {
+      const chunk = orderUuids.slice(offset, offset + 200);
+      const rawOrders = await requireSupabaseRows(
+        `account.refundable.orders[offset=${offset}]`,
+        () =>
+          admin
+            .from("orders")
+            .select("order_uuid, paid_at")
+            .eq("user_id", userId)
+            .in("order_uuid", chunk),
+      );
+      const orders = validateAdminRows<{
+        order_uuid: string;
+        paid_at: string;
+      }>(`account.refundable.orders[offset=${offset}]`, rawOrders, {
+        order_uuid: "uuid",
+        paid_at: "timestamp",
+      });
+      requireExactAdminIdCoverage(
+        `account.refundable.orders[offset=${offset}]`,
+        chunk,
+        orders.map((order) => order.order_uuid),
+      );
+      for (const order of orders) {
+        paidAtByOrder.set(order.order_uuid, order.paid_at);
+      }
+    }
+  } catch (error) {
     log.error("account.refundable_query_fail", { userId, ...errInfo(error) });
     return NextResponse.json({ error: "server_error" }, { status: 500 });
-  }
-  const lots = (data ?? []) as PurchaseLotRow[];
-
-  const paidAtByOrder = new Map<string, string>();
-  const orderUuids = [...new Set(lots.map((l) => l.order_uuid).filter((u): u is string => !!u))];
-  if (orderUuids.length > 0) {
-    const { data: orders, error: ordErr } = await admin
-      .from("orders")
-      .select("order_uuid, paid_at")
-      .eq("user_id", userId)
-      .in("order_uuid", orderUuids);
-    if (ordErr) {
-      log.error("account.refundable_orders_query_fail", { userId, ...errInfo(ordErr) });
-      return NextResponse.json({ error: "server_error" }, { status: 500 });
-    }
-    for (const o of (orders ?? []) as { order_uuid: string; paid_at: string | null }[]) {
-      if (o.paid_at) paidAtByOrder.set(o.order_uuid, o.paid_at);
-    }
   }
 
   const asOfDate = new Date();
   const nowMs = asOfDate.getTime();
 
-  let refundable = 0;
+  let refundable = BigInt(0);
   for (const l of lots) {
-    if (!l.order_uuid) continue;
     const paidAt = paidAtByOrder.get(l.order_uuid);
-    if (!paidAt || nowMs > refundDeadlineMs(paidAt)) continue;
-    refundable += Math.max(0, l.qty - l.consumed - l.refunded - l.refund_reserved);
+    if (nowMs > refundDeadlineMs(paidAt!)) continue;
+    refundable += BigInt(
+      l.qty - l.consumed - l.refunded - l.refund_reserved,
+    );
+  }
+  if (refundable > BigInt(Number.MAX_SAFE_INTEGER)) {
+    log.error("account.refundable_total_overflow", { userId });
+    return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, refundable, asOf: asOfDate.toISOString() });
+  return NextResponse.json({
+    ok: true,
+    refundable: Number(refundable),
+    asOf: asOfDate.toISOString(),
+  });
 }

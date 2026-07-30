@@ -1,4 +1,5 @@
 import { josaEul, josaEun, josaEuro } from "@/lib/roles";
+import { copyVarValue } from "./copy-var.ts";
 
 /**
  * 마케팅 카피 치환 — 클라/서버 공용 **순수 모듈**(server-only getter import 금지).
@@ -39,7 +40,7 @@ export function resolveCopy(tpl: string, label: string, vars?: CopyVars): string
   for (const token of VALUE_TOKENS) {
     if (!out.includes(token)) continue;
     const key = token.slice(1, -1) as keyof CopyVars;
-    const v = vars?.[key];
+    const v = copyVarValue(vars, key);
     out = out.split(token).join(v == null ? "" : String(v));
   }
   return out;

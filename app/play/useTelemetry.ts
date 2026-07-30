@@ -7,6 +7,16 @@ import { FLUSH_INTERVAL_MS, TICK_MS, DEVICE_CLASSES } from "@/lib/telemetry/budg
 
 const HIDDEN_TIMEOUT_MS = 30_000;
 
+/**
+ * `pagehide.persisted=true` means the live page is entering the back-forward
+ * cache, not being abandoned. Ending that session makes the restored game
+ * continue without a collector and links its score to a prematurely closed
+ * telemetry row.
+ */
+export function shouldFinalizeTelemetryPageHide(persisted: boolean): boolean {
+  return !persisted;
+}
+
 function detectDeviceClass(): string {
   if (typeof window === "undefined") return "other";
   const coarse = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
@@ -105,7 +115,19 @@ export function useTelemetry(): TelemetryApi {
         hiddenTimer = null;
       }
     };
-    const onHide = () => finalize("abandon");
+    const onHide = (event: PageTransitionEvent) => {
+      clearPointers();
+      if (!shouldFinalizeTelemetryPageHide(event.persisted)) {
+        // A hidden timeout scheduled immediately before pagehide must not fire
+        // after bfcache restoration and close the resumed live session.
+        if (hiddenTimer !== null) {
+          window.clearTimeout(hiddenTimer);
+          hiddenTimer = null;
+        }
+        return;
+      }
+      finalize("abandon");
+    };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pagehide", onHide);
 

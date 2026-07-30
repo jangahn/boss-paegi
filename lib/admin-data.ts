@@ -1,7 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PG_RETRY_CUTOFF_MS } from "@/lib/refund-saga";
-import { log, errInfo } from "@/lib/log";
 import type {
   AdminFunnel,
   OrderSummary,
@@ -11,6 +10,15 @@ import type {
   ReconIssueRow,
 } from "@/lib/admin-types";
 import { OPEN_ATTEMPT_STATES, ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
+import {
+  requireSupabaseData,
+  requireSupabaseRows,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import {
+  requireExactAdminIdCoverage,
+  validateAdminRows,
+} from "@/lib/admin-read-contract";
 
 /**
  * 관리자 대시보드 데이터 — server-only, service_role(admin client).
@@ -20,7 +28,7 @@ import { OPEN_ATTEMPT_STATES, ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
 export type { AdminFunnel, OrderSummary, AdminOrder };
 
 const ORDER_SELECT =
-  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refunded_credits, refunded_amount, profiles(display_name)";
+  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, error_message, user_id, refunded_credits, refunded_amount, profiles:profiles!orders_user_id_fkey(display_name)";
 
 type RawOrderRow = Omit<AdminOrder, "display_name"> & {
   profiles:
@@ -44,6 +52,7 @@ function mapOrder(r: RawOrderRow): AdminOrder {
     pay_channel: r.pay_channel,
     created_at: r.created_at,
     paid_at: r.paid_at,
+    error_message: r.error_message,
     user_id: r.user_id,
     display_name: p?.display_name ?? null,
     refunded_credits: r.refunded_credits,
@@ -51,25 +60,118 @@ function mapOrder(r: RawOrderRow): AdminOrder {
   };
 }
 
+const RAW_ORDER_SCHEMA = {
+  order_uuid: "uuid",
+  status: "string",
+  amount: "nonnegativeInteger",
+  credits: "nonnegativeInteger",
+  product_id: "string",
+  pg_tx_id: "nullableString",
+  payment_id: "nullableString",
+  provider: "string",
+  is_test: "boolean",
+  pay_channel: "nullableString",
+  created_at: "timestamp",
+  paid_at: "nullableTimestamp",
+  error_message: "nullableString",
+  user_id: "uuid",
+  refunded_credits: "nonnegativeInteger",
+  refunded_amount: "nonnegativeInteger",
+  profiles: "embed",
+} as const;
+
+function rawOrders(operation: string, value: unknown): RawOrderRow[] {
+  const rows = validateAdminRows<RawOrderRow>(
+    operation,
+    value,
+    RAW_ORDER_SCHEMA,
+  );
+  for (const row of rows) {
+    const profiles =
+      row.profiles === null
+        ? []
+        : Array.isArray(row.profiles)
+          ? row.profiles
+          : [row.profiles];
+    validateAdminRows(`${operation}.profiles`, profiles, {
+      display_name: "nullableString",
+    });
+    if (profiles.length > 1) {
+      throw new SupabaseOperationError(
+        operation,
+        new Error("ambiguous_profile_embed"),
+      );
+    }
+  }
+  return rows;
+}
+
 export async function getAdminFunnel(): Promise<AdminFunnel | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("get_admin_funnel");
-  if (error || !data) {
-    log.warn("admin.funnel_fail", errInfo(error));
-    return null;
+  const data = await requireSupabaseRows(
+    "admin.dashboard.funnel",
+    () => admin.rpc("get_admin_funnel"),
+  );
+  const rows = validateAdminRows<Record<string, number | string>>(
+    "admin.dashboard.funnel",
+    data,
+    {
+      anon_users: "nonnegativeNumeric",
+      players: "nonnegativeNumeric",
+      members: "nonnegativeNumeric",
+      first_gen: "nonnegativeNumeric",
+      first_purchase: "nonnegativeNumeric",
+    },
+  );
+  if (rows.length !== 1) {
+    throw new SupabaseOperationError(
+      "admin.dashboard.funnel",
+      new Error("expected_one_funnel_row"),
+    );
   }
-  const row = Array.isArray(data) ? data[0] : data;
-  return (row as AdminFunnel) ?? null;
+  const row = rows[0];
+  return {
+    anon_users: Number(row.anon_users),
+    players: Number(row.players),
+    members: Number(row.members),
+    first_gen: Number(row.first_gen),
+    first_purchase: Number(row.first_purchase),
+  };
 }
 
 export async function getOrderSummary(): Promise<OrderSummary | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("get_admin_order_summary");
-  if (error || !data) {
-    log.warn("admin.summary_fail", errInfo(error));
-    return null;
+  const data = await requireSupabaseData(
+    "admin.dashboard.order_summary",
+    () => admin.rpc("get_admin_order_summary"),
+  );
+  const rows = validateAdminRows<
+    Omit<OrderSummary, "by_status"> & { by_status: Record<string, unknown> }
+  >("admin.dashboard.order_summary", [data], {
+    revenue_today: "nonnegativeInteger",
+    revenue_7d: "nonnegativeInteger",
+    revenue_30d: "nonnegativeInteger",
+    orders_today: "nonnegativeInteger",
+    orders_7d: "nonnegativeInteger",
+    orders_30d: "nonnegativeInteger",
+    by_status: "jsonObject",
+  });
+  const summary = rows[0];
+  const byStatus: Record<string, number> = {};
+  for (const [status, count] of Object.entries(summary.by_status)) {
+    if (
+      status.length === 0 ||
+      !Number.isSafeInteger(count) ||
+      (count as number) < 0
+    ) {
+      throw new SupabaseOperationError(
+        "admin.dashboard.order_summary",
+        new Error("invalid_status_count"),
+      );
+    }
+    byStatus[status] = count as number;
   }
-  return data as OrderSummary;
+  return { ...summary, by_status: byStatus };
 }
 
 /** 오래된 결제요청(확인 필요) — 결제 시도(payment_id/pg_tx_id)했으나 2시간+ pending. 미지급 단정 아님.
@@ -77,20 +179,20 @@ export async function getOrderSummary(): Promise<OrderSummary | null> {
 export async function getStalePending(): Promise<AdminOrder[]> {
   const admin = createAdminClient();
   const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await admin
-    .from("orders")
-    .select(ORDER_SELECT)
-    .eq("status", "pending")
-    .eq("is_test", false)
-    .not("payment_id", "is", null)
-    .lt("created_at", cutoff)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  if (error) {
-    log.warn("admin.stale_pending_fail", errInfo(error));
-    return [];
-  }
-  return ((data ?? []) as unknown as RawOrderRow[]).map(mapOrder);
+  const data = await requireSupabaseRows(
+    "admin.dashboard.stale_pending",
+    () =>
+      admin
+        .from("orders")
+        .select(ORDER_SELECT)
+        .eq("status", "pending")
+        .eq("is_test", false)
+        .not("payment_id", "is", null)
+        .lt("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(50),
+  );
+  return rawOrders("admin.dashboard.stale_pending", data).map(mapOrder);
 }
 
 // ── 환불 saga(0062) 운영 경고·큐 ──────────────────────────────────────────────────────────
@@ -108,7 +210,7 @@ export type RefundWarnings = {
 
 // RPC(setof orders) 행은 profiles 임베드 불가 — 컬럼만 고르고 display_name 은 배치 조회로 채움.
 const WARN_SELECT =
-  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, user_id, refunded_credits, refunded_amount";
+  "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, error_message, user_id, refunded_credits, refunded_amount";
 
 const ATTEMPT_SELECT =
   "id, request_id, order_uuid, user_id, state, rail, qty, amount, rate_bps, created_at, pg_requested_at";
@@ -119,54 +221,138 @@ const ISSUE_SELECT = "id, type, order_uuid, user_id, cancellation_id, state, cre
 /** 이슈 중 대시보드 경고 대상 3종 — economic_over_refund·manual_pg_cancel 은 /admin/refunds 큐에서만. */
 const WARN_ISSUE_TYPES = ["late_paid", "unmatched_cancellation", "cancellation_discrepancy"];
 
+const ATTEMPT_SCHEMA = {
+  id: "uuid",
+  request_id: "uuid",
+  order_uuid: "uuid",
+  user_id: "uuid",
+  state: "string",
+  rail: "string",
+  qty: "nonnegativeInteger",
+  amount: "nonnegativeInteger",
+  rate_bps: "nonnegativeInteger",
+  created_at: "timestamp",
+  pg_requested_at: "nullableTimestamp",
+} as const;
+const REQUEST_SCHEMA = {
+  id: "uuid",
+  user_id: "uuid",
+  origin: "string",
+  scope_order_uuid: "nullableUuid",
+  requested_qty: "nonnegativeInteger",
+  approved_amount: "nullableNonnegativeInteger",
+  state: "string",
+  reason: "string",
+  created_at: "timestamp",
+} as const;
+const ISSUE_SCHEMA = {
+  id: "uuid",
+  type: "string",
+  order_uuid: "uuid",
+  user_id: "uuid",
+  cancellation_id: "nullableUuid",
+  state: "string",
+  created_at: "timestamp",
+} as const;
+const ORDER_NO_PROFILE_SCHEMA = {
+  order_uuid: "uuid",
+  status: "string",
+  amount: "nonnegativeInteger",
+  credits: "nonnegativeInteger",
+  product_id: "string",
+  pg_tx_id: "nullableString",
+  payment_id: "nullableString",
+  provider: "string",
+  is_test: "boolean",
+  pay_channel: "nullableString",
+  created_at: "timestamp",
+  paid_at: "nullableTimestamp",
+  error_message: "nullableString",
+  user_id: "uuid",
+  refunded_credits: "nonnegativeInteger",
+  refunded_amount: "nonnegativeInteger",
+} as const;
+
 /** 환불 운영 경고 — 대시보드 최상단(stale pending 보다 높은 우선순위). invariant_violation 은
  *  경고 소스가 아니다(Sentry `pay.refund_invariant_violation` 전용 — open issue 로 저장되지 않음). */
 export async function getRefundWarnings(): Promise<RefundWarnings> {
   const admin = createAdminClient();
   const pgStaleIso = new Date(Date.now() - PG_RETRY_CUTOFF_MS).toISOString();
   const [attempts, requests, issues, canceledPaid] = await Promise.all([
-    admin
-      .from("order_refund_attempts")
-      .select(ATTEMPT_SELECT)
-      .or(`state.eq.manual_review,and(state.eq.pg_requested,pg_requested_at.lt.${pgStaleIso})`)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(20),
-    admin
-      .from("refund_requests")
-      .select(REQUEST_SELECT)
-      .eq("state", "blocked")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(20),
-    admin
-      .from("reconciliation_issues")
-      .select(ISSUE_SELECT)
-      .eq("state", "open")
-      .in("type", WARN_ISSUE_TYPES)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(20),
-    admin.rpc("admin_unreconciled_canceled_orders").select(WARN_SELECT),
+    requireSupabaseRows(
+      "admin.refund_warnings.attempts",
+      () =>
+        admin
+          .from("order_refund_attempts")
+          .select(ATTEMPT_SELECT)
+          .or(
+            `state.eq.manual_review,and(state.eq.pg_requested,pg_requested_at.lt.${pgStaleIso})`,
+          )
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(20),
+    ),
+    requireSupabaseRows(
+      "admin.refund_warnings.requests",
+      () =>
+        admin
+          .from("refund_requests")
+          .select(REQUEST_SELECT)
+          .eq("state", "blocked")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(20),
+    ),
+    requireSupabaseRows(
+      "admin.refund_warnings.issues",
+      () =>
+        admin
+          .from("reconciliation_issues")
+          .select(ISSUE_SELECT)
+          .eq("state", "open")
+          .in("type", WARN_ISSUE_TYPES)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(20),
+    ),
+    requireSupabaseRows(
+      "admin.refund_warnings.unreconciled",
+      () =>
+        admin
+          .rpc("admin_unreconciled_canceled_orders")
+          .select(WARN_SELECT),
+    ),
   ]);
-  if (attempts.error) log.warn("admin.refund_warnings_attempts_fail", errInfo(attempts.error));
-  if (requests.error) log.warn("admin.refund_warnings_requests_fail", errInfo(requests.error));
-  if (issues.error) log.warn("admin.refund_warnings_issues_fail", errInfo(issues.error));
-  if (canceledPaid.error)
-    log.warn("admin.refund_unreconciled_rpc_fail", errInfo(canceledPaid.error));
-
-  const withName = <T>(rows: T[] | null | undefined) =>
-    (rows ?? []).map((r) => ({ ...r, display_name: null as string | null }));
+  const withName = <T>(rows: T[]) =>
+    rows.map((r) => ({ ...r, display_name: null as string | null }));
 
   const attentionAttempts = withName(
-    attempts.data as Omit<RefundAttemptRow, "display_name">[] | null
+    validateAdminRows<Omit<RefundAttemptRow, "display_name">>(
+      "admin.refund_warnings.attempts",
+      attempts,
+      ATTEMPT_SCHEMA,
+    ),
   );
   const blockedRequests = withName(
-    requests.data as Omit<RefundRequestRow, "display_name">[] | null
+    validateAdminRows<Omit<RefundRequestRow, "display_name">>(
+      "admin.refund_warnings.requests",
+      requests,
+      REQUEST_SCHEMA,
+    ),
   );
-  const openIssues = withName(issues.data as Omit<ReconIssueRow, "display_name">[] | null);
+  const openIssues = withName(
+    validateAdminRows<Omit<ReconIssueRow, "display_name">>(
+      "admin.refund_warnings.issues",
+      issues,
+      ISSUE_SCHEMA,
+    ),
+  );
   const unreconciled = withName(
-    canceledPaid.data as Omit<AdminOrder, "display_name">[] | null
+    validateAdminRows<Omit<AdminOrder, "display_name">>(
+      "admin.refund_warnings.unreconciled",
+      canceledPaid,
+      ORDER_NO_PROFILE_SCHEMA,
+    ),
   );
 
   await fillDisplayNames(admin, [
@@ -192,41 +378,64 @@ export type RefundQueue = {
 export async function getRefundQueue(): Promise<RefundQueue> {
   const admin = createAdminClient();
   const [issues, requests, attempts] = await Promise.all([
-    admin
-      .from("reconciliation_issues")
-      .select(ISSUE_SELECT)
-      .eq("state", "open")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(50),
-    admin
-      .from("refund_requests")
-      .select(REQUEST_SELECT)
-      .in("state", [...ACTIVE_REQUEST_STATES])
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(50),
-    admin
-      .from("order_refund_attempts")
-      .select(ATTEMPT_SELECT)
-      .in("state", [...OPEN_ATTEMPT_STATES])
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(50),
+    requireSupabaseRows(
+      "admin.refund_queue.issues",
+      () =>
+        admin
+          .from("reconciliation_issues")
+          .select(ISSUE_SELECT)
+          .eq("state", "open")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(50),
+    ),
+    requireSupabaseRows(
+      "admin.refund_queue.requests",
+      () =>
+        admin
+          .from("refund_requests")
+          .select(REQUEST_SELECT)
+          .in("state", [...ACTIVE_REQUEST_STATES])
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(50),
+    ),
+    requireSupabaseRows(
+      "admin.refund_queue.attempts",
+      () =>
+        admin
+          .from("order_refund_attempts")
+          .select(ATTEMPT_SELECT)
+          .in("state", [...OPEN_ATTEMPT_STATES])
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(50),
+    ),
   ]);
-  if (issues.error) log.warn("admin.refund_queue_issues_fail", errInfo(issues.error));
-  if (requests.error) log.warn("admin.refund_queue_requests_fail", errInfo(requests.error));
-  if (attempts.error) log.warn("admin.refund_queue_attempts_fail", errInfo(attempts.error));
 
-  const withName = <T>(rows: T[] | null | undefined) =>
-    (rows ?? []).map((r) => ({ ...r, display_name: null as string | null }));
+  const withName = <T>(rows: T[]) =>
+    rows.map((r) => ({ ...r, display_name: null as string | null }));
 
-  const openIssues = withName(issues.data as Omit<ReconIssueRow, "display_name">[] | null);
+  const openIssues = withName(
+    validateAdminRows<Omit<ReconIssueRow, "display_name">>(
+      "admin.refund_queue.issues",
+      issues,
+      ISSUE_SCHEMA,
+    ),
+  );
   const activeRequests = withName(
-    requests.data as Omit<RefundRequestRow, "display_name">[] | null
+    validateAdminRows<Omit<RefundRequestRow, "display_name">>(
+      "admin.refund_queue.requests",
+      requests,
+      REQUEST_SCHEMA,
+    ),
   );
   const openAttempts = withName(
-    attempts.data as Omit<RefundAttemptRow, "display_name">[] | null
+    validateAdminRows<Omit<RefundAttemptRow, "display_name">>(
+      "admin.refund_queue.attempts",
+      attempts,
+      ATTEMPT_SCHEMA,
+    ),
   );
 
   await fillDisplayNames(admin, [...openIssues, ...activeRequests, ...openAttempts]);
@@ -234,18 +443,35 @@ export async function getRefundQueue(): Promise<RefundQueue> {
   return { openIssues, activeRequests, openAttempts };
 }
 
-/** 행들의 display_name 을 profiles 일괄 조회로 채움(실패 시 그대로 null — 표기는 shortId 폴백). */
+/** 행들의 display_name 을 profiles 일괄 조회로 채움. 조회 장애는 이름 없음이 아니다. */
 async function fillDisplayNames(
   admin: ReturnType<typeof createAdminClient>,
   rows: Array<{ user_id: string; display_name: string | null }>
 ): Promise<void> {
   const userIds = [...new Set(rows.map((r) => r.user_id))];
   if (userIds.length === 0) return;
-  const { data, error } = await admin.from("profiles").select("id, display_name").in("id", userIds);
-  if (error) {
-    log.warn("admin.refund_warnings_names_fail", errInfo(error));
-    return;
-  }
-  const names = new Map((data ?? []).map((p) => [p.id as string, p.display_name as string | null]));
+  const data = await requireSupabaseRows(
+    "admin.refund_display_names",
+    () =>
+      admin
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", userIds),
+  );
+  const profiles = validateAdminRows<{
+    id: string;
+    display_name: string | null;
+  }>("admin.refund_display_names", data, {
+    id: "uuid",
+    display_name: "nullableString",
+  });
+  requireExactAdminIdCoverage(
+    "admin.refund_display_names",
+    userIds,
+    profiles.map((profile) => profile.id),
+  );
+  const names = new Map(
+    profiles.map((profile) => [profile.id, profile.display_name]),
+  );
   for (const r of rows) r.display_name = names.get(r.user_id) ?? null;
 }

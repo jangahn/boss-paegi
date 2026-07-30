@@ -23,6 +23,8 @@ type Callbacks = {
 
 const MIN_LAUNCH_SPEED = 240; // px/sec — 이보다 느리면 발사 취소
 const MAX_POWER_SPEED = 1600; // px/sec — power 1.0 기준
+/** pointer timestamp가 뭉치거나 합성 입력이어도 물리 body 속도를 유한하게 제한한다. */
+export const MAX_THROW_LAUNCH_SPEED = 1600;
 
 /**
  * 던지기 입력 — 잡고 휘둘러 놓기 (flick).
@@ -51,11 +53,14 @@ export class ThrowInput {
   }
 
   setActive(active: boolean, weapon: Weapon | null) {
-    this.active = active;
-    this.currentWeapon = weapon;
-    if (!active) {
+    const weaponChanged = this.currentWeapon?.key !== weapon?.key;
+    if (!active || weaponChanged) {
+      // book→keyboard처럼 같은 throw category 전환도 진행 중 gesture를
+      // 취소한다. down은 구 무기, up은 신 무기가 되는 혼합 발사를 금지.
       this.cancel();
     }
+    this.active = active;
+    this.currentWeapon = weapon;
   }
 
   handlePointerDown = (e: FederatedPointerEvent) => {
@@ -107,11 +112,15 @@ export class ThrowInput {
     const first = recent[0];
     const last = recent[recent.length - 1];
     const dt = Math.max(0.008, (last.t - first.t) / 1000);
-    const vx = (last.x - first.x) / dt;
-    const vy = (last.y - first.y) / dt;
-    const speed = Math.hypot(vx, vy);
-    if (speed < MIN_LAUNCH_SPEED) return; // 너무 느림 — 발사 취소
-    const power = Math.min(1, speed / MAX_POWER_SPEED);
+    const rawVx = (last.x - first.x) / dt;
+    const rawVy = (last.y - first.y) / dt;
+    const rawSpeed = Math.hypot(rawVx, rawVy);
+    if (!Number.isFinite(rawSpeed) || rawSpeed < MIN_LAUNCH_SPEED) return;
+    const launchSpeed = Math.min(rawSpeed, MAX_THROW_LAUNCH_SPEED);
+    const scale = launchSpeed / rawSpeed;
+    const vx = rawVx * scale;
+    const vy = rawVy * scale;
+    const power = Math.min(1, launchSpeed / MAX_POWER_SPEED);
     this.cb.onLaunch({ x: last.x, y: last.y, vx, vy, power, weapon: w });
   };
 

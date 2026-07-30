@@ -21,7 +21,8 @@ export const FACE_CHECK_PROMPTS = {
 export type FaceCheckKey = keyof typeof FACE_CHECK_PROMPTS;
 export const FACE_CHECK_KEYS = ["face", "count", "covered", "glasses"] as const;
 
-// 입력 게이트 반려 사유(제출·차감 전 400). route 게이트가 세팅하는 fail_reason 과, 어드민이 '거부'로
+// 입력 게이트 반려 사유(유료 이미지 생성 제출 전 400). 일반 회원은 DB 선차감 영수증을
+// 같은 실패 전이에서 원자 환급한다. route 게이트가 세팅하는 fail_reason 과, 어드민이 '거부'로
 // 분류하는 fail_reason 집합이 **일치**해야 하므로 단일 정본으로 둔다. fal 제출 후 no-face(recovery)도
 // 같은 no_face 라 '거부'로 함께 분류됨. 그 외 실패(fal_error/timeout/…)는 '기타실패'.
 export const INPUT_REJECT_REASONS = ["no_face", "multiple_people", "face_obstructed"] as const;
@@ -30,7 +31,7 @@ export type InputRejectReason = (typeof INPUT_REJECT_REASONS)[number];
 export type FaceCheck = { key: string; prompt: string; rawOutput: string | null };
 
 export type FaceAnalysis = {
-  /** 또렷한 얼굴 존재. false = 제출·차감 전 반려(no_face). */
+  /** 또렷한 얼굴 존재. false = 유료 생성 제출 전 반려·환급(no_face). */
   faceVisible: boolean;
   /** 사진에 사람이 1명 이하. false(2명+) = 반려(multiple_people). */
   singlePerson: boolean;
@@ -43,13 +44,116 @@ export type FaceAnalysis = {
   model: string;
   /** 각 체크의 프롬프트·원문(진단·감사). 실패 체크는 rawOutput=null. */
   checks: FaceCheck[];
-  status: "ok" | "fail_open";
+  /**
+   * 신규 생성은 필수 체크가 모두 명확할 때만 진행하므로 항상 ok다.
+   * 과거 `fail_open` provenance 파싱 호환은 provenance schema에만 남긴다.
+   */
+  status: "ok";
 };
 
+export class FaceAnalysisUnavailableError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "FaceAnalysisUnavailableError";
+  }
+}
+
+function exactObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 /**
- * moondream 각 체크의 raw 답변 → 정규화 판정. **명시적 위반일 때만 차단(fail-open)** — 파싱실패·모호·
- * 미검출(null)은 통과시켜 정상 사진 오반려를 방지한다. `\bno\b`/`\byes\b` 는 단어경계라 nose/cannot 등
- * 오매칭 없음. count 는 첫 정수(미검출 null → single 통과).
+ * Face-preflight replay reads a DB-persisted analysis instead of paying for a
+ * second Moondream request. Treat that JSON as untrusted: corruption or a
+ * partially-written legacy shape must fail closed rather than silently
+ * bypassing the input gate.
+ */
+export function parsePersistedFaceAnalysis(value: unknown): FaceAnalysis | null {
+  const row = exactObject(value);
+  if (
+    !row ||
+    row.model !== MOONDREAM_MODEL ||
+    row.status !== "ok" ||
+    typeof row.faceVisible !== "boolean" ||
+    typeof row.singlePerson !== "boolean" ||
+    typeof row.faceClear !== "boolean" ||
+    typeof row.wearsGlasses !== "boolean" ||
+    !(
+      row.peopleCount === null ||
+      (Number.isSafeInteger(row.peopleCount) &&
+        (row.peopleCount as number) >= 0 &&
+        (row.peopleCount as number) <= 1000)
+    ) ||
+    !Array.isArray(row.checks) ||
+    row.checks.length !== FACE_CHECK_KEYS.length
+  ) {
+    return null;
+  }
+  const checks: FaceCheck[] = [];
+  for (let index = 0; index < FACE_CHECK_KEYS.length; index += 1) {
+    const key = FACE_CHECK_KEYS[index];
+    const check = exactObject(row.checks[index]);
+    if (
+      !check ||
+      check.key !== key ||
+      check.prompt !== FACE_CHECK_PROMPTS[key] ||
+      !(
+        check.rawOutput === null ||
+        (typeof check.rawOutput === "string" &&
+          check.rawOutput.length <= MOONDREAM_RAW_MAX)
+      )
+    ) {
+      return null;
+    }
+    checks.push({
+      key,
+      prompt: FACE_CHECK_PROMPTS[key],
+      rawOutput: check.rawOutput as string | null,
+    });
+  }
+  if (
+    row.singlePerson !== ((row.peopleCount as number) <= 1) ||
+    (row.faceVisible && row.peopleCount === 0) ||
+    (!row.faceVisible && (row.peopleCount as number) > 0)
+  ) {
+    return null;
+  }
+  return {
+    faceVisible: row.faceVisible,
+    singlePerson: row.singlePerson,
+    peopleCount: row.peopleCount as number | null,
+    faceClear: row.faceClear,
+    wearsGlasses: row.wearsGlasses,
+    model: MOONDREAM_MODEL,
+    checks,
+    status: "ok",
+  };
+}
+
+function parseUnambiguousYesNo(value: string | null): boolean | null {
+  const answers = (value ?? "").toLowerCase().match(/\b(?:yes|no)\b/g);
+  if (!answers || answers.length !== 1) return null;
+  return answers[0] === "yes";
+}
+
+function parseUnambiguousPeopleCount(value: string | null): number | null {
+  const matches = Array.from(
+    (value ?? "").matchAll(/(?:^|[^\d.+-])(\d+)(?![\d.])/g),
+    (match) => match[1],
+  );
+  if (matches.length !== 1) return null;
+  const parsed = Number(matches[0]);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * moondream 각 체크의 raw 답변 → 정규화 판정.
+ *
+ * 생성 비용·얼굴 입력 정책을 결정하는 권위 게이트이므로 파싱 실패, 상충 응답,
+ * 일부 dependency 실패를 정상 사진으로 추정하지 않는다. 모호하면 호출자가 503으로
+ * 재시도시키며, 생성 row/크레딧/FAL 생성 제출은 시작하지 않는다.
  */
 export function interpretFaceChecks(raw: Record<FaceCheckKey, string | null>): {
   faceVisible: boolean;
@@ -58,14 +162,46 @@ export function interpretFaceChecks(raw: Record<FaceCheckKey, string | null>): {
   faceClear: boolean;
   wearsGlasses: boolean;
 } {
-  const norm = (v: string | null) => (v ?? "").toLowerCase();
-  const m = norm(raw.count).match(/\d+/);
-  const peopleCount = m ? Number(m[0]) : null;
+  const faceVisible = parseUnambiguousYesNo(raw.face);
+  const peopleCount = parseUnambiguousPeopleCount(raw.count);
+  const faceCovered = parseUnambiguousYesNo(raw.covered);
+  const wearsGlasses = parseUnambiguousYesNo(raw.glasses);
+  if (
+    faceVisible === null ||
+    peopleCount === null ||
+    faceCovered === null ||
+    wearsGlasses === null
+  ) {
+    throw new FaceAnalysisUnavailableError("ambiguous_face_analysis");
+  }
+  if (
+    (faceVisible && peopleCount === 0) ||
+    (!faceVisible && peopleCount > 0)
+  ) {
+    throw new FaceAnalysisUnavailableError("contradictory_face_count");
+  }
   return {
-    faceVisible: !/\bno\b/.test(norm(raw.face)), // "no" 명시 → 얼굴 없음
+    faceVisible,
     peopleCount,
-    singlePerson: peopleCount == null ? true : peopleCount <= 1, // 2명+ → 반려
-    faceClear: !/\byes\b/.test(norm(raw.covered)), // "yes"(가림) 명시 → 반려
-    wearsGlasses: /\byes\b/.test(norm(raw.glasses)),
+    singlePerson: peopleCount <= 1,
+    faceClear: !faceCovered,
+    wearsGlasses,
+  };
+}
+
+/** Build the one canonical persisted analysis from four durable webhook rows. */
+export function buildFaceAnalysis(
+  raw: Record<FaceCheckKey, string | null>,
+): FaceAnalysis {
+  const interpreted = interpretFaceChecks(raw);
+  return {
+    ...interpreted,
+    model: MOONDREAM_MODEL,
+    checks: FACE_CHECK_KEYS.map((key) => ({
+      key,
+      prompt: FACE_CHECK_PROMPTS[key],
+      rawOutput: raw[key],
+    })),
+    status: "ok",
   };
 }

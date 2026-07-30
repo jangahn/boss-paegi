@@ -21,7 +21,8 @@ const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : use
  *
  * - `className`: wrapper 의 크기·모양·border·bg.
  * - `placeholder`: "gray"(정적 회색) / "pulse"(펄스) / "shimmer"(쓸어가는 스켈레톤, 캐릭터 이미지용).
- * - `fallbackSrc`: src 가 깨졌을 때 대체.
+ * - `fallbackSrc`: src 가 깨졌을 때 대체. 원본과 대체 이미지가 모두 깨지면 오류 문구를 표시한다.
+ * - `errorText`: 대체 이미지가 없거나 대체 이미지까지 깨졌을 때 표시할 문구.
  */
 export function FadeImg({
   src,
@@ -31,6 +32,7 @@ export function FadeImg({
   placeholder = "gray",
   loading = "lazy",
   fallbackSrc,
+  errorText = "이미지를 불러오지 못했어요.",
 }: {
   src: string;
   alt?: string;
@@ -39,22 +41,35 @@ export function FadeImg({
   placeholder?: "gray" | "pulse" | "shimmer";
   loading?: "lazy" | "eager";
   fallbackSrc?: string;
+  errorText?: string;
 }) {
-  const [loaded, setLoaded] = useState(false); // placeholder 제거 제어
-  const [errored, setErrored] = useState(false);
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    primarySrc: string;
+    stage: "primary" | "fallback";
+  } | null>(null);
   const ref = useRef<HTMLImageElement>(null);
-  const effectiveSrc = errored && fallbackSrc ? fallbackSrc : src;
+  const hasDistinctFallback = Boolean(fallbackSrc && fallbackSrc !== src);
+  const primaryFailed = failure?.primarySrc === src;
+  const usingFallback = primaryFailed && hasDistinctFallback;
+  const effectiveSrc = usingFallback ? fallbackSrc! : src;
+  const finalError =
+    primaryFailed &&
+    (failure.stage === "fallback" || !hasDistinctFallback);
+  const loaded = loadedSrc === effectiveSrc && !finalError;
 
   // 캐시 hit / SSR 으로 하이드레이션 전 이미 로드 완료면 paint 전에 placeholder 제거 → 즉시 표시.
   // src 변경(fallback 포함) 시 재확인.
   useIsoLayoutEffect(() => {
     const img = ref.current;
-    if (img && img.complete && img.naturalWidth > 0) setLoaded(true);
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoadedSrc(effectiveSrc);
+    }
   }, [effectiveSrc]);
 
   return (
     <span className={`relative block overflow-hidden ${className}`}>
-      {!loaded && (
+      {!loaded && !finalError && (
         <span
           aria-hidden
           className={`absolute inset-0 ${
@@ -64,23 +79,32 @@ export function FadeImg({
           }`}
         />
       )}
+      {finalError && (
+        <span
+          role="status"
+          className="absolute inset-0 flex items-center justify-center bg-zinc-100 px-2 text-center text-[11px] leading-tight text-zinc-500"
+        >
+          {errorText}
+        </span>
+      )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         ref={ref}
         src={effectiveSrc}
         alt={alt}
         loading={loading}
-        onLoad={() => setLoaded(true)}
+        onLoad={() => setLoadedSrc(effectiveSrc)}
         onError={() => {
-          if (fallbackSrc && !errored) {
-            // fallback 으로 전환 — 새 src 가 로드 detection 을 다시 거치도록 리셋.
-            setErrored(true);
-            setLoaded(false);
+          if (!usingFallback) {
+            setFailure({ primarySrc: src, stage: "primary" });
+            setLoadedSrc(null);
           } else {
-            setLoaded(true);
+            setFailure({ primarySrc: src, stage: "fallback" });
           }
         }}
-        className={`relative h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+        className={`relative h-full w-full ${
+          fit === "cover" ? "object-cover" : "object-contain"
+        } ${finalError ? "hidden" : ""}`}
       />
     </span>
   );

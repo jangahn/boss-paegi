@@ -15,8 +15,9 @@ import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { ReportButton } from "@/components/ReportButton";
 
-// signed doll/clip URL(TTL 600/900) 박히는 페이지 — revalidate 480s(TTL 600 안, 120s 마진). 크롤러 차단 후 ISR write 감소.
-export const revalidate = 480;
+// private Storage signed URL을 HTML에 넣으므로 ISR stale 결과를 사용할 수 없다.
+// 장기간 무방문 뒤 첫 요청도 요청 시점에 새 URL을 발급한다.
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -105,7 +106,7 @@ export default async function HistoryDetailPage({
                 className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
                 fit="contain"
                 placeholder="shimmer"
-                fallbackSrc="/sprites/boss-default.png"
+                errorText="캐릭터 이미지를 불러오지 못했어요."
               />
               <table className="border-collapse text-center text-[10px]">
                 <tbody>
@@ -153,7 +154,9 @@ export default async function HistoryDetailPage({
               <Row label="소요 시간">{formatDuration(score.duration_ms)}</Row>
               <Row label="판정 등급">
                 <span className="font-bold">{grade.label}</span>
-                <span className="ml-1.5 text-xs text-zinc-500">{grade.comment}</span>
+                <span className="ml-1.5 text-xs text-zinc-500">
+                  — {grade.comment}
+                </span>
               </Row>
             </dl>
 

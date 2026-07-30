@@ -9,6 +9,8 @@ import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
 import { EventBanner } from "@/components/events/EventBanner";
 import { EventPopup } from "@/components/events/EventPopup";
+import { SERVICE_NAME } from "@/lib/policy";
+import { runBoundedClientOperation } from "@/lib/client-operation";
 
 export default function Home() {
   const { home } = useMarketingCopy();
@@ -17,15 +19,27 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     (async () => {
-      const sb = createClient();
-      const { data: sessionData } = await sb.auth.getSession();
-      if (!sessionData.session) return;
-      if (!cancelled)
-        setIsLoggedIn(sessionData.session.user.is_anonymous !== true);
+      try {
+        const { data: sessionData } =
+          await runBoundedClientOperation(
+            (signal) => createClient(signal).auth.getSession(),
+            { signal: controller.signal },
+          );
+        if (!sessionData.session) return;
+        if (!cancelled) {
+          setIsLoggedIn(
+            sessionData.session.user.is_anonymous !== true,
+          );
+        }
+      } catch {
+        // The default logged-out CTA is the fail-closed state.
+      }
     })();
     return () => {
       cancelled = true;
+      controller.abort(new Error("home_session_read_disposed"));
     };
   }, []);
 
@@ -33,6 +47,9 @@ export default function Home() {
     <>
       <EventPopup />
       <main className="flex flex-1 flex-col items-center px-6 py-12">
+        <h1 className="sr-only">
+          {SERVICE_NAME} — 직장인 스트레스 해소 게임
+        </h1>
         <div className="flex w-full max-w-sm flex-col gap-6">
           <EventBanner surface="home" />
           <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
@@ -44,6 +61,7 @@ export default function Home() {
               alt="부장님 패기"
               width={640}
               height={640}
+              unoptimized
               priority
               className="w-36 max-w-full object-contain"
             />
@@ -82,10 +100,10 @@ export default function Home() {
           </div>
 
           <div className="px-2 text-center">
-            <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-500">
+            <p className="whitespace-pre-line text-xs leading-relaxed text-zinc-600">
               {home.disclaimer}
             </p>
-            <nav className="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-zinc-500">
+            <nav className="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-zinc-600">
               <Link href="/faq" className="underline-offset-4 hover:text-stamp hover:underline">
                 소개·FAQ
               </Link>

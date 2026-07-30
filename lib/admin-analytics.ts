@@ -2,7 +2,13 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { WEAPONS } from "@/lib/weapons";
 import { WEAPON_KEYS, MAP_KEYS } from "@/lib/telemetry/budget";
-import { log, errInfo } from "@/lib/log";
+import {
+  readSupabaseRowsPaginated,
+  requireSupabaseOptionalData,
+  requireSupabaseRows,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
+import { validateAdminRows } from "@/lib/admin-read-contract";
 
 /**
  * 게임플레이 분석 — telemetry_rollups(일×차원 사전집계)를 읽어 윈도우 합산(JS).
@@ -17,6 +23,33 @@ export type SessionRow = {
   owner_name: string | null;
   end_reason: string | null; duration_ms: number | null; score: number;
   hit_count: number; distinct_weapons: number; distinct_maps: number; device_class: string;
+};
+export type SessionDetail = {
+  id: string;
+  owner_id: string | null;
+  owner_name: string | null;
+  is_anon: boolean;
+  device_class: string;
+  started_at: string;
+  ended_at: string | null;
+  end_reason: string | null;
+  duration_ms: number | null;
+  score: number | null;
+  hit_count: number | null;
+  max_combo: number | null;
+  ult_fire_count: number | null;
+  distinct_weapons: number | null;
+  distinct_maps: number | null;
+  apm: number | null;
+  tap_share: number | null;
+  max_touch: number | null;
+  weapon_summary: Record<string, unknown>;
+  map_summary: Record<string, unknown>;
+  first_hit_ms: number | null;
+  first_switch_ms: number | null;
+  timeline: unknown[] | null;
+  has_gap: boolean;
+  suspicious: boolean;
 };
 
 /** profiles(display_name) 임베드 → 닉네임 평탄화(주문 어드민 mapOrder 와 동일 관용구). */
@@ -44,16 +77,35 @@ function kstDayStartIso(offsetDays = 0): string {
 async function rollupRows(dimType: string, days: number) {
   const admin = createAdminClient();
   const cutoff = kstDate(days - 1);
-  const { data, error } = await admin
-    .from("telemetry_rollups")
-    .select("dim_key,sessions,hits,score,attempts,switches")
-    .eq("dim_type", dimType)
-    .gte("day_kst", cutoff);
-  if (error) {
-    log.warn("analytics.rollup_fail", { dimType, ...errInfo(error) });
-    return [];
-  }
-  return data ?? [];
+  const data = await readSupabaseRowsPaginated(
+    `admin.analytics.rollup.${dimType}`,
+    (offset, limit) =>
+      admin
+        .from("telemetry_rollups")
+        .select("day_kst,dim_key,sessions,hits,score,attempts,switches")
+        .eq("dim_type", dimType)
+        .gte("day_kst", cutoff)
+        .order("day_kst", { ascending: true })
+        .order("dim_key", { ascending: true })
+        .range(offset, offset + limit - 1),
+    500,
+  );
+  return validateAdminRows<{
+    dim_key: string;
+    sessions: number | string;
+    hits: number | string;
+    score: number | string;
+    attempts: number | string;
+    switches: number | string;
+  }>(`admin.analytics.rollup.${dimType}`, data, {
+    day_kst: "date",
+    dim_key: "string",
+    sessions: "nonnegativeNumeric",
+    hits: "nonnegativeNumeric",
+    score: "nonnegativeNumeric",
+    attempts: "nonnegativeNumeric",
+    switches: "nonnegativeNumeric",
+  });
 }
 
 /** dim_key 별 윈도우 합산 → hits 내림차순. */
@@ -92,18 +144,25 @@ export async function getFunnel(days: number): Promise<Funnel> {
 export async function getMemberActivity(days: number): Promise<{ sessions: number; members: number; returning: number }> {
   const admin = createAdminClient();
   const cutoffIso = kstDayStartIso(days - 1); // 롤업 day_kst 경계와 정합(KST 자정 기준)
-  const { data, error } = await admin
-    .from("telemetry_sessions")
-    .select("owner_id")
-    .not("owner_id", "is", null)
-    .gte("started_at", cutoffIso)
-    // ORDER BY 없는 limit 은 표본이 비결정적 — fetchSessionsWindow 와 동일하게 최근 우선으로 고정.
-    .order("started_at", { ascending: false })
-    .limit(5000);
-  if (error || !data) {
-    if (error) log.warn("analytics.member_activity_fail", errInfo(error));
-    return { sessions: 0, members: 0, returning: 0 };
-  }
+  const raw = await readSupabaseRowsPaginated(
+    "admin.analytics.member_activity",
+    (offset, limit) =>
+      admin
+        .from("telemetry_sessions")
+        .select("owner_id")
+        .not("owner_id", "is", null)
+        .gte("started_at", cutoffIso)
+        // ORDER BY 없는 limit 은 표본이 비결정적 — fetchSessionsWindow 와 동일하게 최근 우선으로 고정.
+        .order("started_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + limit - 1),
+    500,
+  );
+  const data = validateAdminRows<{ owner_id: string }>(
+    "admin.analytics.member_activity",
+    raw,
+    { owner_id: "uuid" },
+  );
   const counts = new Map<string, number>();
   for (const r of data) counts.set(r.owner_id as string, (counts.get(r.owner_id as string) ?? 0) + 1);
   const returning = [...counts.values()].filter((n) => n >= 2).length;
@@ -113,33 +172,152 @@ export async function getMemberActivity(days: number): Promise<{ sessions: numbe
 /** 최근 세션 목록(인스펙터 진입). */
 export async function getRecentSessions(limit = 50): Promise<SessionRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("telemetry_sessions")
-    .select("id,started_at,is_anon,owner_id,end_reason,duration_ms,score,hit_count,distinct_weapons,distinct_maps,device_class,profiles(display_name)")
-    .order("started_at", { ascending: false })
-    .limit(limit);
-  if (error) {
-    log.warn("analytics.recent_fail", errInfo(error));
-    return [];
-  }
-  return (data ?? []).map(({ profiles, ...r }) => ({ ...r, owner_name: embeddedName(profiles) })) as SessionRow[];
+  const data = await requireSupabaseRows(
+    "admin.analytics.recent_sessions",
+    () =>
+      admin
+        .from("telemetry_sessions")
+        .select(
+          "id,started_at,is_anon,owner_id,end_reason,duration_ms,score,hit_count,distinct_weapons,distinct_maps,device_class,profiles(display_name)",
+        )
+        .order("started_at", { ascending: false })
+        .limit(limit),
+  );
+  const rows = validateAdminRows<
+    Omit<SessionRow, "owner_name"> & {
+      profiles:
+        | { display_name: string | null }
+        | { display_name: string | null }[]
+        | null;
+    }
+  >("admin.analytics.recent_sessions", data, {
+    id: "uuid",
+    started_at: "timestamp",
+    is_anon: "boolean",
+    owner_id: "nullableUuid",
+    end_reason: "nullableString",
+    duration_ms: "nullableNonnegativeInteger",
+    score: "nonnegativeInteger",
+    hit_count: "nonnegativeInteger",
+    distinct_weapons: "nonnegativeInteger",
+    distinct_maps: "nonnegativeInteger",
+    device_class: "string",
+    profiles: "embed",
+  });
+  return rows.map(({ profiles, ...row }) => {
+    const values =
+      profiles === null ? [] : Array.isArray(profiles) ? profiles : [profiles];
+    const profileRows = validateAdminRows<{ display_name: string | null }>(
+      "admin.analytics.recent_sessions.profile",
+      values,
+      { display_name: "nullableString" },
+    );
+    if (profileRows.length > 1) {
+      throw new SupabaseOperationError(
+        "admin.analytics.recent_sessions",
+        new Error("ambiguous_profile_embed"),
+      );
+    }
+    return { ...row, owner_name: embeddedName(profiles) };
+  });
 }
 
 /** 세션 상세(타임라인 재생). 없으면 null(pruned/미존재). */
-export async function getSessionDetail(id: string) {
+export async function getSessionDetail(
+  id: string,
+): Promise<SessionDetail | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("telemetry_sessions")
-    .select("*, profiles(display_name)")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) {
-    log.warn("analytics.detail_fail", { id, ...errInfo(error) });
-    return null;
-  }
+  const data = await requireSupabaseOptionalData(
+    "admin.analytics.session_detail",
+    () =>
+      admin
+        .from("telemetry_sessions")
+        .select("*, profiles(display_name)")
+        .eq("id", id)
+        .maybeSingle(),
+  );
   if (!data) return null;
-  const { profiles, ...row } = data;
-  return { ...row, owner_name: embeddedName(profiles) };
+  type RawDetail = Omit<SessionDetail, "owner_name" | "score" | "tap_share"> & {
+    score: number | string | null;
+    tap_share: number | string | null;
+    profiles:
+      | { display_name: string | null }
+      | { display_name: string | null }[]
+      | null;
+  };
+  const detail = validateAdminRows<RawDetail>(
+    "admin.analytics.session_detail",
+    [data],
+    {
+      id: "uuid",
+      owner_id: "nullableUuid",
+      is_anon: "boolean",
+      device_class: "string",
+      started_at: "timestamp",
+      ended_at: "nullableTimestamp",
+      end_reason: "nullableString",
+      duration_ms: "nullableNonnegativeInteger",
+      score: "nullableNonnegativeNumeric",
+      hit_count: "nullableNonnegativeInteger",
+      max_combo: "nullableNonnegativeInteger",
+      ult_fire_count: "nullableNonnegativeInteger",
+      distinct_weapons: "nullableNonnegativeInteger",
+      distinct_maps: "nullableNonnegativeInteger",
+      apm: "nullableNonnegativeInteger",
+      tap_share: "nullableNonnegativeNumeric",
+      max_touch: "nullableNonnegativeInteger",
+      weapon_summary: "jsonObject",
+      map_summary: "jsonObject",
+      first_hit_ms: "nullableNonnegativeInteger",
+      first_switch_ms: "nullableNonnegativeInteger",
+      timeline: "nullableArray",
+      has_gap: "boolean",
+      suspicious: "boolean",
+      profiles: "embed",
+    },
+  )[0];
+  const { profiles, ...row } = detail;
+  const profileValues =
+    profiles === null
+      ? []
+      : Array.isArray(profiles)
+        ? profiles
+        : [profiles];
+  validateAdminRows(
+    "admin.analytics.session_detail.profile",
+    profileValues,
+    { display_name: "nullableString" },
+  );
+  if (profileValues.length > 1) {
+    throw new SupabaseOperationError(
+      "admin.analytics.session_detail",
+      new Error("ambiguous_profile_embed"),
+    );
+  }
+  if (detail.tap_share !== null && Number(detail.tap_share) > 1) {
+    throw new SupabaseOperationError(
+      "admin.analytics.session_detail",
+      new Error("invalid_tap_share"),
+    );
+  }
+  validateDimSummary(
+    "admin.analytics.session_detail.weapon_summary",
+    detail.weapon_summary as DimSummary,
+  );
+  validateDimSummary(
+    "admin.analytics.session_detail.map_summary",
+    detail.map_summary as DimSummary,
+  );
+  const profile = profileValues[0] as
+    | { display_name: string | null }
+    | undefined;
+  return {
+    ...(row as Omit<RawDetail, "profiles">),
+    score: detail.score === null ? null : Number(detail.score),
+    tap_share:
+      detail.tap_share === null ? null : Number(detail.tap_share),
+    owner_name: profile?.display_name ?? null,
+  };
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -172,12 +350,40 @@ type SessionShapeRow = {
   start_map: string | null;
 };
 
+function validateDimSummary(
+  operation: string,
+  value: DimSummary | null,
+): void {
+  if (value === null) return;
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      key.length === 0 ||
+      !entry ||
+      typeof entry !== "object" ||
+      Array.isArray(entry)
+    ) {
+      throw new SupabaseOperationError(
+        operation,
+        new Error("invalid_dimension_summary"),
+      );
+    }
+    for (const field of ["hits", "score", "attempts", "switches"] as const) {
+      const next = entry[field];
+      if (
+        next !== undefined &&
+        (!Number.isSafeInteger(next) || next < 0)
+      ) {
+        throw new SupabaseOperationError(
+          operation,
+          new Error(`invalid_dimension_summary:${field}`),
+        );
+      }
+    }
+  }
+}
+
 /** 표본/절단 메타 — 모든 세션단위 집계 반환에 공통 동봉 */
 export type SampleMeta = { sampleSize: number; isTruncated: boolean; limit: number };
-
-function emptyMeta(): SampleMeta {
-  return { sampleSize: 0, isTruncated: false, limit: SESSION_FETCH_LIMIT };
-}
 
 /** 윈도우 내 세션 shape 조회 — 필요 컬럼만(timeline 제외), limit+1 로 절단 판정. */
 async function fetchSessionsWindow(
@@ -185,17 +391,42 @@ async function fetchSessionsWindow(
 ): Promise<{ rows: SessionShapeRow[]; meta: SampleMeta }> {
   const admin = createAdminClient();
   const cutoffIso = kstDayStartIso(days - 1); // 롤업 day_kst 경계와 정합(KST 자정 기준)
-  const { data, error } = await admin
-    .from("telemetry_sessions")
-    .select(
-      "id,end_reason,score,duration_ms,distinct_weapons,distinct_maps,weapon_summary,map_summary,start_map"
-    )
-    .gte("started_at", cutoffIso)
-    .order("started_at", { ascending: false })
-    .limit(SESSION_FETCH_LIMIT + 1); // +1 로 5000 초과 여부(절단) 판정
-  if (error || !data) {
-    if (error) log.warn("analytics.sessions_window_fail", errInfo(error));
-    return { rows: [], meta: emptyMeta() };
+  const raw = await requireSupabaseRows(
+    "admin.analytics.sessions_window",
+    () =>
+      admin
+        .from("telemetry_sessions")
+        .select(
+          "id,end_reason,score,duration_ms,distinct_weapons,distinct_maps,weapon_summary,map_summary,start_map",
+        )
+        .gte("started_at", cutoffIso)
+        .order("started_at", { ascending: false })
+        .limit(SESSION_FETCH_LIMIT + 1),
+  ); // +1 로 5000 초과 여부(절단) 판정
+  const data = validateAdminRows<SessionShapeRow>(
+    "admin.analytics.sessions_window",
+    raw,
+    {
+      id: "uuid",
+      end_reason: "nullableString",
+      score: "nullableNonnegativeInteger",
+      duration_ms: "nullableNonnegativeInteger",
+      distinct_weapons: "nullableNonnegativeInteger",
+      distinct_maps: "nullableNonnegativeInteger",
+      weapon_summary: "nullableJsonObject",
+      map_summary: "nullableJsonObject",
+      start_map: "nullableString",
+    },
+  );
+  for (const row of data) {
+    validateDimSummary(
+      "admin.analytics.sessions_window.weapon_summary",
+      row.weapon_summary,
+    );
+    validateDimSummary(
+      "admin.analytics.sessions_window.map_summary",
+      row.map_summary,
+    );
   }
   const isTruncated = data.length > SESSION_FETCH_LIMIT;
   const rows = (isTruncated ? data.slice(0, SESSION_FETCH_LIMIT) : data) as SessionShapeRow[];
@@ -487,27 +718,49 @@ export async function getDevicePerf(days: number): Promise<DevicePerf> {
   // 집계 표본과 최악 top5 는 fetch 를 분리 — 하나의 p95 DESC fetch 를 공유하면 윈도우 세션이
   // limit 을 넘는 순간 byDevice 집계가 "가장 느린 표본"으로 비관 편향된다(절단 감지도 없었음).
   // 집계는 최근 우선 표본(fetchSessionsWindow 와 동일 규약, limit+1 절단 판정), top5 는 전 윈도우 정확 상위.
-  const [sampleRes, worstRes] = await Promise.all([
-    admin
-      .from("telemetry_sessions")
-      .select(PERF_SELECT)
-      .gte("started_at", start)
-      .gt("avg_frame_ms", 0) // 실프레임 표본 세션만(무플레이/배포前 0 제외)
-      .order("started_at", { ascending: false })
-      .limit(SESSION_FETCH_LIMIT + 1),
-    admin
-      .from("telemetry_sessions")
-      .select(PERF_SELECT)
-      .gte("started_at", start)
-      .gt("avg_frame_ms", 0)
-      .order("p95_frame_ms", { ascending: false })
-      .limit(5),
+  const [sampleData, worstData] = await Promise.all([
+    requireSupabaseRows(
+      "admin.analytics.device_perf.sample",
+      () =>
+        admin
+          .from("telemetry_sessions")
+          .select(PERF_SELECT)
+          .gte("started_at", start)
+          .gt("avg_frame_ms", 0) // 실프레임 표본 세션만(무플레이/배포前 0 제외)
+          .order("started_at", { ascending: false })
+          .limit(SESSION_FETCH_LIMIT + 1),
+    ),
+    requireSupabaseRows(
+      "admin.analytics.device_perf.worst",
+      () =>
+        admin
+          .from("telemetry_sessions")
+          .select(PERF_SELECT)
+          .gte("started_at", start)
+          .gt("avg_frame_ms", 0)
+          .order("p95_frame_ms", { ascending: false })
+          .limit(5),
+    ),
   ]);
-  if (sampleRes.error || worstRes.error) {
-    log.warn("analytics.device_perf_fail", errInfo(sampleRes.error ?? worstRes.error));
-    return { byDevice: [], worst: [], perfSessions: 0, meta: emptyMeta() };
-  }
-  const fetched = (sampleRes.data ?? []) as PerfRow[];
+  const perfSchema = {
+    id: "uuid",
+    device_class: "string",
+    dpr: "nullableNonnegativeNumeric",
+    refresh_hz: "nullableNonnegativeNumeric",
+    avg_frame_ms: "nonnegativeNumeric",
+    p95_frame_ms: "nonnegativeNumeric",
+    duration_ms: "nullableNonnegativeInteger",
+  } as const;
+  const fetched = validateAdminRows<PerfRow>(
+    "admin.analytics.device_perf.sample",
+    sampleData,
+    perfSchema,
+  );
+  const worstRows = validateAdminRows<PerfRow>(
+    "admin.analytics.device_perf.worst",
+    worstData,
+    perfSchema,
+  );
   const isTruncated = fetched.length > SESSION_FETCH_LIMIT;
   const rows = isTruncated ? fetched.slice(0, SESSION_FETCH_LIMIT) : fetched;
   const meta: SampleMeta = { sampleSize: rows.length, isTruncated, limit: SESSION_FETCH_LIMIT };
@@ -535,7 +788,7 @@ export async function getDevicePerf(days: number): Promise<DevicePerf> {
     .sort((a, b) => b.sessions - a.sessions);
 
   // 가장 느린 세션 top-5 — 전용 쿼리(p95 desc limit 5)라 표본 절단과 무관하게 전 윈도우 정확값.
-  const worst: WorstPerfSession[] = ((worstRes.data ?? []) as PerfRow[]).map((r) => ({
+  const worst: WorstPerfSession[] = worstRows.map((r) => ({
     id: r.id,
     deviceClass: r.device_class,
     dpr: Number(r.dpr) || 0,

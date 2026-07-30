@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
 import { PROCESS_OUTCOME_LABELS, refundErrMsg } from "@/components/admin/refund-saga-ui";
+import {
+  parseAdminRefundAttemptHttpAck,
+  parseExternalCancellationHttpAck,
+  parseReconciliationIssueHttpAck,
+  parseRefundProcessHttpAck,
+} from "@/lib/pay/refund-http-contract";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
+import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 /**
  * 환불 운영 큐 행동(/admin/refunds §B.8) — 이슈·시도(attempt) 두 종류의 인라인 액션.
@@ -109,13 +120,24 @@ const ACTION_META: Record<ActionKey, ActionMeta> = {
   },
 };
 
-type IssueProps = { kind: "issue"; issueId: string; cancellationId: string | null };
+type IssueProps = {
+  kind: "issue";
+  issueId: string;
+  issueType: string;
+  cancellationId: string | null;
+};
 type AttemptProps = { kind: "attempt"; attemptId: string; state: string };
 export type RefundQueueActionsProps = IssueProps | AttemptProps;
+type RefundQueueDelivery = {
+  autoOutcome: string | null;
+};
 
 /** 상태별 노출 액션 — 상태머신(§8) 도달 가능 전이만. 최종 유효성은 서버. */
 function availableActions(props: RefundQueueActionsProps): ActionKey[] {
   if (props.kind === "issue") {
+    if (props.issueType === "late_paid") {
+      return props.cancellationId ? ["reconcile", "resolve"] : ["resolve"];
+    }
     return props.cancellationId ? ["reconcile", "resolve", "ignore"] : ["resolve", "ignore"];
   }
   switch (props.state) {
@@ -138,6 +160,42 @@ function availableActions(props: RefundQueueActionsProps): ActionKey[] {
 const needsReason = (action: ActionKey) =>
   action === "release" || action === "replan" || action === "switch" || action === "commit_manual";
 
+function hasAttemptActionAck(
+  body: unknown,
+  mode: ActionKey,
+  attemptId: string,
+): boolean {
+  if (mode === "switch") {
+    return (
+      parseAdminRefundAttemptHttpAck(body, {
+        action: "switch_to_manual",
+        attemptId,
+      }) !== null
+    );
+  }
+  if (mode === "replan") {
+    return (
+      parseAdminRefundAttemptHttpAck(body, {
+        action: "replan_pre_pg",
+        attemptId,
+      }) !== null ||
+      parseAdminRefundAttemptHttpAck(body, {
+        action: "replan_after_pg",
+        attemptId,
+      }) !== null
+    );
+  }
+  if (mode === "commit_manual" || mode === "release") {
+    return (
+      parseAdminRefundAttemptHttpAck(body, {
+        action: mode,
+        attemptId,
+      }) !== null
+    );
+  }
+  return false;
+}
+
 export function RefundQueueActions(props: RefundQueueActionsProps) {
   const router = useRouter();
   const [mode, setMode] = useState<ActionKey | null>(null);
@@ -149,6 +207,8 @@ export function RefundQueueActions(props: RefundQueueActionsProps) {
   const [error, setError] = useState<string | null>(null);
   /** auto 의 비종단 outcome(pending·outstanding·manual_review·blocked) 안내 — 종단이면 즉시 닫힘. */
   const [notice, setNotice] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const runScopedOperation = useClientOperationScope();
 
   const actions = availableActions(props);
   const meta = mode ? ACTION_META[mode] : null;
@@ -163,7 +223,7 @@ export function RefundQueueActions(props: RefundQueueActionsProps) {
     setNotice(null);
   };
   const close = () => {
-    if (busy) return;
+    if (busyRef.current) return;
     reset();
   };
   const open = (action: ActionKey) => {
@@ -192,7 +252,9 @@ export function RefundQueueActions(props: RefundQueueActionsProps) {
   })();
 
   const submit = async () => {
-    if (busy || !mode || !meta || !canSubmit) return;
+    if (busyRef.current || !mode || !meta || !canSubmit) return;
+    const submittedMode = mode;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -200,45 +262,143 @@ export function RefundQueueActions(props: RefundQueueActionsProps) {
     let endpoint: string;
     let payload: Record<string, unknown>;
     if (props.kind === "issue") {
-      if (mode === "reconcile") {
+      if (submittedMode === "reconcile") {
         endpoint = "/api/admin/resolve-cancellation";
         payload = { cancellationId: props.cancellationId, note: trimmed };
         if (economicQty.trim() !== "") payload.economicQty = Number(economicQty);
       } else {
         endpoint = "/api/admin/resolve-issue";
-        payload = { issueId: props.issueId, action: mode, note: trimmed };
+        payload = {
+          issueId: props.issueId,
+          action: submittedMode,
+          note: trimmed,
+        };
       }
     } else {
       endpoint = "/api/admin/refund-credits";
-      const routeAction = mode === "switch" ? "switch_to_manual" : mode;
+      const routeAction =
+        submittedMode === "switch"
+          ? "switch_to_manual"
+          : submittedMode;
       payload = { mode: "process", attemptId: props.attemptId, action: routeAction };
-      if (needsReason(mode)) payload.reason = trimmed;
-      if (mode === "commit_manual") {
+      if (needsReason(submittedMode)) payload.reason = trimmed;
+      if (submittedMode === "commit_manual") {
         payload.payout = { externalPayoutRef: payoutRef, evidenceObjectId: evidenceId };
       }
     }
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        outcome?: string;
-      };
-      if (!res.ok) {
-        setError(refundErrMsg(body.error));
-        setBusy(false);
+      const requestBody = JSON.stringify(payload);
+      const submittedEconomicQty =
+        economicQty.trim() === "" ? null : Number(economicQty);
+      const outcome = await runScopedOperation((signal) =>
+        runReplayedJsonMutation<RefundQueueDelivery>({
+          input: endpoint,
+          init: {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          },
+          signal,
+          classify: (response, body) => {
+            let autoOutcome: string | null = null;
+            let valid = false;
+            if (response.ok && props.kind === "issue") {
+              valid =
+                submittedMode === "reconcile"
+                  ? parseExternalCancellationHttpAck(body, {
+                      cancellationId: props.cancellationId!,
+                      economicQty: submittedEconomicQty,
+                    }) !== null
+                  : parseReconciliationIssueHttpAck(body, {
+                      issueId: props.issueId,
+                      state:
+                        submittedMode === "ignore"
+                          ? "ignored"
+                          : "resolved",
+                    }) !== null;
+            } else if (
+              response.ok &&
+              props.kind === "attempt" &&
+              submittedMode === "auto"
+            ) {
+              const parsed = parseRefundProcessHttpAck(
+                body,
+                props.attemptId,
+              );
+              valid = parsed !== null;
+              autoOutcome = parsed?.outcome ?? null;
+            } else if (
+              response.ok &&
+              props.kind === "attempt"
+            ) {
+              valid = hasAttemptActionAck(
+                body,
+                submittedMode,
+                props.attemptId,
+              );
+            }
+            if (valid) {
+              return {
+                kind: "confirmed",
+                value: { autoOutcome },
+              };
+            }
+            const responseError =
+              body &&
+              typeof body === "object" &&
+              !Array.isArray(body) &&
+              typeof (body as Record<string, unknown>).error ===
+                "string"
+                ? String(
+                    (body as Record<string, unknown>).error,
+                  )
+                : null;
+            if (
+              clientMutationResponseNeedsReconciliation(
+                response.status,
+                response.ok,
+              )
+            ) {
+              return {
+                kind: "unconfirmed",
+                reason: "refund_queue_response_unconfirmed",
+                error: responseError,
+              };
+            }
+            return {
+              kind: "rejected",
+              error:
+                responseError ??
+                `refund_queue_http_${response.status}`,
+            };
+          },
+        }),
+      );
+      if (outcome.kind === "aborted") return;
+      if (outcome.kind !== "confirmed") {
+        const responseError =
+          outcome.kind === "rejected" &&
+          typeof outcome.error === "string"
+            ? outcome.error
+            : "action_unconfirmed";
+        setError(refundErrMsg(responseError));
         return;
       }
       // auto 는 비종단 outcome(PG 대기·수동 검토 등)이면 목록만 갱신하고 안내 후 대기 — 종단이면 닫힘.
-      if (props.kind === "attempt" && mode === "auto") {
-        const outcome = body.outcome ?? "";
-        if (outcome !== "processed" && outcome !== "no_op") {
-          setNotice(PROCESS_OUTCOME_LABELS[outcome] ?? outcome);
-          setBusy(false);
+      if (
+        props.kind === "attempt" &&
+        submittedMode === "auto" &&
+        outcome.value.autoOutcome
+      ) {
+        const autoOutcome = outcome.value.autoOutcome;
+        if (
+          autoOutcome !== "processed" &&
+          autoOutcome !== "no_op"
+        ) {
+          setNotice(
+            PROCESS_OUTCOME_LABELS[autoOutcome] ?? autoOutcome,
+          );
           router.refresh();
           return;
         }
@@ -247,6 +407,8 @@ export function RefundQueueActions(props: RefundQueueActionsProps) {
       router.refresh();
     } catch {
       setError(refundErrMsg("action_failed"));
+    } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -267,7 +429,7 @@ export function RefundQueueActions(props: RefundQueueActionsProps) {
       ))}
 
       {mode && meta && (
-        <ModalShell onClose={close}>
+        <ModalShell ariaLabel={meta.title} onClose={close}>
           <h3 className="text-base font-bold">{meta.title}</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">{meta.desc}</p>
 

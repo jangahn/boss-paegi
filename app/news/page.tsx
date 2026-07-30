@@ -4,11 +4,22 @@ import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { getPublishedEvents } from "@/lib/events";
 import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/types";
+import { parsePageParam } from "@/lib/pagination";
+import { SERVICE_NAME } from "@/lib/policy";
+import { SITE_URL } from "@/lib/site";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "소식 · 공지·이벤트",
   description: "부장님패기의 공지와 이벤트 소식.",
   alternates: { canonical: "/news" },
+  openGraph: {
+    title: `소식 · 공지·이벤트 · ${SERVICE_NAME}`,
+    description: "부장님패기의 공지와 이벤트 소식.",
+    url: `${SITE_URL}/news`,
+    type: "website",
+  },
 };
 
 function fmtKstDate(iso: string | null): string {
@@ -28,7 +39,7 @@ export default async function NewsPage({
   const sp = await searchParams;
   const typeRaw = firstParam(sp.type);
   const type: EventType | undefined = typeRaw && isEventType(typeRaw) ? typeRaw : undefined;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
 
   const { items, totalPages } = await getPublishedEvents({ type: type ?? null, page });
 
@@ -51,11 +62,32 @@ export default async function NewsPage({
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
           <h1 className="text-2xl font-bold">소식</h1>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Link href={typeHref(undefined)} className={chip(!type)}>전체</Link>
-            <Link href={typeHref("notice")} className={chip(type === "notice")}>공지</Link>
-            <Link href={typeHref("event")} className={chip(type === "event")}>이벤트</Link>
-          </div>
+          <nav
+            aria-label="소식 종류"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            <Link
+              href={typeHref(undefined)}
+              aria-current={!type ? "page" : undefined}
+              className={chip(!type)}
+            >
+              전체
+            </Link>
+            <Link
+              href={typeHref("notice")}
+              aria-current={type === "notice" ? "page" : undefined}
+              className={chip(type === "notice")}
+            >
+              공지
+            </Link>
+            <Link
+              href={typeHref("event")}
+              aria-current={type === "event" ? "page" : undefined}
+              className={chip(type === "event")}
+            >
+              이벤트
+            </Link>
+          </nav>
 
           {items.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-foreground/15 p-12 text-center text-zinc-500">

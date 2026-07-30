@@ -9,6 +9,7 @@ import {
   ROLE_FIELD_SURFACE,
 } from "@/components/admin/content/diagram/SurfaceDiagram";
 import type { RoleConfig, RoleFull } from "@/lib/config/domains/roles";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 // 섹션 순서 = 실제 카드 위→아래(캐릭터 공유 카드 본문: 직급·소속·특이사항) +
 // 점수 공유 카드·게임 종료 화면의 피격 반응. 카드에 안 나오는 시비 멘트(플레이 말풍선)는 맨 밑.
@@ -77,6 +78,7 @@ export function RoleContentEditor({
   invalid: boolean;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [form, setForm] = useState<RoleConfig>(initial);
   const [role, setRole] = useState<RoleId>("boss");
   const [baseVersion, setBaseVersion] = useState(version);
@@ -98,22 +100,16 @@ export function RoleContentEditor({
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "role_content", value: clean(form), baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "role_content", value: clean(form), baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        version?: number;
-        error?: string;
-      };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 다음 로드부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

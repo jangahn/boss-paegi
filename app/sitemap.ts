@@ -2,10 +2,14 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 import { getSitemapEvents } from "@/lib/events";
 
+// DB-backed entries must be resolved at request time. This keeps CI/builds free of
+// production credentials while preserving strict runtime failure semantics.
+export const dynamic = "force-dynamic";
+
 // 색인 대상 공개 페이지만. UGC·랭킹·갤러리·기록·게이트 경로는 제외(noindex/robots 로 통제).
 // 소식: /news 목록 + 발행·노출윈도우 active·미삭제·noindex=false 인 /news/[id] 동적 등재.
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const events = await getSitemapEvents().catch(() => []);
+  const events = await getSitemapEvents();
   return [
     { url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 },
     { url: `${SITE_URL}/faq`, changeFrequency: "monthly", priority: 0.8 },

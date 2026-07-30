@@ -8,6 +8,8 @@ import { resolveOgImages } from "@/lib/site-assets";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SITE_URL } from "@/lib/site";
 
+export const dynamic = "force-dynamic";
+
 function fmtKstDate(iso: string | null): string {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" });
@@ -20,7 +22,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const e = await getEventById(id);
-  if (!e) return { title: "소식", robots: { index: false, follow: true } };
+  if (!e) {
+    return {
+      title: "소식",
+      robots: { index: false, follow: true },
+      alternates: { canonical: null },
+    };
+  }
   // 우선순위: 이벤트 cover > media_config 기본 OG > 정적 default. openGraph 는 deep-merge 안 되므로
   // images 를 항상 명시(없으면 layout 기본 OG 를 잃음). twitter 도 동일 우선순위로 미러.
   const ogImages = await resolveOgImages(e.coverOgUrl);

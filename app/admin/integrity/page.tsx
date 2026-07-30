@@ -9,6 +9,7 @@ import {
 } from "@/lib/admin-integrity";
 import { Pagination } from "@/components/Pagination";
 import { firstParam, shortId, fmtKst } from "@/lib/admin-format";
+import { parsePageParam } from "@/lib/pagination";
 
 // 실시간 운영 큐 — 캐시 금지.
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function AdminIntegrityPage({
       : ownerId
         ? "all"
         : "pending";
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
   const { rows, total } = await getIntegrityQueue(state, page, ownerId);
   const totalPages = Math.max(1, Math.ceil(total / INTEGRITY_PAGE_SIZE));
 

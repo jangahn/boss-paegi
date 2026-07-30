@@ -5,11 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { notifyCreditsChanged } from "@/lib/profile";
+import { pollClientOrderStatus } from "@/lib/pay/client-order-status-poll";
 
-type DoneState = "checking" | "paid" | "pending" | "error";
-
-const POLL_INTERVAL_MS = 2000;
-const MAX_POLLS = 15; // ~30s
+type DoneState = "checking" | "paid" | "review" | "pending" | "error";
 
 function CreditsDoneInner() {
   const params = useSearchParams();
@@ -22,45 +20,34 @@ function CreditsDoneInner() {
   const [credits, setCredits] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!order || pgFailCode) return;
-    let cancelled = false;
-    let tries = 0;
+    const abort = new AbortController();
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCredits(null);
+    setState(!order || pgFailCode ? "error" : "checking");
+    /* eslint-enable react-hooks/set-state-in-effect */
+    if (!order || pgFailCode) return () => abort.abort();
 
-    const poll = async () => {
-      tries += 1;
-      try {
-        const res = await fetch(
-          `/api/pay/order-status?order=${encodeURIComponent(order)}`
-        );
-        if (res.ok) {
-          const d = (await res.json()) as { status: string; credits: number };
-          if (cancelled) return;
-          if (d.status === "paid") {
-            setCredits(d.credits);
-            setState("paid");
-            // 충전 확정 → 헤더 크레딧 배지(AccountMenu) 즉시 갱신(라우트 이동 없이).
-            notifyCreditsChanged();
-            return;
-          }
-          if (d.status === "canceled" || d.status === "failed") {
-            setState("error");
-            return;
-          }
+    void pollClientOrderStatus(order, { signal: abort.signal })
+      .then((outcome) => {
+        if (abort.signal.aborted || outcome.status === "cancelled") return;
+        if (outcome.status === "paid") {
+          setCredits(outcome.credits);
+          setState("paid");
+          // 충전 확정 → 헤더 크레딧 배지(AccountMenu) 즉시 갱신(라우트 이동 없이).
+          notifyCreditsChanged();
+        } else if (outcome.status === "review") {
+          setState("review");
+        } else if (outcome.status === "pending") {
+          setState("pending");
+        } else {
+          setState("error");
         }
-      } catch {
-        /* 폴링 일시 실패 — 계속 재시도 */
-      }
-      if (cancelled) return;
-      if (tries >= MAX_POLLS) {
-        setState("pending");
-        return;
-      }
-      setTimeout(poll, POLL_INTERVAL_MS);
-    };
-
-    void poll();
+      })
+      .catch(() => {
+        if (!abort.signal.aborted) setState("error");
+      });
     return () => {
-      cancelled = true;
+      abort.abort();
     };
   }, [order, pgFailCode]);
 
@@ -91,6 +78,24 @@ function CreditsDoneInner() {
                 className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90"
               >
                 캐릭터 만들러 가기
+              </Link>
+            </>
+          )}
+          {state === "review" && (
+            <>
+              <span className="text-4xl" aria-hidden>
+                ⏳
+              </span>
+              <h1 className="text-lg font-bold">결제 후 처리를 확인 중이에요</h1>
+              <p className="text-sm leading-relaxed text-zinc-500">
+                결제 완료는 확인됐지만 생성권 지급은 운영 확인이 필요해요.
+                중복 결제하지 말고 결제 내역에서 처리 상태를 확인해주세요.
+              </p>
+              <Link
+                href="/account/payments"
+                className="mt-2 text-sm font-semibold underline"
+              >
+                결제 내역 확인
               </Link>
             </>
           )}

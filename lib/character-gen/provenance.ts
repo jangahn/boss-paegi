@@ -15,6 +15,17 @@ const candidateSchema = z.object({
   // seed 는 미회수 시 null(필드 생략 아님) — '미회수' 와 '스키마 부재' 구분.
   seed: z.number().nullable(),
   status: z.enum(["submitted", "completed", "failed"]),
+  // v0.79+: external submit response-loss saga. Legacy rows omit both.
+  submitState: z
+    .enum([
+      "planned",
+      "submitting",
+      "uncertain",
+      "acknowledged",
+      "rejected",
+    ])
+    .optional(),
+  payloadHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   // fal 이 반환하면 진단용으로만(옵션).
   falPrompt: z.string().nullable().optional(),
   hasNsfw: z.boolean().nullable().optional(),
@@ -24,7 +35,7 @@ export type ProvenanceCandidate = z.infer<typeof candidateSchema>;
 
 export const provenanceSchema = z.object({
   schemaVersion: z.literal(PROVENANCE_SCHEMA_VERSION),
-  // config/generation 은 **입력 거부 row(제출·차감 전 반려)엔 없음** → optional. 정상 생성은 항상 채움.
+  // config/generation 은 **입력 거부 row(유료 생성 제출 전 반려·환급)엔 없음** → optional. 정상 생성은 항상 채움.
   config: z
     .object({
       key: z.literal("generation_config"),
@@ -100,7 +111,7 @@ export const provenanceSchema = z.object({
     })
     .nullable()
     .optional(),
-  // 입력 게이트 반려 사유(제출·차감 전) — 이 필드가 있으면 config/generation 은 없다.
+  // 입력 게이트 반려 사유(유료 생성 제출 전·선차감 환급) — 이 필드가 있으면 config/generation 은 없다.
   rejected: z
     .object({ reason: z.string() })
     .nullable()

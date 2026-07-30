@@ -4,13 +4,18 @@ import { requireMember } from "@/lib/auth-server";
 import { getCreditHistory, USER_PAGE_SIZE, type CreditHistoryRow } from "@/lib/admin-users";
 import { firstParam } from "@/lib/admin-format";
 import { fmtKstDateTime } from "@/lib/format";
+import { parsePageParam } from "@/lib/pagination";
 import { Pagination } from "@/components/Pagination";
 
 // 본인 생성권 변동 실시간 조회 — 캐시 금지.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export const metadata: Metadata = { title: "생성권 내역" };
+export const metadata: Metadata = {
+  title: "생성권 내역",
+  robots: { index: false, follow: true },
+  alternates: { canonical: "/account/credits" },
+};
 
 /** 유저용 라벨 — 어드민 jargon 금지, kind(+delta 부호) → 사람이 읽는 표현. */
 function creditLabel(row: CreditHistoryRow): string {
@@ -55,7 +60,7 @@ export default async function AccountCreditsPage({
   const userId = gate.user.id;
 
   const sp = await searchParams;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
   const history = await getCreditHistory(userId, page);
   // overshoot(존재 행보다 큰 page) → 1페이지로(빈 화면·페이저 소실 방지).
   if (history.rows.length === 0 && page > 1) redirect("/account/credits");

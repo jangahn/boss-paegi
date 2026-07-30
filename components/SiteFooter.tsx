@@ -20,7 +20,7 @@ export function SiteFooter({ info }: { info: BusinessInfo | undefined }) {
     return null;
   }
   return (
-    <footer className="border-t border-foreground/10 px-6 py-5 text-[11px] leading-relaxed text-zinc-400">
+    <footer className="border-t border-foreground/10 px-6 py-5 text-[11px] leading-relaxed text-zinc-600">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
         <p>
           {info.companyName} · 대표 {info.ownerName} · 사업자등록번호 {info.bizRegNo}
@@ -30,10 +30,10 @@ export function SiteFooter({ info }: { info: BusinessInfo | undefined }) {
           {info.address} · 전화 {info.phone} · 이메일 {info.email}
         </p>
         <p className="flex gap-3">
-          <Link href="/terms" className="underline underline-offset-2 hover:text-zinc-500">
+          <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
             이용약관
           </Link>
-          <Link href="/privacy" className="underline underline-offset-2 hover:text-zinc-500">
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
             개인정보처리방침
           </Link>
         </p>

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getMediaConfigWithMeta } from "@/lib/config/getters";
 import { siteAssetUrl, OG_PREVIEW_TRANSFORM, LOGO_PREVIEW_TRANSFORM } from "@/lib/site-assets";
 import { MediaConfigEditor } from "@/components/admin/content/MediaConfigEditor";
@@ -6,6 +8,9 @@ import { MediaConfigEditor } from "@/components/admin/content/MediaConfigEditor"
 export const dynamic = "force-dynamic";
 
 export default async function MediaConfigPage() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { value, version, source, invalid } = await getMediaConfigWithMeta();
   // 저장된 path → 작은 미리보기 transform URL(서버 파생). raw object URL 미노출.
   const initialPreviews = {

@@ -1,11 +1,20 @@
+import type { CreditProduct } from "@/lib/credit-products";
+
+/**
+ * Deliberate compile-time legal fence. An environment toggle alone cannot
+ * open checkout until the separated affirmative withdrawal-limit confirmation
+ * and immutable evidence contract is implemented and reviewed.
+ */
+export const WITHDRAWAL_LIMIT_EVIDENCE_IMPLEMENTED = true;
+
 /**
  * Checkout is fail-closed across DB-first payment migrations. A deployment
- * must opt in explicitly only after the rollout and smoke gates pass.
+ * must opt in explicitly after the expand/contract and smoke gates pass.
  */
 export function paymentCheckoutEnabled(
   value: unknown = process.env.PAYMENT_CHECKOUT_ENABLED,
 ): boolean {
-  return value === "1";
+  return value === "1" && WITHDRAWAL_LIMIT_EVIDENCE_IMPLEMENTED;
 }
 
 export const PAYMENT_ROLLOUT_PROJECT_HEADER =
@@ -24,9 +33,8 @@ type DeploymentEnvironment = Readonly<
 
 /**
  * Public, non-secret deployment identity used by the production migration
- * runner to bind the frozen HTTP deployment to the exact Supabase project it
- * is about to mutate. The project ref is already public in the browser
- * Supabase URL; the Git commit is public repository metadata.
+ * runner to bind every frozen paid route to the exact Supabase project and
+ * application build it is about to change.
  *
  * Return both fields or neither. A partially configured deployment must never
  * look authoritative to the rollout runner.
@@ -65,4 +73,43 @@ export function paymentRolloutIdentityHeaders(
     [PAYMENT_ROLLOUT_PROJECT_HEADER]: projectRef,
     [PAYMENT_ROLLOUT_COMMIT_HEADER]: commit,
   };
+}
+
+export type CheckoutPayMode = "test" | "live";
+
+/**
+ * The checkout page tells the API which mode was rendered to the user. A
+ * reviewer/config change between render and click must never silently turn a
+ * TEST-labelled action into a LIVE payment (or the reverse).
+ */
+export function checkoutPayModeMatches(
+  actualMode: CheckoutPayMode,
+  expectedMode: unknown,
+): expectedMode is CheckoutPayMode {
+  return (
+    (expectedMode === "test" || expectedMode === "live") &&
+    expectedMode === actualMode
+  );
+}
+
+/**
+ * The product shown on the checkout page is an optimistic snapshot only.
+ * Compare every user-visible/economic field with the fresh strict config
+ * before creating an order so a publish between render and click cannot
+ * silently change the amount, granted credits, or receipt name.
+ */
+export function checkoutProductSnapshotMatches(
+  actual: CreditProduct,
+  expected: unknown,
+): expected is CreditProduct {
+  if (!expected || typeof expected !== "object" || Array.isArray(expected)) {
+    return false;
+  }
+  const value = expected as Record<string, unknown>;
+  return (
+    value.productId === actual.productId &&
+    value.goodname === actual.goodname &&
+    value.price === actual.price &&
+    value.credits === actual.credits
+  );
 }

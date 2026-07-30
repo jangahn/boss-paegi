@@ -1,6 +1,12 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOLLS_BUCKET, HIGHLIGHTS_BUCKET, dollPath } from "@/lib/storage-path";
+import {
+  resolveStorageSigningResult,
+  StorageSigningError,
+} from "@/lib/storage-signing-result";
+
+export { StorageSigningError } from "@/lib/storage-signing-result";
 
 /**
  * private 버킷 읽기 — service-role signed URL. **server-only**(client 직접 import 금지, signed-URL API만).
@@ -22,30 +28,82 @@ export const DOLL_THUMB_TRANSFORM = {
 } as const;
 
 /**
- * doll 이미지 signed URL. v=저장값(URL or path). ttl 초(기본 600=10분, OG 내부는 60). 실패/없음=null.
+ * doll 이미지 signed URL. v=저장값(URL or path). ttl 초(기본 600=10분, OG 내부는 60).
+ * 원본 없음만 null이며, 유효한 원본의 서명 실패/손상 응답은 throw한다.
  * opts.thumb → 384px 변환 썸네일(갤러리·공유·어드민 등 작은 표시. 원본은 /play 게임 텍스처만).
  */
+export function signedDollUrl(
+  v: string,
+  ttl?: number,
+  opts?: { thumb?: boolean },
+): Promise<string>;
+export function signedDollUrl(
+  v: null | undefined,
+  ttl?: number,
+  opts?: { thumb?: boolean },
+): Promise<null>;
+export function signedDollUrl(
+  v: string | null | undefined,
+  ttl?: number,
+  opts?: { thumb?: boolean },
+): Promise<string | null>;
 export async function signedDollUrl(
   v: string | null | undefined,
   ttl = 600,
   opts?: { thumb?: boolean }
 ): Promise<string | null> {
+  if (v === null || v === undefined) return null;
   const path = dollPath(v);
-  if (!path) return null;
-  const { data, error } = await createAdminClient()
-    .storage.from(DOLLS_BUCKET)
-    .createSignedUrl(path, ttl, opts?.thumb ? { transform: DOLL_THUMB_TRANSFORM } : undefined);
-  return error ? null : data?.signedUrl ?? null;
+  if (!path) {
+    throw new StorageSigningError(
+      "storage.sign_doll",
+      new Error("invalid_doll_path"),
+    );
+  }
+  let result;
+  try {
+    result = await createAdminClient()
+      .storage.from(DOLLS_BUCKET)
+      .createSignedUrl(
+        path,
+        ttl,
+        opts?.thumb ? { transform: DOLL_THUMB_TRANSFORM } : undefined,
+      );
+  } catch (error) {
+    throw new StorageSigningError("storage.sign_doll", error);
+  }
+  return resolveStorageSigningResult("storage.sign_doll", path, result);
 }
 
 /** 하이라이트 clip signed URL. clipPath=highlight_clip_path(경로 저장). ttl 초(기본 900=15분). */
+export function signedHighlightUrl(
+  clipPath: string,
+  ttl?: number,
+): Promise<string>;
+export function signedHighlightUrl(
+  clipPath: null | undefined,
+  ttl?: number,
+): Promise<null>;
+export function signedHighlightUrl(
+  clipPath: string | null | undefined,
+  ttl?: number,
+): Promise<string | null>;
 export async function signedHighlightUrl(
   clipPath: string | null | undefined,
   ttl = 900
 ): Promise<string | null> {
-  if (!clipPath) return null;
-  const { data, error } = await createAdminClient()
-    .storage.from(HIGHLIGHTS_BUCKET)
-    .createSignedUrl(clipPath, ttl);
-  return error ? null : data?.signedUrl ?? null;
+  if (clipPath === null || clipPath === undefined) return null;
+  let result;
+  try {
+    result = await createAdminClient()
+      .storage.from(HIGHLIGHTS_BUCKET)
+      .createSignedUrl(clipPath, ttl);
+  } catch (error) {
+    throw new StorageSigningError("storage.sign_highlight", error);
+  }
+  return resolveStorageSigningResult(
+    "storage.sign_highlight",
+    clipPath,
+    result,
+  );
 }

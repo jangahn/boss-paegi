@@ -1,13 +1,28 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdminOrder } from "@/lib/admin-types";
 import { fmtKst, won, shortId } from "@/lib/admin-format";
 import { CANCEL_OUTCOME_LABELS, refundErrMsg } from "@/components/admin/refund-saga-ui";
+import {
+  AdminCancelIntentError,
+  readPendingAdminCancelIntent,
+  submitAdminCancelIntent,
+  type AdminCancelIntentInput,
+} from "@/lib/admin-cancel-intent";
+import {
+  parseAdminSettlementMutationResult,
+  type AdminSettlementMutationResult,
+} from "@/lib/admin-mutation";
 import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
+import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 type ActionKind = "settle" | "cancel";
 
@@ -93,8 +108,11 @@ const SETTLE_ERR_KO: Record<string, string> = {
   not_settleable: "지급할 수 없는 상태의 주문이에요(pending + 결제 시도 흔적 필요).",
   not_paid: "포트원 결제상태가 PAID 가 아니에요 — 지급 대상이 아니에요.",
   amount_mismatch: "포트원 결제금액이 주문 금액과 달라요 — 운영 확인 필요.",
+  channel_mode_mismatch: "실주문에 테스트 채널 결제가 연결돼 지급을 차단했어요.",
+  payment_evidence_incomplete: "포트원 결제시각·거래·채널 증빙이 완전하지 않아 지급하지 않았어요.",
   pg_unreachable: "포트원 조회 실패 — 잠시 후 재시도하세요.",
   pg_unavailable: "포트원 취소 연동이 설정되지 않았어요.",
+  action_unconfirmed: "지급 결과를 증명하지 못했어요 — 같은 주문과 사유로 다시 확인하세요.",
   order_not_found: "주문을 찾지 못했어요.",
   reason_invalid: "사유는 5~500자여야 해요.",
   action_failed: "처리에 실패했어요. 잠시 후 다시 시도하세요.",
@@ -126,8 +144,49 @@ function ActionModal({
   const [craLocal, setCraLocal] = useState(() => toLocalInput(new Date()));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settlementReview, setSettlementReview] =
+    useState<AdminSettlementMutationResult | null>(null);
   // cancel 이 환불 큐 후속을 요구하는 비종결 outcome 로 끝난 경우의 안내(종결이면 즉시 onDone).
   const [cancelOutcome, setCancelOutcome] = useState<string | null>(null);
+  // 응답 유실 뒤 새 요청을 만들지 않도록 취소 의도 전체를 브라우저에 먼저 영속한다.
+  const [pendingCancel, setPendingCancel] =
+    useState<AdminCancelIntentInput | null>(null);
+  const [cancelRecovery, setCancelRecovery] = useState<
+    "checking" | "ready" | "blocked"
+  >(kind === "cancel" ? "checking" : "ready");
+  const busyRef = useRef(false);
+  const runScopedOperation = useClientOperationScope();
+
+  useEffect(() => {
+    if (kind !== "cancel") return;
+    let disposed = false;
+    // 초기 SSR/수화 결과를 바꾸지 않고 브라우저 저장소를 확인한다.
+    queueMicrotask(() => {
+      if (disposed) return;
+      try {
+        const saved = readPendingAdminCancelIntent(
+          order.order_uuid,
+          window.localStorage,
+        );
+        if (saved) {
+          setPendingCancel(saved);
+          setReason(saved.reason);
+          setCraLocal(toLocalInput(new Date(saved.customerRequestedAt)));
+        }
+        setCancelRecovery("ready");
+      } catch (recoveryError) {
+        const code =
+          recoveryError instanceof AdminCancelIntentError
+            ? recoveryError.message
+            : "cancel_receipt_storage_unavailable";
+        setError(refundErrMsg(code));
+        setCancelRecovery("blocked");
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [kind, order.order_uuid]);
 
   const reasonOk = reason.trim().length >= 5;
 
@@ -138,7 +197,7 @@ function ActionModal({
   };
 
   const submit = async () => {
-    if (busy || !reasonOk) return;
+    if (busyRef.current || !reasonOk) return;
     const trimmed = reason.trim();
 
     if (kind === "cancel") {
@@ -147,74 +206,185 @@ function ActionModal({
         setError("고객 요청 시각이 올바르지 않아요.");
         return;
       }
+      busyRef.current = true;
       setBusy(true);
       setError(null);
       try {
-        const res = await fetch("/api/admin/cancel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const input =
+          pendingCancel ??
+          ({
             orderUuid: order.order_uuid,
             reason: trimmed,
             customerRequestedAt: cra,
+          } satisfies AdminCancelIntentInput);
+        const out = await runScopedOperation((signal) =>
+          submitAdminCancelIntent(input, {
+            storage: window.localStorage,
+            onPending: setPendingCancel,
+            signal,
           }),
-        });
-        const out = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          outcome?: string;
-          error?: string;
-          message?: string;
-        };
-        if (res.ok && out.outcome) {
-          if (CANCEL_TERMINAL.has(out.outcome)) {
-            onDone();
-            return;
-          }
-          // 비종결(환불 준비·경제 화해 필요 등) — 결과 안내 후 환불 큐로 유도. 닫으면 대시보드 재조회.
-          setCancelOutcome(out.outcome);
-          setBusy(false);
+        );
+        setPendingCancel(null);
+        if (CANCEL_TERMINAL.has(out.outcome)) {
+          onDone();
           return;
         }
-        setError(out.message ?? refundErrMsg(out.error));
-        setBusy(false);
-      } catch {
-        setError(refundErrMsg("action_failed"));
+        // 비종결(환불 준비·경제 화해 필요 등) — 결과 안내 후 환불 큐로 유도. 닫으면 대시보드 재조회.
+        setCancelOutcome(out.outcome);
+      } catch (submitError) {
+        const code =
+          submitError instanceof AdminCancelIntentError
+            ? submitError.message
+            : "action_failed";
+        setError(refundErrMsg(code));
+      } finally {
+        busyRef.current = false;
         setBusy(false);
       }
       return;
     }
 
     // settle — 포트원 검증 후 지급(불변).
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderUuid: order.order_uuid, reason: trimmed }),
+      const requestBody = JSON.stringify({
+        orderUuid: order.order_uuid,
+        reason: trimmed,
       });
-      const out = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        message?: string;
-        manual?: boolean;
-      };
-      if (res.ok && !out.manual) {
+      const outcome = await runScopedOperation((signal) =>
+        runReplayedJsonMutation<AdminSettlementMutationResult>({
+          input: "/api/admin/settle",
+          init: {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          },
+          signal,
+          classify: (response, body) => {
+            const result = response.ok
+              ? parseAdminSettlementMutationResult(body)
+              : null;
+            if (result) {
+              return { kind: "confirmed", value: result };
+            }
+            const errorBody =
+              body &&
+              typeof body === "object" &&
+              !Array.isArray(body)
+                ? (body as {
+                    error?: unknown;
+                    message?: unknown;
+                  })
+                : null;
+            const errorCode =
+              typeof errorBody?.error === "string"
+                ? errorBody.error
+                : "";
+            const message =
+              typeof errorBody?.message === "string"
+                ? errorBody.message
+                : null;
+            if (
+              clientMutationResponseNeedsReconciliation(
+                response.status,
+                response.ok,
+              )
+            ) {
+              return {
+                kind: "unconfirmed",
+                reason: "settlement_response_unconfirmed",
+                error: errorCode || message,
+              };
+            }
+            return {
+              kind: "rejected",
+              error: {
+                code: errorCode,
+                message,
+              },
+            };
+          },
+        }),
+      );
+      if (outcome.kind === "aborted") return;
+      if (outcome.kind === "confirmed") {
+        if (outcome.value.quarantined) {
+          setSettlementReview(outcome.value);
+          return;
+        }
         onDone();
         return;
       }
-      // 실패/수동(미결제·상태 불일치·연결실패 등) → 메시지 표시, 모달 유지.
-      setError(out.message ?? SETTLE_ERR_KO[out.error ?? ""] ?? out.error ?? "처리 실패");
-      setBusy(false);
+      const rejection =
+        outcome.kind === "rejected" &&
+        outcome.error &&
+        typeof outcome.error === "object" &&
+        !Array.isArray(outcome.error)
+          ? (outcome.error as {
+              code?: unknown;
+              message?: unknown;
+            })
+          : null;
+      const errorCode =
+        typeof rejection?.code === "string"
+          ? rejection.code
+          : "";
+      const message =
+        typeof rejection?.message === "string"
+          ? rejection.message
+          : null;
+      // 실패/미결제·상태 불일치·연결실패 등 → 메시지 표시, 모달 유지.
+      setError(
+        message ??
+          SETTLE_ERR_KO[errorCode] ??
+          (errorCode || SETTLE_ERR_KO.action_unconfirmed),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "처리 실패");
+    } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
+  if (settlementReview) {
+    return (
+      <ModalShell ariaLabel="결제 확인 — 지급 격리" onClose={onDone}>
+        <h2 className="text-lg font-bold">결제 확인 — 지급 후속 필요</h2>
+        <p role="alert" className="mt-2 text-sm leading-relaxed text-amber-700">
+          포트원 결제는 PAID로 확인됐지만 계정 상태 또는 선행 취소 의도 때문에
+          크레딧을 지급하지 않았습니다.
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+          요청 {settlementReview.requestedCredits}개 중 지급 0개입니다. 주문은
+          격리됐고 대사 이슈가 생성됐으므로 같은 지급을 다시 실행하지 말고 환불
+          큐에서 후속 처리하세요.
+        </p>
+        <Link
+          href="/admin/refunds"
+          className="mt-3 inline-block text-xs text-sky-600 underline underline-offset-2"
+        >
+          환불 큐로 이동 →
+        </Link>
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={onDone}
+            className="rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-paper-2"
+          >
+            확인 후 대시보드 갱신
+          </button>
+        </div>
+      </ModalShell>
+    );
+  }
+
   // cancel 비종결 outcome 결과 화면 — 환불 큐 후속 안내.
   if (cancelOutcome) {
     return (
-      <ModalShell onClose={onDone}>
+      <ModalShell ariaLabel="주문 취소 후속 필요" onClose={onDone}>
         <h2 className="text-lg font-bold">주문 취소 — 후속 필요</h2>
         <p className="mt-2 text-sm text-zinc-600">
           {CANCEL_OUTCOME_LABELS[cancelOutcome] ?? cancelOutcome}
@@ -239,7 +409,10 @@ function ActionModal({
   }
 
   return (
-    <ModalShell onClose={onClose}>
+    <ModalShell
+      ariaLabel={kind === "settle" ? "포트원 검증 후 지급" : "주문 취소"}
+      onClose={busy ? () => {} : onClose}
+    >
       <h2 className="text-lg font-bold">
         {kind === "settle" ? "포트원 검증 후 지급" : "주문 취소 (포트원 연동)"}
       </h2>
@@ -259,6 +432,7 @@ function ActionModal({
             type="datetime-local"
             value={craLocal}
             onChange={(e) => setCraLocal(e.target.value)}
+            disabled={pendingCancel !== null}
             className="w-full rounded-xl border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40"
           />
           <span className="text-[11px] text-zinc-400">
@@ -270,6 +444,7 @@ function ActionModal({
       <textarea
         value={reason}
         onChange={(e) => setReason(e.target.value)}
+        disabled={pendingCancel !== null}
         placeholder="사유 (5자 이상, 감사 로그 기록)"
         maxLength={500}
         className="mt-3 h-20 w-full rounded-xl border border-foreground/15 ui-field p-3 text-sm outline-none focus:border-foreground/40"
@@ -277,13 +452,22 @@ function ActionModal({
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
       <div className="mt-4 flex gap-2">
-        <button type="button" onClick={onClose} className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="flex-1 rounded-full border border-foreground/15 ui-surface py-2.5 text-sm disabled:opacity-40"
+        >
           닫기
         </button>
         <button
           type="button"
           onClick={() => void submit()}
-          disabled={busy || !reasonOk}
+          disabled={
+            busy ||
+            !reasonOk ||
+            (kind === "cancel" && cancelRecovery !== "ready")
+          }
           className="flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground py-2.5 text-sm font-semibold text-paper-2 disabled:opacity-40"
         >
           {busy && <Spinner className="h-4 w-4" />}

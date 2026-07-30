@@ -32,6 +32,9 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
         </thead>
         <tbody>
           {rows.map((r) => {
+            const paidReview =
+              r.status === "paid" && r.error_message !== null;
+            const displayedStatus = paidReview ? "paid_review" : r.status;
             // 회수 잔량 존재 = 크레딧·현금 모두 남음(rate<100% 전액환불 꼬리에서 button 잔존 방지 — begin 이중 게이트와 일치).
             const refundable =
               r.paid_at !== null &&
@@ -41,15 +44,32 @@ export function OrdersTable({ rows }: { rows: AdminOrder[] }) {
             return (
               <tr key={r.order_uuid} className="border-t border-foreground/5">
                 <td className="px-2 py-1.5 tabular-nums">{fmtKst(r.created_at)}</td>
-                <td className={`px-2 py-1.5 font-semibold ${STATUS_COLOR[r.status] ?? ""}`}>
-                  {r.status}
+                <td
+                  className={`px-2 py-1.5 font-semibold ${
+                    paidReview
+                      ? "text-amber-600"
+                      : (STATUS_COLOR[r.status] ?? "")
+                  }`}
+                >
+                  {displayedStatus}
                 </td>
                 <td className="px-2 py-1.5 whitespace-nowrap">
                   {payRouteLabel(r)}
                   {r.is_test && <TestBadge />}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{won(r.amount)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{r.credits}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">
+                  {paidReview ? (
+                    <span
+                      className="whitespace-nowrap text-amber-600"
+                      title="결제는 확인됐지만 live 크레딧은 지급되지 않음"
+                    >
+                      지급 0 · 요청 {r.credits}
+                    </span>
+                  ) : (
+                    r.credits
+                  )}
+                </td>
                 <td className="px-2 py-1.5">
                   {r.refunded_credits > 0 ? (
                     <span className="inline-flex items-center gap-1 whitespace-nowrap">

@@ -2,9 +2,9 @@ export const PUBLIC_ENV = {
   SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL!,
   SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
-  // 공유·유입 분석 수집 게이트 — production 자동 on, 로컬은 NEXT_PUBLIC_ANALYTICS_ENABLED=1 로 켬(미설정 시 off).
-  ANALYTICS_ENABLED:
-    process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "1" || process.env.NODE_ENV === "production",
+  // 공유·유입 분석은 공개 방침에 항목·기간이 반영되기 전까지 전 환경
+  // 명시 opt-in. production 자체를 동의로 간주하지 않는다.
+  ANALYTICS_ENABLED: process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "1",
   // ── 포트원(PortOne) V2 — 클라 브라우저 SDK 호출용 공개 식별자 ──
   // ⚠️ 이 프로젝트 유일한 클라측 결제 env. storeId·channelKey 는 포트원 설계상 공개 안전값
   //    (요청 식별용 — 결제 승인·취소·조회 권한은 서버 전용 PORTONE_V2_API_SECRET 에만 있음).

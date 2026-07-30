@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { isDomainKey, type DomainKey } from "@/lib/config/keys";
 import { getConfigAudit, getConfigVersion } from "@/lib/config/audit";
 import { diffConfig } from "@/lib/config/diff";
 import { fmtKst } from "@/lib/admin-format";
 import { Pagination } from "@/components/Pagination";
 import { RestoreButton } from "@/components/admin/content/RestoreButton";
+import { parsePageParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +35,13 @@ export default async function ContentHistoryPage({
   params: Promise<{ key: string }>;
   searchParams: Promise<{ page?: string | string[] }>;
 }) {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { key } = await params;
   if (!isDomainKey(key)) notFound();
   const sp = await searchParams;
-  const page = Math.max(1, Number(firstParam(sp.page)) || 1);
+  const page = parsePageParam(firstParam(sp.page));
   const [{ rows, total, pageSize }, currentVersion] = await Promise.all([
     getConfigAudit(key, { page }),
     getConfigVersion(key),

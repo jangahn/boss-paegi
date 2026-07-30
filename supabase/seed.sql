@@ -1,0 +1,3 @@
+-- Intentionally empty.
+-- Deterministic QA fixtures live inside pgTAP transactions under supabase/tests
+-- and roll back after each suite.

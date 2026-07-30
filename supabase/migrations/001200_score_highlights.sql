@@ -1,7 +1,7 @@
--- 0012a: scores 의 highlight_* 분리 — score_highlights 테이블 생성 + backfill (ADDITIVE)
+-- 001200: scores 의 highlight_* 분리 — score_highlights 테이블 생성 + backfill (ADDITIVE)
 --
 -- 적용: management API query 엔드포인트. expand→deploy→contract 의 expand 단계.
--- 컬럼 drop 은 코드가 score_highlights 로 전환·배포된 뒤 0012b 에서.
+-- 컬럼 drop 은 코드가 score_highlights 로 전환·배포된 뒤 001201 에서.
 
 create table if not exists public.score_highlights (
   score_id uuid primary key references public.scores(id) on delete cascade,

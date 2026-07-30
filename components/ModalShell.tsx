@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 /**
  * 모달 셸 — **document.body 로 포털**.
@@ -14,16 +15,19 @@ export function ModalShell({
   children,
   onClose,
   wide = false,
+  ariaLabel,
 }: {
   children: React.ReactNode;
   onClose: () => void;
   wide?: boolean;
+  ariaLabel: string;
 }) {
   const [mounted, setMounted] = useState(false);
   // SSR/portal 마운트 게이트(hydration 불일치 방지) — 마운트 1회 setState(의도적·표준 패턴).
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
   const pathname = usePathname();
+  const dialogRef = useDialogFocus<HTMLDivElement>(mounted, onClose);
   if (!mounted) return null;
 
   // body 로 포털하면 어드민 .theme-admin 래퍼 밖이라 라이트로 새므로, 어드민 경로에선 다크 테마를 직접 부착.
@@ -36,6 +40,11 @@ export function ModalShell({
     >
       <div className="flex min-h-full items-center justify-center p-4">
         <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={ariaLabel}
+          tabIndex={-1}
           className={`w-full ${wide ? "max-w-md" : "max-w-sm"} rounded-3xl ui-surface p-6 shadow-2xl`}
           onClick={(e) => e.stopPropagation()}
         >

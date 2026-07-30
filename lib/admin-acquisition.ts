@@ -1,7 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { kstDate } from "@/lib/admin-analytics";
-import { log, errInfo } from "@/lib/log";
+import { readSupabaseRowsPaginated } from "@/lib/supabase-operation";
+import { validateAdminRows } from "@/lib/admin-read-contract";
 
 /**
  * 공유·유입 분석 — analytics_rollups(격리 도메인) 윈도우 합산. 무식별 집계.
@@ -15,16 +16,36 @@ type AnalyticsRollupRow = { metric: string; dim1: string; dim2: string; dim3: st
 async function analyticsRollupRows(metrics: string[], days: number): Promise<AnalyticsRollupRow[]> {
   const admin = createAdminClient();
   const cutoff = kstDate(days - 1);
-  const { data, error } = await admin
-    .from("analytics_rollups")
-    .select("metric,dim1,dim2,dim3,dim4,value")
-    .in("metric", metrics)
-    .gte("day_kst", cutoff);
-  if (error) {
-    log.warn("analytics.rollup_read_fail", errInfo(error));
-    return [];
-  }
-  return (data ?? []) as AnalyticsRollupRow[];
+  const data = await readSupabaseRowsPaginated(
+    "admin.acquisition.rollups",
+    (offset, limit) =>
+      admin
+        .from("analytics_rollups")
+        .select("day_kst,metric,dim1,dim2,dim3,dim4,value")
+        .in("metric", metrics)
+        .gte("day_kst", cutoff)
+        .order("day_kst", { ascending: true })
+        .order("metric", { ascending: true })
+        .order("dim1", { ascending: true })
+        .order("dim2", { ascending: true })
+        .order("dim3", { ascending: true })
+        .order("dim4", { ascending: true })
+        .range(offset, offset + limit - 1),
+    500,
+  );
+  return validateAdminRows<AnalyticsRollupRow>(
+    "admin.acquisition.rollups",
+    data,
+    {
+      day_kst: "date",
+      metric: "string",
+      dim1: "text",
+      dim2: "text",
+      dim3: "text",
+      dim4: "text",
+      value: "nonnegativeNumeric",
+    },
+  );
 }
 
 const num = (v: unknown) => Number(v) || 0;

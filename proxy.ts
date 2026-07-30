@@ -5,6 +5,10 @@ import { readCurrentLegalVersionsEdge } from "@/lib/legal/edge-versions";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { safeNext } from "@/lib/oauth-metadata";
 import { MIGRATE_COOKIE } from "@/lib/cookies";
+import {
+  browserMutationOriginAllowed,
+  isBrowserApiMutation,
+} from "@/lib/browser-mutation-origin";
 
 // 글로벌 동의 게이트(렌더 전) — "로그인은 자유, 동의는 모든 페이지 진입 시 강제".
 //  · anon: 공개 페이지 + /login 허용, 회원전용 → /login.
@@ -46,12 +50,32 @@ export async function proxy(request: NextRequest) {
   // 0. 결제 webhook — updateSession 전에 즉시 통과(세션 실패가 외부 webhook 응답을 막지 않음).
   if (isWebhookPath(path)) return NextResponse.next();
 
+  // 0-1. 쿠키 인증 API mutation의 CSRF 경계. Origin이 있는 브라우저 요청은
+  // exact same-origin만 허용하고, Fetch Metadata가 cross-site면 body/auth 조회 전에 차단한다.
+  if (
+    isBrowserApiMutation(path, request.method) &&
+    !browserMutationOriginAllowed(request.url, request.headers)
+  ) {
+    return NextResponse.json(
+      { error: "forbidden_origin" },
+      {
+        status: 403,
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      },
+    );
+  }
+
   const { response, user, supabase } = await updateSession(request);
   const method = request.method;
 
   // 1. 익명/무세션이 회원전용 페이지 → /login (기존).
   if (isMemberOnlyPath(path) && (!user || user.is_anonymous)) {
-    return redirectKeep(request, response, `/login?next=${encodeURIComponent(path)}`);
+    const next = safeNext(path + request.nextUrl.search);
+    return redirectKeep(
+      request,
+      response,
+      `/login?next=${encodeURIComponent(next)}`,
+    );
   }
 
   // 2. 동의 게이트는 GET/HEAD 문서/RSC 내비에만. (POST/PUT/PATCH/DELETE 는 endpoint requireMember.)

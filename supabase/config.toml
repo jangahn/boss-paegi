@@ -58,7 +58,10 @@ max_client_conn = 100
 
 [db.migrations]
 # If disabled, migrations will be skipped during a db push or reset.
-# 로컬 검증: 레포 마이그 파일명에 letter-suffix(0012a 등)가 있어 CLI 러너가 건너뜀 → 수동 psql 적용으로 대체.
+# 의도적으로 비활성: 전체 contract를 자동 적용하지 않고 expand/contract staged
+# custom runner만 로컬 QA·운영 적용의 권위로 사용한다. 따라서 `supabase db reset`,
+# `supabase db push`, `supabase migration up`은 migration QA·배포 명령으로 사용 금지.
+# disposable DB는 `supabase start` 뒤 `npm run qa:db:apply:*`로만 구축한다.
 enabled = false
 # Specifies an ordered list of schema files that describe your database.
 # Supports glob patterns relative to supabase directory: "./schemas/*.sql"
@@ -176,7 +179,7 @@ refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
-enable_anonymous_sign_ins = false
+enable_anonymous_sign_ins = true
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.

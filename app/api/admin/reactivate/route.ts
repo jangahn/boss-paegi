@@ -1,65 +1,450 @@
 import "server-only";
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminRpcErrorCode } from "@/lib/admin-rpc";
 import { isDeletedMarker } from "@/lib/oauth-metadata";
 import { log, errInfo } from "@/lib/log";
+import {
+  deterministicAdminRequestId,
+  parseExactTimestampFence,
+} from "@/lib/admin-operation-id";
+import { parseAccountReactivationBeginResult } from "@/lib/admin-mutation";
+import {
+  createAccountReactivationDeadline,
+  getAccountReactivationStatus,
+  processAccountReactivationJob,
+  runAccountReactivationBeforeDeadline,
+  type AccountReactivationCorrelation,
+} from "@/lib/account-reactivation-job";
+import { legacyAdminClientRefresh } from "@/lib/admin-client-compat";
+import { readAdminJsonRequest } from "@/lib/http/admin-json-request";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function mutationErrorStatus(code: string): number {
+  if (
+    code === "state_conflict" ||
+    code === "idempotency_conflict" ||
+    code === "reactivation_in_progress" ||
+    code === "reactivation_cancellation_in_progress" ||
+    code === "reactivation_already_completed"
+  ) {
+    return 409;
+  }
+  return code === "action_failed" ? 500 : 400;
+}
+
 /**
- * 회원 재활성(탈퇴 복구) — 본인 요청 시 운영자가 **계정만** 복구. 관리자만.
- * `admin_reactivate_account`(0037): profiles.deleted_at 해제 + identities 원본 닉/프사/이메일 복원
- * + 재동의 트리거. 캐릭터·하이라이트·생성권은 이미 영구삭제 → 복구되지 않음.
- * RPC 예외(not_withdrawn/email_conflict/identity_email_missing/reason_invalid)는 화이트리스트로 노출.
+ * Durable DB -> GoTrue reactivation saga.
+ *
+ * Begin atomically creates the pending receipt and its durable external-sync
+ * job while the profile remains deleted. The request path opportunistically
+ * claims that job; content-maintain resumes it after a crash or response loss.
+ * Only the receipt-bound marker -> exact-email mutation is permitted, and the
+ * fenced finish verifies the Auth row before atomically activating the DB
+ * account, audit row, receipt, and job.
  */
 export async function POST(req: NextRequest) {
+  // Leave headroom inside the platform's 60-second route ceiling. Every
+  // worker RPC/Auth read/write shares this one monotonic budget.
+  const workerDeadline = createAccountReactivationDeadline(50_000);
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
-  const body = (await req.json().catch(() => null)) as
-    | { userId?: string; reason?: string; emailOverride?: string }
-    | null;
-  if (!body?.userId || !UUID_RE.test(body.userId) || !body?.reason) {
-    return NextResponse.json({ error: "missing_fields" }, { status: 400 });
-  }
-  const reason = body.reason.trim();
-  if (reason.length < 5 || reason.length > 500) {
-    return NextResponse.json({ error: "reason_invalid" }, { status: 400 });
-  }
-  const emailOverride = body.emailOverride?.trim() || null;
-
-  const admin = createAdminClient();
-  const { data, error } = await admin.rpc("admin_reactivate_account", {
-    p_user_id: body.userId,
-    p_admin: gate.user.id,
-    p_reason: reason,
-    p_email_override: emailOverride,
-  });
-  if (error) {
-    const code = adminRpcErrorCode(error);
-    log.warn("admin.reactivate_fail", { userId: body.userId, code, ...errInfo(error) });
+  const requestBody = await readAdminJsonRequest(req);
+  if (!requestBody.ok) {
     return NextResponse.json(
-      { error: code },
-      { status: code === "action_failed" ? 500 : 400 }
+      { error: requestBody.error },
+      { status: requestBody.status },
     );
   }
-  // RPC 는 member_accounts.email 만 복원 — auth.users.email(탈퇴 스크럽 marker)도 실 이메일로 복원해야
-  // 재로그인 시 extractOAuthProfile 가 marker 를 집어 member 를 재오염하거나 Sentry 식별이 marker 로 남는 걸 막는다.
-  // GoTrue admin API 는 SQL RPC 에서 호출 불가 → 라우트에서 best-effort(실패해도 member 는 이미 복원됨).
-  const restoredEmail = (data as { email?: string } | null)?.email;
-  if (restoredEmail && !isDeletedMarker(restoredEmail)) {
+  const body = requestBody.value as {
+    userId?: string;
+    reason?: string;
+    emailOverride?: string;
+    expectedDeletedAt?: string;
+    expectedWithdrawalGeneration?: number;
+    action?: "activate" | "cancel";
+    operationRequestId?: string;
+  } | null;
+  const refresh = legacyAdminClientRefresh("reactivate", body);
+  if (refresh) {
+    return NextResponse.json(refresh.body, { status: refresh.status });
+  }
+  const reason = body?.reason?.trim() ?? "";
+  const action = body?.action ?? "activate";
+  const emailOverride = body?.emailOverride?.trim() || null;
+  // PostgreSQL timestamptz carries microseconds. Date#toISOString truncates
+  // those to milliseconds and would turn a valid exact lifecycle fence into
+  // state_conflict, so validate with Date.parse but pass the trimmed DB text
+  // through unchanged.
+  const expectedDeletedAt = parseExactTimestampFence(
+    body?.expectedDeletedAt,
+  );
+  const expectedWithdrawalGeneration =
+    Number.isSafeInteger(body?.expectedWithdrawalGeneration) &&
+      (body?.expectedWithdrawalGeneration as number) >= 1
+      ? (body?.expectedWithdrawalGeneration as number)
+      : null;
+  if (
+    !body?.userId ||
+    !UUID_RE.test(body.userId) ||
+    reason.length < 5 ||
+    reason.length > 500 ||
+    expectedDeletedAt === null ||
+    expectedWithdrawalGeneration === null ||
+    (action !== "activate" && action !== "cancel") ||
+    (action === "cancel" &&
+      (
+        !body?.operationRequestId ||
+        !UUID_RE.test(body.operationRequestId)
+      )) ||
+    (emailOverride !== null &&
+      (emailOverride.length > 320 || isDeletedMarker(emailOverride)))
+  ) {
+    return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+  }
+  const admin = createAdminClient();
+
+  if (action === "cancel") {
+    const operationRequestId = body.operationRequestId as string;
+    let cancelCall: Awaited<ReturnType<typeof admin.rpc>>;
     try {
-      await admin.auth.admin.updateUserById(body.userId, { email: restoredEmail });
-    } catch (e) {
-      log.warn("admin.reactivate_auth_email_restore_fail", { userId: body.userId, ...errInfo(e) });
+      cancelCall = await runAccountReactivationBeforeDeadline(
+        workerDeadline,
+        () =>
+          Promise.resolve(
+            admin.rpc(
+              "request_account_reactivation_cancellation",
+              {
+                p_request_id: operationRequestId,
+                p_user_id: body.userId,
+                p_cancel_admin: gate.user.id,
+                p_reason: reason,
+                p_expected_deleted_at: expectedDeletedAt,
+                p_expected_withdrawal_generation:
+                  expectedWithdrawalGeneration,
+              },
+            ),
+          ),
+      );
+    } catch (error) {
+      log.error("admin.reactivate_cancel_request_throw", {
+        userId: body.userId,
+        operationRequestId,
+        ...errInfo(error),
+      });
+      return NextResponse.json(
+        {
+          error: "reactivation_cancellation_pending",
+          operationRequestId,
+        },
+        { status: 503 },
+      );
     }
+    if (cancelCall.error) {
+      const code = adminRpcErrorCode(cancelCall.error);
+      return NextResponse.json(
+        { error: code, operationRequestId },
+        { status: mutationErrorStatus(code) },
+      );
+    }
+    const cancelRow =
+      cancelCall.data &&
+      typeof cancelCall.data === "object" &&
+      !Array.isArray(cancelCall.data)
+        ? cancelCall.data as Record<string, unknown>
+        : null;
+    if (
+      cancelRow?.ok !== true ||
+      (
+        cancelRow.status !== "cancel_requested" &&
+        cancelRow.status !== "cancelled"
+      ) ||
+      cancelRow.request_id !== operationRequestId ||
+      cancelRow.user_id !== body.userId ||
+      typeof cancelRow.admin_user_id !== "string" ||
+      !UUID_RE.test(cancelRow.admin_user_id)
+    ) {
+      return NextResponse.json(
+        { error: "action_failed", operationRequestId },
+        { status: 500 },
+      );
+    }
+    const correlation: AccountReactivationCorrelation = {
+      requestId: operationRequestId,
+      adminId: cancelRow.admin_user_id,
+      userId: body.userId,
+    };
+    let outcome;
+    try {
+      outcome = await processAccountReactivationJob(
+        admin,
+        correlation,
+        workerDeadline,
+      );
+    } catch (error) {
+      log.error("admin.reactivate_cancel_job_throw", {
+        userId: body.userId,
+        operationRequestId,
+        ...errInfo(error),
+      });
+      return NextResponse.json(
+        {
+          error: "reactivation_cancellation_pending",
+          operationRequestId,
+        },
+        { status: 503 },
+      );
+    }
+    if (outcome.kind === "cancelled") {
+      return NextResponse.json(outcome.result);
+    }
+    if (outcome.kind === "completed") {
+      return NextResponse.json(
+        { error: "reactivation_already_completed", operationRequestId },
+        { status: 409 },
+      );
+    }
+    try {
+      const status = await getAccountReactivationStatus(
+        admin,
+        correlation,
+        workerDeadline,
+      );
+      if (status.status === "cancelled" && status.result) {
+        return NextResponse.json(status.result);
+      }
+      if (status.status === "completed") {
+        return NextResponse.json(
+          {
+            error: "reactivation_already_completed",
+            operationRequestId,
+          },
+          { status: 409 },
+        );
+      }
+    } catch (error) {
+      log.error("admin.reactivate_cancel_status_fail", {
+        userId: body.userId,
+        operationRequestId,
+        ...errInfo(error),
+      });
+    }
+    return NextResponse.json(
+      {
+        error: "reactivation_cancellation_pending",
+        operationRequestId,
+      },
+      { status: 503 },
+    );
   }
 
-  log.info("admin.reactivate_success", { userId: body.userId, adminId: gate.user.id });
-  return NextResponse.json({ ok: true, ...(data as Record<string, unknown>) });
+  const requestId = deterministicAdminRequestId(
+    "account_reactivate",
+    gate.user.id,
+    body.userId,
+    {
+      emailOverride,
+      expectedDeletedAt,
+      expectedWithdrawalGeneration,
+      reason,
+      userId: body.userId,
+    },
+  );
+
+  let beginCall: Awaited<ReturnType<typeof admin.rpc>>;
+  try {
+    beginCall = await runAccountReactivationBeforeDeadline(
+      workerDeadline,
+      () =>
+        Promise.resolve(
+          admin.rpc("admin_begin_account_reactivation", {
+            p_user_id: body.userId,
+            p_admin: gate.user.id,
+            p_reason: reason,
+            p_email_override: emailOverride,
+            p_expected_deleted_at: expectedDeletedAt,
+            p_expected_withdrawal_generation:
+              expectedWithdrawalGeneration,
+            p_request_id: requestId,
+          }),
+        ),
+    );
+  } catch (error) {
+    log.error("admin.reactivate_begin_throw", {
+      userId: body.userId,
+      ...errInfo(error),
+    });
+    return NextResponse.json({ error: "action_failed" }, { status: 500 });
+  }
+  if (beginCall.error) {
+    const code = adminRpcErrorCode(beginCall.error);
+    log.warn("admin.reactivate_begin_fail", {
+      userId: body.userId,
+      code,
+      ...errInfo(beginCall.error),
+    });
+    return NextResponse.json(
+      { error: code },
+      { status: mutationErrorStatus(code) },
+    );
+  }
+
+  const begin = parseAccountReactivationBeginResult(beginCall.data);
+  if (!begin) {
+    log.error("admin.reactivate_begin_invalid_result", {
+      userId: body.userId,
+    });
+    return NextResponse.json({ error: "action_failed" }, { status: 500 });
+  }
+  if (!begin.pending) {
+    if (!begin.accountReactivated) {
+      return NextResponse.json(
+        {
+          error: "reactivation_cancelled",
+          operationRequestId:
+            begin.operationRequestId ?? requestId,
+        },
+        { status: 409 },
+      );
+    }
+    log.info("admin.reactivate_replay_complete", {
+      userId: body.userId,
+      adminId: gate.user.id,
+    });
+    return NextResponse.json({
+      ok: true,
+      userId: body.userId,
+      accountReactivated: true,
+      idempotent: true,
+    });
+  }
+  if (isDeletedMarker(begin.email)) {
+    log.error("admin.reactivate_begin_marker_email", {
+      userId: body.userId,
+    });
+    return NextResponse.json(
+      {
+        error: "auth_email_restore_failed",
+        operationRequestId: begin.operationRequestId,
+      },
+      { status: 500 },
+    );
+  }
+
+  const correlation: AccountReactivationCorrelation = {
+    requestId: begin.operationRequestId,
+    adminId: gate.user.id,
+    userId: body.userId,
+  };
+  let outcome;
+  try {
+    outcome = await processAccountReactivationJob(
+      admin,
+      correlation,
+      workerDeadline,
+    );
+  } catch (error) {
+    log.error("admin.reactivate_job_throw", {
+      userId: body.userId,
+      operationRequestId: begin.operationRequestId,
+      ...errInfo(error),
+    });
+    return NextResponse.json(
+      {
+        error: "reactivation_pending",
+        accountReactivated: false,
+        operationRequestId: begin.operationRequestId,
+      },
+      { status: 503 },
+    );
+  }
+
+  if (outcome.kind === "completed") {
+    log.info("admin.reactivate_success", {
+      userId: body.userId,
+      adminId: gate.user.id,
+      attemptCount: outcome.attemptCount,
+    });
+    return NextResponse.json(outcome.result);
+  }
+  if (outcome.kind === "cancelled") {
+    return NextResponse.json(
+      {
+        error: "reactivation_cancelled",
+        operationRequestId: begin.operationRequestId,
+      },
+      { status: 409 },
+    );
+  }
+
+  // A route and cron worker can race, or the fenced finish response can be
+  // lost. Read the exact admin+target+request status before deciding that this
+  // delivery is still pending; never turn generic idle into a false 200.
+  try {
+    const status = await getAccountReactivationStatus(
+      admin,
+      correlation,
+      workerDeadline,
+    );
+    if (status.status === "completed" && status.result) {
+      log.info("admin.reactivate_status_recovered", {
+        userId: body.userId,
+        adminId: gate.user.id,
+        operationRequestId: begin.operationRequestId,
+      });
+      return NextResponse.json(status.result);
+    }
+    if (status.status === "cancelled") {
+      return NextResponse.json(
+        {
+          error: "reactivation_cancelled",
+          operationRequestId: begin.operationRequestId,
+        },
+        { status: 409 },
+      );
+    }
+  } catch (error) {
+    log.error("admin.reactivate_status_fail", {
+      userId: body.userId,
+      operationRequestId: begin.operationRequestId,
+      ...errInfo(error),
+    });
+    return NextResponse.json(
+      {
+        error: "reactivation_pending",
+        accountReactivated: false,
+        operationRequestId: begin.operationRequestId,
+      },
+      { status: 503 },
+    );
+  }
+
+  log.warn("admin.reactivate_queued", {
+    userId: body.userId,
+    operationRequestId: begin.operationRequestId,
+    outcome: outcome.kind,
+    ...(outcome.kind === "pending"
+      ? {
+          attemptCount: outcome.attemptCount,
+          failure: outcome.failure,
+          retryRecorded: outcome.retryRecorded,
+        }
+      : {}),
+  });
+  return NextResponse.json(
+    {
+      error: "reactivation_pending",
+      accountReactivated: false,
+      operationRequestId: begin.operationRequestId,
+    },
+    { status: 503 },
+  );
 }

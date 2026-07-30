@@ -5,19 +5,22 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { FadeImg } from "@/components/FadeImg";
 import { signedDollUrl } from "@/lib/storage";
 import { PUBLIC_ENV } from "@/lib/env";
-import { SERVICE_NAME } from "@/lib/policy";
 import { dollDepartment, dollRank, dollTrait, reportNo } from "@/lib/report";
 import { asRole } from "@/lib/roles";
 import { getRoleConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
+import { log, errInfo } from "@/lib/log";
+import { SupabaseOperationError } from "@/lib/supabase-operation";
 
 const DEFAULT_BOSS = "/sprites/boss-default.png";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// signed URL(TTL 600) 박히는 페이지 — revalidate 는 TTL 600 안쪽이어야 만료 URL 안 박힘.
-//   60→480s(TTL 600 안, 120s 마진): 크롤러 차단(robots) 후 ISR write 대폭 감소. takedown 등은 명시 revalidatePath(즉시).
-export const revalidate = 480;
+// private Storage signed URL을 HTML에 넣으므로 ISR stale 결과를 사용할 수 없다.
+// 장기간 무방문 뒤 첫 요청도 요청 시점에 새 URL을 발급한다.
+export const dynamic = "force-dynamic";
 
 type DollRow = {
   id: string;
@@ -29,12 +32,18 @@ type DollRow = {
 };
 
 async function fetchDoll(id: string): Promise<DollRow | null> {
+  if (!UUID_RE.test(id)) return null;
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("dolls")
     .select("id, image_url, created_at, role, deleted_at, profiles(display_name)")
     .eq("id", id)
     .single();
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    log.warn("doll.detail_query_fail", { dollId: id, ...errInfo(error) });
+    throw new SupabaseOperationError("doll.detail_query", error);
+  }
   if (!data) return null;
   // image_url=경로(raw) 유지. 서명/삭제 분기는 렌더에서(deleted→기본보스, 아니면 signedDollUrl).
   // invisible takedown(0034): 삭제 캐릭터도 404 안 하고 캐릭터 영역만 기본 부장님으로 대체.
@@ -48,7 +57,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const doll = await fetchDoll(id);
-  if (!doll) return { title: SERVICE_NAME };
+  if (!doll) return { title: "캐릭터를 찾을 수 없음" };
   const name = doll.profiles?.display_name ?? "익명";
   const role = asRole(doll.role);
   const cfg = await getRoleConfig();
@@ -98,7 +107,7 @@ export default async function DollPage({
   // 삭제(takedown)면 기본 부장님(public sprite, 서명 X), 아니면 private 버킷 서명.
   const imgSrc = doll.deleted_at
     ? DEFAULT_BOSS
-    : (await signedDollUrl(doll.image_url, 600, { thumb: true })) ?? DEFAULT_BOSS;
+    : await signedDollUrl(doll.image_url, 600, { thumb: true });
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
@@ -123,7 +132,7 @@ export default async function DollPage({
                 className="aspect-[3/4] w-28 rounded-md border-2 border-zinc-400 bg-zinc-100"
                 fit="contain"
                 placeholder="shimmer"
-                fallbackSrc="/sprites/boss-default.png"
+                errorText="캐릭터 이미지를 불러오지 못했어요."
               />
               <p className="mt-1 text-center text-[10px] text-zinc-400">
                 (증명사진)

@@ -1,3 +1,5 @@
+import { ownRecordValue } from "@/lib/own-record";
+
 /**
  * 충전 상품 카탈로그 — **fallback default**(발행 소스는 DB config `growth_levers`).
  *
@@ -37,7 +39,12 @@ export const CREDIT_PRODUCT_LIST: CreditProduct[] = [
 
 /** productId allowlist 검증 — 유효하면 상품, 아니면 null. */
 export function getCreditProduct(id: string): CreditProduct | null {
-  return (CREDIT_PRODUCTS as Record<string, CreditProduct>)[id] ?? null;
+  return (
+    ownRecordValue(
+      CREDIT_PRODUCTS as unknown as Readonly<Record<string, CreditProduct>>,
+      id,
+    ) ?? null
+  );
 }
 
 /** 개당 단가(원, 반올림). */

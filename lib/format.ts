@@ -7,7 +7,9 @@
 export function fmtKstDateTime(iso: string | null): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleString("ko-KR", {
+    const date = new Date(iso);
+    if (!Number.isFinite(date.getTime())) return "—";
+    return date.toLocaleString("ko-KR", {
       timeZone: "Asia/Seoul",
       year: "numeric",
       month: "2-digit",

@@ -4,7 +4,8 @@ import type { GenerationPlan } from "./plan";
 export type SubmitResult = {
   index: number;
   requestId: string | null;
-  status: "submitted" | "failed";
+  status: "submitted" | "failed" | "uncertain";
+  httpStatus: number | null;
 };
 
 export type SubmitPlanInput = {
@@ -12,6 +13,12 @@ export type SubmitPlanInput = {
   faceImageUrl: string;
   /** route 가 config 로 만든 순수 계획(후보별 프롬프트·정장색 + 수치 스냅샷). */
   plan: GenerationPlan;
+  /** DB single-attempt claim을 확정한 후보와 그 후보 전용 callback URL. */
+  submitCandidates: readonly {
+    index: number;
+    webhookUrl: string;
+    input: Readonly<Record<string, unknown>>;
+  }[];
 };
 
 export type GeneratedImage = {
@@ -26,8 +33,8 @@ export interface CharacterProvider {
   /** template 분리 입력 지원 여부. */
   readonly supportsTemplate: boolean;
   /**
-   * 계획의 후보들을 fal 큐에 **allSettled 제출**(부분 성공 허용) — 접수된 requestId 를 유실하지 않는다.
-   * 후보별 {index, requestId, status} 반환. 결과 회수/저장은 generation-recovery 담당.
+   * DB claim이 확정된 후보만 fal 큐에 각 1회 제출한다. transport 결과가 불확실하면
+   * 재시도하지 않고 uncertain을 반환하며 signed webhook이 requestId를 복구한다.
    */
   submitPlan(input: SubmitPlanInput): Promise<SubmitResult[]>;
 }

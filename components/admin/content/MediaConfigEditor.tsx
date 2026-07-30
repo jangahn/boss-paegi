@@ -1,12 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { createClient } from "@/lib/supabase/client";
 import { SITE_ASSETS_BUCKET } from "@/lib/storage-path";
 import type { MediaConfig } from "@/lib/config/domains/media-config";
+import { submitAdminConfigMutation } from "@/lib/admin-config-client";
+import {
+  parseAdminUploadConfirmAck,
+  parseAdminUploadInitAck,
+} from "@/lib/admin-upload-http-contract";
+import { PUBLIC_ENV } from "@/lib/env";
+import {
+  clearClientUploadOperation,
+  stableClientUploadOperation,
+} from "@/lib/client-upload-operation";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runClientMutation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
+import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -72,6 +88,9 @@ export function MediaConfigEditor({
   const [uploading, setUploading] = useState<Slot | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const busyRef = useRef(false);
+  const uploadRef = useRef(false);
+  const runScopedOperation = useClientOperationScope();
 
   const pathOf = (slot: Slot) => (slot === "og" ? paths.ogImagePath : paths.logoPath);
   const setSlotPath = (slot: Slot, p: string | null) =>
@@ -79,24 +98,130 @@ export function MediaConfigEditor({
 
   // 2-step 서명 업로드(site-asset) → { path, previewUrl(작은 transform) }. raw URL 미수신.
   const upload = async (file: File, slot: Slot): Promise<{ path: string; previewUrl: string }> => {
-    const r1 = await fetch("/api/admin/site-asset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mime: file.type, slot }),
+    const scope = `admin:site-asset:${slot}`;
+    const operation = await stableClientUploadOperation({
+      scope,
+      binding: `${slot}:${file.type}`,
+      blob: file,
     });
-    const d1 = (await r1.json()) as { path?: string; token?: string; error?: string };
-    if (!r1.ok || !d1.path || !d1.token) throw new Error(d1.error ?? "upload_init_failed");
+    const initBody = JSON.stringify({
+        mime: file.type,
+        slot,
+        requestId: operation.requestId,
+        month: operation.month,
+    });
+    const initOutcome = await runScopedOperation((signal) =>
+      runReplayedJsonMutation({
+        input: "/api/admin/site-asset",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: initBody,
+        },
+        signal,
+        classify: (response, raw) => {
+          const acknowledgement = response.ok
+            ? parseAdminUploadInitAck(raw, {
+                surface: "site",
+                slot,
+              })
+            : null;
+          if (acknowledgement) {
+            return {
+              kind: "confirmed",
+              value: acknowledgement,
+            };
+          }
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "site_upload_init_unconfirmed",
+            };
+          }
+          return {
+            kind: "rejected",
+            error: `site_upload_init_http_${response.status}`,
+          };
+        },
+      }),
+    );
+    if (initOutcome.kind !== "confirmed") {
+      throw new Error("upload_init_failed");
+    }
+    const d1 = initOutcome.value;
     const sb = createClient();
-    const { error } = await sb.storage.from(SITE_ASSETS_BUCKET).uploadToSignedUrl(d1.path, d1.token, file);
-    if (error) throw new Error("upload_failed");
-    const r2 = await fetch("/api/admin/site-asset", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: d1.path, slot }),
-    });
-    const d2 = (await r2.json()) as { path?: string; previewUrl?: string; error?: string };
-    if (!r2.ok || !d2.path || !d2.previewUrl) throw new Error(d2.error ?? "upload_confirm_failed");
-    return { path: d2.path, previewUrl: d2.previewUrl };
+    const uploadOutcome = await runScopedOperation((signal) =>
+      runClientMutation({
+        attempt: async () => {
+          const { error } = await sb.storage
+            .from(SITE_ASSETS_BUCKET)
+            .uploadToSignedUrl(d1.path, d1.token, file);
+          return error
+            ? { kind: "rejected" as const, error }
+            : { kind: "confirmed" as const, value: true };
+        },
+        signal,
+        deadlineMs: 60_000,
+        attemptMs: 45_000,
+      }),
+    );
+    if (uploadOutcome.kind !== "confirmed") {
+      throw new Error("upload_failed");
+    }
+    const confirmBody = JSON.stringify({ path: d1.path, slot });
+    const confirmOutcome = await runScopedOperation((signal) =>
+      runReplayedJsonMutation({
+        input: "/api/admin/site-asset",
+        init: {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: confirmBody,
+        },
+        signal,
+        classify: (response, raw) => {
+          const acknowledgement = response.ok
+            ? parseAdminUploadConfirmAck(raw, {
+                path: d1.path,
+                bucket: SITE_ASSETS_BUCKET,
+                urlField: "previewUrl",
+                storageUrl: PUBLIC_ENV.SUPABASE_URL,
+              })
+            : null;
+          if (acknowledgement) {
+            return {
+              kind: "confirmed",
+              value: acknowledgement,
+            };
+          }
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "site_upload_confirm_unconfirmed",
+            };
+          }
+          return {
+            kind: "rejected",
+            error: `site_upload_confirm_http_${response.status}`,
+          };
+        },
+      }),
+    );
+    if (confirmOutcome.kind !== "confirmed") {
+      throw new Error("upload_confirm_failed");
+    }
+    const d2 = confirmOutcome.value;
+    clearClientUploadOperation(scope, operation.requestId);
+    return { path: d2.path, previewUrl: d2.url };
   };
 
   // 저해상도 경고(차단 아님) — 자연 크기가 권장 미만이면 안내만.
@@ -119,7 +244,8 @@ export function MediaConfigEditor({
   };
 
   const onPick = async (file: File | undefined, slot: Slot) => {
-    if (!file || uploading) return;
+    if (!file || uploadRef.current) return;
+    uploadRef.current = true;
     setUploading(slot);
     setMsg(null);
     checkLowRes(file, slot);
@@ -131,6 +257,7 @@ export function MediaConfigEditor({
       const code = (e as Error).message;
       setMsg({ ok: false, text: ERR_KO[code] ?? "업로드 실패" });
     } finally {
+      uploadRef.current = false;
       setUploading(null);
     }
   };
@@ -142,26 +269,33 @@ export function MediaConfigEditor({
   };
 
   const submit = async () => {
-    if (busy || uploading) return;
+    if (busyRef.current || uploadRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "media_config", value: paths, baseVersion }),
-      });
-      const out = (await res.json().catch(() => ({}))) as { ok?: boolean; version?: number; error?: string };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      const result = await runScopedOperation((signal) =>
+        submitAdminConfigMutation({
+          body: {
+            key: "media_config",
+            value: paths,
+            baseVersion,
+          },
+          baseVersion,
+          signal,
+        }),
+      );
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 공유 이미지·로고가 다음 로드부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };

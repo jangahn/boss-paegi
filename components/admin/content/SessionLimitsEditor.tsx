@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import type { SessionLimits } from "@/lib/config/domains/session";
+import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
@@ -27,6 +28,7 @@ export function SessionLimitsEditor({
   maxScoreHard: number;
 }) {
   const router = useRouter();
+  const submitAdminConfigMutation = useAdminConfigMutation();
   const [playSec, setPlaySec] = useState(String(initial.maxPlaySeconds));
   const [score, setScore] = useState(String(initial.maxScore));
   const [baseVersion, setBaseVersion] = useState(version);
@@ -39,22 +41,16 @@ export function SessionLimitsEditor({
     setMsg(null);
     try {
       const value = { maxPlaySeconds: Number(playSec), maxScore: Number(score) };
-      const res = await fetch("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "session_limits", value, baseVersion }),
+      const result = await submitAdminConfigMutation({
+        body: { key: "session_limits", value, baseVersion },
+        baseVersion,
       });
-      const out = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        version?: number;
-        error?: string;
-      };
-      if (res.ok && out.ok) {
-        setBaseVersion(out.version ?? baseVersion + 1);
+      if (result.ok) {
+        setBaseVersion(result.ack.version);
         setMsg({ ok: true, text: "발행됐어요. 다음 판부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[out.error ?? ""] ?? out.error ?? "저장 실패" });
+        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

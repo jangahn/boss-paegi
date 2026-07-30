@@ -6,7 +6,23 @@ import type { ChallengeSlot } from "@/app/play/useBadgeChallenge";
  * 인게임 "도전 과제" HUD — 획득 임박 뱃지 3개(진행바) 라이브. 획득 순간 ✅(useBadgeChallenge).
  * 컴팩트(소형 폰서 캐릭터 가림 최소화): 좁은 폭 + 숫자 없이 progress bar 만. SpeechBubble 아래(top-28%).
  */
-export function BadgeChallenge({ slots }: { slots: ChallengeSlot[] }) {
+export function BadgeChallenge({
+  slots,
+  error,
+}: {
+  slots: ChallengeSlot[];
+  error?: string | null;
+}) {
+  if (error) {
+    return (
+      <div
+        role="status"
+        className="pointer-events-none absolute left-2 top-[28%] z-10 max-w-36 rounded-lg bg-black/70 px-2 py-1.5 text-[9px] text-amber-200 backdrop-blur-sm sm:left-3"
+      >
+        🏅 {error}
+      </div>
+    );
+  }
   if (!slots.length) return null;
   return (
     <div className="pointer-events-none absolute left-2 top-[28%] z-10 w-[5.5rem] sm:left-3 sm:w-24">

@@ -7,13 +7,16 @@ const PADDING_RATIO = 0.12;
 const MAX_DIM = 1024;
 const ASPECT_W = 3;
 const ASPECT_H = 4;
+export const IMAGE_INPUT_MAX_PIXELS = 40_000_000;
 
 /**
  * 업로드된 입력 이미지를 768×1024 (3:4) 로 cover-crop.
  * 클라이언트가 이미 crop 했지만 비율이 정확히 3:4 보장 안 될 수 있어서 한 번 더 보정.
  */
 export async function prepareInputImage(input: ArrayBuffer): Promise<Buffer> {
-  return sharp(Buffer.from(input))
+  return sharp(Buffer.from(input), {
+    limitInputPixels: IMAGE_INPUT_MAX_PIXELS,
+  })
     .resize({
       width: INPUT_W,
       height: INPUT_H,
@@ -22,6 +25,24 @@ export async function prepareInputImage(input: ArrayBuffer): Promise<Buffer> {
     })
     .jpeg({ quality: 90 })
     .toBuffer();
+}
+
+/** Provider JPEG evidence must match both its declared geometry and bytes. */
+export async function assertGeneratedJpegEvidence(
+  input: Buffer,
+  expected: { width: number; height: number },
+): Promise<void> {
+  const metadata = await sharp(input, {
+    limitInputPixels: IMAGE_INPUT_MAX_PIXELS,
+  }).metadata();
+  if (
+    metadata.format !== "jpeg" ||
+    metadata.width !== expected.width ||
+    metadata.height !== expected.height ||
+    (metadata.pages ?? 1) !== 1
+  ) {
+    throw new Error("generated_image_evidence_mismatch");
+  }
 }
 
 /**
@@ -35,7 +56,9 @@ export async function normalizeDollImage(input: ArrayBuffer | Buffer): Promise<B
   const buf: Buffer = Buffer.isBuffer(input) ? input : Buffer.from(input as ArrayBuffer);
 
   // 1) trim transparent edges → 캐릭터 bbox
-  const trimmed = await sharp(buf)
+  const trimmed = await sharp(buf, {
+    limitInputPixels: IMAGE_INPUT_MAX_PIXELS,
+  })
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 10 })
     .toBuffer({ resolveWithObject: true });
   let { data, info } = trimmed;

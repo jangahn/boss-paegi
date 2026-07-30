@@ -36,6 +36,8 @@ export type AdminOrder = {
   pay_channel: string | null;
   created_at: string;
   paid_at: string | null;
+  /** PAID이지만 live 크레딧을 지급하지 않은 quarantine marker. null만 정상 지급. */
+  error_message: string | null;
   user_id: string;
   display_name: string | null;
   /** 환불 saga(0062) 누계 — committed attempt 합. 부분환불>0, 전액=credits. */
@@ -162,6 +164,8 @@ export type MemberInfo = {
   isAdmin: boolean;
   /** 탈퇴(soft-delete) 시각. null=활성. 있으면 어드민 재활성 대상(0037). */
   deletedAt: string | null;
+  /** 동일 timestamptz 재사용에도 수명주기를 구분하는 단조 증가 탈퇴 세대. */
+  withdrawalGeneration: number | null;
   /** 어뷰징 상태(0050): clean|flagged|banned. banned=공개 등록 차단. */
   abuseStatus: string;
 };

@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getRoleConfigWithMeta } from "@/lib/config/getters";
 import { RoleContentEditor } from "@/components/admin/content/RoleContentEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoleContentPage() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { value, version, source, invalid } = await getRoleConfigWithMeta();
   return (
     <main className="flex flex-1 flex-col px-5 py-8">

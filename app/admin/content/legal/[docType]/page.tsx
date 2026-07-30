@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getLegalAdmin } from "@/lib/legal";
 import { isDocType, DOC_LABEL, DOC_PATH } from "@/lib/legal/types";
 import { LegalDocEditor } from "@/components/admin/content/LegalDocEditor";
@@ -11,6 +12,9 @@ export default async function LegalEditPage({
 }: {
   params: Promise<{ docType: string }>;
 }) {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { docType } = await params;
   if (!isDocType(docType)) notFound();
   const { draft, versions } = await getLegalAdmin(docType);

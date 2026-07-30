@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PUBLIC_ENV } from "@/lib/env";
+import { supabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
 /**
  * Next.js proxy(미들웨어) helper — Supabase 세션 토큰 refresh.
@@ -15,6 +16,7 @@ export async function updateSession(request: NextRequest) {
     PUBLIC_ENV.SUPABASE_URL,
     PUBLIC_ENV.SUPABASE_ANON_KEY,
     {
+      cookieOptions: supabaseAuthCookieOptions(),
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (toSet) => {

@@ -21,8 +21,45 @@ export const SCORE_VISIBLE_STATUSES: readonly ReviewStatus[] = [
 /** SQL where 절용 리터럴 — `review_status in ('registered','cleared')`. */
 export const SCORE_VISIBLE_STATUS_SQL = "('registered','cleared')";
 
-/** 공개면 노출 가능 여부. null/undefined(구 스키마)는 registered 취급 → 노출. */
+const REVIEW_STATUS_SET: ReadonlySet<string> = new Set([
+  "registered",
+  "pending",
+  "cleared",
+  "voided",
+]);
+
+export function isReviewStatus(value: unknown): value is ReviewStatus {
+  return typeof value === "string" && REVIEW_STATUS_SET.has(value);
+}
+
+export function parseScoreVisibilityRow(
+  value: unknown,
+  expectedScoreId: string,
+): ReviewStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("invalid_score_visibility_row");
+  }
+  const row = value as Record<string, unknown>;
+  const keys = Object.keys(row);
+  if (
+    keys.length !== 2 ||
+    !keys.includes("id") ||
+    !keys.includes("review_status") ||
+    row.id !== expectedScoreId ||
+    !isReviewStatus(row.review_status)
+  ) {
+    throw new Error("invalid_score_visibility_row");
+  }
+  return row.review_status;
+}
+
+/**
+ * 공개면 노출 가능 여부.
+ *
+ * 구 스키마 호환은 호출부가 `review_status` 컬럼 부재를 정확히 확인한 뒤 명시적인
+ * `registered` 값으로 넘긴다. 현재 스키마에서 null/undefined/미지값은 손상된 권위
+ * 응답이므로 공개하지 않는다.
+ */
 export function isVisibleReviewStatus(status: string | null | undefined): boolean {
-  if (status == null) return true; // 0050 미적용 환경 호환(기존 행=registered)
   return status === "registered" || status === "cleared";
 }

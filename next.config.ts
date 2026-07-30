@@ -1,23 +1,45 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import {
+  API_NO_STORE_HEADERS,
+  GLOBAL_SECURITY_HEADERS,
+} from "./lib/security-headers.ts";
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   images: {
     // next/image 최적화 결과 캐시 하한(기본 60s 라 /_next/image 가 max-age=0 처럼 재검증) — 31일.
     minimumCacheTTL: 2678400,
-    remotePatterns: [
-      { protocol: "https", hostname: "*.fal.media" },
-      { protocol: "https", hostname: "fal.media" },
-      // Supabase Storage 만 — 호스트 전체 개방 대신 storage 경로로 제한.
-      // 핵심: render(변환) 경로(로고 등 next/image 소비). object(원본)는 폴백/디버그용.
-      { protocol: "https", hostname: "*.supabase.co", pathname: "/storage/v1/render/image/public/**" },
-      { protocol: "https", hostname: "*.supabase.co", pathname: "/storage/v1/object/public/**" },
+    // 공개 config 로 바뀌는 원격 로고는 이미 Supabase에서 640px로 변환된 자산이라
+    // <Image unoptimized>로 직접 전달한다. 멀티테넌트 fal.media/*.supabase.co를
+    // /_next/image allowlist에 넣으면 누구나 타 계정 URL을 Vercel 비용으로 변환할 수 있다.
+    remotePatterns: [],
+    // 직접 /_next/image 호출도 서비스가 가진 단일 정적 fallback만, query 없이 허용.
+    localPatterns: [
+      {
+        pathname: "/logo.png",
+        search: "",
+      },
     ],
+    qualities: [75],
+    // 현재 허용된 원격 원본은 없으며, 향후 추가돼도 redirect로 allowlist 밖을
+    // 따라가지 않게 기본(3회)보다 엄격하게 닫는다.
+    maximumRedirects: 0,
   },
   // 정적 public/ 이미지 장기 캐시 — Next 기본 `max-age=0, must-revalidate`(재방문마다 304 round-trip)가
   // 재방문 즉시 표시를 막던 진짜 원인. fade 제거 후 '빠른 표시'를 이 캐싱이 담당.
   async headers() {
     return [
+      {
+        source: "/(.*)",
+        headers: [...GLOBAL_SECURITY_HEADERS],
+      },
+      {
+        // 새 API가 route-local header를 빠뜨려도 회원/어드민/결제/서명 URL
+        // 응답이 공유 캐시에 들어가지 않는 전역 fail-closed 기본값.
+        source: "/api/:path*",
+        headers: [...API_NO_STORE_HEADERS],
+      },
       {
         // 게임/기본 자산(경로 고정·거의 불변) → 1년 immutable. ⚠ 교체 시 파일명 변경 필요(경로 고정이라 캐시 안 깸).
         source: "/:dir(sprites|bg|avatars)/:path*",

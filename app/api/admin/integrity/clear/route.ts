@@ -1,34 +1,107 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
+import { readAdminJsonRequest } from "@/lib/http/admin-json-request";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminRpcErrorCode } from "@/lib/admin-rpc";
+import { deterministicAdminRequestId } from "@/lib/admin-operation-id";
+import { parseAdminIntegrityMutationResult } from "@/lib/admin-mutation";
+import { legacyAdminClientRefresh } from "@/lib/admin-client-compat";
 import { revalidatePath } from "next/cache";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SCORE_STATES = new Set(["registered", "pending", "cleared", "voided"]);
 
 /** 점수 정상 확인 → cleared(공개면 노출·cron 재flag 방지). */
 export async function POST(req: NextRequest) {
   const gate = await requireAdmin();
   if (!gate.ok) return memberGateResponse(gate);
 
-  const body = (await req.json().catch(() => null)) as { scoreId?: string; reason?: string } | null;
+  const requestBody = await readAdminJsonRequest(req);
+  if (!requestBody.ok) {
+    return NextResponse.json(
+      { error: requestBody.error },
+      { status: requestBody.status },
+    );
+  }
+  const body = requestBody.value as {
+    scoreId?: string;
+    reason?: string;
+    expectedState?: string;
+    expectedVersion?: number;
+  } | null;
+  const refresh = legacyAdminClientRefresh("integrityClear", body);
+  if (refresh) {
+    return NextResponse.json(refresh.body, { status: refresh.status });
+  }
   const reason = (body?.reason ?? "").trim();
-  if (!body?.scoreId || reason.length < 5 || reason.length > 500) {
+  if (
+    !body?.scoreId ||
+    !UUID_RE.test(body.scoreId) ||
+    !body.expectedState ||
+    !SCORE_STATES.has(body.expectedState) ||
+    !Number.isSafeInteger(body.expectedVersion) ||
+    (body.expectedVersion as number) < 0 ||
+    reason.length < 5 ||
+    reason.length > 500
+  ) {
     return NextResponse.json({ error: "reason_invalid" }, { status: 400 });
   }
+  const requestId = deterministicAdminRequestId(
+    "integrity_clear",
+    gate.user.id,
+    body.scoreId,
+    {
+      expectedState: body.expectedState,
+      expectedVersion: body.expectedVersion,
+      reason,
+    },
+  );
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("admin_clear_score", {
+  const { data, error } = await admin.rpc("admin_integrity_action_idempotent", {
+    p_action: "clear",
     p_admin_id: gate.user.id,
-    p_score_id: body.scoreId,
+    p_target_id: body.scoreId,
     p_reason: reason,
+    p_expected_state: body.expectedState,
+    p_expected_version: body.expectedVersion,
+    p_request_id: requestId,
   });
   if (error) {
-    log.warn("admin.integrity.clear_fail", { scoreId: body.scoreId, ...errInfo(error) });
-    return NextResponse.json({ error: adminRpcErrorCode(error) }, { status: 400 });
+    log.warn("admin.integrity.clear_fail", {
+      scoreId: body.scoreId,
+      ...errInfo(error),
+    });
+    const code = adminRpcErrorCode(error);
+    return NextResponse.json(
+      { error: code },
+      {
+        status:
+          code === "state_conflict"
+            ? 409
+            : code === "action_failed"
+              ? 500
+              : 400,
+      },
+    );
+  }
+  const result = parseAdminIntegrityMutationResult(data);
+  if (!result) {
+    log.error("admin.integrity.clear_invalid_result", {
+      scoreId: body.scoreId,
+    });
+    return NextResponse.json({ error: "action_failed" }, { status: 500 });
   }
   revalidatePath("/leaderboard");
-  log.info("admin.integrity.clear_ok", { scoreId: body.scoreId, adminId: gate.user.id });
-  return NextResponse.json({ ok: true, ...(data as object) });
+  log.info("admin.integrity.clear_ok", {
+    scoreId: body.scoreId,
+    adminId: gate.user.id,
+    noOp: result.noOp,
+    version: result.version,
+  });
+  return NextResponse.json(result);
 }

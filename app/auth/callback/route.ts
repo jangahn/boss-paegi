@@ -2,9 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
+import { syncOAuthProfile } from "@/lib/account-onboard";
 import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
-import { getCurrentLegalVersions } from "@/lib/legal";
+import { getCurrentLegalVersionsStrict } from "@/lib/legal/strict-versions";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
+import {
+  resolveDbRead,
+  resolveRequiredDbRead,
+  type AuthReadSource,
+} from "@/lib/auth-read-policy";
+import { requireSupabaseSuccess } from "@/lib/supabase-operation";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -29,6 +36,24 @@ export async function GET(request: NextRequest) {
   const redirectClear = (path: string) => {
     const res = redirect(path);
     res.cookies.set(MIGRATE_COOKIE, "", { maxAge: 0, path: "/" });
+    return res;
+  };
+  // DB 판정 불가 — 삭제/미동의/완료로 오분류하지 않고 동의 경계에 머문다.
+  // 세션·MIGRATE_COOKIE를 보존해 DB 복구 후 /consent가 신규/기존 정책대로 다시 판정한다.
+  const redirectReadRetry = (
+    userId: string,
+    source: AuthReadSource,
+    readError: unknown
+  ) => {
+    log.error("auth.callback_read_fail", {
+      userId,
+      source,
+      ...errInfo(readError),
+    });
+    const res = redirect(
+      `/consent?next=${encodeURIComponent(next)}&error=service_unavailable`
+    );
+    res.headers.set("Cache-Control", "no-store");
     return res;
   };
   // 탈퇴/이메일 게이트 — 세션 종료 + sb-* auth 쿠키·MIGRATE 만료 + no-store (잔존 세션 루프 방지, E2).
@@ -61,20 +86,51 @@ export async function GET(request: NextRequest) {
     return redirectClear("/login?error=exchange");
   }
   const admin = createAdminClient();
-  const { data: full } = await admin.auth.admin.getUserById(data.user.id);
-  const user = full?.user ?? data.user;
+  let user = data.user;
+  try {
+    const full = await requireSupabaseSuccess("auth.callback_user_read", () =>
+      admin.auth.admin.getUserById(data.user.id),
+    );
+    user = full.data.user ?? data.user;
+  } catch (readError) {
+    // 세션 교환 결과는 인증된 fallback이다. 관리자 API 장애는 명시적으로 관측하되
+    // 삭제/동의 DB 게이트를 건너뛰지는 않는다.
+    log.warn("auth.callback_user_read_fail", {
+      userId: data.user.id,
+      ...errInfo(readError),
+    });
+  }
   const profile = extractOAuthProfile(user);
 
   // 탈퇴(soft-delete) 계정 재로그인 차단 — 어떤 분기보다 먼저(0030). 세션·쿠키 정리(E2).
   if (!user.is_anonymous) {
-    const { data: delChk } = await admin
-      .from("profiles")
-      .select("deleted_at")
-      .eq("id", user.id)
-      .maybeSingle();
-    if ((delChk as { deleted_at?: string | null } | null)?.deleted_at) {
+    let profileResult;
+    try {
+      profileResult = await admin
+        .from("profiles")
+        .select("deleted_at")
+        .eq("id", user.id)
+        .maybeSingle();
+    } catch (readError) {
+      return redirectReadRetry(user.id, "profile", readError);
+    }
+    const profileRead = resolveRequiredDbRead("profile", profileResult);
+    if (!profileRead.ok) {
+      return redirectReadRetry(user.id, profileRead.source, profileRead.error);
+    }
+    if ((profileRead.data as { deleted_at?: string | null } | null)?.deleted_at) {
       log.info("auth.deleted_account_blocked", { userId: user.id });
-      await supabase.auth.signOut();
+      try {
+        await requireSupabaseSuccess("auth.callback_signout", () =>
+          supabase.auth.signOut(),
+        );
+      } catch (signoutError) {
+        // 응답의 auth cookie는 아래에서 강제 만료하므로 차단 자체는 유지한다.
+        log.warn("auth.callback_signout_fail", {
+          userId: user.id,
+          ...errInfo(signoutError),
+        });
+      }
       return signoutClear("/login?error=account_deleted");
     }
   }
@@ -86,36 +142,62 @@ export async function GET(request: NextRequest) {
       hasEmail: !!profile.email,
       verified: profile.emailVerified,
     });
-    await supabase.auth.signOut();
+    try {
+      await requireSupabaseSuccess("auth.callback_signout", () =>
+        supabase.auth.signOut(),
+      );
+    } catch (signoutError) {
+      log.warn("auth.callback_signout_fail", {
+        userId: user.id,
+        ...errInfo(signoutError),
+      });
+    }
     return signoutClear("/login?error=email_required");
   }
 
   // 익명 콜백(드묾) — 멤버 아님. 그대로.
   if (user.is_anonymous) return redirectClear(next);
 
-  // 비익명 — 동의여부로 분기(회원 생성은 consent API). member 동의 컬럼 + 현재 버전 병렬 조회.
-  const [memberRes, curr] = await Promise.all([
-    admin
+  // 비익명 — 동의여부로 분기(회원 생성은 consent API).
+  // no-row와 실제 member/legal 조회 실패를 구분해 오류에서는 MIGRATE를 보존하고 경계에 머문다.
+  let memberResult;
+  try {
+    memberResult = await admin
       .from("member_accounts")
       .select("age_confirmed_at, terms_version, privacy_version, email")
       .eq("user_id", user.id)
-      .maybeSingle(),
-    getCurrentLegalVersions(),
-  ]);
-  const m = memberRes.data as {
+      .maybeSingle();
+  } catch (readError) {
+    return redirectReadRetry(user.id, "member", readError);
+  }
+  const memberRead = resolveDbRead("member", memberResult);
+  if (!memberRead.ok) {
+    return redirectReadRetry(user.id, memberRead.source, memberRead.error);
+  }
+
+  let curr;
+  try {
+    curr = await getCurrentLegalVersionsStrict();
+  } catch (readError) {
+    return redirectReadRetry(user.id, "legal", readError);
+  }
+
+  const m = memberRead.data as {
     age_confirmed_at: string | null;
     terms_version: number | null;
     privacy_version: number | null;
     email: string | null;
   } | null;
 
-  // 기존 회원 이메일 동기화(동의 무관, best-effort).
-  if (m && profile.email && m.email !== profile.email) {
+  // Existing-member OAuth sync is lifecycle-fenced in one DB RPC. A dependency
+  // failure remains at the retry boundary; a delayed callback cannot write PII
+  // after account deletion.
+  if (m && profile.email) {
     try {
-      await admin.from("member_accounts").update({ email: profile.email }).eq("user_id", user.id);
+      await syncOAuthProfile(admin, user.id, profile);
       log.info("auth.member_email_synced", { userId: user.id });
     } catch (e) {
-      log.warn("auth.email_sync_fail", { userId: user.id, ...errInfo(e) });
+      return redirectReadRetry(user.id, "member", e);
     }
   }
 

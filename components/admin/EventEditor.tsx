@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
@@ -8,8 +8,29 @@ import { FadeImg } from "@/components/FadeImg";
 import { ModalShell } from "@/components/ModalShell";
 import { Markdown } from "@/components/events/Markdown";
 import { createClient } from "@/lib/supabase/client";
+import {
+  parseAdminUploadConfirmAck,
+  parseAdminUploadInitAck,
+} from "@/lib/admin-upload-http-contract";
+import { PUBLIC_ENV } from "@/lib/env";
 import { EVENTS_BUCKET } from "@/lib/storage-path";
 import { EVENT_TYPES, EVENT_TYPE_LABEL, type EventType, type EventView } from "@/lib/events/types";
+import {
+  clearClientUploadOperation,
+  stableClientUploadOperation,
+} from "@/lib/client-upload-operation";
+import {
+  isOperationRequestId,
+  parseAdminEventMutationResult,
+  parseAdminMutationReceipt,
+  type AdminEventMutationResult,
+} from "@/lib/admin-mutation";
+import {
+  clientMutationResponseNeedsReconciliation,
+  runClientMutation,
+  runReplayedJsonMutation,
+} from "@/lib/client-mutation";
+import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 /** ISO(UTC) → KST datetime-local(YYYY-MM-DDTHH:mm). 빈값 "". */
 function isoToKstLocal(iso: string | null): string {
@@ -21,6 +42,109 @@ function isoToKstLocal(iso: string | null): string {
 const inputCls =
   "w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40";
 
+type PendingEventSave = { requestId: string; targetKey: string };
+const EVENT_SAVE_STORAGE_KEY = "boss-paegi:admin-event-save";
+
+function readPendingEventSave(): PendingEventSave | null {
+  const raw = sessionStorage.getItem(EVENT_SAVE_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      isOperationRequestId(value.requestId) &&
+      typeof value.targetKey === "string" &&
+      (value.targetKey.startsWith("new:") ||
+        /^[0-9a-f-]{36}$/i.test(value.targetKey))
+    ) {
+      return {
+        requestId: value.requestId,
+        targetKey: value.targetKey,
+      };
+    }
+  } catch {
+    // Corrupt tab-local state has no authority and is removed below.
+  }
+  sessionStorage.removeItem(EVENT_SAVE_STORAGE_KEY);
+  return null;
+}
+
+function createPendingEventSave(id: string | null): PendingEventSave {
+  const pending = {
+    requestId: crypto.randomUUID(),
+    targetKey: id ?? `new:${crypto.randomUUID()}`,
+  };
+  sessionStorage.setItem(EVENT_SAVE_STORAGE_KEY, JSON.stringify(pending));
+  return pending;
+}
+
+function clearPendingEventSave() {
+  sessionStorage.removeItem(EVENT_SAVE_STORAGE_KEY);
+}
+
+type PendingEventSaveRecovery =
+  | { state: "aborted" }
+  | { state: "pending" }
+  | { state: "completed"; result: AdminEventMutationResult };
+
+type EventPostOutput = {
+  ok?: boolean;
+  id?: string;
+  version?: number;
+  error?: string;
+  code?: string;
+};
+
+async function recoverPendingEventSave(
+  pending: PendingEventSave,
+  signal?: AbortSignal,
+): Promise<PendingEventSaveRecovery> {
+  const requestBody = JSON.stringify({
+    operation: "event_save",
+    requestId: pending.requestId,
+    targetKey: pending.targetKey,
+  });
+  const outcome = await runReplayedJsonMutation({
+    input: "/api/admin/mutations/receipt",
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: requestBody,
+    },
+    signal,
+    classify: (response, body) => {
+      const receipt = response.ok
+        ? parseAdminMutationReceipt(body)
+        : null;
+      if (receipt) {
+        return { kind: "confirmed", value: receipt };
+      }
+      if (
+        clientMutationResponseNeedsReconciliation(
+          response.status,
+          response.ok,
+        )
+      ) {
+        return {
+          kind: "unconfirmed",
+          reason: "event_receipt_response_unconfirmed",
+        };
+      }
+      return {
+        kind: "rejected",
+        error: `event_receipt_http_${response.status}`,
+      };
+    },
+  });
+  if (outcome.kind !== "confirmed") {
+    throw new Error("event_save_recovery_failed");
+  }
+  const receipt = outcome.value;
+  if (receipt.state !== "completed") return { state: receipt.state };
+  const result = parseAdminEventMutationResult(receipt.result);
+  if (!result) throw new Error("event_save_recovery_result_invalid");
+  return { state: "completed", result };
+}
+
 /**
  * 이벤트/공지 편집기 — 단일 행 CRUD(버전 이력 없음).
  * 저장(초안/수정) · 발행/발행취소 · 삭제(소프트) · 커버/본문 이미지 업로드 · 마크다운 미리보기.
@@ -30,6 +154,7 @@ export function EventEditor({ event }: { event: EventView | null }) {
   const isNew = !event;
 
   const [id, setId] = useState<string | null>(event?.id ?? null);
+  const [version, setVersion] = useState(event?.mutation_version ?? 0);
   const [status, setStatus] = useState<"draft" | "published">(event?.status ?? "draft");
   const [type, setType] = useState<EventType>(event?.type ?? "notice");
   const [title, setTitle] = useState(event?.title ?? "");
@@ -55,12 +180,22 @@ export function EventEditor({ event }: { event: EventView | null }) {
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const busyRef = useRef(false);
+  const uploadRef = useRef(false);
+  const runScopedOperation = useClientOperationScope();
 
   const validForm = title.trim().length > 0 && summary.trim().length > 0 && body.trim().length > 0;
 
-  const savePayload = () => ({
+  const savePayload = (
+    pending: PendingEventSave,
+    eventId = id,
+    eventVersion = version,
+  ) => ({
     action: "save" as const,
-    id,
+    id: eventId,
+    expectedVersion: eventVersion,
+    requestId: pending.requestId,
+    targetKey: pending.targetKey,
     type,
     title: title.trim(),
     summary: summary.trim(),
@@ -78,40 +213,300 @@ export function EventEditor({ event }: { event: EventView | null }) {
     popupDismissDays: dismissDays,
   });
 
-  const post = async (payload: Record<string, unknown>) => {
-    const res = await fetch("/api/admin/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const out = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
-    return { ok: res.ok && out.ok !== false, out };
+  const post = async (
+    payload: Record<string, unknown>,
+  ): Promise<{
+    ok: boolean;
+    out: EventPostOutput;
+    status: number;
+    aborted: boolean;
+  }> => {
+    const requestBody = JSON.stringify(payload);
+    const outcome = await runScopedOperation((signal) =>
+      runReplayedJsonMutation<{
+        status: number;
+        result: AdminEventMutationResult;
+      }>({
+        input: "/api/admin/events",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        },
+        signal,
+        classify: (response, body) => {
+          const result = response.ok
+            ? parseAdminEventMutationResult(body)
+            : null;
+          if (result) {
+            return {
+              kind: "confirmed",
+              value: { status: response.status, result },
+            };
+          }
+          const errorBody =
+            body &&
+            typeof body === "object" &&
+            !Array.isArray(body)
+              ? (body as {
+                  error?: unknown;
+                  code?: unknown;
+                })
+              : null;
+          const error =
+            typeof errorBody?.error === "string"
+              ? errorBody.error
+              : undefined;
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "event_response_unconfirmed",
+              error,
+            };
+          }
+          return {
+            kind: "rejected",
+            error: {
+              status: response.status,
+              error,
+              code:
+                typeof errorBody?.code === "string"
+                  ? errorBody.code
+                  : undefined,
+            },
+          };
+        },
+      }),
+    );
+    if (outcome.kind === "confirmed") {
+      return {
+        ok: true,
+        out: outcome.value.result,
+        status: outcome.value.status,
+        aborted: false,
+      };
+    }
+    if (outcome.kind === "aborted") {
+      return {
+        ok: false,
+        out: { error: "요청이 취소됐어요." },
+        status: 0,
+        aborted: true,
+      };
+    }
+    const rejection =
+      outcome.kind === "rejected" &&
+      outcome.error &&
+      typeof outcome.error === "object" &&
+      !Array.isArray(outcome.error)
+        ? (outcome.error as {
+            status?: unknown;
+            error?: unknown;
+            code?: unknown;
+          })
+        : null;
+    return {
+      ok: false,
+      out: {
+        error:
+          typeof rejection?.error === "string"
+            ? rejection.error
+            : "서버 응답을 확인하지 못했어요. 같은 요청으로 다시 확인하세요.",
+        code:
+          typeof rejection?.code === "string"
+            ? rejection.code
+            : undefined,
+      },
+      status:
+        rejection && Number.isSafeInteger(rejection.status)
+          ? (rejection.status as number)
+          : 0,
+      aborted: false,
+    };
   };
+
+  // A response can be lost after the DB commit. On a same-tab reload, recover
+  // the durable receipt before offering another create/save.
+  useEffect(() => {
+    const pending = readPendingEventSave();
+    if (!pending) return;
+    const matchesPage = event
+      ? pending.targetKey === event.id
+      : pending.targetKey.startsWith("new:");
+    let cancelled = false;
+    if (!matchesPage) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setMsg({
+            ok: false,
+            text: "다른 글의 미확정 저장 결과가 이 탭에 남아 있어요. 원래 글을 다시 열어 결과를 확인하세요.",
+          });
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    void (async () => {
+      try {
+        const recovery = await runScopedOperation((signal) =>
+          recoverPendingEventSave(pending, signal),
+        );
+        if (cancelled) return;
+        if (recovery.state === "aborted") {
+          clearPendingEventSave();
+          return;
+        }
+        if (recovery.state !== "completed") return;
+        const recoveredId = recovery.result.id;
+        const recoveredVersion = recovery.result.version;
+        clearPendingEventSave();
+        setId(recoveredId);
+        setVersion(recoveredVersion);
+        setMsg({ ok: true, text: "이전 저장 요청의 완료를 확인했어요." });
+        if (!event) router.replace(`/admin/events/${recoveredId}`);
+        else router.refresh();
+      } catch {
+        // Keep the tab-local request UUID; a later retry cannot double-create.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [event, router, runScopedOperation]);
 
   // 이미지 업로드(커버/인라인) — 서명 URL 발급 → 스토리지 직접 업로드 → 검증·public URL.
   const upload = async (file: File): Promise<{ path: string; url: string }> => {
-    const r1 = await fetch("/api/admin/event-image", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mime: file.type }),
+    const scope = "admin:event-image";
+    const operation = await stableClientUploadOperation({
+      scope,
+      binding: file.type,
+      blob: file,
     });
-    const d1 = (await r1.json()) as { path?: string; token?: string; error?: string };
-    if (!r1.ok || !d1.path || !d1.token) throw new Error(d1.error ?? "upload_init_failed");
+    const initBody = JSON.stringify({
+        mime: file.type,
+        requestId: operation.requestId,
+        month: operation.month,
+    });
+    const initOutcome = await runScopedOperation((signal) =>
+      runReplayedJsonMutation({
+        input: "/api/admin/event-image",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: initBody,
+        },
+        signal,
+        classify: (response, raw) => {
+          const acknowledgement = response.ok
+            ? parseAdminUploadInitAck(raw, { surface: "event" })
+            : null;
+          if (acknowledgement) {
+            return {
+              kind: "confirmed",
+              value: acknowledgement,
+            };
+          }
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "event_upload_init_unconfirmed",
+            };
+          }
+          return {
+            kind: "rejected",
+            error: `event_upload_init_http_${response.status}`,
+          };
+        },
+      }),
+    );
+    if (initOutcome.kind !== "confirmed") {
+      throw new Error("upload_init_failed");
+    }
+    const d1 = initOutcome.value;
     const sb = createClient();
-    const { error } = await sb.storage.from(EVENTS_BUCKET).uploadToSignedUrl(d1.path, d1.token, file);
-    if (error) throw new Error("upload_failed");
-    const r2 = await fetch("/api/admin/event-image", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: d1.path }),
-    });
-    const d2 = (await r2.json()) as { path?: string; url?: string; error?: string };
-    if (!r2.ok || !d2.path || !d2.url) throw new Error(d2.error ?? "upload_confirm_failed");
+    const uploadOutcome = await runScopedOperation((signal) =>
+      runClientMutation({
+        attempt: async () => {
+          const { error } = await sb.storage
+            .from(EVENTS_BUCKET)
+            .uploadToSignedUrl(d1.path, d1.token, file);
+          return error
+            ? { kind: "rejected" as const, error }
+            : { kind: "confirmed" as const, value: true };
+        },
+        signal,
+        deadlineMs: 60_000,
+        attemptMs: 45_000,
+      }),
+    );
+    if (uploadOutcome.kind !== "confirmed") {
+      throw new Error("upload_failed");
+    }
+    const confirmBody = JSON.stringify({ path: d1.path });
+    const confirmOutcome = await runScopedOperation((signal) =>
+      runReplayedJsonMutation({
+        input: "/api/admin/event-image",
+        init: {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: confirmBody,
+        },
+        signal,
+        classify: (response, raw) => {
+          const acknowledgement = response.ok
+            ? parseAdminUploadConfirmAck(raw, {
+                path: d1.path,
+                bucket: EVENTS_BUCKET,
+                urlField: "url",
+                storageUrl: PUBLIC_ENV.SUPABASE_URL,
+              })
+            : null;
+          if (acknowledgement) {
+            return {
+              kind: "confirmed",
+              value: acknowledgement,
+            };
+          }
+          if (
+            clientMutationResponseNeedsReconciliation(
+              response.status,
+              response.ok,
+            )
+          ) {
+            return {
+              kind: "unconfirmed",
+              reason: "event_upload_confirm_unconfirmed",
+            };
+          }
+          return {
+            kind: "rejected",
+            error: `event_upload_confirm_http_${response.status}`,
+          };
+        },
+      }),
+    );
+    if (confirmOutcome.kind !== "confirmed") {
+      throw new Error("upload_confirm_failed");
+    }
+    const d2 = confirmOutcome.value;
+    clearClientUploadOperation(scope, operation.requestId);
     return { path: d2.path, url: d2.url };
   };
 
   const onPickCover = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || uploadRef.current) return;
+    uploadRef.current = true;
     setUploading("cover");
     setMsg(null);
     try {
@@ -122,12 +517,14 @@ export function EventEditor({ event }: { event: EventView | null }) {
     } catch (e) {
       setMsg({ ok: false, text: `커버 업로드 실패 (${(e as Error).message})` });
     } finally {
+      uploadRef.current = false;
       setUploading(null);
     }
   };
 
   const onPickInline = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || uploadRef.current) return;
+    uploadRef.current = true;
     setUploading("inline");
     setMsg(null);
     try {
@@ -136,88 +533,184 @@ export function EventEditor({ event }: { event: EventView | null }) {
     } catch (e) {
       setMsg({ ok: false, text: `본문 이미지 업로드 실패 (${(e as Error).message})` });
     } finally {
+      uploadRef.current = false;
       setUploading(null);
     }
   };
 
-  const save = async (): Promise<string | null> => {
-    const { ok, out } = await post(savePayload());
-    if (!ok || !out.id) {
+  const save = async (): Promise<{ id: string; version: number } | null> => {
+    const existing = readPendingEventSave();
+    const matchesCurrent =
+      !!existing &&
+      (existing.targetKey === id ||
+        (id === null && existing.targetKey.startsWith("new:")));
+    if (existing && !matchesCurrent) {
+      setMsg({
+        ok: false,
+        text: "다른 글의 미확정 저장 결과를 확인 중이에요. 해당 탭을 새로고침한 뒤 다시 시도하세요.",
+      });
+      return null;
+    }
+    let eventId = id;
+    let eventVersion = version;
+    if (existing) {
+      // A prior POST may have committed even though fetch rejected. Resolve
+      // that delivery under the database request lock before reusing or
+      // replacing it. If the form changed meanwhile, a completed create is
+      // first recovered and the current form is then saved as an update to
+      // that same row; it can never become a second create.
+      let recovery: PendingEventSaveRecovery;
+      try {
+        recovery = await runScopedOperation((signal) =>
+          recoverPendingEventSave(existing, signal),
+        );
+      } catch {
+        setMsg({
+          ok: false,
+          text: "이전 저장 결과를 확인하지 못했어요. 잠시 후 다시 시도하세요.",
+        });
+        return null;
+      }
+      if (recovery.state === "pending") {
+        setMsg({
+          ok: false,
+          text: "이전 저장 요청이 아직 처리 중이에요. 잠시 후 다시 시도하세요.",
+        });
+        return null;
+      }
+      if (recovery.state === "aborted") {
+        clearPendingEventSave();
+      } else {
+        if (id !== null && recovery.result.id !== id) {
+          setMsg({
+            ok: false,
+            text: "이전 저장 결과가 현재 글과 일치하지 않아요. 새로고침 후 확인하세요.",
+          });
+          return null;
+        }
+        clearPendingEventSave();
+        eventId = recovery.result.id;
+        eventVersion = recovery.result.version;
+        setId(eventId);
+        setVersion(eventVersion);
+      }
+    }
+    const pending = createPendingEventSave(eventId);
+    const { ok, out, status } = await post(
+      savePayload(pending, eventId, eventVersion),
+    );
+    if (
+      !ok ||
+      !out.id ||
+      !Number.isSafeInteger(out.version) ||
+      (out.version as number) < 0
+    ) {
+      // A received 4xx is a definitive non-commit/conflict. A 5xx can occur
+      // after commit (for example cache invalidation), so retain the UUID.
+      if (status >= 400 && status < 500) clearPendingEventSave();
       setMsg({ ok: false, text: out.error ?? "저장 실패" });
       return null;
     }
+    clearPendingEventSave();
     if (!id) setId(out.id);
-    return out.id;
+    setVersion(out.version as number);
+    return { id: out.id, version: out.version as number };
   };
 
   const onSave = async () => {
-    if (busy || !validForm) return;
+    if (busyRef.current || !validForm) return;
+    busyRef.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      const savedId = await save();
-      if (savedId) {
+      const saved = await save();
+      if (saved) {
         setMsg({ ok: true, text: "저장했어요." });
-        if (isNew) router.replace(`/admin/events/${savedId}`);
+        if (isNew) router.replace(`/admin/events/${saved.id}`);
         else router.refresh();
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const onPublish = async () => {
-    if (busy || !validForm) return;
+    if (busyRef.current || !validForm) return;
+    busyRef.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      const savedId = await save(); // 발행 전 최신 폼 저장
-      if (!savedId) return;
-      const { ok, out } = await post({ action: "publish", id: savedId });
+      const saved = await save(); // 발행 전 최신 폼 저장
+      if (!saved) return;
+      const { ok, out } = await post({
+        action: "publish",
+        id: saved.id,
+        expectedVersion: saved.version,
+      });
       if (ok) {
         setStatus("published");
+        if (Number.isSafeInteger(out.version)) {
+          setVersion(out.version as number);
+        }
         setMsg({ ok: true, text: "발행했어요 — 공개에 노출됩니다(노출 윈도우/플래그 기준)." });
         router.refresh();
       } else setMsg({ ok: false, text: out.error ?? "발행 실패" });
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const onUnpublish = async () => {
-    if (busy || !id) return;
+    if (busyRef.current || !id) return;
+    busyRef.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      const { ok, out } = await post({ action: "unpublish", id });
+      const { ok, out } = await post({
+        action: "unpublish",
+        id,
+        expectedVersion: version,
+      });
       if (ok) {
         setStatus("draft");
+        if (Number.isSafeInteger(out.version)) {
+          setVersion(out.version as number);
+        }
         setMsg({ ok: true, text: "발행을 취소했어요(초안으로). 공개 노출 중단." });
         router.refresh();
       } else setMsg({ ok: false, text: out.error ?? "발행취소 실패" });
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const onDelete = async () => {
-    if (busy || !id) return;
+    if (busyRef.current || !id) return;
+    busyRef.current = true;
     setBusy(true);
     setConfirmDelete(false);
     setMsg(null);
     try {
-      const { ok, out } = await post({ action: "delete", id });
+      const { ok, out } = await post({
+        action: "delete",
+        id,
+        expectedVersion: version,
+      });
       if (ok) router.replace("/admin/events");
       else setMsg({ ok: false, text: out.error ?? "삭제 실패" });
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -450,7 +943,7 @@ export function EventEditor({ event }: { event: EventView | null }) {
       </section>
 
       {confirmDelete && (
-        <ModalShell onClose={() => setConfirmDelete(false)}>
+        <ModalShell ariaLabel="이벤트 삭제 확인" onClose={() => setConfirmDelete(false)}>
           <h2 className="text-lg font-bold">이 글을 삭제할까요?</h2>
           <p className="mt-2 text-sm text-zinc-500">
             소프트 삭제됩니다 — 목록·상세·팝업·배너에서 즉시 사라져요. (행은 감사를 위해 보존됩니다.)

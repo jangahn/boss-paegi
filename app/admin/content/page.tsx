@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getEntry } from "@/lib/config/registry";
 import type { DomainKey } from "@/lib/config/keys";
 
@@ -19,7 +21,10 @@ const DOMAINS: { key: DomainKey; label: string; desc: string }[] = [
   { key: "generation_config", label: "캐릭터 생성", desc: "생성 프롬프트·수치(fal flux-pulid)·롤 변주·정장색" },
 ];
 
-export default function ContentHome() {
+export default async function ContentHome() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto w-full max-w-3xl">

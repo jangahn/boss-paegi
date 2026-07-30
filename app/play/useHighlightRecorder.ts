@@ -73,6 +73,25 @@ function recordingSupported(): boolean {
   );
 }
 
+/**
+ * A MediaRecorder can finish after its game has already been restarted (or
+ * the page unmounted).  Both the epoch and the cancellation bit are required:
+ * cleanup/setup can flip the shared cancellation ref back to `false` before
+ * the old black-frame probe resolves.
+ */
+export function isCurrentHighlightRecording(
+  candidateEpoch: number,
+  currentEpoch: number,
+  cancelled: boolean,
+): boolean {
+  return (
+    Number.isSafeInteger(candidateEpoch) &&
+    candidateEpoch >= 0 &&
+    candidateEpoch === currentEpoch &&
+    !cancelled
+  );
+}
+
 /** isTypeSupported 뿐 아니라 combined stream 으로 실제 생성까지 성공하는 첫 후보. audio 실패 시 video-only. */
 function buildRecorder(
   stream: MediaStream,
@@ -211,9 +230,27 @@ export function useHighlightRecorder(opts: {
   const attemptsRef = useRef(0);
   const lastComboRef = useRef(0);
   const cancelledRef = useRef(false);
+  // cleanup 뒤 즉시 시작된 새 판이 cancelledRef를 false로 되돌려도, 이전 판의
+  // 디코드/MediaRecorder 완료가 새 best clip을 덮지 못하게 하는 판 경계.
+  const recordingEpochRef = useRef(0);
 
   const consider = useCallback(
-    async (blob: Blob, sel: MimeSel, startScore: number, startedAt: number) => {
+    async (
+      blob: Blob,
+      sel: MimeSel,
+      startScore: number,
+      startedAt: number,
+      recordingEpoch: number,
+    ) => {
+      if (
+        !isCurrentHighlightRecording(
+          recordingEpoch,
+          recordingEpochRef.current,
+          cancelledRef.current,
+        )
+      ) {
+        return;
+      }
       const delta = Math.max(0, useGameStore.getState().score - startScore);
       const windowMs = Math.round(performance.now() - startedAt);
       if (blob.size === 0) {
@@ -223,7 +260,19 @@ export function useHighlightRecorder(opts: {
       // 새 best 후보일 때만 검정 검사(불필요한 디코드 회피)
       if (bestRef.current && delta <= bestRef.current.delta) return;
       // 검은 프레임이면 채택 거부 → 카드 폴백(fail-open: 분석 실패 시 정상 채택 유지)
-      if (await isConfidentBlack(blob)) {
+      const black = await isConfidentBlack(blob);
+      // 디코드 await 동안 재시작/언마운트될 수 있다. 여기서 다시 fence하지
+      // 않으면 이전 판 blob이 새 판 bestRef/state를 오염시킨다.
+      if (
+        !isCurrentHighlightRecording(
+          recordingEpoch,
+          recordingEpochRef.current,
+          cancelledRef.current,
+        )
+      ) {
+        return;
+      }
+      if (black) {
         log.warn("highlight.black_frame", { sizeBytes: blob.size, mime: sel.mime });
         return;
       }
@@ -265,6 +314,7 @@ export function useHighlightRecorder(opts: {
       return;
     }
     const { mr, sel } = built;
+    const recordingEpoch = recordingEpochRef.current;
     log.info(
       sel.audio ? "highlight.record_audio_attached" : "highlight.record_audio_missing",
       {}
@@ -294,13 +344,15 @@ export function useHighlightRecorder(opts: {
       if (activeMrRef.current === mr) activeMrRef.current = null;
       // canvas video track 만 stop — audio track(recordDest)은 재사용하므로 stop 금지(다음 녹화 무음 방지)
       videoStream.getVideoTracks().forEach((t) => t.stop());
-      await consider(blob, sel, startScore, startedAt);
+      await consider(blob, sel, startScore, startedAt, recordingEpoch);
     })();
     activeFinishRef.current = finish;
   }, [gameRef, consider]);
 
   useEffect(() => {
     if (!recording || !supported) return;
+    const recordingEpoch = recordingEpochRef.current + 1;
+    recordingEpochRef.current = recordingEpoch;
     cancelledRef.current = false;
     log.info("highlight.record_supported", { supported: true });
     // 새 게임 리셋
@@ -324,6 +376,9 @@ export function useHighlightRecorder(opts: {
 
     return () => {
       cancelledRef.current = true;
+      if (recordingEpochRef.current === recordingEpoch) {
+        recordingEpochRef.current += 1;
+      }
       window.clearInterval(id);
       earlyStopRef.current?.(); // 진행 중 녹화 즉시 마감(in-flight 처리 → consider 반영)
     };

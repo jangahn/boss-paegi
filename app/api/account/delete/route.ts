@@ -1,19 +1,54 @@
 import { NextResponse } from "next/server";
 import { requireAuthedNonDeleted, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { deletedEmailMarker } from "@/lib/oauth-metadata";
-import { DOLLS_BUCKET } from "@/lib/generation";
-import { dollPath } from "@/lib/storage-path";
 import { log, errInfo } from "@/lib/log";
+import {
+  parseAccountDeletionStart,
+  processAccountDeletionCleanupJob,
+} from "@/lib/account-delete-cleanup-job";
+import {
+  requireSupabaseData,
+  requireSupabaseSuccess,
+  SupabaseOperationError,
+} from "@/lib/supabase-operation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-const HIGHLIGHTS_BUCKET = "highlights"; // lib/share.ts·content-maintain 과 동일(미export).
+function failureContext(error: unknown) {
+  if (error instanceof SupabaseOperationError) {
+    return {
+      operation: error.operation,
+      ...errInfo(error.operationError),
+    };
+  }
+  return errInfo(error);
+}
+
+function deletionBlock(error: unknown): "payment_pending" | "financial_cleanup_pending" | null {
+  const cause =
+    error instanceof SupabaseOperationError
+      ? error.operationError
+      : error;
+  const message =
+    cause && typeof cause === "object" && "message" in cause
+      ? String((cause as { message?: unknown }).message)
+      : String(cause);
+  if (message.includes("payment_pending")) return "payment_pending";
+  if (
+    message.includes("open_refund_blocks_delete") ||
+    message.includes("open_issue_blocks_delete")
+  ) {
+    return "financial_cleanup_pending";
+  }
+  return null;
+}
 
 /**
  * 셀프 계정 탈퇴(soft-delete) — 개인정보 삭제권 대응.
- * 순서: pending 차단 → 이미지 경로 수집 → DB soft-delete RPC(먼저) → storage 삭제(best-effort)
- *      → auth.users 스크럽(best-effort). auth.users 는 삭제하지 않는다(결제기록 CASCADE 보호).
+ * DB RPC가 pending/금융 차단 확인 → asset manifest+durable cleanup job 생성 → 금융 quarantine
+ * → soft-delete를 한 트랜잭션으로 수행한다. Route는 job을 즉시 처리하되 외부 정리 실패/함수 중단은
+ * 202 accepted(cleanup=pending)로 로그아웃을 허용하고 content-maintain 재시도에 맡긴다.
  * 결제기록(orders)은 법령상 보존을 위해 남긴다.
  */
 export async function POST(req: Request) {
@@ -36,95 +71,111 @@ export async function POST(req: Request) {
   const userId = gate.user.id;
   const admin = createAdminClient();
 
-  // pending 결제 race 차단 — 최근(30분) pending 만(오래된 stale 은 허용; 탈퇴 후 완료돼도
-  //   mark_paid_and_grant 가 deleted_at 가드로 크레딧 미지급 → 영구 차단 방지).
-  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: pending } = await admin
-    .from("orders")
-    .select("order_uuid")
-    .eq("user_id", userId)
-    .eq("status", "pending")
-    .gt("created_at", cutoff)
-    .limit(1);
-  if (pending && pending.length > 0) {
-    return NextResponse.json({ error: "payment_pending" }, { status: 409 });
-  }
-
-  // 1) confirmed doll 이미지 경로를 RPC(=dolls row 삭제) 전에 수집.
-  const { data: dolls } = await admin
-    .from("dolls")
-    .select("image_url")
-    .eq("owner_id", userId);
-  const dollPaths = (dolls ?? [])
-    .map((d) => dollPath(d.image_url as string | null)) // private 후 image_url=경로(URL도 관용)
-    .filter((p): p is string => !!p);
-
-  // 1b) 탈퇴자 하이라이트 clip 경로 수집 — 크레딧 0(전면 스크럽)과 일관되게 얼굴 영상도 삭제.
-  //     RPC 는 highlight_deleted_at(render-block)만 세팅 → clip_path 잔존 → 여기서 객체 물리삭제.
-  const { data: hlScores } = await admin
-    .from("scores")
-    .select("id")
-    .eq("owner_id", userId);
-  const hlScoreIds = ((hlScores ?? []) as { id: string }[]).map((s) => s.id);
-  let highlightPaths: string[] = [];
-  if (hlScoreIds.length) {
-    const { data: hls } = await admin
-      .from("score_highlights")
-      .select("highlight_clip_path")
-      .in("score_id", hlScoreIds)
-      .not("highlight_clip_path", "is", null);
-    highlightPaths = ((hls ?? []) as { highlight_clip_path: string }[]).map(
-      (h) => h.highlight_clip_path
+  let start;
+  try {
+    const result = await requireSupabaseSuccess("account.soft_delete", () =>
+      admin.rpc("admin_soft_delete_account", {
+        p_user_id: userId,
+      }),
     );
-  }
+    start = parseAccountDeletionStart(result.data, userId);
 
-  // 2) DB soft-delete 먼저(실패 시 이미지 보존). 익명화 + dolls 삭제 + 크레딧 0 + 하이라이트 render-block + 고아 신고 종결.
-  const { error: rpcErr } = await admin.rpc("admin_soft_delete_account", {
-    p_user_id: userId,
-  });
-  if (rpcErr) {
-    log.error("account.soft_delete_fail", { userId, ...errInfo(rpcErr) });
+    // The RPC acknowledgement is necessary but not sufficient for a
+    // destructive success. Re-read the durable lifecycle state before the UI
+    // is allowed to sign out and present deletion as accepted.
+    const profile = await requireSupabaseData<{
+      id: string;
+      deleted_at: string | null;
+      display_name: string;
+      avatar_url: string | null;
+    } | null>("account.soft_delete.profile", () =>
+      admin
+        .from("profiles")
+        .select("id, deleted_at, display_name, avatar_url")
+        .eq("id", userId)
+        .maybeSingle(),
+    );
+    const member = await requireSupabaseData<{
+      user_id: string;
+      email: string | null;
+      gen_credits: number;
+    } | null>("account.soft_delete.member", () =>
+      admin
+        .from("member_accounts")
+        .select("user_id, email, gen_credits")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    );
+    if (
+      !profile ||
+      !member ||
+      profile.id !== userId ||
+      typeof profile.deleted_at !== "string" ||
+      profile.display_name !== "탈퇴한 사용자" ||
+      profile.avatar_url !== null ||
+      member.user_id !== userId ||
+      member.email !== null ||
+      member.gen_credits !== 0
+    ) {
+      throw new Error("account_soft_delete_postcondition_failed");
+    }
+  } catch (error) {
+    const blocked = deletionBlock(error);
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 409 });
+    }
+    log.error("account.soft_delete_fail", {
+      userId,
+      ...failureContext(error),
+    });
     return NextResponse.json({ error: "delete_failed" }, { status: 500 });
   }
 
-  // 3) storage 삭제 — best-effort. list+remove(wildcard 금지).
-  try {
-    if (dollPaths.length) await admin.storage.from(DOLLS_BUCKET).remove(dollPaths);
-    const { data: gens } = await admin.storage.from(DOLLS_BUCKET).list(`${userId}/candidates`);
-    for (const g of gens ?? []) {
-      const { data: files } = await admin.storage
-        .from(DOLLS_BUCKET)
-        .list(`${userId}/candidates/${g.name}`);
-      if (files && files.length) {
-        await admin.storage
-          .from(DOLLS_BUCKET)
-          .remove(files.map((f) => `${userId}/candidates/${g.name}/${f.name}`));
-      }
-    }
-    const { data: tmp } = await admin.storage.from(DOLLS_BUCKET).list(`tmp/face/${userId}`);
-    if (tmp && tmp.length) {
-      await admin.storage
-        .from(DOLLS_BUCKET)
-        .remove(tmp.map((f) => `tmp/face/${userId}/${f.name}`));
-    }
-    // (0034) 하이라이트 clip 물리삭제 — RPC 가 render-block 완료, 여기서 객체 제거(직링크 사망).
-    if (highlightPaths.length) {
-      await admin.storage.from(HIGHLIGHTS_BUCKET).remove(highlightPaths);
-    }
-  } catch (e) {
-    log.warn("account.storage_cleanup_fail", { userId, ...errInfo(e) });
+  if (start.cleanupStatus === "completed") {
+    log.info("account.delete_completed", { userId, cleanupJobId: start.jobId });
+    return NextResponse.json({ ok: true, cleanup: "completed" });
   }
 
-  // 4) auth.users 식별정보 스크럽 — best-effort. **deleteUser 금지**(CASCADE 파괴).
+  // SQL이 반환한 pre-delete manifest로 즉시 처리한다. claim/finish RPC 오류나 외부 실패가 나도
+  // durable pending/lease가 남으므로 탈퇴 자체를 실패로 되돌려 표현하지 않는다.
   try {
-    await admin.auth.admin.updateUserById(userId, {
-      email: deletedEmailMarker(userId),
-      user_metadata: {},
+    const outcome = await processAccountDeletionCleanupJob(admin, {
+      jobId: start.jobId,
+      userId,
+      manifest: start.manifest ?? undefined,
     });
-  } catch (e) {
-    log.warn("account.auth_scrub_fail", { userId, ...errInfo(e) });
+
+    if (outcome.kind === "completed") {
+      log.info("account.delete_completed", {
+        userId,
+        cleanupJobId: outcome.jobId,
+        cleanupAttempt: outcome.attemptCount,
+      });
+      return NextResponse.json({ ok: true, cleanup: "completed" });
+    }
+
+    log.warn("account.delete_cleanup_queued", {
+      userId,
+      cleanupJobId: start.jobId,
+      cleanupState: outcome.kind,
+      ...(outcome.kind === "pending"
+        ? {
+            cleanupAttempt: outcome.attemptCount,
+            cleanupFailure: outcome.failure,
+            retryRecorded: outcome.retryRecorded,
+          }
+        : {}),
+    });
+  } catch (error) {
+    log.warn("account.delete_cleanup_queued", {
+      userId,
+      cleanupJobId: start.jobId,
+      ...failureContext(error),
+    });
   }
 
-  log.info("account.delete_success", { userId });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    { accepted: true, cleanup: "pending" },
+    { status: 202 },
+  );
 }

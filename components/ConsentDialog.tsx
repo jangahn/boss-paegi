@@ -14,7 +14,7 @@ export function ConsentDialog({ onAgree }: { onAgree: () => void }) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">시작 전에 확인해주세요</h1>
+        <h2 className="text-2xl font-bold">시작 전에 확인해주세요</h2>
         <p className="mt-2 text-sm text-zinc-500">
           개인정보 보호와 안전한 이용을 위해 동의가 필요합니다.
         </p>

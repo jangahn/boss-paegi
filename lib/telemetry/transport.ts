@@ -1,18 +1,123 @@
 import type { TelemetryCollector } from "./collector";
-import type { TelemetryAck, TelemetryPayload } from "./types";
+import type { TelemetryPayload } from "./types";
+import { runBoundedClientJsonFetch } from "../client-mutation.ts";
 
 const ENDPOINT = "/api/telemetry";
+const POSTGRES_INT_MAX = 2_147_483_647;
+const RETRY_DEFAULT_MS = 10_000;
+const RETRY_MIN_MS = 1_000;
+const RETRY_MAX_MS = 60_000;
+
+type TelemetryHttpAck = {
+  ok: true;
+  mode: "full" | "summary" | "off";
+  reason?: string;
+  lastSeq: number;
+};
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expected.length &&
+    keys.every((key) => expected.includes(key))
+  );
+}
+
+/** Exact browser contract; failed/malformed responses must not discard deltas. */
+export function parseTelemetryHttpAck(
+  value: unknown,
+): TelemetryHttpAck | null {
+  const row = record(value);
+  if (
+    !row ||
+    row.ok !== true ||
+    (row.mode !== "full" &&
+      row.mode !== "summary" &&
+      row.mode !== "off") ||
+    !Number.isSafeInteger(row.lastSeq) ||
+    (row.lastSeq as number) < 0 ||
+    (row.lastSeq as number) > POSTGRES_INT_MAX
+  ) {
+    return null;
+  }
+  if (hasExactKeys(row, ["ok", "mode", "lastSeq"])) {
+    return {
+      ok: true,
+      mode: row.mode,
+      lastSeq: row.lastSeq as number,
+    };
+  }
+  if (
+    hasExactKeys(row, ["ok", "mode", "reason", "lastSeq"]) &&
+    typeof row.reason === "string" &&
+    row.reason.length > 0 &&
+    row.reason.length <= 100 &&
+    row.reason === row.reason.trim()
+  ) {
+    return {
+      ok: true,
+      mode: row.mode,
+      reason: row.reason,
+      lastSeq: row.lastSeq as number,
+    };
+  }
+  return null;
+}
+
+const MODE_RANK = {
+  full: 0,
+  summary: 1,
+  off: 2,
+} as const;
+
+/** Parse Retry-After without allowing an upstream value to stall a session forever. */
+export function telemetryRetryDelayMs(
+  value: string | null,
+  nowMs: number = Date.now(),
+): number {
+  let requestedMs = RETRY_DEFAULT_MS;
+  const trimmed = value?.trim() ?? "";
+  if (/^\d+$/.test(trimmed)) {
+    requestedMs = Number(trimmed) * 1_000;
+  } else if (trimmed) {
+    const at = Date.parse(trimmed);
+    if (Number.isFinite(at)) requestedMs = at - nowMs;
+  }
+  if (!Number.isFinite(requestedMs)) return RETRY_MAX_MS;
+  return Math.min(
+    RETRY_MAX_MS,
+    Math.max(RETRY_MIN_MS, Math.ceil(requestedMs)),
+  );
+}
 
 /**
  * 전송 — delta-only(미전송 이벤트만) + 누적 summary 스냅샷. in-flight 중 일반 flush 스킵.
  * 응답 mode(summary/off)면 timeline delta 전송 중단(요약만). 이탈은 sendBeacon(Blob json)로 마지막 delta.
  */
 export class TelemetryTransport {
+  private readonly collector: TelemetryCollector;
   private lastAckedSeq = 0;
-  private inFlight = false;
+  private inFlightCount = 0;
   private mode: "full" | "summary" | "off" = "full";
+  private retryNotBefore = 0;
+  private readonly now: () => number;
 
-  constructor(private readonly collector: TelemetryCollector) {}
+  constructor(
+    collector: TelemetryCollector,
+    options: { now?: () => number } = {},
+  ) {
+    this.collector = collector;
+    this.now = options.now ?? Date.now;
+  }
 
   private build(endReason: string | null): TelemetryPayload {
     return {
@@ -26,24 +131,61 @@ export class TelemetryTransport {
 
   /** 주기 flush(fetch keepalive). force=true 면 in-flight 무시(최종 flush). */
   async flush(endReason: string | null, opts?: { force?: boolean }): Promise<void> {
-    if (this.inFlight && !opts?.force) return;
-    this.inFlight = true;
+    if (!opts?.force && this.now() < this.retryNotBefore) return;
+    if (this.inFlightCount > 0 && !opts?.force) return;
+    this.inFlightCount += 1;
     try {
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(this.build(endReason)),
-        keepalive: true,
+      const delivery = await runBoundedClientJsonFetch({
+        input: ENDPOINT,
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(this.build(endReason)),
+          keepalive: true,
+        },
+        deadlineMs: 10_000,
+        attemptMs: 8_000,
       });
-      const ack = (await res.json().catch(() => null)) as TelemetryAck | null;
+      if (delivery.kind !== "confirmed") {
+        this.retryNotBefore = Math.max(
+          this.retryNotBefore,
+          this.now() + RETRY_DEFAULT_MS,
+        );
+        return;
+      }
+      const { response: res, body } = delivery.value;
+      if (!res.ok) {
+        this.retryNotBefore = Math.max(
+          this.retryNotBefore,
+          this.now() +
+            telemetryRetryDelayMs(
+              res.headers.get("retry-after"),
+              this.now(),
+            ),
+        );
+        return;
+      }
+      const ack = parseTelemetryHttpAck(body);
       if (ack) {
-        if (typeof ack.lastSeq === "number") this.lastAckedSeq = Math.max(this.lastAckedSeq, ack.lastSeq);
-        if (ack.mode) this.mode = ack.mode;
+        this.retryNotBefore = 0;
+        this.lastAckedSeq = Math.max(this.lastAckedSeq, ack.lastSeq);
+        if (MODE_RANK[ack.mode] > MODE_RANK[this.mode]) {
+          this.mode = ack.mode;
+        }
+      } else {
+        this.retryNotBefore = Math.max(
+          this.retryNotBefore,
+          this.now() + RETRY_DEFAULT_MS,
+        );
       }
     } catch {
       // best-effort — 계측 실패는 게임/점수에 무영향
+      this.retryNotBefore = Math.max(
+        this.retryNotBefore,
+        this.now() + RETRY_DEFAULT_MS,
+      );
     } finally {
-      this.inFlight = false;
+      this.inFlightCount -= 1;
     }
   }
 

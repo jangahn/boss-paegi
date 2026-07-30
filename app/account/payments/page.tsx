@@ -7,26 +7,20 @@ import { getGrowthLevers } from "@/lib/config/getters";
 import { won } from "@/lib/admin-format";
 import { fmtKstDateTime } from "@/lib/format";
 import { CHANNEL_LABELS, type PayChannelMethod } from "@/lib/pay-channels";
+import {
+  resolveOrderHistoryRead,
+  type OrderHistoryRow,
+} from "@/lib/pay/order-history";
+import { log, errInfo } from "@/lib/log";
 
 // 본인 결제·환불 실시간 조회 — 캐시 금지.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export const metadata: Metadata = { title: "결제내역" };
-
-type OrderRow = {
-  order_uuid: string;
-  product_id: string;
-  amount: number;
-  credits: number;
-  status: string;
-  paid_at: string | null;
-  refunded_credits: number;
-  refunded_amount: number;
-  receipt_url: string | null;
-  created_at: string;
-  pay_channel: string | null;
-  is_test: boolean;
+export const metadata: Metadata = {
+  title: "결제내역",
+  robots: { index: false, follow: true },
+  alternates: { canonical: "/account/payments" },
 };
 
 /** 결제수단 표기 — pay_channel(0059) → 사용자 라벨(카드/토스페이/카카오페이). null=표시 생략. */
@@ -47,15 +41,17 @@ const LABEL_COLOR: Record<string, string> = {
   대기: "text-amber-600",
   취소: "text-zinc-400",
   실패: "text-red-500",
+  지급검토: "text-amber-600",
   부분환불: "text-amber-600",
   전액환불: "text-zinc-400",
 };
 
 /** 표시 상태 — 크레딧 전량 회수=전액환불(요율로 현금<amount 일 수 있음: 7일후 90%·만료후 90%),
  *  일부만=부분환불, 그 외 주문 status. 판정 기준은 크레딧(회수 완료 여부)이지 현금액이 아니다. */
-function orderStateLabel(o: OrderRow): string {
+function orderStateLabel(o: OrderHistoryRow): string {
   if (o.refunded_credits >= o.credits && o.refunded_amount > 0) return "전액환불";
   if (o.refunded_credits > 0) return "부분환불";
+  if (o.status === "paid" && o.error_message !== null) return "지급검토";
   return STATUS_LABEL[o.status] ?? o.status;
 }
 
@@ -77,20 +73,31 @@ export default async function AccountPaymentsPage() {
 
   const admin = createAdminClient();
   // 결제완료만(paid_at not null) + 최신순(paid_at desc → order_uuid tiebreaker) — 표시 일시(paid_at)와 정렬키 일치.
-  const [{ data, error }, growth] = await Promise.all([
-    admin
+  const [orderResult, growth] = await Promise.all([
+    Promise.resolve(
+      admin
       .from("orders")
       .select(
-        "order_uuid, product_id, amount, credits, status, paid_at, refunded_credits, refunded_amount, receipt_url, created_at, pay_channel, is_test"
+        "order_uuid, product_id, amount, credits, status, paid_at, error_message, refunded_credits, refunded_amount, receipt_url, created_at, pay_channel, is_test"
       )
       .eq("user_id", userId)
       .not("paid_at", "is", null)
       .order("paid_at", { ascending: false })
       .order("order_uuid", { ascending: false })
       .limit(100),
+    ).catch((error) => ({ data: null, error })),
     getGrowthLevers(),
   ]);
-  const rows = error ? [] : ((data ?? []) as OrderRow[]);
+  let rows: OrderHistoryRow[] | null;
+  try {
+    rows = resolveOrderHistoryRead(orderResult);
+  } catch (error) {
+    rows = null;
+    log.warn("account.payments_unavailable", {
+      userId,
+      ...errInfo(error),
+    });
+  }
   // 상품명은 config 상품 목록(비활성 포함)으로 표기 — 과거 주문의 productId 도 매핑, 미지값은 id 그대로.
   const goodnameById = new Map(growth.products.map((p) => [p.productId, p.goodname]));
 
@@ -99,7 +106,27 @@ export default async function AccountPaymentsPage() {
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <h1 className="text-2xl font-bold text-foreground">결제내역</h1>
 
-        {rows.length === 0 ? (
+        {rows === null ? (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm"
+          >
+            <p className="font-semibold text-red-500">
+              결제 내역을 불러오지 못했어요.
+            </p>
+            <p className="mt-1 text-zinc-500">
+              내역이 없는 것으로 처리하지 않았습니다. 잠시 후 다시 시도해 주세요.
+            </p>
+            <form action="/account/payments" method="get">
+              <button
+                type="submit"
+                className="mt-3 font-semibold text-sky-600 underline underline-offset-2"
+              >
+                다시 시도
+              </button>
+            </form>
+          </div>
+        ) : rows.length === 0 ? (
           <p className="text-sm text-zinc-400">아직 결제 내역이 없어요.</p>
         ) : (
           // 모바일 우선 카드 리스트 — 소형폰(iPhone SE 375px)에서도 상품명/금액/상태가 한눈에.
@@ -133,8 +160,10 @@ export default async function AccountPaymentsPage() {
                     </span>
                     <span aria-hidden className="text-zinc-300">·</span>
                     <span className="tabular-nums text-foreground">
-                      크레딧 {r.credits}개
-                      {r.refunded_credits > 0 && (
+                      {label === "지급검토"
+                        ? `크레딧 요청 ${r.credits}개 · 지급 검토 중`
+                        : `크레딧 ${r.credits}개`}
+                      {label !== "지급검토" && r.refunded_credits > 0 && (
                         <span className="ml-1 text-xs text-zinc-400">잔여 {remaining}개</span>
                       )}
                     </span>
@@ -155,7 +184,7 @@ export default async function AccountPaymentsPage() {
 
                   {/* 일시 + 영수증 */}
                   <div className="flex items-center justify-between border-t border-foreground/5 pt-2 text-xs text-zinc-400">
-                    <span className="tabular-nums">{fmtKstDateTime(r.paid_at ?? r.created_at)}</span>
+                    <span className="tabular-nums">{fmtKstDateTime(r.paid_at)}</span>
                     {r.receipt_url ? (
                       <a
                         href={r.receipt_url}

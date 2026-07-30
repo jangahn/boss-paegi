@@ -1,15 +1,18 @@
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { signedDollUrl } from "@/lib/storage";
+import { fetchScoreDetail, type Score } from "@/lib/score-detail";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 import { asRole } from "@/lib/roles";
 import { getRoleConfig, getScoreConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
-import { log, errInfo } from "@/lib/log";
+import {
+  fetchMediaBlob,
+  OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
+} from "@/lib/media-download";
 
 export const runtime = "nodejs";
 // 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
@@ -23,26 +26,21 @@ export const contentType = "image/png";
  * 특정 PNG 에서 조용히 실패함 (영역이 빈 채 렌더). 서버에서 미리 받아 embed.
  * 커스텀 캐릭터 없으면 기본 부장님 (public/sprites).
  */
-async function dollDataUri(dollUrl: string | null): Promise<string | null> {
-  try {
-    if (dollUrl) {
-      const r = await fetch(dollUrl, { signal: AbortSignal.timeout(5000) });
-      if (r.ok) {
-        const buf = Buffer.from(await r.arrayBuffer());
-        return `data:image/png;base64,${buf.toString("base64")}`;
-      }
-    }
-  } catch {
-    /* 기본 부장님으로 fallback */
+async function dollDataUri(dollUrl: string | null): Promise<string> {
+  if (dollUrl) {
+    const downloaded = await fetchMediaBlob(dollUrl, {
+      kind: "image",
+      maxBytes: OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
+      signal: AbortSignal.timeout(5000),
+      redirect: "error",
+    });
+    const buf = Buffer.from(await downloaded.blob.arrayBuffer());
+    return `data:${downloaded.type};base64,${buf.toString("base64")}`;
   }
-  try {
-    const buf = await readFile(
-      join(process.cwd(), "public/sprites/boss-default.png")
-    );
-    return `data:image/png;base64,${buf.toString("base64")}`;
-  } catch {
-    return null;
-  }
+  const buf = await readFile(
+    join(process.cwd(), "public/sprites/boss-default.png")
+  );
+  return `data:image/png;base64,${buf.toString("base64")}`;
 }
 
 export default async function OgImage({
@@ -51,33 +49,10 @@ export default async function OgImage({
   params: Promise<{ scoreId: string }>;
 }) {
   const { scoreId } = await params;
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("scores")
-    .select(
-      "id, score, weapon, created_at, profiles(display_name), dolls(image_url, role, deleted_at), score_stats(percentile)"
-    )
-    .eq("id", scoreId)
-    .single();
-  // 조회 실패해도 기본 카드로 fallback — 캐시 생성 실패는 가시화(공유 미리보기 깨짐 추적).
-  if (error) log.warn("og.score_query_fail", { scoreId, ...errInfo(error) });
-
-  const s = data as
-    | {
-        id: string;
-        score: number;
-        weapon: string;
-        created_at: string;
-        profiles: { display_name: string } | null;
-        dolls: { image_url: string | null; role: string | null; deleted_at?: string | null } | null;
-      }
-    | null;
-
-  // 상위 % — score_stats(1:1).
-  const rawStats = (data as Record<string, unknown> | null)?.score_stats;
-  const statsRow = Array.isArray(rawStats) ? rawStats[0] ?? null : rawStats ?? null;
-  const percentile =
-    (statsRow as { percentile?: number } | null)?.percentile ?? null;
+  // Same visibility/takedown source as the HTML share page. Hidden or missing
+  // scores authoritatively render the generic card; read failures stay failures.
+  const s: Score | null = await fetchScoreDetail(scoreId);
+  const percentile = s?.percentile ?? null;
 
   const name = s?.profiles?.display_name ?? "익명";
   const role = asRole(s?.dolls?.role);
@@ -90,7 +65,7 @@ export default async function OgImage({
   const score = (s?.score ?? 0).toLocaleString();
   // takedown(0034): 삭제된 캐릭터 얼굴은 OG 에서도 숨김 → 기본 카드 fallback.
   const dollSrc = await dollDataUri(
-    s?.dolls?.deleted_at ? null : await signedDollUrl(s?.dolls?.image_url, 60, { thumb: true })
+    await signedDollUrl(s?.dolls?.image_url ?? null, 60, { thumb: true })
   );
   const grade = gradeFor(s?.score ?? 0, scoreCfg.grades);
   const reaction = s ? bossReaction(s.score, s.id, role, cfg) : "";

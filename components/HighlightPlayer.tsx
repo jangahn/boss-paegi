@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { log, errInfo } from "@/lib/log";
 import { trackShare } from "@/lib/acquisition";
+import { isCurrentClientEpoch } from "@/lib/client-lifecycle";
+import {
+  fetchMediaBlob,
+  HIGHLIGHT_DOWNLOAD_MAX_BYTES,
+} from "@/lib/media-download";
 
 /**
  * /share 의 하이라이트 영상 블록 (client) — 네이티브 컨트롤 video + 캡션 +
@@ -23,9 +28,37 @@ export function HighlightPlayer({
   const [busy, setBusy] = useState(false);
   // 클립 재생 실패(검은/미지원 영상 등) → 영상 대신 카드 배지로 강등(공유 페이지 일관)
   const [failed, setFailed] = useState(false);
+  const mountedRef = useRef(false);
+  const operationEpochRef = useRef(0);
+  const busyRef = useRef(false);
+  const activeAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      operationEpochRef.current += 1;
+      activeAbortRef.current?.abort();
+      activeAbortRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Soft navigation can reuse this client component with a newly signed URL.
+    // Cancel the old download and make every old share completion stale.
+    operationEpochRef.current += 1;
+    activeAbortRef.current?.abort();
+    activeAbortRef.current = null;
+    busyRef.current = false;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setBusy(false);
+    setMsg(null);
+    setFailed(false);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [clipUrl, shareUrl]);
 
   // 파일 공유 실패/미지원 시 링크 재공유 폴백(멘트 없이 — OG 미리보기가 맥락 제공).
-  const linkShare = async () => {
+  const linkShare = async (operationEpoch: number) => {
     try {
       if (typeof navigator !== "undefined" && "share" in navigator) {
         await navigator.share({ url: shareUrl });
@@ -37,16 +70,38 @@ export function HighlightPlayer({
     }
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setMsg("링크 복사됨");
+      if (
+        isCurrentClientEpoch(
+          operationEpoch,
+          operationEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        setMsg("링크 복사됨");
+      }
     } catch {
-      setMsg("공유 실패");
+      if (
+        isCurrentClientEpoch(
+          operationEpoch,
+          operationEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        setMsg("공유 실패");
+      }
     }
   };
 
   // 영상 파일 공유·저장 — 저장 탭 시에만 fetch(egress 절감). **멘트 없이 영상만** 공유.
   // gesture 만료/CORS/미지원 → 링크 재공유 폴백.
   const onShareSave = async () => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const operationEpoch = operationEpochRef.current + 1;
+    operationEpochRef.current = operationEpoch;
+    const abort = new AbortController();
+    activeAbortRef.current?.abort();
+    activeAbortRef.current = abort;
     setBusy(true);
     setMsg(null);
     // 공유 시도(분석) — 하이라이트 뷰어(/share). (surface×target×session) 3초 디바운스.
@@ -54,11 +109,27 @@ export function HighlightPlayer({
     try {
       if (typeof navigator !== "undefined" && navigator.canShare) {
         try {
-          const res = await fetch(clipUrl);
-          const blob = await res.blob();
-          const file = new File([blob], "boss-paegi-highlight.mp4", {
-            type: blob.type || "video/mp4",
+          const media = await fetchMediaBlob(clipUrl, {
+            kind: "video",
+            maxBytes: HIGHLIGHT_DOWNLOAD_MAX_BYTES,
+            signal: abort.signal,
           });
+          if (
+            !isCurrentClientEpoch(
+              operationEpoch,
+              operationEpochRef.current,
+              mountedRef.current,
+            )
+          ) {
+            return;
+          }
+          const file = new File(
+            [media.blob],
+            `boss-paegi-highlight.${media.extension}`,
+            {
+              type: media.type,
+            },
+          );
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({ files: [file] }); // 영상만(멘트 X)
             log.info("highlight.share_url_success", { withFile: true });
@@ -70,9 +141,27 @@ export function HighlightPlayer({
           // gesture 만료/CORS/미지원 → 아래 링크 재공유로 폴백
         }
       }
-      await linkShare();
+      if (
+        isCurrentClientEpoch(
+          operationEpoch,
+          operationEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        await linkShare(operationEpoch);
+      }
     } finally {
-      setBusy(false);
+      if (
+        isCurrentClientEpoch(
+          operationEpoch,
+          operationEpochRef.current,
+          mountedRef.current,
+        )
+      ) {
+        if (activeAbortRef.current === abort) activeAbortRef.current = null;
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -93,6 +182,7 @@ export function HighlightPlayer({
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
         <video
           src={clipUrl}
+          aria-label="점수 급상승 하이라이트 영상"
           controls
           autoPlay
           loop
@@ -112,13 +202,18 @@ export function HighlightPlayer({
       </div>
       <div className="mt-3 flex flex-col items-center gap-2">
         <button
+          type="button"
           onClick={onShareSave}
           disabled={busy}
           className="w-full max-w-[420px] rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-50"
         >
-          🔥 영상 공유·저장
+          {busy ? "영상 준비 중…" : "🔥 영상 공유·저장"}
         </button>
-        {msg && <p className="text-xs text-zinc-400">{msg}</p>}
+        {msg && (
+          <p role="status" aria-live="polite" className="text-xs text-zinc-400">
+            {msg}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -19,7 +19,7 @@
 --     트리거로 profiles 를 자동 생성한다(0001). 픽스처는 owner/definer RPC 만으로 금융 상태를 만든다(§8·§34).
 
 begin;
-select plan(146);
+select plan(176);
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 -- Part A — 스키마·카탈로그·ACL·불변식 (픽스처 불필요)
@@ -182,6 +182,35 @@ select is((select count(*)::int from public.credit_lots l
 -- Part B — §45 기능 픽스처(실 RPC 구동). 픽스처 헬퍼는 pg_temp(트랜잭션 종료 시 소멸).
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 
+-- 0065 이후 상품 정본은 app_settings.growth_levers다. 운영/기본 config 가격 변화가 금융 saga
+-- 산식 픽스처를 깨지 않도록 이 rollback 트랜잭션 안에서만 명시적인 테스트 상품 snapshot을 쓴다.
+-- create_pending_order가 이 config를 읽지 않고 옛 가격을 하드코딩하면 아래 주문 생성이 즉시 실패한다.
+insert into public.app_settings(key, value)
+values (
+  'growth_levers',
+  pg_catalog.jsonb_build_object(
+    'products',
+     pg_catalog.jsonb_build_array(
+       pg_catalog.jsonb_build_object(
+         'productId', 'credits_3',
+         'goodname', 'pgTAP 생성권 3개',
+         'price', 1000,
+         'credits', 3,
+         'active', true
+       ),
+       pg_catalog.jsonb_build_object(
+         'productId', 'credits_10',
+         'goodname', 'pgTAP 생성권 10개',
+         'price', 3000,
+         'credits', 10,
+         'active', true
+       )
+     )
+  )
+)
+on conflict (key) do update
+set value = excluded.value;
+
 -- 픽스처 헬퍼: 최소 auth.users insert → on_auth_user_created 로 profiles 자동 생성 → member_accounts.
 create function pg_temp.mk_user(p_email text, p_admin boolean, p_deleted boolean)
 returns uuid language plpgsql as $fn$
@@ -201,20 +230,47 @@ $fn$;
 -- 픽스처 헬퍼: pending 주문 생성 + 결제확정(purchase 로트·캐시 지급). order_uuid 반환.
 create function pg_temp.mk_paid_order(p_user uuid, p_product text, p_amount int, p_credits int)
 returns uuid language plpgsql as $fn$
-declare v_order uuid := gen_random_uuid(); v_pay text;
+declare
+  v_order uuid := gen_random_uuid();
+  v_pay text;
+  v_paid_at timestamptz :=
+    pg_catalog.date_trunc('milliseconds', pg_catalog.clock_timestamp());
 begin
   v_pay := replace(v_order::text, '-', '');
-  perform public.create_pending_order(p_user, v_order, p_product, p_amount, p_credits,
-                                      v_pay, 'portone', 'card', false);
+  perform public.bp_008905_create_or_reuse_pending_order_impl(
+    p_user, v_order, p_product, p_amount, p_credits,
+    v_pay, 'portone', 'card', false,
+    'store-qa', 'KRW', 'channel-card-live'
+  );
   perform public.mark_paid_and_grant(v_order, 'pgtx_' || v_pay, p_amount,
-                                     pg_catalog.jsonb_build_object('paid_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SSOF')),
-                                     now(), 'https://receipt.example/' || v_pay);
+                                     pg_catalog.jsonb_build_object(
+                                       'id', v_pay,
+                                       'status', 'PAID',
+                                       'transactionId', 'pgtx_' || v_pay,
+                                       'paidAt', v_paid_at,
+                                       'amount', pg_catalog.jsonb_build_object(
+                                         'total', p_amount
+                                       ),
+                                       'storeId', 'store-qa',
+                                       'currency', 'KRW',
+                                       'channel', pg_catalog.jsonb_build_object(
+                                         'type', 'LIVE',
+                                         'key', 'channel-card-live'
+                                       )
+                                     ),
+                                     v_paid_at,
+                                     'https://receipt.example/' || v_pay);
   return v_order;
 end;
 $fn$;
 
 -- 컨텍스트 저장(픽스처 id 를 이후 assertion 에서 재사용).
-create temporary table pg_temp_ctx (k text primary key, u uuid, o uuid) on commit drop;
+create temporary table pg_temp_ctx (
+  k text primary key,
+  u uuid,
+  o uuid,
+  i integer
+) on commit drop;
 
 -- B.1 purchase → live 로트 grant + 캐시 지급.
 select lives_ok($$
@@ -284,6 +340,12 @@ select is((select gen_credits from public.member_accounts
   'B.4d 예약 시 live 캐시 차감 10→7');
 select cmp_ok((select state from public.refund_requests where id = (select o from pg_temp_ctx where k = 'req')),
   '=', 'prepared', 'B.4e request state = prepared');
+select is((select amount from public.order_refund_attempts
+             where request_id = (select o from pg_temp_ctx where k = 'req')), 900::bigint,
+  'B.4e2 config 가격 3000/10에서 qty 3의 승인액은 900(상품 하드코딩 금지)');
+select is((select approved_amount from public.refund_requests
+             where id = (select o from pg_temp_ctx where k = 'req')), 900::bigint,
+  'B.4e3 request 승인액도 attempt 산식 snapshot과 일치');
 
 -- B.4f 같은 주문에 open attempt 가 있으면 2차 begin 은 거부(uq_refund_attempts_order_open·§40 2차 부분취소 판단).
 select throws_ok($$
@@ -303,7 +365,7 @@ select lives_ok($$
        where request_id = (select o from pg_temp_ctx where k = 'req')),
     3000::bigint, 0::bigint, 3000::bigint,
     '[]'::jsonb,
-    pg_catalog.jsonb_build_object('amount', 2700, 'reason',
+    pg_catalog.jsonb_build_object('amount', 900, 'reason',
       'BP_REFUND:' || (select id from public.order_refund_attempts
                          where request_id = (select o from pg_temp_ctx where k = 'req'))::text,
       'currentCancellableAmount', 3000))
@@ -318,7 +380,7 @@ select lives_ok($$
     'succeeded',
     'cancel_' || (select id from public.order_refund_attempts
                     where request_id = (select o from pg_temp_ctx where k = 'req'))::text,
-    'SUCCEEDED', 2700::bigint, 'https://receipt.example/cancel1',
+    'SUCCEEDED', 900::bigint, 'https://receipt.example/cancel1',
     pg_catalog.jsonb_build_object('status', 'PARTIAL_CANCELLED'),
     now(), now())
 $$, 'B.5c record_pg_result(succeeded) — SUCCEEDED event 매칭(§7)');
@@ -390,6 +452,73 @@ $$, 'B.7b admin_refund_replan_pre_pg — 예약 복원·released(§45 pre/post-P
 select cmp_ok((select state from public.order_refund_attempts
                  where request_id = (select o from pg_temp_ctx where k = 'rreq')),
   '=', 'released', 'B.7c replan 후 attempt state = released');
+select is((select (public.admin_refund_replan_pre_pg(
+             (select id from public.order_refund_attempts
+               where request_id = (select o from pg_temp_ctx where k = 'rreq')),
+             (select u from pg_temp_ctx where k = 'admin'),
+             'replanned before PG exact replay',
+             false))->>'outcome'),
+  'no_op', 'B.7d 동일 pre-PG replan terminal 재호출 → no_op');
+select throws_ok($$
+  select public.admin_refund_release(
+    (select id from public.order_refund_attempts
+      where request_id = (select o from pg_temp_ctx where k = 'rreq')),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'conflicting release after replan')
+$$, 'P0001', 'request_conflict',
+  'B.7e pre-PG replan terminal 에 release 재호출 → request_conflict');
+select throws_ok($$
+  select public.admin_refund_replan_after_pg(
+    (select id from public.order_refund_attempts
+      where request_id = (select o from pg_temp_ctx where k = 'rreq')),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'conflicting post PG replan',
+    0,
+    '[]'::jsonb)
+$$, 'P0001', 'request_conflict',
+  'B.7f pre-PG replan terminal 에 post-PG replan → request_conflict');
+
+select lives_ok($$
+  insert into pg_temp_ctx (k, o)
+    values ('relreq', (public.admin_refund_begin(
+              gen_random_uuid(),
+              (select u from pg_temp_ctx where k = 'admin'),
+              (select u from pg_temp_ctx where k = 'customer'),
+              (select o from pg_temp_ctx where k = 'paid'),
+              1, 'to be released by admin', now(), 'portone_cancel')->>'request_id')::uuid)
+$$, 'B.7g admin_refund_begin(release 대상·qty 1)');
+select lives_ok($$
+  select public.admin_refund_release(
+    (select id from public.order_refund_attempts
+      where request_id = (select o from pg_temp_ctx where k = 'relreq')),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'admin cancelled before PG')
+$$, 'B.7h admin_refund_release — released(admin_cancelled_before_pg)');
+select is((select (public.admin_refund_release(
+             (select id from public.order_refund_attempts
+               where request_id = (select o from pg_temp_ctx where k = 'relreq')),
+             (select u from pg_temp_ctx where k = 'admin'),
+             'admin release exact terminal replay'))->>'outcome'),
+  'no_op', 'B.7i 동일 release terminal 재호출 → no_op');
+select throws_ok($$
+  select public.admin_refund_replan_pre_pg(
+    (select id from public.order_refund_attempts
+      where request_id = (select o from pg_temp_ctx where k = 'relreq')),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'conflicting replan after release',
+    false)
+$$, 'P0001', 'request_conflict',
+  'B.7j admin release terminal 에 pre-PG replan → request_conflict');
+select throws_ok($$
+  select public.admin_refund_replan_after_pg(
+    (select id from public.order_refund_attempts
+      where request_id = (select o from pg_temp_ctx where k = 'relreq')),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'conflicting post PG after release',
+    0,
+    '[]'::jsonb)
+$$, 'P0001', 'request_conflict',
+  'B.7k admin release terminal 에 post-PG replan → request_conflict');
 
 -- B.8 cancel intent — 고객 취소 의도 기록(§40 cancel intent).
 select lives_ok($$
@@ -406,6 +535,47 @@ select is((select count(*)::int from public.admin_actions_ledger
              where action_type = 'cancel_intent'
                and order_uuid = (select o from pg_temp_ctx where k = 'intent_order')), 1,
   'B.8c cancel_intent 원장 1행(unique(action_type,order_uuid)·§3.5)');
+select is((select (public.cancel_intent_begin(
+             (select u from pg_temp_ctx where k = 'admin'),
+             (select o from pg_temp_ctx where k = 'intent_order'),
+             (select cancel_requested_at from public.orders
+               where order_uuid = (select o from pg_temp_ctx where k = 'intent_order')),
+             'customer requested cancellation'))->>'outcome'),
+  'no_op', 'B.8d cancel_intent_begin 정확한 payload 재호출 → no_op');
+select throws_ok($$
+  select public.cancel_intent_begin(
+    (select u from pg_temp_ctx where k = 'admin'),
+    (select o from pg_temp_ctx where k = 'intent_order'),
+    (select cancel_requested_at from public.orders
+      where order_uuid = (select o from pg_temp_ctx where k = 'intent_order')),
+    'different cancellation intent reason')
+$$, 'P0001', 'request_conflict',
+  'B.8e cancel_intent_begin 상이 payload 재호출 → request_conflict');
+select is((select (public.cancel_intent_resolve(
+             (select u from pg_temp_ctx where k = 'admin'),
+             (select o from pg_temp_ctx where k = 'intent_order'),
+             3))->>'outcome'),
+  'prepared', 'B.8f cancel_intent_resolve 첫 호출 → prepared');
+select is((select (public.cancel_intent_resolve(
+             (select u from pg_temp_ctx where k = 'admin'),
+             (select o from pg_temp_ctx where k = 'intent_order'),
+             3))->>'outcome'),
+  'no_op', 'B.8g cancel_intent_resolve 응답 유실 재호출 → receipt no_op');
+select throws_ok($$
+  select public.cancel_intent_resolve(
+    (select u from pg_temp_ctx where k = 'admin'),
+    (select o from pg_temp_ctx where k = 'intent_order'),
+    2)
+$$, 'P0001', 'request_conflict',
+  'B.8h active cancel intent 에 상이 qty 재호출 → request_conflict');
+select is((select count(*)::int
+             from public.refund_requests r
+             join public.order_refund_attempts a on a.request_id = r.id
+            where r.origin = 'cancel_intent'
+              and r.scope_order_uuid =
+                (select o from pg_temp_ctx where k = 'intent_order')
+              and a.sequence = 1), 1,
+  'B.8i cancel_intent_resolve 재호출 뒤 request/attempt 정확히 1쌍');
 
 -- B.9 deleted-user late PAID — 활성 상태에서 주문 생성 → 탈퇴 → 뒤늦은 PAID: 미지급·quarantine·issue(§40).
 select lives_ok($$
@@ -416,10 +586,11 @@ select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('dorder', gen_random_uuid())
 $$, 'B.9b0 탈퇴자 주문 uuid 준비');
 select lives_ok($$
-  select public.create_pending_order(
+  select public.bp_008905_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'deleted'),
     (select o from pg_temp_ctx where k = 'dorder'), 'credits_3', 1000, 3,
-    replace((select o from pg_temp_ctx where k = 'dorder')::text, '-', ''), 'portone', 'card', false)
+    replace((select o from pg_temp_ctx where k = 'dorder')::text, '-', ''),
+    'portone', 'card', false, 'store-qa', 'KRW', 'channel-card-live')
 $$, 'B.9b1 활성 상태 pending 주문 생성');
 select lives_ok($$
   update public.profiles set deleted_at = now()
@@ -428,7 +599,30 @@ $$, 'B.9b2 주문 생성 후 프로필 soft-delete');
 select lives_ok($$
   select public.mark_paid_and_grant(
     (select o from pg_temp_ctx where k = 'dorder'), 'pgtx_deleted', 1000,
-    pg_catalog.jsonb_build_object('paid_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SSOF')), now(), null)
+    pg_catalog.jsonb_build_object(
+      'id',
+      replace(
+        (select o from pg_temp_ctx where k = 'dorder')::text,
+        '-',
+        ''
+      ),
+      'status', 'PAID',
+      'transactionId', 'pgtx_deleted',
+      'paidAt', evidence.paid_at,
+      'amount', pg_catalog.jsonb_build_object('total', 1000),
+      'storeId', 'store-qa',
+      'currency', 'KRW',
+      'channel', pg_catalog.jsonb_build_object(
+        'type', 'LIVE',
+        'key', 'channel-card-live'
+      )
+    ), evidence.paid_at, null)
+  from (
+    select pg_catalog.date_trunc(
+      'milliseconds',
+      pg_catalog.clock_timestamp()
+    ) as paid_at
+  ) evidence
 $$, 'B.9b3 탈퇴 후 늦은 PAID 확정(deleted PAID·§40)');
 select is((select count(*)::int from public.credit_lots
              where order_uuid = (select o from pg_temp_ctx where k = 'dorder')
@@ -456,14 +650,12 @@ select ok((select deleted_at is not null from public.profiles
   'B.10c soft delete 후 profiles.deleted_at 설정(§39)');
 
 -- B.11 account delete 차단 — open refund attempt 보유 유저는 탈퇴 거부(409·§39).
-select lives_ok($$
-  select public.admin_refund_begin(
-    gen_random_uuid(),
-    (select u from pg_temp_ctx where k = 'admin'),
-    (select u from pg_temp_ctx where k = 'customer'),
-    (select o from pg_temp_ctx where k = 'intent_order'),
-    1, 'open attempt for delete-block test', now(), 'portone_cancel')
-$$, 'B.11a 삭제 차단용 open attempt 준비(intent_order qty 1)');
+select is((select count(*)::int
+             from public.order_refund_attempts
+            where order_uuid = (select o from pg_temp_ctx where k = 'intent_order')
+              and state in ('prepared', 'pg_requested', 'pg_pending',
+                            'pg_succeeded', 'manual_pending', 'manual_review')), 1,
+  'B.11a cancel intent 의 open attempt 가 삭제 차단용으로 유지');
 select throws_ok($$
   select public.admin_soft_delete_account((select u from pg_temp_ctx where k = 'customer'))
 $$, 'P0001', 'open_refund_blocks_delete',
@@ -482,12 +674,80 @@ select is((select run_count > 0 from public.ops_cron_heartbeats where job_name =
   'B.13c heartbeat run_count 증가(§29)');
 
 -- B.17 consent 보너스 로트(§Q1·G-1) — 신규 회원 insert 의 가입 보너스가 signup_bonus 로트와 원자 동기.
+do $fixture$
+declare
+  v_terms int;
+  v_privacy int;
+  v_today date :=
+    (clock_timestamp() at time zone 'Asia/Seoul')::date;
+begin
+  -- Refund accounting only needs a currently effective consent authority.
+  -- Use the notice-exempt initial legal version rather than fabricating an
+  -- unannounced v2+ publication effective today.
+  insert into public.legal_documents(
+    doc_type,
+    status,
+    version,
+    effective_date,
+    title,
+    sections
+  )
+  values
+    (
+      'terms',
+      'published',
+      1,
+      v_today,
+      'Refund saga QA terms',
+      '[{"heading":"Terms","body":"Current terms"}]'::jsonb
+    ),
+    (
+      'privacy',
+      'published',
+      1,
+      v_today,
+      'Refund saga QA privacy',
+      '[{"heading":"Privacy","body":"Current privacy"}]'::jsonb
+    )
+  on conflict (doc_type, version) where status = 'published'
+  do update
+    set effective_date = excluded.effective_date,
+        title = excluded.title,
+        sections = excluded.sections,
+        updated_at = clock_timestamp();
+  select l.version
+    into strict v_terms
+    from public.legal_documents l
+   where l.doc_type = 'terms'
+     and l.status = 'published'
+     and l.effective_date <= v_today
+   order by l.effective_date desc, l.version desc, l.id desc
+   limit 1;
+  select l.version
+    into strict v_privacy
+    from public.legal_documents l
+   where l.doc_type = 'privacy'
+     and l.status = 'published'
+     and l.effective_date <= v_today
+   order by l.effective_date desc, l.version desc, l.id desc
+   limit 1;
+  insert into pg_temp_ctx(k, i)
+  values ('terms_version', v_terms), ('privacy_version', v_privacy);
+end;
+$fixture$;
 select lives_ok($$
   with ins as (insert into auth.users (id, email) values (gen_random_uuid(), 'newbie@test.local') returning id)
   insert into pg_temp_ctx (k, u) select 'newbie', id from ins
 $$, 'B.17a 신규(멤버 행 없는) 유저 생성');
 select is((select public.create_or_update_member_consent(
-             (select u from pg_temp_ctx where k = 'newbie'), 5, true, true, 1, true, 1)), true,
+             (select u from pg_temp_ctx where k = 'newbie'),
+             5,
+             true,
+             true,
+             (select i from pg_temp_ctx where k = 'terms_version'),
+             true,
+             (select i from pg_temp_ctx where k = 'privacy_version')
+           )), true,
   'B.17b consent 신규 insert → true(보너스 지급 경로)');
 select is((select gen_credits from public.member_accounts
              where user_id = (select u from pg_temp_ctx where k = 'newbie')), 5,
@@ -507,10 +767,11 @@ select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('late_order', gen_random_uuid())
 $$, 'B.18b late-PAID 주문 uuid 준비');
 select lives_ok($$
-  select public.create_pending_order(
+  select public.bp_008905_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'late_user'),
     (select o from pg_temp_ctx where k = 'late_order'), 'credits_3', 1000, 3,
-    replace((select o from pg_temp_ctx where k = 'late_order')::text, '-', ''), 'portone', 'card', false)
+    replace((select o from pg_temp_ctx where k = 'late_order')::text, '-', ''),
+    'portone', 'card', false, 'store-qa', 'KRW', 'channel-card-live')
 $$, 'B.18c pending 주문 생성(create_pending_order·§18)');
 select lives_ok($$
   select public.mark_order_canceled_unpaid(
@@ -519,7 +780,30 @@ $$, 'B.18d 무결제 취소 관측 종단(mark_order_canceled_unpaid)');
 select lives_ok($$
   select public.mark_paid_and_grant(
     (select o from pg_temp_ctx where k = 'late_order'), 'pgtx_late', 1000,
-    pg_catalog.jsonb_build_object('paid_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SSOF')), now(), null)
+    pg_catalog.jsonb_build_object(
+      'id',
+      replace(
+        (select o from pg_temp_ctx where k = 'late_order')::text,
+        '-',
+        ''
+      ),
+      'status', 'PAID',
+      'transactionId', 'pgtx_late',
+      'paidAt', evidence.paid_at,
+      'amount', pg_catalog.jsonb_build_object('total', 1000),
+      'storeId', 'store-qa',
+      'currency', 'KRW',
+      'channel', pg_catalog.jsonb_build_object(
+        'type', 'LIVE',
+        'key', 'channel-card-live'
+      )
+    ), evidence.paid_at, null)
+  from (
+    select pg_catalog.date_trunc(
+      'milliseconds',
+      pg_catalog.clock_timestamp()
+    ) as paid_at
+  ) evidence
 $$, 'B.18e canceled 주문 늦은 PAID — organic late PAID 흡수(§40)');
 select cmp_ok((select status from public.orders
                  where order_uuid = (select o from pg_temp_ctx where k = 'late_order')),
@@ -533,11 +817,75 @@ select is((select count(*)::int from public.reconciliation_issues
              where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
                and type = 'late_paid' and state = 'open'), 1,
   'B.18h late_paid issue open 1');
+select throws_ok($$
+  select public.admin_resolve_reconciliation_issue(
+    (select id from public.reconciliation_issues
+      where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
+        and type = 'late_paid' and state = 'open'),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'ignored',
+    'operator acknowledgement only')
+$$, 'P0001', 'economic_resolution_required',
+  'B.18i late_paid issue는 메모만으로 ignore 불가');
+select throws_ok($$
+  select public.admin_resolve_reconciliation_issue(
+    (select id from public.reconciliation_issues
+      where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
+        and type = 'late_paid' and state = 'open'),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'resolved',
+    'operator acknowledgement only')
+$$, 'P0001', 'economic_resolution_required',
+  'B.18j late_paid issue는 경제 환불 전 resolve 불가');
+select lives_ok($$
+  update public.reconciliation_issues
+     set state = 'resolved',
+         resolved_at = now(),
+         resolved_by = (select u from pg_temp_ctx where k = 'admin'),
+         resolution_source = 'admin',
+         detail = coalesce(detail, '{}'::jsonb)
+           || '{"resolution_note":"legacy acknowledgement only"}'::jsonb
+   where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
+     and type = 'late_paid'
+     and state = 'open'
+$$, 'B.18k legacy acknowledgement-only 종결 상태 재현');
+select lives_ok($$
+  update public.reconciliation_issues i
+     set state = 'open',
+         resolved_at = null,
+         resolved_by = null,
+         resolution_source = null,
+         detail = coalesce(i.detail, '{}'::jsonb)
+           || pg_catalog.jsonb_build_object(
+             'economic_reopen_reason',
+             'late_paid_refund_incomplete',
+             'economic_reopen_previous_state',
+             i.state,
+             'economic_reopen_previous_resolved_at',
+             i.resolved_at,
+             'economic_reopen_previous_resolved_by',
+             i.resolved_by,
+             'economic_reopen_previous_source',
+             i.resolution_source
+           )
+    from public.orders o
+   where i.type = 'late_paid'
+     and i.state in ('resolved', 'ignored')
+     and o.order_uuid = i.order_uuid
+     and (
+       coalesce(o.refunded_credits, 0) < o.credits
+       or coalesce(o.refunded_amount, 0) < o.amount
+     )
+$$, 'B.18l migration repair가 trigger-safe하게 미환불 late_paid를 reopen');
+select is((select state from public.reconciliation_issues
+             where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
+               and type = 'late_paid'),
+  'open', 'B.18m legacy 오종결 late_paid가 durable open으로 복구');
 
 -- B.19 외부 관측 ingest(§5·§11) — SUCCEEDED 이벤트 영속·unmatched issue·멱등·단건 resolver 자동 해소.
 select lives_ok($$
   select public.record_payment_cancellation_observation(
-    (select o from pg_temp_ctx where k = 'late_order'), 'ext_cancel_0001', 'SUCCEEDED', 1000,
+    (select o from pg_temp_ctx where k = 'late_order'), 'ext_cancel_0001', 'SUCCEEDED', 999,
     now(), now(), pg_catalog.jsonb_build_object('reason', 'PG console refund'))
 $$, 'B.19a 외부 관측 SUCCEEDED 이벤트 영속(record_payment_cancellation_observation)');
 select cmp_ok((select resolution_state from public.payment_cancellation_events
@@ -547,8 +895,8 @@ select is((select count(*)::int from public.reconciliation_issues
              where cancellation_id = 'ext_cancel_0001'
                and type = 'unmatched_cancellation' and state = 'open'), 1,
   'B.19c 미귀속 SUCCEEDED → unmatched_cancellation issue open');
-select is((select (public.record_payment_cancellation_observation(
-             (select o from pg_temp_ctx where k = 'late_order'), 'ext_cancel_0001', 'SUCCEEDED', 1000,
+  select is((select (public.record_payment_cancellation_observation(
+             (select o from pg_temp_ctx where k = 'late_order'), 'ext_cancel_0001', 'SUCCEEDED', 999,
              now(), now(), '{}'::jsonb))->>'outcome'), 'no_op',
   'B.19d 동일 재관측 멱등 no_op(§9)');
 select lives_ok($$
@@ -558,17 +906,91 @@ $$, 'B.19e 단건 resolver — 회수·orders 갱신(§45 external resolver)');
 select cmp_ok((select state from public.reconciliation_issues
                  where cancellation_id = 'ext_cancel_0001' and type = 'unmatched_cancellation'),
   '=', 'resolved', 'B.19f resolver 가 unmatched issue 를 같은 트랜잭션에서 자동 해소');
+select throws_ok($$
+  select public.admin_resolve_reconciliation_issue(
+    (select id from public.reconciliation_issues
+      where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
+        and type = 'late_paid'),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'resolved',
+    'cash refund short by one won')
+$$, 'P0001', 'economic_resolution_required',
+  'B.19f-1 현금 환불액 amount-1이면 late_paid 해소 불가');
+select lives_ok($$
+  select public.record_payment_cancellation_observation(
+    (select o from pg_temp_ctx where k = 'late_order'),
+    'ext_cancel_0002',
+    'SUCCEEDED',
+    1,
+    now(),
+    now(),
+    pg_catalog.jsonb_build_object('reason', 'remaining one won'))
+$$, 'B.19f-2 잔여 1원 외부 취소 관측');
+select lives_ok($$
+  select public.resolve_external_cancellation(
+    'ext_cancel_0002',
+    (select u from pg_temp_ctx where k = 'admin'),
+    'admin resolved remaining one won',
+    0)
+$$, 'B.19f-3 잔여 1원·경제수량 0 화해');
+select is((select (public.admin_resolve_reconciliation_issue(
+             (select id from public.reconciliation_issues
+               where order_uuid = (select o from pg_temp_ctx where k = 'late_order')
+                 and type = 'late_paid'),
+             (select u from pg_temp_ctx where k = 'admin'),
+             'resolved',
+             'economic refund completed'))->>'outcome'),
+  'resolved', 'B.19f-4 정확히 전액 경제 환불 후 late_paid issue 해소 가능');
+select is((select (public.resolve_external_cancellation(
+             'ext_cancel_0001',
+             (select u from pg_temp_ctx where k = 'admin'),
+             'admin exact replay external refund',
+             3))->>'outcome'),
+  'no_op', 'B.19g 단건 resolver 동일 economic_qty 재호출 → no_op');
+select is((select (public.resolve_external_cancellation(
+             'ext_cancel_0001',
+             (select u from pg_temp_ctx where k = 'admin'),
+             'admin inferred replay external refund',
+             null))->>'outcome'),
+  'no_op', 'B.19h 단건 resolver 생략 economic_qty 재호출 → no_op(NULL total replay)');
+select throws_ok($$
+  select public.resolve_external_cancellation(
+    'ext_cancel_0001',
+    (select u from pg_temp_ctx where k = 'admin'),
+    'admin conflicting external refund',
+    2)
+$$, 'P0001', 'request_conflict',
+  'B.19i 단건 resolver 상이한 명시 economic_qty 재호출 → request_conflict');
+select is((select (public.admin_resolve_reconciliation_issue(
+             (select id from public.reconciliation_issues
+               where cancellation_id = 'ext_cancel_0001'
+                 and type = 'unmatched_cancellation'),
+             (select u from pg_temp_ctx where k = 'admin'),
+             'resolved',
+             'admin exact terminal issue replay'))->>'outcome'),
+  'no_op', 'B.19j 동일 terminal issue resolution 재호출 → no_op');
+select throws_ok($$
+  select public.admin_resolve_reconciliation_issue(
+    (select id from public.reconciliation_issues
+      where cancellation_id = 'ext_cancel_0001'
+        and type = 'unmatched_cancellation'),
+    (select u from pg_temp_ctx where k = 'admin'),
+    'ignored',
+    'admin conflicting terminal issue replay')
+$$, 'P0001', 'request_conflict',
+  'B.19k 상이한 terminal issue resolution 재호출 → request_conflict');
 
 -- B.20 mark_order_failed(§13 금융인접 status RPC) — pending→failed·멱등.
 select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('fail_order', gen_random_uuid())
 $$, 'B.20a failed 전이 대상 주문 uuid 준비');
 select lives_ok($$
-  select public.create_pending_order(
+  select public.bp_008905_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'customer'),
     (select o from pg_temp_ctx where k = 'fail_order'), 'credits_3', 1000, 3,
-    replace((select o from pg_temp_ctx where k = 'fail_order')::text, '-', ''), 'portone', 'card', false)
-$$, 'B.20b pending 주문 생성');
+    replace((select o from pg_temp_ctx where k = 'fail_order')::text, '-', ''),
+    'portone', 'card', false, 'store-qa', 'KRW', 'channel-card-live')
+$$, 'B.20b complete payment evidence를 포함한 pending 주문 생성');
 select is((select (public.mark_order_failed(
              (select o from pg_temp_ctx where k = 'fail_order'), 'FAILED', 'stale_expired', null))->>'outcome'),
   'failed', 'B.20c mark_order_failed — pending→failed 전이');

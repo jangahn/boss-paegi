@@ -1,5 +1,9 @@
 import { Container, Graphics } from "pixi.js";
 
+/** 한 판이 길어져도 GPU geometry/DisplayObject 수가 유한하도록 유지한다. */
+export const MAX_DRAW_SEGMENTS = 256;
+export const MAX_DRAW_DOTS_PER_SEGMENT = 128;
+
 /**
  * 펜 낙서 누적 레이어 — Doll.bodyWrap 의 child (bodyWrap local 좌표).
  * 캐릭터와 같은 레이어라 흔들림/던지기/회전 시 낙서가 함께 움직임.
@@ -45,18 +49,32 @@ export class DrawingLayer extends Container {
     }
     const wasEmpty = this.children.length === 0;
     const step = Math.max(1.8, width * 0.7);
-    const n = Math.max(1, Math.ceil(dist / step));
+    const n = Math.min(
+      MAX_DRAW_DOTS_PER_SEGMENT,
+      Math.max(1, Math.ceil(dist / step)),
+    );
     const r = width / 2;
+    // pointer sample마다 dot별 Graphics를 만들지 않고 같은 색/폭의 점들을
+    // 한 Graphics geometry로 batch한다. segment 수는 아래에서 FIFO cap.
+    const segment = new Graphics();
+    let dotCount = 0;
     for (let i = 1; i <= n; i++) {
       const t = i / n;
       const px = this.lastPt.x + dx * t;
       const py = this.lastPt.y + dy * t;
       if (!this.isInside(px, py)) continue; // 실루엣 밖 보간점 skip
-      const g = new Graphics();
-      g.circle(0, 0, r).fill(color);
-      g.x = px;
-      g.y = py;
-      this.addChild(g);
+      segment.circle(px, py, r);
+      dotCount += 1;
+    }
+    if (dotCount > 0) {
+      segment.fill(color);
+      this.addChild(segment);
+      while (this.children.length > MAX_DRAW_SEGMENTS) {
+        const oldest = this.removeChildAt(0);
+        oldest.destroy();
+      }
+    } else {
+      segment.destroy();
     }
     this.lastPt = { x, y };
     if (wasEmpty && this.children.length > 0) {

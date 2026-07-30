@@ -32,6 +32,8 @@ interface HttpMapping {
 
 const CONFLICT_409 = new Set([
   "request_conflict", "invalid_state", "version_conflict", "order_has_open_refund", "payout_ref_duplicate",
+  "refund_preflight_mismatch", "cancellation_amount_mismatch", "cancellation_status_mismatch",
+  "cancellation_event_conflict",
 ]);
 const NOT_FOUND_404 = new Set([
   "order_not_found", "attempt_not_found", "generation_not_found", "purchase_lot_not_found",
@@ -44,7 +46,7 @@ const VALIDATION_400 = new Set([
   "order_not_paid", "qty_exceeds_available", "qty_exceeds_order_remaining", "nothing_to_refund",
   "insufficient_credits", "rail_not_pg", "rail_not_manual", "malformed",
 ]);
-const MAINTENANCE_503 = new Set(["maintenance"]);
+const MAINTENANCE_503 = new Set(["maintenance", "cancellation_ingest_failed"]);
 // 사후 불변식 위반(§15 ③) — pattern·정확 토큰. 500 fatal + Sentry fatal.
 const INVARIANT_PATTERNS = [/_derive_mismatch$/, /_append_only_violation$/, /_delete_forbidden$/];
 const INVARIANT_TOKENS = new Set(["invariant_violation"]);
@@ -281,6 +283,10 @@ test("§38 오류코드 → HTTP manifest 전수 매핑", () => {
     ["version_conflict", 409, null],
     ["order_has_open_refund", 409, null],
     ["payout_ref_duplicate", 409, null],
+    ["refund_preflight_mismatch", 409, null],
+    ["cancellation_amount_mismatch", 409, null],
+    ["cancellation_status_mismatch", 409, null],
+    ["cancellation_event_conflict", 409, null],
     ["order_not_found", 404, null],
     ["attempt_not_found", 404, null],
     ["generation_not_found", 404, null],
@@ -294,6 +300,7 @@ test("§38 오류코드 → HTTP manifest 전수 매핑", () => {
     ["insufficient_credits", 400, null],
     ["malformed", 400, null],
     ["maintenance", 503, null],
+    ["cancellation_ingest_failed", 503, null],
     ["refund_request_state_derive_mismatch", 500, "fatal"],
     ["credit_ledger_append_only_violation", 500, "fatal"],
     ["credit_lots_delete_forbidden", 500, "fatal"],
@@ -305,6 +312,11 @@ test("§38 오류코드 → HTTP manifest 전수 매핑", () => {
     assert.equal(m.sentry, sentry, `${token} sentry`);
   }
   assert.equal(mapRpcError("maintenance").retryable, true, "503 은 retryable");
+  assert.equal(
+    mapRpcError("cancellation_ingest_failed").retryable,
+    true,
+    "취소 관측 저장 장애는 retryable",
+  );
   assert.equal(mapRpcError("request_conflict").retryable, false, "409 은 non-retryable(멱등 replay 로 흡수)");
 });
 

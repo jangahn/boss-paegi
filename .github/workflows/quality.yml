@@ -23,9 +23,9 @@ jobs:
       SENTRY_PROJECT: ""
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # releases/v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # releases/v4
         with:
           node-version: 22
           cache: npm
@@ -38,3 +38,100 @@ jobs:
       - run: npm run test:goldens
       - run: npm run test:eslint-rule
       - run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # releases/v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # releases/v4
+        with:
+          node-version: 22
+
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1.7.1
+        with:
+          version: 2.107.0
+
+      - name: Start disposable Supabase
+        run: supabase start -x logflare,studio,imgproxy,realtime,edge-runtime,vector
+
+      - name: Apply expand migrations through 008907
+        run: npm run qa:db:apply:expand
+
+      - name: Verify old and new app compatibility at expand stage
+        run: npm run qa:db:rollout-expand
+
+      - name: Run atomic checkout convergence and mixed-version races
+        run: npm run qa:db:checkout-convergence-race
+
+      - name: Prove the payment evidence contract drain gate rolls back safely
+        run: bash scripts/qa/test-payment-evidence-contract-gate.sh
+
+      - name: Apply the 0090-0092 rollout contract
+        run: npm run qa:db:apply:contract
+
+      - name: Verify legacy closure and permanent app surfaces
+        run: npm run qa:db:rollout-contract
+
+      - name: Run pgTAP integration suites
+        run: npm run test:db
+
+      - name: Run checkout-account deletion lock race
+        run: npm run qa:db:race
+
+      - name: Run child-write account deletion lock races
+        run: npm run qa:db:account-child-delete-race
+
+      - name: Run anonymous-data reassignment winner race
+        run: npm run qa:db:anon-reassign-race
+
+      - name: Run anonymous-data reassignment write races
+        run: npm run qa:db:anon-reassign-write-race
+
+      - name: Run score submission-ban lock races
+        run: npm run qa:db:score-ban-race
+
+      - name: Run content-report lock races
+        run: npm run qa:db:report-race
+
+      - name: Run legal document state-machine lock races
+        run: npm run qa:db:legal-race
+
+      - name: Run moderation restore-purge lock races
+        run: npm run qa:db:moderation-purge-race
+
+      - name: Run consent-profile-account deletion lock races
+        run: npm run qa:db:consent-delete-race
+
+      - name: Run admin credit adjustment response-loss races
+        run: npm run qa:db:admin-adjust-race
+
+      - name: Run remaining admin mutation receipt and state races
+        run: npm run qa:db:admin-mutation-race
+
+      - name: Run reactivation against the real local GoTrue Admin API
+        run: npm run qa:db:reactivation-auth-api
+
+      - name: Run global user-mutation lock graph races
+        run: npm run qa:db:user-mutation-lock-race
+
+      - name: Run FAL submit acknowledgement-timeout races
+        run: npm run qa:db:fal-submit-race
+
+      - name: Run legacy signed-upload orphan lock races
+        run: npm run qa:db:legacy-upload-race
+
+      - name: Run public write quota concurrency races
+        run: npm run qa:db:public-write-race
+
+      - name: Run public score and report quota concurrency races
+        run: npm run qa:db:score-report-quota-race
+
+      - name: Run payment observation-finalizer races
+        run: npm run qa:db:order-observation-race
+
+      - name: Stop disposable Supabase
+        if: always()
+        run: supabase stop --no-backup

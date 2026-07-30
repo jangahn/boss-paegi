@@ -18,7 +18,7 @@ import { resolveBackground, findBackground, randomBackground } from "@/lib/backg
 import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
 import { unlockAudio, isMuted, setMuted } from "@/lib/sound";
-import { log } from "@/lib/log";
+import { log, errInfo } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
 import { useGameInit } from "./useGameInit";
 import { useTaunts } from "./useTaunts";
@@ -26,6 +26,8 @@ import { useHighlightRecorder } from "./useHighlightRecorder";
 import { useScoreTimeline } from "./useScoreTimeline";
 import { useBadgeChallenge } from "./useBadgeChallenge";
 import { useTelemetry } from "./useTelemetry";
+import { activeGameElapsedMs } from "@/lib/game-clock";
+import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
 
 function PlayInner() {
   const router = useRouter();
@@ -52,6 +54,8 @@ function PlayInner() {
   const gameRef = useRef<GameHandle | null>(null);
   // 캐릭터/배경 fetch + 게임 init 동안 로딩 오버레이
   const [gameReady, setGameReady] = useState(false);
+  const [gameInitError, setGameInitError] = useState<string | null>(null);
+  const [gameInitAttempt, setGameInitAttempt] = useState(0);
   // 낙서 존재 여부 — picker 의 펜 슬롯이 지우개(🧽)로 토글
   const [hasDrawing, setHasDrawing] = useState(false);
   // 결과 보고서에 표시할 캐릭터 이미지 (커스텀 or 기본)
@@ -94,6 +98,10 @@ function PlayInner() {
   const bgKeyRef = useRef(bgKey);
   // eslint-disable-next-line react-hooks/refs
   bgKeyRef.current = bgKey;
+  // 선택 중인 키와 실제 Pixi 적용 완료 키를 분리한다. 비동기 로드가
+  // 실패해도 UI·URL·텔레메트리가 거짓 전환 상태로 남지 않는다.
+  const appliedBgKeyRef = useRef(bgKey);
+  const [bgSwitchError, setBgSwitchError] = useState<string | null>(null);
   const start = useGameStore((s) => s.start);
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
@@ -141,6 +149,7 @@ function PlayInner() {
   // Pixi 게임 인스턴스 생성/해제 (캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
   useGameInit({
     dollId,
+    initAttempt: gameInitAttempt,
     stageRef,
     gameRef,
     weaponRef,
@@ -150,8 +159,12 @@ function PlayInner() {
       hit(strength, weaponKey, chargeUlt),
     onDrawingChange: setHasDrawing,
     setGameReady,
+    setGameInitError,
     setDollImageUrl,
     setDollRole: setRole,
+    onInitialBackgroundReady: (key) => {
+      appliedBgKeyRef.current = key;
+    },
   });
 
   useEffect(() => {
@@ -181,7 +194,7 @@ function PlayInner() {
   // 뱃지 도전 라이브 체크리스트 + 획득 토스트(단일 소스 lib/badges 구동).
   // bgVisits 는 store 밖 ref → 안정 getter 로 전달(맵 패밀리 진행도 반영).
   const getBgVisits = useCallback(() => Array.from(bgVisitsRef.current), []);
-  const { slots, toasts } = useBadgeChallenge({
+  const { slots, toasts, loadError: badgeLoadError } = useBadgeChallenge({
     recording: gameReady && !over,
     getBgVisits,
   });
@@ -215,12 +228,11 @@ function PlayInner() {
   };
 
   const handleBg = (key: string) => {
-    telemetry.onMapSelect(bgKey, key);
     if (key !== bgKey) {
       userChangedBgRef.current = true; // 이후 핫스왑이 ?bg= 를 URL 에 동기화
-      bgVisitsRef.current.add(key);
-      log.info("game.bg_switch", { from: bgKey, to: key });
-      setSentryGameContext({ dollId, weapon: weapon.key, bg: key, gamePhase: "playing" });
+      setBgSwitchError(null);
+      bgKeyRef.current = key;
+      // 실제 전환 확정(로그·텔레메트리·방문맵·URL)은 로드 성공 effect에서만.
     }
     setBgKey(key);
   };
@@ -228,29 +240,58 @@ function PlayInner() {
   // 배경 전환 — 텍스처만 핫스왑. 게임 상태 (점수/낙서/무기) 그대로.
   // run-once boolean 가드는 StrictMode 더블 effect 에서 깨지므로
   // "마지막으로 적용한 키" 비교로 idempotent 하게.
-  const appliedBgKeyRef = useRef(bgKey);
   useEffect(() => {
+    if (!gameReady) return;
     if (appliedBgKeyRef.current === bgKey) return; // 초기 배경은 게임 생성 시 적용됨
-    appliedBgKeyRef.current = bgKey;
+    const previousKey = appliedBgKeyRef.current;
     const b = resolveBackground(bgKey);
     let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       const { Assets } = await import("pixi.js");
-      const tex = await Assets.load(b.url).catch(() => undefined);
-      if (!cancelled && tex) gameRef.current?.setBackground(tex);
-    })();
-    // URL 동기화 (공유용) 는 사용자가 직접 바꾼 경우만 — navigation 없이 replaceState 로만.
-    // 초기 random 전환(office→random)은 URL 에 안 써서 /play 를 깔끔히 유지(현행 UX 보존).
-    if (userChangedBgRef.current) {
-      const sp = new URLSearchParams();
-      if (dollId) sp.set("doll", dollId);
-      sp.set("bg", bgKey);
-      window.history.replaceState(null, "", `/play?${sp.toString()}`);
-    }
+      const tex = await loadClientAssetWithDeadline(
+        () => Assets.load(b.url),
+        { signal: controller.signal },
+      );
+      if (cancelled) return;
+      const game = gameRef.current;
+      if (!game) throw new Error("game_handle_missing");
+      game.setBackground(tex);
+      appliedBgKeyRef.current = bgKey;
+      setBgSwitchError(null);
+      if (userChangedBgRef.current) {
+        telemetry.onMapSelect(previousKey, bgKey);
+        bgVisitsRef.current.add(bgKey);
+        log.info("game.bg_switch", { from: previousKey, to: bgKey });
+        setSentryGameContext({
+          dollId,
+          weapon: weaponRef.current.key,
+          bg: bgKey,
+          gamePhase: "playing",
+        });
+        const sp = new URLSearchParams();
+        if (dollId) sp.set("doll", dollId);
+        sp.set("bg", bgKey);
+        window.history.replaceState(null, "", `/play?${sp.toString()}`);
+      }
+    })().catch((error) => {
+      if (cancelled) return;
+      log.error("play.bg_texture_fail", {
+        from: previousKey,
+        to: bgKey,
+        ...errInfo(error),
+      });
+      bgKeyRef.current = previousKey;
+      setBgKey(previousKey);
+      setBgSwitchError(
+        "배경을 바꾸지 못했어요. 잠시 후 다시 선택해 주세요.",
+      );
+    });
     return () => {
       cancelled = true;
+      controller.abort(new Error("background_switch_inactive"));
     };
-  }, [bgKey, dollId]);
+  }, [bgKey, dollId, gameReady, telemetry]);
 
   // 페이지 진입 후 첫 user gesture 시 AudioContext unlock (iOS Safari autoplay 우회).
   useEffect(() => {
@@ -273,9 +314,11 @@ function PlayInner() {
       if (endingRef.current) return; // 강제종료 grace 중 수동 종료 등 중복 차단(one-shot)
       endingRef.current = true;
       setEndReason(reason);
-      // 궁극기 난타 진행 중이면 즉시 정지 (모달 뒤 점수/사운드/흔들림 잔류 방지)
-      gameRef.current?.stopUltimate();
+      // Pixi 생산자와 store 수신 gate를 같은 JS turn에서 먼저 닫은 뒤 결과를
+      // 기록한다. 이후 도착한 pellet/throw callback은 양쪽 fence에서 모두 no-op.
+      gameRef.current?.end();
       const s = useGameStore.getState();
+      end();
       // 게임 세션 종료 요약 — Logs/Discover 에서 weapon·점수대·플레이타임 분석.
       log.info("game.end", {
         dollId: dollId ?? "default",
@@ -285,7 +328,9 @@ function PlayInner() {
         hitCount: s.hitCount,
         mainWeapon: topWeapon(s.weaponCounts),
         weaponCounts: s.weaponCounts,
-        durationMs: s.startedAt ? Math.round(performance.now() - s.startedAt) : 0,
+        durationMs: Math.round(
+          activeGameElapsedMs(s.isPlaying, s.startedAt, performance.now()),
+        ),
         endReason: reason,
       });
       setSentryGameContext({
@@ -294,7 +339,6 @@ function PlayInner() {
         bg: bgKeyRef.current,
         gamePhase: "over",
       });
-      end();
       // 렉 진단 perf(프레임타임/DPR) — 텔레메트리 저장 + Sentry context(보조)
       const perf = gameRef.current?.getPerfStats();
       if (perf) {
@@ -326,8 +370,9 @@ function PlayInner() {
     const id = window.setInterval(() => {
       if (forceEndRef.current) return;
       const s = useGameStore.getState();
-      if (!s.isPlaying || !s.startedAt) return;
-      const elapsed = (performance.now() - s.startedAt) / 1000;
+      if (!s.isPlaying) return;
+      const elapsed =
+        activeGameElapsedMs(true, s.startedAt, performance.now()) / 1000;
       const reason =
         s.score >= limits.maxScore
           ? "score_limit"
@@ -363,6 +408,7 @@ function PlayInner() {
     }
     bgVisitsRef.current = new Set([bgKeyRef.current]); // 새 세션 — 현재 배경만
     start();
+    gameRef.current?.start();
     telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
   };
 
@@ -378,18 +424,36 @@ function PlayInner() {
       className="game-surface relative flex h-[100dvh] flex-col overflow-hidden bg-zinc-900"
       onContextMenu={(e) => e.preventDefault()}
     >
+      <h1 className="sr-only">부장님 패기 게임</h1>
       {/* min-h-0/min-w-0: flex item 이 canvas(고정 CSS 크기) content 이하로 축소되게 허용 →
           ResizeObserver 가 창 축소도 포착(없으면 min-content=캔버스 크기에 묶여 미발화). */}
       <div ref={stageRef} className="min-h-0 min-w-0 flex-1 select-none" />
-      {!gameReady && (
+      {!gameReady && !gameInitError && (
         <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
           <Spinner className="h-8 w-8 text-white/80" />
           <p className="text-sm text-white/70">캐릭터 불러오는 중...</p>
         </div>
       )}
+      {!gameReady && gameInitError && (
+        <div
+          role="alert"
+          className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-zinc-900/90 px-6 text-center"
+        >
+          <p className="text-sm font-medium text-white">{gameInitError}</p>
+          <button
+            type="button"
+            onClick={() => setGameInitAttempt((attempt) => attempt + 1)}
+            className="rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-bold text-zinc-950"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
       <SpeechBubble text={taunt} />
       <ScoreBoard />
-      {gameReady && !over && <BadgeChallenge slots={slots} />}
+      {gameReady && !over && (
+        <BadgeChallenge slots={slots} error={badgeLoadError} />
+      )}
       {gameReady && !over && toasts.length > 0 && (
         <div className="pointer-events-none absolute left-1/2 top-1/4 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5">
           {toasts.map((t) => (
@@ -402,21 +466,35 @@ function PlayInner() {
           ))}
         </div>
       )}
+      {bgSwitchError && gameReady && !over && (
+        <div
+          role="status"
+          className="pointer-events-none absolute inset-x-0 top-24 z-20 flex justify-center px-4"
+        >
+          <p className="rounded-full bg-red-950/90 px-4 py-2 text-xs font-medium text-red-100 shadow-lg">
+            {bgSwitchError}
+          </p>
+        </div>
+      )}
       <div className="pointer-events-auto absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-center gap-2 sm:right-4 sm:top-4">
         <button
           type="button"
           onClick={toggleSound}
           aria-label={soundMuted ? "소리 켜기" : "소리 끄기"}
+          aria-pressed={soundMuted}
           className="rounded-full bg-black/50 px-2.5 py-1.5 text-sm text-white backdrop-blur-sm sm:px-3 sm:py-2"
         >
           {soundMuted ? "🔇" : "🔊"}
         </button>
-        <button
-          onClick={() => void handleEnd()}
-          className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:px-4 sm:py-2 sm:text-sm"
-        >
-          그만 패기
-        </button>
+        {gameReady && (
+          <button
+            type="button"
+            onClick={() => void handleEnd()}
+            className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:px-4 sm:py-2 sm:text-sm"
+          >
+            그만 패기
+          </button>
+        )}
       </div>
       {/* 강제 종료 배너 — 한도 도달 시 grace 동안 노출 후 결과 모달로 전환 */}
       {forcedBanner && !over && (

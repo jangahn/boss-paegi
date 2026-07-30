@@ -1,27 +1,44 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getBadgeCatalogWithMeta } from "@/lib/config/getters";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { validateAdminRows } from "@/lib/admin-read-contract";
+import { requireSupabaseRows } from "@/lib/supabase-operation";
 import { BadgeCatalogEditor } from "@/components/admin/content/BadgeCatalogEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function BadgeCatalogPage() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { value, version, source, invalid } = await getBadgeCatalogWithMeta();
 
-  // slug 별 과거 획득 영향도(user_badges·score_stats) — 삭제/키변경 경고용. 어드민 전용·소량.
+  // slug 별 과거 획득 영향도. Raw rows를 읽으면 PostgREST max-rows에서
+  // 조용히 잘려 운영자가 "영향 0건"으로 오판할 수 있으므로 DB 전체 집계만
+  // 사용한다. 오류/손상 success는 throw해 위험한 편집기를 렌더하지 않는다.
   const admin = createAdminClient();
-  const [{ data: ub }, { data: ss }] = await Promise.all([
-    admin.from("user_badges").select("badge_id"),
-    admin.from("score_stats").select("badge_ids"),
-  ]);
+  const impactRowsUnknown = await requireSupabaseRows(
+    "admin.badge_catalog.impact",
+    () => admin.rpc("get_admin_badge_impact"),
+  );
+  const impactRows = validateAdminRows<{
+    badge_id: string;
+    users: number;
+    scores: number;
+  }>("admin.badge_catalog.impact", impactRowsUnknown, {
+    badge_id: "string",
+    users: "nonnegativeInteger",
+    scores: "nonnegativeInteger",
+  });
   const impact: Record<string, { users: number; scores: number }> = {};
-  const bump = (slug: string, k: "users" | "scores") => {
-    const cur = (impact[slug] ??= { users: 0, scores: 0 });
-    cur[k] += 1;
-  };
-  for (const r of ub ?? []) if (r.badge_id) bump(r.badge_id as string, "users");
-  for (const r of ss ?? [])
-    for (const s of ((r.badge_ids as string[] | null) ?? [])) bump(s, "scores");
+  for (const row of impactRows) {
+    impact[row.badge_id] = {
+      users: row.users,
+      scores: row.scores,
+    };
+  }
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto w-full max-w-2xl">

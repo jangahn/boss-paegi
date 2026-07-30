@@ -65,6 +65,7 @@ export class Projectile extends Container {
     this.rotation = this.body.angle;
     if (
       this.body.position.y > viewH + 200 ||
+      this.body.position.y < -200 ||
       this.body.position.x < -200 ||
       this.body.position.x > viewW + 200
     ) {

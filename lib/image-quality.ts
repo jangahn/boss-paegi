@@ -72,6 +72,18 @@ export function assessFaceCrop(
   img: HTMLImageElement,
   area: CropRect
 ): FaceQuality {
+  if (
+    !Number.isFinite(area.x) ||
+    !Number.isFinite(area.y) ||
+    !Number.isFinite(area.width) ||
+    !Number.isFinite(area.height) ||
+    area.x < 0 ||
+    area.y < 0 ||
+    area.width <= 0 ||
+    area.height <= 0
+  ) {
+    return { ok: false, reason: "low_res", nativePx: 0, sharpness: 0 };
+  }
   const nativePx = Math.round(Math.min(area.width, area.height));
   if (nativePx < MIN_CROP_SHORT_PX) {
     return { ok: false, reason: "low_res", nativePx, sharpness: 0 };

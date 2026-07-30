@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-server";
 import { getGenerationConfigWithMeta } from "@/lib/config/getters";
 import { GenerationConfigEditor } from "@/components/admin/content/GenerationConfigEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function GenerationConfigPage() {
+  const gate = await requireAdmin();
+  if (!gate.ok) redirect(gate.error === "consent_required" ? "/consent?next=/admin" : "/");
+
   const { value, version, source, invalid } = await getGenerationConfigWithMeta();
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
