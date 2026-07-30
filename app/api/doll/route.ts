@@ -16,6 +16,11 @@ import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
 import { PROVENANCE_SCHEMA_VERSION } from "@/lib/character-gen/provenance";
 import { log, errInfo } from "@/lib/log";
 import { asRole, isRoleId } from "@/lib/roles";
+import {
+  GENERATION_COST_FROZEN_BODY,
+  GENERATION_COST_ROLLOUT_HEADER,
+  generationCostPathEnabled,
+} from "@/lib/generation-cost-rollout";
 
 export const runtime = "nodejs";
 // 누끼(birefnet ~2s) + fetch/normalize/upload/insert. 30s 면 충분.
@@ -30,6 +35,16 @@ export const maxDuration = 30;
  *   멱등(이미 picked 면 기존 doll)·동시성(done→picked 조건부 1승·패자 보상삭제)·pick 후 provenance 갱신.
  */
 export async function POST(req: NextRequest) {
+  // Only POST can start paid birefnet work. Keep this before auth/body/DB so a
+  // rolling old deployment has an externally provable, exact freeze boundary;
+  // GET/DELETE remain available while the generation cost ledger is deployed.
+  if (!generationCostPathEnabled()) {
+    return NextResponse.json(GENERATION_COST_FROZEN_BODY, {
+      status: 503,
+      headers: { [GENERATION_COST_ROLLOUT_HEADER]: "frozen" },
+    });
+  }
+
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
