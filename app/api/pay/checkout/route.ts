@@ -9,7 +9,10 @@ import { getGrowthLevers } from "@/lib/config/getters";
 import { activeCreditProducts, payModeFor } from "@/lib/config/domains/growth";
 import { isReviewerUser } from "@/lib/reviewer";
 import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
-import { paymentCheckoutEnabled } from "@/lib/pay/checkout-rollout";
+import {
+  paymentCheckoutEnabled,
+  paymentRolloutIdentityHeaders,
+} from "@/lib/pay/checkout-rollout";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
 import { refundRpcErrorResponsePayload } from "@/lib/refund-saga";
 import { rateLimit } from "@/lib/rate-limit";
@@ -35,7 +38,10 @@ export async function POST(req: NextRequest) {
       { error: "payment_unavailable" },
       {
         status: 503,
-        headers: { "X-Boss-Paegi-Payment-Rollout": "frozen" },
+        headers: {
+          "X-Boss-Paegi-Payment-Rollout": "frozen",
+          ...paymentRolloutIdentityHeaders(),
+        },
       },
     );
   }
