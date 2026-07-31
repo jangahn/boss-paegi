@@ -12,10 +12,21 @@ export const GENERATION_POLL_REQUEST_TIMEOUT_MS = 12_000;
 
 export type GenerationPollResult =
   | { status: "ready"; urls: string[]; role: RoleId }
-  | { status: "interrupted"; reason?: "photo" }
+  | { status: "interrupted"; reason?: "photo" | "provider" }
+  /** 성공 응답 연속 N회에서 대상 생성이 부재 — 종료(실패·만료·선택완료)로 판정. */
+  | { status: "gone" }
+  /** resume 값이 생성 id 형식이 아님 — 재시도 무의미한 영구 오류. */
+  | { status: "invalid" }
   | { status: "unauthorized" }
   | { status: "unavailable" }
   | { status: "timeout" };
+
+/** generating 행의 실단계 스냅샷 — 화면 단계 표시는 서버 상태를 그대로 따른다. */
+export type GenerationPollProgress = {
+  phase?: "analyzing" | "drawing";
+  candidatesReady?: number;
+  createdAt: string;
+};
 
 export type GenerationPollOptions = {
   fetcher?: typeof fetch;
@@ -27,6 +38,8 @@ export type GenerationPollOptions = {
   maxVisibleMs?: number;
   intervalMs?: number;
   consecutiveFailureLimit?: number;
+  /** generating 실단계 수신 시 호출 — UI 가 서버 단계를 그대로 표시. */
+  onProgress?: (progress: GenerationPollProgress) => void;
 };
 
 /**
@@ -39,7 +52,7 @@ export async function pollGeneration(
   isCancelled: () => boolean,
   options: GenerationPollOptions = {},
 ): Promise<GenerationPollResult> {
-  if (!UUID_RE.test(genId)) return { status: "unavailable" };
+  if (!UUID_RE.test(genId)) return { status: "invalid" };
 
   const fetcher = options.fetcher ?? fetch;
   const wait =
@@ -74,6 +87,10 @@ export async function pollGeneration(
   let lastTick = now();
   let consecutiveFailures = 0;
   let consecutive401 = 0;
+  // v2 는 예약(분석 중)부터 행이 보이므로, 성공 응답에서의 연속 부재는
+  // "아직 시작 전"이 아니라 종료(실패·만료·타 탭 선택완료)의 신호다(B1).
+  let consecutiveAbsent = 0;
+  const absentLimit = 3;
   const accrue = () => {
     const current = now();
     if (isVisible()) visibleElapsed += Math.max(0, current - lastTick);
@@ -84,7 +101,7 @@ export async function pollGeneration(
     accrue();
     try {
       const delivery = await runBoundedClientJsonFetch({
-        input: "/api/generations",
+        input: "/api/generations?v=2",
         init: { cache: "no-store" },
         fetcher,
         signal: options.signal,
@@ -111,12 +128,26 @@ export async function pollGeneration(
         if (generation?.kind === "interrupted") {
           return {
             status: "interrupted",
-            ...(generation.reason === "photo"
-              ? { reason: "photo" as const }
+            ...(generation.reason !== undefined
+              ? { reason: generation.reason }
               : {}),
           };
         }
-        // generating / 아직 목록에 없음 → 계속 폴링.
+        if (generation?.kind === "generating") {
+          consecutiveAbsent = 0;
+          options.onProgress?.({
+            createdAt: generation.createdAt,
+            ...(generation.phase !== undefined
+              ? { phase: generation.phase }
+              : {}),
+            ...(generation.candidatesReady !== undefined
+              ? { candidatesReady: generation.candidatesReady }
+              : {}),
+          });
+        } else {
+          consecutiveAbsent += 1;
+          if (consecutiveAbsent >= absentLimit) return { status: "gone" };
+        }
       } else {
         consecutiveFailures += 1;
         if (response.status === 401) {

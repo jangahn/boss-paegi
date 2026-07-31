@@ -21,6 +21,10 @@ export const INCOMPLETE_RECLAIM_MS = 30 * 60 * 1000;
 
 /** 안 고르고 방치된 후보(done 미선택) 자동 정리 기간 */
 export const CANDIDATE_TTL_MS = 24 * 60 * 60 * 1000;
+/** v2: 미확정 예약(claim~commit)을 "분석 중"으로 보여주는 최대 나이 — 이후는 release 대상. */
+export const PREFLIGHT_VISIBLE_MS = 15 * 60 * 1000;
+/** v2: 끊김 정리(즉시 환불)된 예약의 interrupted 안내 노출 창(created_at 기준). */
+export const PREFLIGHT_INTERRUPTED_VISIBLE_MS = 45 * 60 * 1000;
 
 /** 후보 이미지 storage 경로 prefix — {owner}/candidates/{genId}/ */
 export function candidatePrefix(ownerId: string, genId: string): string {
@@ -103,6 +107,13 @@ export type PendingGeneration = {
   createdAt: string;
   /** 생성 시 선택한 롤 — resume/이어서 시 doll.role 복구용 (없으면 boss) */
   role?: string;
-  /** interrupted 사유 — "photo"(얼굴 미검출 등 사진 문제 → 다른 사진 안내). 없으면 일반(타임아웃·끊김). */
-  reason?: "photo";
+  /**
+   * interrupted 사유 — "photo"(얼굴 미검출·안전기준 → 다른 사진 안내) /
+   * "provider"(제공자·인프라 실패 — 사진 탓 아님). 없으면 일반(타임아웃·끊김).
+   */
+  reason?: "photo" | "provider";
+  /** v2: generating 의 실제 서버 단계 — analyzing(예약~분석)·drawing(제출 후). */
+  phase?: "analyzing" | "drawing";
+  /** v2: drawing 중 웹훅으로 이미 적재된 후보 수(0~3) — 실진행 표시용. */
+  candidatesReady?: number;
 };

@@ -139,6 +139,9 @@ jobs:
       - name: Install the news exposure lifecycle list (0099)
         run: npm run qa:db:apply:news-exposure-lifecycle
 
+      - name: Install the stale preflight release (0100)
+        run: npm run qa:db:apply:preflight-stale-release
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 

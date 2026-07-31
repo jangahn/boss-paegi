@@ -203,7 +203,8 @@ test("invalid ids, cancellation, and invalid options stop without unsafe polling
       fetcher,
       wait: noWait,
     }),
-    { status: "unavailable" },
+    // 형식 불일치는 재시도 무의미한 영구 오류 — 일시 오류(unavailable)와 구분.
+    { status: "invalid" },
   );
   assert.deepEqual(
     await pollGeneration(ID, () => true, { fetcher, wait: noWait }),
@@ -218,4 +219,50 @@ test("invalid ids, cancellation, and invalid options stop without unsafe polling
     }),
     /invalid_generation_poll_options/,
   );
+});
+
+test("연속된 성공 응답 부재는 종결(gone)로 판정한다 — 죽은 resume 가짜 대기 금지", async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    return jsonResponse(200, { pending: [] });
+  };
+  const result = await pollGeneration(ID, () => false, {
+    fetcher,
+    wait: noWait,
+  });
+  assert.deepEqual(result, { status: "gone" });
+  assert.equal(calls, 3);
+});
+
+test("generating 실단계(phase/candidatesReady)가 onProgress 로 전달된다", async () => {
+  const seen: unknown[] = [];
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    return jsonResponse(200, {
+      pending: [
+        {
+          id: ID,
+          kind: "generating",
+          candidateUrls: [],
+          createdAt: "2026-08-01T00:00:00.000Z",
+          role: "boss",
+          phase: "drawing",
+          candidatesReady: 2,
+        },
+      ],
+    });
+  };
+  const result = await pollGeneration(ID, () => calls >= 2, {
+    fetcher,
+    wait: noWait,
+    onProgress: (p) => seen.push(p),
+  });
+  assert.equal(result.status, "timeout");
+  assert.deepEqual(seen[0], {
+    createdAt: "2026-08-01T00:00:00.000Z",
+    phase: "drawing",
+    candidatesReady: 2,
+  });
 });
