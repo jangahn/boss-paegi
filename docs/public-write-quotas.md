@@ -47,13 +47,18 @@ PostgREST `authenticator` 세션이 8초 statement/lock ceiling을 제공하고,
 함수는 더 짧은 250ms quota-lock 경계만 고정한다. migration 자체의 10분
 statement timeout은 DDL transaction에만 적용된다.
 
+2026-07-31 제품 결정(마이그레이션 `0097_public_write_quota_relax.sql`): 초기
+상한이 헤비 플레이·CGNAT 공유 IP·바이럴 트래픽 같은 정상 사용을 차단할 수
+있어 **모든 상한을 100배로 완화**했다. 구조(버킷·원자 소비·감사·감시)는
+그대로이며 아래 표는 완화 후 유효값이다.
+
 | 표면 | actor/owner 요청/일 | network 요청/일 | global 요청/일 | 추가 경계 |
 |---|---:|---:|---:|---|
-| telemetry | actor 1,000 | actor가 network일 수 있음 | 50,000 | actor 신규 세션 30, global 신규 세션 2,000, 세션 write 400 |
-| analytics visit/share/conversion | actor 200 | `/api/track`은 항상 network | 2,000 | quota 승인과 event insert가 한 transaction |
-| score | owner 100 | 300 | 5,000 | exact submission receipt replay는 quota-free |
-| content report | 해당 없음 | 20 | 500 | exact receipt replay는 memory/durable limit 모두 quota-free |
-| doll signed URL | 해당 없음 | actor 1,000 units | 10,000 units | 호출당 1~100 units, quota 승인 뒤에만 Storage signing 수행 |
+| telemetry | actor 100,000 | actor가 network일 수 있음 | 5,000,000 | actor 신규 세션 3,000, global 신규 세션 200,000, 세션 write 40,000 |
+| analytics visit/share/conversion | actor 20,000 | `/api/track`은 항상 network | 200,000 | quota 승인과 event insert가 한 transaction |
+| score | owner 10,000 | 30,000 | 500,000 | exact submission receipt replay는 quota-free |
+| content report | 해당 없음 | 2,000 | 50,000 | exact receipt replay는 memory/durable limit 모두 quota-free |
+| doll signed URL | 해당 없음 | actor 100,000 units | 1,000,000 units | 호출당 1~100 units, quota 승인 뒤에만 Storage signing 수행 |
 
 score는 global → network/owner lexical order로 세 차원을 잠근다. report는
 global → network 순서다. score/report 앱 경로는 stable submission ID로

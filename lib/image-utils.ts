@@ -27,8 +27,8 @@ export async function prepareInputImage(input: ArrayBuffer): Promise<Buffer> {
     .toBuffer();
 }
 
-/** Provider JPEG evidence must match both its declared geometry and bytes. */
-export async function assertGeneratedJpegEvidence(
+/** Provider image evidence must match both its declared geometry and bytes. */
+export async function assertGeneratedImageEvidence(
   input: Buffer,
   expected: { width: number; height: number },
 ): Promise<void> {
@@ -36,7 +36,7 @@ export async function assertGeneratedJpegEvidence(
     limitInputPixels: IMAGE_INPUT_MAX_PIXELS,
   }).metadata();
   if (
-    metadata.format !== "jpeg" ||
+    (metadata.format !== "jpeg" && metadata.format !== "png") ||
     metadata.width !== expected.width ||
     metadata.height !== expected.height ||
     (metadata.pages ?? 1) !== 1

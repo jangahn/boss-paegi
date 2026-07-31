@@ -35,7 +35,7 @@ import {
   DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
 } from "@/lib/media-download";
 import { fetchPrivateFalMediaBlob } from "@/lib/character-gen/fal-private-media";
-import { assertGeneratedJpegEvidence } from "@/lib/image-utils";
+import { assertGeneratedImageEvidence } from "@/lib/image-utils";
 import { removeStorageObjects } from "@/lib/supabase-operation";
 
 fal.config({ credentials: SERVER_ENV.FAL_KEY });
@@ -136,18 +136,21 @@ async function copyOne(
         maxBytes: DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
         signal: AbortSignal.timeout(COPY_FETCH_TIMEOUT_MS),
       });
-      if (downloaded.type !== "image/jpeg") {
-        throw new Error("candidate_not_jpeg");
+      if (
+        downloaded.type !== "image/jpeg" &&
+        downloaded.type !== "image/png"
+      ) {
+        throw new Error("candidate_media_type_invalid");
       }
       const buf = Buffer.from(await downloaded.blob.arrayBuffer());
-      await assertGeneratedJpegEvidence(buf, {
+      await assertGeneratedImageEvidence(buf, {
         width: img.width,
         height: img.height,
       });
       const path = `${prefix}/${index}.jpg`;
       const { error: upErr } = await admin.storage
         .from(DOLLS_BUCKET)
-        .upload(path, buf, { contentType: "image/jpeg", upsert: true });
+        .upload(path, buf, { contentType: downloaded.type, upsert: true });
       if (upErr) {
         log.warn("gen.candidate_copy_fail", {
           genId,

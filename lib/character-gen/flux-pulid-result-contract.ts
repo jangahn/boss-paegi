@@ -7,7 +7,7 @@ export type FluxPulidResult = {
     url: string;
     width: number;
     height: number;
-    contentType: "image/jpeg" | null;
+    contentType: "image/jpeg" | "image/png" | null;
     fileSize: number | null;
   };
   seed: number;
@@ -57,7 +57,8 @@ export function parseFluxPulidResult(value: unknown): FluxPulidResult | null {
     (image.width as number) * (image.height as number) >
       FAL_GENERATED_IMAGE_MAX_PIXELS ||
     (image.content_type !== undefined &&
-      image.content_type !== "image/jpeg") ||
+      image.content_type !== "image/jpeg" &&
+      image.content_type !== "image/png") ||
     (image.file_size !== undefined &&
       (!Number.isSafeInteger(image.file_size) ||
         (image.file_size as number) < 1))
@@ -70,7 +71,10 @@ export function parseFluxPulidResult(value: unknown): FluxPulidResult | null {
       width: image.width as number,
       height: image.height as number,
       contentType:
-        image.content_type === "image/jpeg" ? "image/jpeg" : null,
+        image.content_type === "image/jpeg" ||
+        image.content_type === "image/png"
+          ? image.content_type
+          : null,
       fileSize:
         typeof image.file_size === "number" ? image.file_size : null,
     },

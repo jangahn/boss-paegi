@@ -6,7 +6,7 @@ register("../telemetry/node-loader.mjs", import.meta.url);
 
 const {
   IMAGE_INPUT_MAX_PIXELS,
-  assertGeneratedJpegEvidence,
+  assertGeneratedImageEvidence,
   normalizeDollImage,
   prepareInputImage,
 } = await import("../../lib/image-utils.ts");
@@ -29,14 +29,29 @@ test("input preparation produces the canonical image dimensions", async () => {
   assert.equal(metadata.width, 768);
   assert.equal(metadata.height, 1024);
   assert.equal(metadata.format, "jpeg");
-  await assertGeneratedJpegEvidence(output, {
+  await assertGeneratedImageEvidence(output, {
     width: 768,
     height: 1024,
   });
   await assert.rejects(
     () =>
-      assertGeneratedJpegEvidence(output, {
+      assertGeneratedImageEvidence(output, {
         width: 767,
+        height: 1024,
+      }),
+    /evidence_mismatch/,
+  );
+  // 운영 flux-pulid 기본 출력은 PNG다 — jpeg 전용 검증은 정상 결과를 거부한다.
+  const png = await sharp(output).png().toBuffer();
+  await assertGeneratedImageEvidence(png, {
+    width: 768,
+    height: 1024,
+  });
+  const webp = await sharp(output).webp().toBuffer();
+  await assert.rejects(
+    () =>
+      assertGeneratedImageEvidence(webp, {
+        width: 768,
         height: 1024,
       }),
     /evidence_mismatch/,
