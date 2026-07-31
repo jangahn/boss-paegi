@@ -273,3 +273,32 @@ test("탈퇴 계정 signout 흐름의 실제 운영 영수증이 파싱된다 �
     );
   }
 });
+
+test("흐름 종착지 검증은 전 표면에서 safeFlowDestination 단일 소스다", async () => {
+  // PR#203 이 파서만 고치고 complete-signout 라우트의 동일 함정을 남겨
+  // ACK 409 루프가 한 단계 뒤에서 재현됐다(2026-08-01 운영 실측).
+  // 종착지(destination)에 safeNext(로그인 차단목록)를 쓰는 코드가 다시
+  // 생기면 탈퇴 로그인 전체가 잠긴다 — 소스 레벨로 봉인한다.
+  const { safeFlowDestination } = await import(
+    "../../lib/oauth-flow-status.ts"
+  );
+  const { safeNext } = await import("../../lib/oauth-metadata.ts");
+  assert.equal(safeFlowDestination("/login?error=account_deleted"), true);
+  assert.equal(safeFlowDestination("/login?error=email_required"), true);
+  // safeNext 는 같은 값을 collapse 한다 — 종착지 검증에 오용 금지의 이유.
+  assert.notEqual(safeNext("/login?error=account_deleted"), "/login?error=account_deleted");
+
+  const signout = await readFile(
+    new URL(
+      "../../app/api/auth/oauth-flow/complete-signout/route.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(signout, /safeFlowDestination\(/);
+  const codeOnly = signout
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+  assert.doesNotMatch(codeOnly, /safeNext\(/);
+});

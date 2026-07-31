@@ -175,7 +175,7 @@ function safePath(value: unknown): value is string {
  * 무한 루프에 갇힌다(2026-08-01 운영 실측). origin 고정·해시 제거 등
  * open-redirect 봉쇄만 수행한다.
  */
-function safeFlowDestination(value: unknown): value is string {
+export function safeFlowDestination(value: unknown): value is string {
   if (
     typeof value !== "string" ||
     value.length < 1 ||

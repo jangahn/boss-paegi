@@ -1077,6 +1077,38 @@ export function FlowPendingClient({
       >
         {waiting ? "확인 중…" : "지금 다시 확인"}
       </button>
+      {/* 반복 실패 탈출구(2026-08-01 제품 결정) — 이 화면은 barrier 로 전
+          페이지를 fence 하므로, 원장 정리(abandon)로 처음부터 다시 시작할
+          출구가 없으면 사용자가 갇힌다(운영 실측: 탈퇴 로그인 루프). */}
+      {attempt >= 3 && requestedFlowId && (
+        <div className="flex flex-col items-center gap-2 border-t border-neutral-200 pt-4">
+          <p className="text-xs text-neutral-500">
+            계속 실패하면 이 로그인 시도를 정리하고 처음부터 다시 할 수
+            있어요. (진행하던 로그인은 취소되고, 계정 데이터는 바뀌지
+            않아요.)
+          </p>
+          <button
+            type="button"
+            className="rounded-md border px-4 py-2 text-sm"
+            onClick={() => {
+              void (async () => {
+                try {
+                  await fetch("/api/auth/oauth-flow/abandon", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ flowId: requestedFlowId }),
+                  });
+                } catch {
+                  // 정리 실패여도 재로그인 진입 자체는 서버가 다시 정합화한다.
+                }
+                window.location.assign("/login");
+              })();
+            }}
+          >
+            로그인 처음부터 다시 하기
+          </button>
+        </div>
+      )}
     </main>
   );
 }
