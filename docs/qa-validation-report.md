@@ -916,6 +916,33 @@ FAL은 로컬 cryptographic/fault stub, raw HTTP contract, ED25519/JWKS와 DB sa
 cryptographic/fault stub, DB saga 및 돈이 이동하지 않는 sandbox 경로만 허용한다.
 실기기 항목은 이 문서와 KB에 수동 검증 경계로 남긴다.
 
+## 운영 롤아웃 완료 기록
+
+payment evidence rollout은 2026-07-30 밤 완료됐다. 운영 journal 실측으로
+expand 26개(`0072`~`008907`)가 23:05~23:06 KST에, contract 3개
+(`0090`~`0092`)가 23:39 KST에 모두 `app_commit=d1d6c91`로 적용됐고, 같은
+commit의 Git 배포가 production alias가 됐다. checkout은 2026-07-31 04:07 KST
+`PAYMENT_CHECKOUT_ENABLED=1` 재배포로 재개방됐으며, 0092 레거시 업로드
+스캐너는 04:12 KST에 `examined=0, enqueued=0, protected=0`과 read-only
+`receiptExact:true, coverageGaps:0`으로 최종 종결됐다. 재개방 이후 Sentry
+신규·급증 이슈는 0건이었다(2026-07-31 16:01 KST 관측).
+
+OAuth flow ledger rollout은 2026-07-31 저녁 이 문서의 staged 순서 그대로
+완료됐다. 운영 journal 실측: `0093`(17:01:22 KST, `app_commit=9606e181`) →
+동일 HEAD `main` fast-forward·Git production 배포 → 결제·생성 표면 재동결
+Git 배포(`fae67dd`, 17:40 KST alias-current) → 1505초 초과 drain →
+`app-postflight` 통과 → `0094`(18:09:47 KST, qualification receipt 동일
+transaction) → 별도 transaction `0095`(18:10:16 KST) → `contract`·
+`post-contract` 재진입 green. 적용 중 발견한 운영 전용 결함 두 가지는 같은
+release로 수정했다: ① runner `injectReceipt`의 문자열 치환형
+`String.replace`가 `$'` 특수 패턴으로 병합 SQL을 오염시켜 Management API가
+42601로 원자 거부(함수형 replacement + byte-for-byte 포함 가드 + `$'` 보존
+assertion으로 수정), ② Vercel deployment protection이 immutable deployment
+URL probe를 401 SSO로 가로막음(automation bypass 스코프 주입을 runner에
+네이티브 지원, 위 production runner 절 참조). 재개방은 이 완료 기록을 포함한
+재개방 커밋의 Git 배포로 수행하며, 재개방 smoke와 운영 사후 관측 실측치는
+KB `payments-runtime`에 기록한다.
+
 ## 종료 조건
 
 작업은 다음 조건을 모두 만족할 때만 완료로 판정한다.

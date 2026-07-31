@@ -168,6 +168,14 @@ production environment headers가 모두 같은 frozen deployment인지 검증�
 CLI deployment, 수동 redeploy/promote, Git이 아닌 `source`, PR preview, 다른 repo,
 다른 `main` SHA는 qualification 대상이 아니다.
 
+Vercel deployment protection은 canonical alias를 공개로 두고 immutable
+`*.vercel.app` deployment URL을 SSO로 보호한다. env에 프로젝트 automation
+bypass인 `BOSS_PAEGI_VERCEL_AUTOMATION_BYPASS_SECRET`이 있으면 runner는
+canonical alias와 `api.vercel.app`을 제외한 `*.vercel.app` probe에만
+`x-vercel-protection-bypass` 헤더를 붙여 SSO interstitial 대신 실제 앱 응답을
+검증한다. bypass된 응답에도 모든 identity/no-store/본문 assertion이 그대로
+적용되며, secret이 없으면 보호된 deployment URL probe는 401로 fail-closed한다.
+
 runner는 한 번에 `expand`, `app-postflight`, `contract`, `post-contract` 중
 정확히 하나만 받는다.
 `app-postflight --apply`, 복수 `--stage`, 다른 project ref는 실행 전에 거부한다.

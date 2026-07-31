@@ -2014,3 +2014,31 @@ test("post-contract refuses raw-applied, receipt-only, and non-monotonic 0095 st
     /oauth_migration_journal_timeline_invalid/u,
   );
 });
+
+test("protection bypass header stays scoped to protected deployment hosts", () => {
+  const runner = readFileSync(
+    new URL(
+      "../../scripts/qa/apply-oauth-production-rollout.mjs",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const wrapper = runner.slice(
+    runner.indexOf("const protectionBypassSecret"),
+    runner.indexOf("const expand = await migrationSource("),
+  );
+  assert.ok(wrapper.length > 0, "bypass wrapper must precede migration reads");
+  assert.match(
+    wrapper,
+    /env\.BOSS_PAEGI_VERCEL_AUTOMATION_BYPASS_SECRET/u,
+  );
+  assert.match(
+    wrapper,
+    /headers\.set\("x-vercel-protection-bypass", protectionBypassSecret\)/u,
+  );
+  assert.match(wrapper, /host !== canonicalHost/u);
+  assert.match(wrapper, /host\.endsWith\("\.vercel\.app"\)/u);
+  assert.match(wrapper, /host !== "api\.vercel\.app"/u);
+  // Without the secret the raw fetch implementation stays untouched.
+  assert.match(wrapper, /protectionBypassSecret !== null/u);
+});

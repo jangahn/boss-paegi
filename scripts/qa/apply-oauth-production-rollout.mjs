@@ -4232,6 +4232,40 @@ export async function runOAuthProductionRollout({
   );
   const management = readManagementEnvironment(env);
   const origin = productionOrigin(env.BOSS_PAEGI_PRODUCTION_ORIGIN);
+  // Vercel deployment protection covers immutable *.vercel.app deployment
+  // URLs while the canonical alias stays public. When the automation bypass
+  // secret is configured, attach it to exactly those protected hosts so the
+  // identity probes reach the application instead of the SSO interstitial.
+  // Every runner assertion still applies to the bypassed responses.
+  const protectionBypassSecret =
+    typeof env.BOSS_PAEGI_VERCEL_AUTOMATION_BYPASS_SECRET === "string" &&
+    env.BOSS_PAEGI_VERCEL_AUTOMATION_BYPASS_SECRET.length > 0
+      ? env.BOSS_PAEGI_VERCEL_AUTOMATION_BYPASS_SECRET
+      : null;
+  const canonicalHost = new URL(origin).hostname;
+  const rawFetchImpl = fetchImpl;
+  if (protectionBypassSecret !== null) {
+    fetchImpl = (url, init) => {
+      let host = null;
+      try {
+        host = new URL(String(url)).hostname;
+      } catch {
+        host = null;
+      }
+      if (
+        host !== null &&
+        host !== canonicalHost &&
+        host.endsWith(".vercel.app") &&
+        !host.endsWith(".api.vercel.app") &&
+        host !== "api.vercel.app"
+      ) {
+        const headers = new Headers(init?.headers);
+        headers.set("x-vercel-protection-bypass", protectionBypassSecret);
+        init = { ...init, headers };
+      }
+      return rawFetchImpl(url, init);
+    };
+  }
   const expand = await migrationSource(
     OAUTH_EXPAND_MIGRATION,
     "expand",
