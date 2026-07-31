@@ -1245,6 +1245,7 @@ function injectReceipt(
   const catalogLocks = catalogMutationLocksSql(
     catalogFunctionManifest,
   );
+  const injectedSnippets = [catalogLocks];
   let executableSource = source.sql;
   if (source.version === OAUTH_CONTRACT_MIGRATION) {
     if (
@@ -1258,9 +1259,14 @@ function injectReceipt(
         `oauth_migration_receipt_injection_failed:${source.version}`,
       );
     }
+    injectedSnippets.push(
+      qualificationReceiptSql(qualification),
+      contractCatalogAssertionSql(catalogIntegrityQuery),
+      contractCatalogAssertionSql(postContractCatalogIntegrityQuery),
+    );
     executableSource = executableSource.replace(
       OAUTH_CONTRACT_QUALIFICATION_MARKER,
-      [
+      () => [
         catalogLocks,
         "",
         qualificationReceiptSql(qualification),
@@ -1280,7 +1286,7 @@ function injectReceipt(
     }
     executableSource = executableSource.replace(
       qualificationAssertion,
-      [
+      () => [
         qualificationAssertion,
         "",
         "-- boss_paegi_oauth_catalog_assertion_pre_contract",
@@ -1289,7 +1295,7 @@ function injectReceipt(
     );
     executableSource = executableSource.replace(
       boundary,
-      [
+      () => [
         "-- boss_paegi_oauth_catalog_assertion_post_contract",
         contractCatalogAssertionSql(
           postContractCatalogIntegrityQuery,
@@ -1310,9 +1316,13 @@ function injectReceipt(
         `oauth_migration_receipt_injection_failed:${source.version}`,
       );
     }
+    injectedSnippets.push(
+      contractCatalogAssertionSql(catalogIntegrityQuery),
+      contractCatalogAssertionSql(postContractCatalogIntegrityQuery),
+    );
     executableSource = executableSource.replace(
       `${OAUTH_POST_CONTRACT_CATALOG_MARKER}\n${OAUTH_POST_CONTRACT_RAW_GUARD}`,
-      [
+      () => [
         catalogLocks,
         "",
         "-- boss_paegi_oauth_catalog_assertion_pre_post_contract",
@@ -1321,7 +1331,7 @@ function injectReceipt(
     );
     executableSource = executableSource.replace(
       boundary,
-      [
+      () => [
         "-- boss_paegi_oauth_catalog_assertion_post_post_contract",
         contractCatalogAssertionSql(
           postContractCatalogIntegrityQuery,
@@ -1342,9 +1352,12 @@ function injectReceipt(
         `oauth_migration_receipt_injection_failed:${source.version}`,
       );
     }
+    injectedSnippets.push(
+      contractCatalogAssertionSql(catalogIntegrityQuery),
+    );
     executableSource = executableSource.replace(
       boundary,
-      [
+      () => [
         catalogLocks,
         "",
         "-- boss_paegi_oauth_catalog_assertion_expand",
@@ -1368,7 +1381,7 @@ function injectReceipt(
     ");",
     "commit;",
   ].join("\n");
-  const executable = executableSource.replace(boundary, receipt);
+  const executable = executableSource.replace(boundary, () => receipt);
   if (
     executable === source.sql ||
     !executable.includes(`'${source.version}'`) ||
@@ -1379,7 +1392,10 @@ function injectReceipt(
       executable.match(
         /insert into public\.schema_migration_journal/gu,
       ) ?? []
-    ).length !== 1
+    ).length !== 1 ||
+    // String.replace $-pattern corruption must fail closed: every injected
+    // block has to survive byte-for-byte in the executable script.
+    !injectedSnippets.every((snippet) => executable.includes(snippet))
   ) {
     throw new Error(`oauth_migration_receipt_injection_failed:${source.version}`);
   }

@@ -425,6 +425,14 @@ function rolloutHarness({
         sql,
         /revoke all on function public\.consume_legacy_signup_migration\([\s\S]*grant execute on function public\.consume_legacy_signup_migration\([\s\S]*to service_role/u,
       );
+      // A string-form String.replace once corrupted the injected catalog
+      // assertion because its replacement contained "$'" substitution
+      // patterns. The embedded anon-result regex literal must survive
+      // byte-for-byte, "$'" included.
+      assert.ok(
+        sql.includes("{0,9})$''::text"),
+        "injected catalog assertion must preserve $' sequences verbatim",
+      );
       assert.doesNotMatch(
         sql,
         /boss_paegi_oauth_contract_qualification_injection_point/u,

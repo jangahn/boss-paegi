@@ -499,6 +499,18 @@ fresh chain 43단계(expand 98 → contract 3 → 0093→0094→0095 staged 순�
 실제 2-session race harness 전부 통과, env 없는 CI-mirror production build
 static page 89/89 생성 통과.
 
+첫 운영 0093 적용 시도에서 세 번째 결함을 발견했다. 운영 러너
+`injectReceipt`가 문자열 치환형 `String.replace`를 사용해, 치환문에 포함된
+catalog 무결성 표현식의 `$'` 시퀀스가 JavaScript 특수 치환 패턴("매치 이후
+문자열")으로 확장되어 병합 SQL이 손상됐고, Management API가 SQLSTATE 42601
+unterminated quoted string으로 거부했다. 거부는 원자적이어서 운영 journal과
+스키마는 변하지 않았다(재확인 pending=1). 로컬 게이트가 이 병합 경로를
+실행하지 않아 잡지 못했던 지점이다. 일곱 개 치환을 모두 함수형 replacement로
+전환하고, 병합 결과에 모든 주입 스니펫이 byte-for-byte 포함되지 않으면
+`oauth_migration_receipt_injection_failed`로 fail-closed하는 가드를
+`injectReceipt`에 추가했으며, mock 운영 적용 테스트에 `$'` 보존 assertion을
+고정했다.
+
 구 서버에서 signed-upload token을 받은 뒤 새 서버에서 finalize하는 in-flight
 요청도 별도 계약으로 검증한다. avatar·highlight·event image·site asset은 새
 서버가 인증 주체, canonical path, 실제 object size/MIME, token 수명을 먼저
