@@ -161,7 +161,7 @@ values
     pg_temp.qa_digest(
       'score-owner:96000000-0000-4000-8000-000000000001'
     ),
-    99
+    9999
   );
 select is(
   public.submit_score_with_review(
@@ -200,7 +200,7 @@ select ok(
         'score-network:' || pg_catalog.repeat('a', 64)
       ))
   and
-  (select request_count = 100
+  (select request_count = 10000
      from public.public_write_quota_buckets
     where endpoint = 'score'
       and actor_key = pg_temp.qa_digest(
@@ -266,7 +266,7 @@ select ok(
              '96000000-0000-4000-8000-000000000102'
   )
   and
-  (select request_count = 100
+  (select request_count = 10000
      from public.public_write_quota_buckets
     where endpoint = 'score'
       and actor_key = pg_temp.qa_digest(
@@ -314,7 +314,7 @@ values
     pg_temp.qa_digest(
       'score-network:' || pg_catalog.repeat('b', 64)
     ),
-    299
+    29999
   ),
   (
     'score',
@@ -345,7 +345,7 @@ select ok(
      from public.public_write_quota_buckets
     where endpoint = 'score' and actor_key = 'global')
   and
-  (select request_count = 300
+  (select request_count = 30000
      from public.public_write_quota_buckets
     where endpoint = 'score'
       and actor_key = pg_temp.qa_digest(
@@ -384,7 +384,7 @@ select ok(
              '96000000-0000-4000-8000-000000000104'
   )
   and
-  (select request_count = 300
+  (select request_count = 30000
      from public.public_write_quota_buckets
     where endpoint = 'score'
       and actor_key = pg_temp.qa_digest(
@@ -423,7 +423,7 @@ values (
   'score',
   (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
   'global',
-  4999
+  499999
 );
 select is(
   public.submit_score_with_review(
@@ -442,7 +442,7 @@ select is(
   'score global N-1 admits the exact final slot'
 );
 select ok(
-  (select request_count = 5000
+  (select request_count = 500000
      from public.public_write_quota_buckets
     where endpoint = 'score' and actor_key = 'global')
   and
@@ -646,7 +646,7 @@ values
     pg_temp.qa_digest(
       'report-network:' || pg_catalog.repeat('a', 64)
     ),
-    19
+    1999
   );
 select is(
   public.submit_content_report(
@@ -663,7 +663,7 @@ select ok(
      from public.public_write_quota_buckets
     where endpoint = 'report' and actor_key = 'global')
   and
-  (select request_count = 20
+  (select request_count = 2000
      from public.public_write_quota_buckets
     where endpoint = 'report'
       and actor_key = pg_temp.qa_digest(
@@ -725,7 +725,7 @@ values (
   'report',
   (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
   'global',
-  499
+  49999
 );
 select is(
   public.submit_content_report(
@@ -738,7 +738,7 @@ select is(
   'report global N-1 admits the exact final slot'
 );
 select ok(
-  (select request_count = 500
+  (select request_count = 50000
      from public.public_write_quota_buckets
     where endpoint = 'report' and actor_key = 'global')
   and
@@ -785,7 +785,7 @@ select ok(
        )
   )
   and
-  (select request_count = 500
+  (select request_count = 50000
      from public.public_write_quota_buckets
     where endpoint = 'report' and actor_key = 'global'),
   'global report rejection creates no receipt or rejected network bucket'
@@ -851,7 +851,7 @@ select is(
   'changed payload on a failed report operation is conflict, not a new attempt'
 );
 
--- Rolling-old seven-argument reports are global-only, not one shared 20/day
+-- Rolling-old seven-argument reports are global-only, not one shared 2,000/day
 -- anonymous pseudo-network.
 delete from public.public_write_quota_buckets where endpoint = 'report';
 insert into public.public_write_quota_buckets(
@@ -913,7 +913,7 @@ select ok(
              '96000000-0000-4000-8000-000000000206'
   )
   and
-  (select request_count = 500
+  (select request_count = 50000
      from public.public_write_quota_buckets
     where endpoint = 'report' and actor_key = 'global'),
   'rolling-old global rejection creates no receipt and never overflows'

@@ -328,7 +328,7 @@ select ok(
       from public.public_write_quota_buckets q
       join public_write_quota_ctx c on c.actor_key = q.actor_key
      where q.endpoint = 'track'
-       and q.request_count = 200
+       and q.request_count = 2000000
   )
   and exists (
     select 1
@@ -387,7 +387,7 @@ select ok(
       from public.public_write_quota_buckets q
      where q.endpoint = 'track'
        and q.actor_key = 'global'
-       and q.request_count = 2000
+       and q.request_count = 20000000
   )
   and not exists (
     select 1
@@ -458,7 +458,7 @@ select ok(
       join public_write_quota_ctx c on c.actor_key = q.actor_key
      where q.endpoint = 'telemetry'
        and q.request_count = 1
-       and q.new_session_count = 30
+       and q.new_session_count = 3000
   )
   and exists (
     select 1
@@ -492,13 +492,13 @@ select ok(
       join public_write_quota_ctx c on c.actor_key = q.actor_key
      where q.endpoint = 'telemetry'
        and q.request_count = 2
-       and q.new_session_count = 30
+       and q.new_session_count = 3000
   ),
   'existing session consumes only request quota'
 );
 
 update public.telemetry_sessions t
-   set write_count = 400
+   set write_count = 40000
   from public_write_quota_ctx c
  where t.id = c.session_a;
 select is(
@@ -513,7 +513,7 @@ select is(
       from public_write_quota_ctx c
   ),
   'session_quota',
-  'one session hard-stops after 400 committed writes'
+  'one session hard-stops after 40000 committed writes'
 );
 select is(
   (
@@ -534,7 +534,7 @@ select 'telemetry',
        (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
        'global',
        0,
-       2000;
+       200000;
 select is(
   (
     select public.ingest_telemetry_delta(
@@ -565,7 +565,7 @@ select ok(
 );
 
 update public.public_write_quota_buckets
-   set request_count = 50000,
+   set request_count = 5000000,
        new_session_count = 0
  where endpoint = 'telemetry'
    and actor_key = 'global';
@@ -590,7 +590,7 @@ select is(
      where endpoint = 'telemetry'
        and actor_key = 'global'
   ),
-  50000,
+  5000000,
   'rejected global request never overflows its counter'
 );
 
@@ -617,7 +617,7 @@ select 'telemetry',
          'hex'
        ),
        0,
-       30
+       3000
   from public_write_quota_ctx;
 select is(
   (

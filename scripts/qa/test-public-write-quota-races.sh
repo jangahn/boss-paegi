@@ -304,7 +304,7 @@ insert into public.public_write_quota_buckets(
 values
   ('telemetry', (
     pg_catalog.clock_timestamp() at time zone 'Asia/Seoul'
-  )::date, 'global', 0, 1999),
+  )::date, 'global', 0, 199999),
   ('telemetry', (
     pg_catalog.clock_timestamp() at time zone 'Asia/Seoul'
   )::date, '$actor_a', 0, 0),
@@ -366,7 +366,7 @@ SQL
 )"
 [[ "$global_new_results" == "accepted,global_new_session_quota" ]] \
   || fail "global new-session race outcomes drifted ($global_new_results)"
-[[ "$global_new_state" == "1|1:2000|1:1" ]] \
+[[ "$global_new_state" == "1|1:200000|1:1" ]] \
   || fail "global new-session race exceeded boundary ($global_new_state)"
 
 # Two distinct actors race for the final global analytics request unit.
@@ -380,7 +380,7 @@ insert into public.public_write_quota_buckets(
 values
   ('track', (
     pg_catalog.clock_timestamp() at time zone 'Asia/Seoul'
-  )::date, 'global', 1999),
+  )::date, 'global', 199999),
   ('track', (
     pg_catalog.clock_timestamp() at time zone 'Asia/Seoul'
   )::date, '$actor_a', 0),
@@ -442,7 +442,7 @@ SQL
 )"
 [[ "$track_global_results" == "accepted,global_request_quota" ]] \
   || fail "track global race outcomes drifted ($track_global_results)"
-[[ "$track_global_state" == "1|2000|1" ]] \
+[[ "$track_global_state" == "1|200000|1" ]] \
   || fail "track global race exceeded boundary ($track_global_state)"
 
 # Two concurrent writes by one actor race for its final per-actor unit.
@@ -459,7 +459,7 @@ values
   )::date, 'global', 0),
   ('track', (
     pg_catalog.clock_timestamp() at time zone 'Asia/Seoul'
-  )::date, '$actor_a', 199);
+  )::date, '$actor_a', 19999);
 SQL
 for suffix in a b; do
   (
@@ -509,7 +509,7 @@ SQL
 )"
 [[ "$track_actor_results" == "accepted,actor_request_quota" ]] \
   || fail "track actor race outcomes drifted ($track_actor_results)"
-[[ "$track_actor_state" == "1|200|1" ]] \
+[[ "$track_actor_state" == "1|20000|1" ]] \
   || fail "track actor race exceeded boundary ($track_actor_state)"
 
 # A deliberately held global row must fail fast instead of queueing another

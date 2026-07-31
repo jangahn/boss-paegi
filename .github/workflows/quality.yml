@@ -126,6 +126,9 @@ jobs:
       - name: Relax generation quotas to the product policy
         run: npm run qa:db:apply:generation-quota-relax
 
+      - name: Relax public write quotas to the product policy
+        run: npm run qa:db:apply:public-write-quota-relax
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 

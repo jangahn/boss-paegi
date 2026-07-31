@@ -259,7 +259,7 @@ values (
   'score',
   (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
   'global',
-  4999
+  499999
 );
 SQL
 score_owner_app="bp_score_quota_owner_$$"
@@ -339,7 +339,7 @@ score_state="$(
         where endpoint = 'score');
   "
 )"
-[[ "$score_state" == "1|5000|5002" ]] \
+[[ "$score_state" == "1|500000|500002" ]] \
   || fail "score concurrent final slot was not exact ($score_state)"
 
 db_psql -Aqt >"$qa_tmp_dir/score-replay.out" <<SQL
@@ -410,7 +410,7 @@ values (
   'report',
   (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
   'global',
-  499
+  49999
 );
 SQL
 report_owner_app="bp_report_quota_owner_$$"
@@ -473,7 +473,7 @@ report_state="$(
         where endpoint = 'report');
   "
 )"
-[[ "$report_state" == "1|500|501" ]] \
+[[ "$report_state" == "1|50000|50001" ]] \
   || fail "report concurrent final slot was not exact ($report_state)"
 
 db_psql -Aqt >"$qa_tmp_dir/report-replay.out" <<SQL

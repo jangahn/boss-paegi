@@ -167,13 +167,17 @@ export async function POST(req: NextRequest) {
   let failureReason: string | null = null;
   try {
     analysis = buildFaceAnalysis(raw);
-    failureReason = !analysis.faceVisible
-      ? "no_face"
-      : !analysis.singlePerson
-        ? "multiple_people"
-        : !analysis.faceClear
-          ? "face_obstructed"
-          : null;
+    // 2026-07-31 제품 결정: QA가 추가한 가림/다인 하드 거부는 일상 사진까지
+    // 반려해 정상 사용을 막는다(연속 오탐 실측). 얼굴이 아예 없을 때만
+    // 반려하고, 나머지 판정은 분석 결과로만 보존한다(안경은 프롬프트 조건).
+    failureReason = !analysis.faceVisible ? "no_face" : null;
+    if (!analysis.singlePerson || !analysis.faceClear) {
+      log.info("gen.face_check_soft_flag", {
+        reservationId: binding.reservationId,
+        singlePerson: analysis.singlePerson,
+        faceClear: analysis.faceClear,
+      });
+    }
   } catch (error) {
     analysis = null;
     failureReason =
