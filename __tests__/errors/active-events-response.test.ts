@@ -326,8 +326,15 @@ test("news list, detail, and sitemap use uncached exact wall-clock windows", () 
     new URL("../../lib/events/index.ts", import.meta.url),
     "utf8",
   );
+  // 2026-08-01 노출 수명주기: 목록은 RPC(list_news_events)가 정렬·페이지를
+  // 소유하고, 상세/사이트맵은 종료 글을 남긴다(예약만 숨김). 캐시 금지는 동일.
+  const listSection = events.slice(
+    events.indexOf("export async function getPublishedEvents"),
+    events.indexOf("// ── 공개 단건"),
+  );
+  assert.match(listSection, /rpc\("list_news_events"/);
+  assert.doesNotMatch(listSection, /unstable_cache|nowBucket|bucketIso/);
   for (const [startMarker, endMarker] of [
-    ["export async function getPublishedEvents", "// ── 공개 단건"],
     ["export async function getEventById", "// ── 팝업/배너"],
     ["export async function getSitemapEvents", "// ── 어드민"],
   ] as const) {
@@ -340,10 +347,8 @@ test("news list, detail, and sitemap use uncached exact wall-clock windows", () 
       section,
       /\.or\(`starts_at\.is\.null,starts_at\.lte\.\$\{now\}`\)/,
     );
-    assert.match(
-      section,
-      /\.or\(`ends_at\.is\.null,ends_at\.gt\.\$\{now\}`\)/,
-    );
+    // 종료 글 영구 잔존 — ends_at 필터 재도입 금지.
+    assert.doesNotMatch(section, /ends_at\.gt/);
     assert.doesNotMatch(section, /unstable_cache|nowBucket|bucketIso/);
   }
 

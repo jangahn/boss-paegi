@@ -2,7 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
 import { getAdminEvents } from "@/lib/events";
-import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/types";
+import {
+  EVENT_TYPE_LABEL,
+  EXPOSURE_LABEL,
+  isEventType,
+  type EventExposure,
+  type EventType,
+} from "@/lib/events/types";
 import { FadeImg } from "@/components/FadeImg";
 import { Pagination } from "@/components/Pagination";
 import { firstParam, fmtKst } from "@/lib/admin-format";
@@ -23,16 +29,21 @@ export default async function AdminEventsPage({
   const sp = await searchParams;
   const statusRaw = firstParam(sp.status);
   const status = statusRaw === "draft" || statusRaw === "published" ? statusRaw : undefined;
+  const exposure: EventExposure | undefined =
+    statusRaw === "scheduled" || statusRaw === "live" || statusRaw === "ended"
+      ? statusRaw
+      : undefined;
   const typeRaw = firstParam(sp.type);
   const type: EventType | undefined = typeRaw && isEventType(typeRaw) ? typeRaw : undefined;
   const page = parsePageParam(firstParam(sp.page));
 
-  const { items, total, totalPages } = await getAdminEvents({ status, type, page });
+  const { items, total, totalPages } = await getAdminEvents({ status, exposure, type, page });
   if (items.length === 0 && page > 1) redirect("/admin/events");
 
+  const statusParam = exposure ?? status;
   const buildHref = (p: number) => {
     const u = new URLSearchParams();
-    if (status) u.set("status", status);
+    if (statusParam) u.set("status", statusParam);
     if (type) u.set("type", type);
     if (p > 1) u.set("page", String(p));
     const q = u.toString();
@@ -40,7 +51,7 @@ export default async function AdminEventsPage({
   };
   const filterHref = (k: "status" | "type", v: string | undefined) => {
     const u = new URLSearchParams();
-    if (k === "status" ? v : status) u.set("status", k === "status" ? (v as string) : (status as string));
+    if (k === "status" ? v : statusParam) u.set("status", k === "status" ? (v as string) : (statusParam as string));
     if (k === "type" ? v : type) u.set("type", k === "type" ? (v as string) : (type as string));
     const q = u.toString();
     return q ? `/admin/events?${q}` : "/admin/events";
@@ -62,13 +73,17 @@ export default async function AdminEventsPage({
         </div>
         <p className="text-xs leading-relaxed text-zinc-500">
           공지·이벤트를 작성·발행하고 <b>홈 팝업</b>·<b>배너 구좌</b>·<b>소식 게시판(/news)</b> 노출을 운영해요.
-          노출은 <b>발행 + 노출 윈도우(시작~종료) + 플래그</b> 기준이며, 팝업·배너는 우선순위 1건만 보입니다.
+          팝업·배너는 <b>발행 + 노출 윈도우(시작~종료) + 플래그</b> 기준(우선순위 1건만)이고,
+          소식 게시판은 노출종료 후에도 <b>종료 딱지</b>를 단 채 남습니다(노출전은 숨김).
         </p>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <Link href={filterHref("status", undefined)} className={chip(!status)}>전체상태</Link>
+          <Link href={filterHref("status", undefined)} className={chip(!statusParam)}>전체상태</Link>
           <Link href={filterHref("status", "draft")} className={chip(status === "draft")}>초안</Link>
           <Link href={filterHref("status", "published")} className={chip(status === "published")}>발행됨</Link>
+          <Link href={filterHref("status", "scheduled")} className={chip(exposure === "scheduled")}>노출전</Link>
+          <Link href={filterHref("status", "live")} className={chip(exposure === "live")}>노출중</Link>
+          <Link href={filterHref("status", "ended")} className={chip(exposure === "ended")}>노출종료</Link>
           <span className="mx-1 text-zinc-300">|</span>
           <Link href={filterHref("type", undefined)} className={chip(!type)}>전체타입</Link>
           <Link href={filterHref("type", "notice")} className={chip(type === "notice")}>공지</Link>
@@ -113,6 +128,19 @@ export default async function AdminEventsPage({
                       >
                         {e.status === "published" ? "발행" : "초안"}
                       </span>
+                      {e.exposure && (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            e.exposure === "live"
+                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                              : e.exposure === "scheduled"
+                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                : "bg-foreground/10 text-zinc-500"
+                          }`}
+                        >
+                          {EXPOSURE_LABEL[e.exposure]}
+                        </span>
+                      )}
                       {e.popup_active && <span className="text-[10px] text-sky-500">● 팝업</span>}
                       {(e.banner_home_active || e.banner_gallery_active || e.banner_leaderboard_active) && (
                         <span className="text-[10px] text-violet-500">

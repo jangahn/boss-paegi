@@ -71,7 +71,32 @@ export type EventView = EventRow & {
   coverUrl: string | null;
   coverThumbUrl: string | null;
   coverOgUrl: string | null;
+  /** 발행 글의 노출 수명주기(뷰 생성 시점 평가). draft 는 null. */
+  exposure: EventExposure | null;
 };
+
+/** 발행 글의 노출 수명주기 — starts_at 포함·ends_at 배타(쿼리와 동일 경계). */
+export type EventExposure = "scheduled" | "live" | "ended";
+
+export const EXPOSURE_LABEL: Record<EventExposure, string> = {
+  scheduled: "노출전",
+  live: "노출중",
+  ended: "노출종료",
+};
+
+export function eventExposure(
+  row: Pick<EventRow, "status" | "starts_at" | "ends_at">,
+  nowMs: number,
+): EventExposure | null {
+  if (row.status !== "published") return null;
+  if (row.starts_at !== null && Date.parse(row.starts_at) > nowMs) {
+    return "scheduled";
+  }
+  if (row.ends_at !== null && Date.parse(row.ends_at) <= nowMs) {
+    return "ended";
+  }
+  return "live";
+}
 
 /**
  * cover_image_path 검증(zod) — events 버킷 **상대경로**만(URL·절대경로·경로탈출·SVG 금지).
