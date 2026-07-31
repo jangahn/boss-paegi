@@ -52,6 +52,18 @@ function validSignedHeader(value: string | null): value is string {
 function parseJwk(value: unknown): FalWebhookJwk | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const key = value as Record<string, unknown>;
+  // fal's live JWKS publishes the Ed25519 x coordinate WITH base64url
+  // padding (44 chars ending in "="), while RFC 7518 exporters emit the
+  // unpadded 43-char form. Accept both and normalize to the unpadded form
+  // so signature verification sees one canonical key encoding.
+  const rawX = typeof key.x === "string" ? key.x : null;
+  const normalizedX =
+    rawX !== null && /^[A-Za-z0-9_-]{43}={0,1}$/.test(rawX)
+      ? rawX.replace(/=+$/u, "")
+      : null;
+  if (normalizedX !== null) {
+    key.x = normalizedX;
+  }
   if (
     key.kty !== "OKP" ||
     key.crv !== "Ed25519" ||

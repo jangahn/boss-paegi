@@ -326,7 +326,6 @@ export async function POST(req: NextRequest) {
       log.warn("gen.balance_blocked", {
         userId: user.id,
         balance: balance.balance,
-        reason: balance.reason,
       });
       await releaseClaim("balance_blocked");
       return NextResponse.json({ error: "service_paused" }, { status: 503 });

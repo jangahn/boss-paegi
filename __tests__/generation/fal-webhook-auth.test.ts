@@ -208,3 +208,45 @@ test("JWKS cache refreshes after signature-failure throttle and bounds upstream 
     /fal_jwks_too_large/,
   );
 });
+
+test("live fal JWKS keys with base64url padding are accepted and normalized", async () => {
+  const { privateKey: padPriv, publicKey: padPub } =
+    generateKeyPairSync("ed25519");
+  const padJwk = padPub.export({ format: "jwk" }) as FalWebhookJwk;
+  // fal's production JWKS serves the x coordinate WITH trailing "=" padding.
+  const fetchPadded = (async () =>
+    new Response(
+      JSON.stringify({
+        keys: [{ kty: "OKP", crv: "Ed25519", x: `${padJwk.x}=` }],
+      }),
+      { headers: { "content-type": "application/json" } },
+    )) as typeof fetch;
+  const keys = await refreshFalWebhookKeys(fetchPadded, 10 * 60_000);
+  assert.equal(keys.length, 1);
+  assert.equal(keys[0]!.x, padJwk.x);
+
+  const rawBody = new TextEncoder().encode('{"request_id":"pad"}');
+  const requestId = "pad-req";
+  const userId = "pad-user";
+  const timestamp = "1785400000";
+  const digest = createHash("sha256").update(rawBody).digest("hex");
+  const message = Buffer.from(
+    [requestId, userId, timestamp, digest].join("\n"),
+  );
+  const signature = sign(null, message, padPriv).toString("hex");
+  const headers = new Headers({
+    "x-fal-webhook-request-id": requestId,
+    "x-fal-webhook-user-id": userId,
+    "x-fal-webhook-timestamp": timestamp,
+    "x-fal-webhook-signature": signature,
+  });
+  assert.deepEqual(
+    verifyFalWebhookSignature({
+      headers,
+      rawBody,
+      keys,
+      nowMs: 1785400000_000,
+    }),
+    { ok: true, requestId, userId },
+  );
+});

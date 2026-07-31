@@ -20,25 +20,14 @@ test("Fal balance evidence rejects non-finite and negative numbers", () => {
   assert.match(source, /balance < 0/);
 });
 
-test("Fal billing authority is fail-closed and never caches an allow decision", () => {
-  assert.match(
-    source,
-    /if \(!adminKey\)[\s\S]*?ok:\s*false[\s\S]*?missing_admin_key/,
-  );
-  for (const reason of [
-    "billing_http_error",
-    "billing_body_invalid",
-    "billing_json_invalid",
-    "billing_balance_invalid",
-    "billing_unavailable",
-  ]) {
-    assert.match(source, new RegExp(`ok:\\s*false[\\s\\S]*?${reason}`));
-  }
-  assert.match(source, /cachedDenial/);
-  assert.doesNotMatch(source, /cached(?:Allow|Success)/);
-  assert.match(
-    source,
-    /return \{ ok: true, balance, checkedAt: now \}/,
-  );
+test("Fal billing lookup failures degrade gracefully instead of blocking", () => {
+  // 2026-07-31 제품 결정: 잔액 체크 실패가 생성을 죽이면 안 된다.
+  assert.match(source, /if \(!adminKey\) return \{ ok: true, balance: null \}/);
+  assert.match(source, /log\.warn\("falbal\.api_error"[\s\S]*?return \{ ok: true, balance: null \}/);
+  assert.match(source, /log\.warn\("falbal\.check_fail"[\s\S]*?return \{ ok: true, balance: null \}/);
+  // 60초 캐시는 허용·차단 양방향 모두 사용한다.
+  assert.match(source, /CACHE_TTL_MS = 60_000/);
+  assert.match(source, /cached = \{ balance, at: now \}/);
+  // 임계 미달은 여전히 차단한다.
+  assert.match(source, /balance < HARD_CAP_USD/);
 });
-
