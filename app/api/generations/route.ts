@@ -21,7 +21,6 @@ import { terminateDeletedOwnerGeneration } from "@/lib/character-gen/deleted-own
 import { completeGenerationArtifactCleanup } from "@/lib/character-gen/generation-artifact-cleanup";
 import { signedDollUrl } from "@/lib/storage";
 import { log, errInfo } from "@/lib/log";
-import { SERVER_ENV } from "@/lib/env.server";
 import { validateAdminRows } from "@/lib/admin-read-contract";
 
 export const runtime = "nodejs";
@@ -43,7 +42,6 @@ export async function GET() {
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
-  const isOps = !!SERVER_ENV.OPS_USER_ID && user.id === SERVER_ENV.OPS_USER_ID;
 
   const admin = createAdminClient();
   const baseQuery = (cols: string) =>
@@ -179,7 +177,6 @@ export async function GET() {
           await terminateDeletedOwnerGeneration(admin, {
             genId: id,
             ownerId,
-            isOps,
           });
           return null;
         }
@@ -190,7 +187,6 @@ export async function GET() {
             admin,
             id,
             ownerId,
-            isOps,
             rec.reason,
             r.version as number,
           );
@@ -221,7 +217,6 @@ export async function GET() {
         admin,
         id,
         ownerId,
-        isOps,
         "timeout",
         r.version as number,
       );
@@ -255,7 +250,6 @@ export async function GET() {
         await terminateDeletedOwnerGeneration(admin, {
           genId: id,
           ownerId,
-          isOps,
         });
         return null;
       }

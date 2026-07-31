@@ -1,15 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { GenerationProviderAcceptanceGate } from "@/components/generate/GenerationProviderAcceptanceGate";
 import { requireMember } from "@/lib/auth-server";
-import {
-  GENERATION_PROVIDER_ACCEPTANCE_BUNDLE,
-  readGenerationProviderAcceptance,
-} from "@/lib/generation-provider-acceptance";
-import { generationCostPathEnabled } from "@/lib/generation-cost-rollout";
-import { log, errInfo } from "@/lib/log";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -42,8 +34,6 @@ export default async function GenerateLayout({
 }: {
   children: React.ReactNode;
 }) {
-  if (!generationCostPathEnabled()) return <GenerationUnavailable />;
-
   const gate = await requireMember();
   if (!gate.ok) {
     if (gate.error === "unauthorized" || gate.error === "member_only") {
@@ -55,28 +45,8 @@ export default async function GenerateLayout({
     return <GenerationUnavailable temporary />;
   }
 
-  let acceptanceState: "eligible" | "required" | "unavailable" =
-    "unavailable";
-  try {
-    const admin = createAdminClient();
-    const status = await readGenerationProviderAcceptance(admin, gate.user.id);
-    acceptanceState =
-      status.bundleVersion !== GENERATION_PROVIDER_ACCEPTANCE_BUNDLE ||
-      !status.eligible
-        ? "required"
-        : "eligible";
-  } catch (error) {
-    log.error("generation.provider_acceptance_read_fail", {
-      userId: gate.user.id,
-      ...errInfo(error),
-    });
-  }
-
-  if (acceptanceState === "unavailable") {
-    return <GenerationUnavailable temporary />;
-  }
-  if (acceptanceState === "required") {
-    return <GenerationProviderAcceptanceGate />;
-  }
+  // Provider acceptance is no longer an enforcement gate: the product owner
+  // restored the pre-freeze generation flow on 2026-07-31, so members go
+  // straight to the generation page and its in-page photo consent dialog.
   return children;
 }

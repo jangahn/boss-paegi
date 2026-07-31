@@ -164,7 +164,7 @@ export function AccountMenu() {
         initialMenuFocusRef.current === "last"
           ? items[items.length - 1]
           : items[0];
-      target?.focus();
+      target?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(animationFrame);
   }, [open]);
@@ -175,14 +175,14 @@ export function AccountMenu() {
         <button
           type="button"
           onClick={refreshProfile}
-          className="max-w-[40vw] truncate rounded-full border border-red-500/30 px-2 py-1.5 text-xs text-red-500 sm:max-w-[48vw] sm:px-3"
+          className="h-11 max-w-[40vw] truncate rounded-full border border-red-500/30 px-2 text-sm text-red-500 sm:max-w-[48vw] sm:px-3"
         >
           계정 정보 재조회
         </button>
       );
     }
     return (
-      <div className="flex h-8 w-16 max-w-[40vw] items-center justify-end sm:w-24 sm:max-w-[48vw]">
+      <div className="flex h-11 w-16 max-w-[40vw] items-center justify-end sm:w-24 sm:max-w-[48vw]">
         <Spinner className="h-4 w-4" />
       </div>
     );
@@ -246,7 +246,7 @@ export function AccountMenu() {
     } else if (event.key === "ArrowDown") {
       next = current < 0 || current === items.length - 1 ? 0 : current + 1;
     }
-    items[next]?.focus();
+    items[next]?.focus({ preventScroll: true });
   };
 
   return (
@@ -268,7 +268,7 @@ export function AccountMenu() {
             event.key === "ArrowUp" ? "last" : "first";
           setOpen(true);
         }}
-        className="flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-full border border-foreground/15 ui-surface py-1 pl-1 pr-2 text-sm transition hover:bg-foreground/5 sm:pr-2.5"
+        className="flex h-11 w-full min-w-0 max-w-full items-center gap-1.5 rounded-full border border-foreground/15 ui-surface pl-1 pr-2 text-sm transition hover:bg-foreground/5 sm:pr-2.5"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -300,7 +300,7 @@ export function AccountMenu() {
               type="button"
               role="menuitem"
               onClick={refreshProfile}
-              className="block w-full border-b border-red-500/20 px-4 py-2.5 text-left text-xs text-red-500"
+              className="block w-full border-b border-red-500/20 px-4 py-3 text-left text-xs text-red-500 outline-none focus-visible:bg-foreground/5"
             >
               권한·생성권 조회 실패 — 다시 확인
             </button>
@@ -310,7 +310,7 @@ export function AccountMenu() {
               href="/login"
               role="menuitem"
               onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-foreground/5"
+              className="block px-4 py-3 text-left text-sm font-semibold transition hover:bg-foreground/5 outline-none focus-visible:bg-foreground/5"
             >
               로그인 / 회원가입
             </Link>
@@ -328,7 +328,7 @@ export function AccountMenu() {
               href="/credits"
               role="menuitem"
               onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-left text-sm font-semibold text-amber-600 transition hover:bg-foreground/5"
+              className="block px-4 py-3 text-left text-sm font-semibold text-amber-600 transition hover:bg-foreground/5 outline-none focus-visible:bg-foreground/5"
             >
               생성권 충전
             </Link>
@@ -338,7 +338,7 @@ export function AccountMenu() {
               href="/admin"
               role="menuitem"
               onClick={() => setOpen(false)}
-              className="block border-b border-foreground/10 px-4 py-2.5 text-left text-sm font-semibold text-emerald-600 transition hover:bg-foreground/5"
+              className="block border-b border-foreground/10 px-4 py-3 text-left text-sm font-semibold text-emerald-600 transition hover:bg-foreground/5 outline-none focus-visible:bg-foreground/5"
             >
               운영 대시보드
             </Link>
@@ -347,7 +347,7 @@ export function AccountMenu() {
             href="/badges"
             role="menuitem"
             onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5"
+            className="block px-4 py-3 text-left text-sm transition hover:bg-foreground/5 outline-none focus-visible:bg-foreground/5"
           >
             내 뱃지
           </Link>
@@ -355,7 +355,7 @@ export function AccountMenu() {
             href={`/history/${profile.id}`}
             role="menuitem"
             onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5"
+            className="block px-4 py-3 text-left text-sm transition hover:bg-foreground/5 outline-none focus-visible:bg-foreground/5"
           >
             내 기록
           </Link>
@@ -374,7 +374,7 @@ export function AccountMenu() {
               href="/account"
               role="menuitem"
               onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5"
+              className="block px-4 py-3 text-left text-sm transition hover:bg-foreground/5 outline-none focus-visible:bg-foreground/5"
             >
               마이페이지
             </Link>
@@ -437,7 +437,7 @@ function MenuItem({
       role="menuitem"
       onClick={onClick}
       disabled={disabled}
-      className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`w-full px-4 py-3 text-left text-sm transition hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       {children}
     </button>

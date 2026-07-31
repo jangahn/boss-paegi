@@ -798,7 +798,6 @@ export async function failGeneration(
   admin: SupabaseClient,
   genId: string,
   userId: string,
-  isOps: boolean,
   reason?: string,
   expectedVersion?: number,
 ): Promise<boolean> {
@@ -811,32 +810,6 @@ export async function failGeneration(
       userId,
       expectedVersion,
     });
-    return false;
-  }
-
-  if (isOps) {
-    // ops 는 소비가 없어 환급 불요 — status 만 failed 로 전이(operational 컬럼).
-    const patch = reason ? { status: "failed", fail_reason: reason } : { status: "failed" };
-    // eslint-disable-next-line boss-paegi/no-direct-financial-write
-    let update = admin
-      .from("ai_generations")
-      .update(patch)
-      .eq("id", genId)
-      .eq("status", "queued");
-    if (expectedVersion !== undefined) {
-      update = update.eq("version", expectedVersion);
-    }
-    const { data, error } = await update.select("id");
-    if (error) log.warn("gen.fail_mark_error", { genId, ...errInfo(error) });
-    if (error) return false;
-    if (!Array.isArray(data)) {
-      log.error("gen.fail_mark_invalid", { genId, dataType: typeof data });
-      return false;
-    }
-    if (data.length === 1) {
-      await scrubGenerationProviderOutputs(admin, userId, genId);
-      return true;
-    }
     return false;
   }
 

@@ -42,21 +42,3 @@ test("Fal billing authority is fail-closed and never caches an allow decision", 
   );
 });
 
-test("the rollout freeze executes before billing or any paid child path", () => {
-  const route = readFileSync(
-    new URL("../../app/api/fal/route.ts", import.meta.url),
-    "utf8",
-  );
-  const freeze = route.indexOf("if (!generationCostPathEnabled())");
-  assert.ok(freeze >= 0);
-  for (const paidBoundary of [
-    "checkFalBalance()",
-    "submitFaceCheckOnce(",
-    "provider.submitPlan",
-  ]) {
-    assert.ok(
-      route.indexOf(paidBoundary) > freeze,
-      `${paidBoundary} must remain behind the outer rollout freeze`,
-    );
-  }
-});

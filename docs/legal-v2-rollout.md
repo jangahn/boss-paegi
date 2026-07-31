@@ -16,7 +16,7 @@
   opt-in이 없으면 비활성이다. 향후 활성화하면 오류 세션 100%·일반 세션
   10%, 일반 텍스트·미디어·입력 unmasked 설정이 적용되므로 정책·고지를
   먼저 재검증한다.
-- checkout의 청약철회 제한 compile-time 구현 fence는 분리된 체크박스와
+- checkout의 청약철회 제한 compile-time 구현 fence는 결제 버튼 위 고지(결제 클릭=확인)와
   사용자·주문·상품·금액·모드·채널·표시 문구/버전·시각·요청 ID 불변 증거,
   원자 주문 wrapper와 사후 재조회까지 현재 source에 구현되어 있다. 실제 제공은
   26개 expand migration, 같은 release SHA의 앱, 3개 contract migration과 smoke를
@@ -29,10 +29,11 @@
   fal Terms/AUP 각각의 명시적 동의는
   `generation_provider_acceptance_evidence`와 status/record/prune RPC, UI/API에
   구현되어 탈퇴 세대·현재 효력 legal version·bundle version과 불변 결속된다.
-  그러나 정확한 국외 하위처리자·국가·기간 목록, 식별 가능한 얼굴/PII 이용사례의
-  서면 허용·DPA와 private ACL/owner-token 계약이 모두 확보되기 전에는
-  `FAL_EXTERNAL_COMPLIANCE_APPROVED=false`를 유지하며 `/generate`, `/api/fal`,
-  후보 확정 어느 경로도 공급자 작업을 시작하지 않는다.
+  2026-07-31 제품 오너 결정으로 `FAL_EXTERNAL_COMPLIANCE_APPROVED=true`로
+  전환하고 acceptance를 강제 게이트가 아닌 기록 가능한 원장으로 두었다.
+  정확한 국외 하위처리자·국가·기간 목록, 얼굴/PII 서면 허용·DPA,
+  private ACL/owner-token 계약은 미확보 상태의 법무 후속으로 남아 있으며,
+  그 잔여 리스크는 제품 결정으로 수용됐다.
 - 얼굴 원본, fal payload·미디어, 후보, 하이라이트, 텔레메트리, 유입 분석,
   공개 쓰기 HMAC, 결제, 신고와 계정 삭제의 기간은 실제 코드·DB worker의
   경계값과 일치시켰다.

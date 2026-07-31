@@ -85,7 +85,6 @@ export async function POST(req: NextRequest) {
     deadline,
     async () => {
       const admin = createAdminClient();
-      const opsId = SERVER_ENV.OPS_USER_ID;
       const cutoff = new Date(Date.now() - RECOVER_WINDOW_MS).toISOString();
 
       type Row = {
@@ -225,7 +224,6 @@ export async function POST(req: NextRequest) {
           const terminalized = await terminateDeletedOwnerGeneration(admin, {
             genId: row.id,
             ownerId: row.owner_id,
-            isOps: row.owner_id === opsId,
           });
           if (opsMaintenanceDeadlineReached(deadline)) {
             return maintenanceTimeBudgetResponse();
@@ -260,7 +258,6 @@ export async function POST(req: NextRequest) {
             const terminalized = await terminateDeletedOwnerGeneration(admin, {
               genId: r.id,
               ownerId: r.owner_id,
-              isOps: r.owner_id === opsId,
             });
             if (opsMaintenanceDeadlineReached(deadline)) {
               return maintenanceTimeBudgetResponse();
@@ -272,7 +269,6 @@ export async function POST(req: NextRequest) {
               admin,
               r.id,
               r.owner_id,
-              r.owner_id === opsId,
               rec.reason,
               r.version,
             );
@@ -301,7 +297,7 @@ export async function POST(req: NextRequest) {
       //    영속 사이 하드크래시로 request_id 없어 recovery 대상서 제외. 클라의 age>30분 fall-through 를
       //    cron 에도 둬 **브라우저 종료 사용자도 크레딧을 잃지 않게** 한다. 정상 행은 수분 내 done/failed 로
       //    빠지므로 각 상태의 deadline 밖도 포함해 상한 없이 스캔한다.
-      //    failGeneration(RPC-first, 멱등)이 queued→failed+환불(비-ops)·no_consume(ops)을 원자 처리.
+      //    failGeneration(RPC 멱등)이 queued→failed+환불을 원자 처리.
       let stuckFailed = 0;
       const staleCutoff = new Date(Date.now() - QUEUED_STALE_MS).toISOString();
       type StuckRow = {
@@ -386,7 +382,6 @@ export async function POST(req: NextRequest) {
               admin,
               g.id,
               g.owner_id,
-              g.owner_id === opsId,
               "timeout",
               g.version,
             );

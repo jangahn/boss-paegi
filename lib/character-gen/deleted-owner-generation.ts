@@ -15,9 +15,9 @@ type GenerationStatus = "queued" | "done" | "failed" | "picked" | "expired";
  */
 export async function terminateDeletedOwnerGeneration(
   admin: SupabaseClient,
-  input: { genId: string; ownerId: string; isOps: boolean },
+  input: { genId: string; ownerId: string },
 ): Promise<boolean> {
-  const { genId, ownerId, isOps } = input;
+  const { genId, ownerId } = input;
   const { data: row, error: rowError } = await admin
     .from("ai_generations")
     .select("status, version")
@@ -37,38 +37,19 @@ export async function terminateDeletedOwnerGeneration(
   let status = row.status as GenerationStatus;
 
   if (status === "queued") {
-    if (isOps) {
-      const { data, error } = await admin
-        .from("ai_generations")
-        .update({ status: "failed", fail_reason: "account_deleted" })
-        .eq("id", genId)
-        .eq("status", "queued")
-        .eq("version", row.version)
-        .select("id");
-      if (error) {
-        log.warn("gen.deleted_owner_fail_transition_error", {
-          ownerId,
-          genId,
-          ...errInfo(error),
-        });
-        return false;
-      }
-      if ((data?.length ?? 0) > 0) status = "failed";
-    } else {
-      const { error } = await admin.rpc("mark_generation_failed_and_refund", {
-        p_gen_id: genId,
-        p_fail_reason: "account_deleted",
-        p_expected_version:
-          typeof row.version === "number" ? row.version : null,
+    const { error } = await admin.rpc("mark_generation_failed_and_refund", {
+      p_gen_id: genId,
+      p_fail_reason: "account_deleted",
+      p_expected_version:
+        typeof row.version === "number" ? row.version : null,
+    });
+    if (error && !error.message.includes("invalid_state")) {
+      log.warn("gen.deleted_owner_fail_transition_error", {
+        ownerId,
+        genId,
+        ...errInfo(error),
       });
-      if (error && !error.message.includes("invalid_state")) {
-        log.warn("gen.deleted_owner_fail_transition_error", {
-          ownerId,
-          genId,
-          ...errInfo(error),
-        });
-        return false;
-      }
+      return false;
     }
   } else if (status === "done") {
     const { data, error } = await admin.rpc("expire_generation", {

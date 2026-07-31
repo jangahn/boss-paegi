@@ -137,25 +137,23 @@ test("generation acceptance HTTP acknowledgement is exact and request-correlated
   }
 });
 
-test("all user generation submit boundaries require provider acceptance", () => {
+test("generation submit boundaries stay member→body→work ordered without extra gates", () => {
   const fal = readFileSync(
     new URL("../../app/api/fal/route.ts", import.meta.url),
     "utf8",
   );
   const falPost = fal.slice(fal.indexOf("export async function POST"));
-  const falFreeze = falPost.indexOf("if (!generationCostPathEnabled())");
   const falMember = falPost.indexOf("await requireMember()");
-  const falAcceptance = falPost.indexOf(
-    "await readGenerationProviderAcceptance(admin, user.id)",
-  );
   const falBody = falPost.indexOf("await readGenerationFormData(req)");
   const falProvider = falPost.indexOf("selectProvider(null)");
+  // 2026-07-31 product decision: provider acceptance is a recordable ledger,
+  // not an enforcement gate, so the route must not block on it.
+  assert.equal(
+    falPost.indexOf("await readGenerationProviderAcceptance("),
+    -1,
+  );
   assert.ok(
-    falFreeze >= 0 &&
-      falFreeze < falMember &&
-      falMember < falAcceptance &&
-      falAcceptance < falBody &&
-      falBody < falProvider,
+    falMember >= 0 && falMember < falBody && falBody < falProvider,
   );
 
   const doll = readFileSync(
@@ -166,19 +164,15 @@ test("all user generation submit boundaries require provider acceptance", () => 
     doll.indexOf("export async function POST"),
     doll.indexOf("export async function GET"),
   );
-  const dollFreeze = dollPost.indexOf("if (!generationCostPathEnabled())");
   const dollMember = dollPost.indexOf("await requireMember()");
-  const dollAcceptance = dollPost.indexOf(
-    "await readGenerationProviderAcceptance(admin, user.id)",
-  );
   const dollBody = dollPost.indexOf("await readApiJsonObjectRequest(req)");
   const dollSubmit = dollPost.indexOf("submitDollPickOnce(");
+  assert.equal(
+    dollPost.indexOf("await readGenerationProviderAcceptance("),
+    -1,
+  );
   assert.ok(
-    dollFreeze >= 0 &&
-      dollFreeze < dollMember &&
-      dollMember < dollAcceptance &&
-      dollAcceptance < dollBody &&
-      dollBody < dollSubmit,
+    dollMember >= 0 && dollMember < dollBody && dollBody < dollSubmit,
   );
 });
 
@@ -187,16 +181,12 @@ test("generate page and acceptance API are independently fail-closed", () => {
     new URL("../../app/generate/layout.tsx", import.meta.url),
     "utf8",
   );
-  const layoutFreeze = layout.indexOf("if (!generationCostPathEnabled())");
   const layoutMember = layout.indexOf("await requireMember()");
-  const layoutAcceptance = layout.indexOf(
-    "await readGenerationProviderAcceptance(admin, gate.user.id)",
+  assert.equal(
+    layout.indexOf("await readGenerationProviderAcceptance("),
+    -1,
   );
-  assert.ok(
-    layoutFreeze >= 0 &&
-      layoutFreeze < layoutMember &&
-      layoutMember < layoutAcceptance,
-  );
+  assert.ok(layoutMember >= 0);
 
   const route = readFileSync(
     new URL(
@@ -205,16 +195,10 @@ test("generate page and acceptance API are independently fail-closed", () => {
     ),
     "utf8",
   );
-  const freeze = route.indexOf("if (!generationCostPathEnabled())");
   const member = route.indexOf("await requireMember()");
   const body = route.indexOf("await readApiJsonObjectRequest(req)");
   const rpc = route.indexOf('"record_generation_provider_acceptance"');
-  assert.ok(
-    freeze >= 0 &&
-      freeze < member &&
-      member < body &&
-      body < rpc,
-  );
+  assert.ok(member >= 0 && member < body && body < rpc);
   assert.match(route, /p_adult_self_attested: true/);
   assert.match(route, /p_fal_terms_accepted: true/);
   assert.match(route, /p_fal_aup_accepted: true/);
@@ -417,14 +401,12 @@ test("credits page hides every offer if durable display evidence fails", () => {
     new URL("../../app/credits/page.tsx", import.meta.url),
     "utf8",
   );
-  const enabled = page.indexOf("paymentCheckoutEnabled()");
   const evidence = page.indexOf("await recordCreditsOfferDisplayEvidence(");
   const failure = page.indexOf("credits.offer_evidence_write_fail");
   const hidden = page.indexOf("classificationUnavailable", failure);
   const finalRender = page.lastIndexOf("<CreditsClient");
   assert.ok(
-    enabled >= 0 &&
-      enabled < evidence &&
+    evidence >= 0 &&
       evidence < failure &&
       failure < hidden &&
       hidden < finalRender,

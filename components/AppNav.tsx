@@ -32,7 +32,7 @@ export function AppNav({ forceShow = false }: { forceShow?: boolean }) {
 
   return (
     <nav className="sticky top-0 z-40 border-b border-foreground/10 bg-background/85 backdrop-blur-sm">
-      <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-1 px-2 py-2.5 sm:gap-1.5 sm:px-4">
+      <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-1 px-2 py-1.5 sm:gap-1.5 sm:px-4">
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
           {links.map((l) => (
             <Link
@@ -43,7 +43,7 @@ export function AppNav({ forceShow = false }: { forceShow?: boolean }) {
                   ? "page"
                   : undefined
               }
-              className={`whitespace-nowrap rounded-full px-1.5 py-1.5 text-xs font-medium transition sm:px-3 sm:text-sm ${
+              className={`flex h-11 items-center whitespace-nowrap rounded-full px-2 text-sm font-medium transition sm:px-3 ${
                 (l.href === "/" ? pathname === "/" : pathname.startsWith(l.href))
                   ? "bg-foreground text-paper-2"
                   : "text-zinc-500 hover:bg-foreground/5 hover:text-foreground"

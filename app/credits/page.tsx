@@ -6,7 +6,6 @@ import {
   payModeFor,
 } from "@/lib/config/domains/growth";
 import { getReviewerStatus } from "@/lib/reviewer";
-import { paymentCheckoutEnabled } from "@/lib/pay/checkout-rollout";
 import { paymentChannels } from "@/lib/pay-channels";
 import { recordCreditsOfferDisplayEvidence } from "@/lib/pay/display-evidence";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -90,12 +89,7 @@ export default async function CreditsPage({
     );
   }
   const isReviewer = reviewer.isReviewer;
-  // Reviewer status never bypasses the immutable withdrawal-limit evidence
-  // contract. The exact rollout env still keeps UI and API identically frozen
-  // until the DB expand/contract and smoke gates have completed.
-  let enabled =
-    paymentCheckoutEnabled() &&
-    ((growth.creditsEnabled ?? false) || isReviewer);
+  let enabled = (growth.creditsEnabled ?? false) || isReviewer;
   const payMode = payModeFor(isReviewer, params.live === "1");
   const channels = paymentChannels(payMode);
   let offerEvidence: Readonly<{

@@ -10,8 +10,11 @@ test("mobile header gives navigation and account a bounded shared width", () => 
   const nav = source("components/AppNav.tsx");
   const account = source("components/AccountMenu.tsx");
   assert.match(nav, /gap-1 px-2/);
-  assert.match(nav, /px-1\.5 py-1\.5 text-xs/);
+  // 2026-07-31 product decision: every header control shares the h-11 (44px)
+  // touch target and the text-sm baseline confirmed in PR #82.
+  assert.match(nav, /flex h-11 items-center[^"]*text-sm/);
   assert.match(account, /max-w-\[40vw\]/);
+  assert.equal((account.match(/\bh-11\b/g) ?? []).length, 3);
   assert.match(account, /className="relative min-w-0/);
   assert.match(account, /w-full min-w-0 max-w-full/);
   assert.match(account, /min-w-0 flex-1 truncate/);

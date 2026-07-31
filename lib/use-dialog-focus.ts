@@ -49,7 +49,12 @@ export function useDialogFocus<T extends HTMLElement>(
         dialog.querySelector<HTMLElement>("[autofocus]") ??
         focusableChildren(dialog)[0] ??
         dialog;
-      target.focus();
+      // Focus for the keyboard contract only. Never let the browser scroll
+      // the dialog (or the page) toward the focused control: the in-game
+      // result overlay opens taller than the viewport and must start at
+      // its top, not at its first focusable button.
+      target.focus({ preventScroll: true });
+      dialog.scrollTop = 0;
     };
     const animationFrame = requestAnimationFrame(focusInside);
 
@@ -85,7 +90,7 @@ export function useDialogFocus<T extends HTMLElement>(
       cancelAnimationFrame(animationFrame);
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, [open]);
 

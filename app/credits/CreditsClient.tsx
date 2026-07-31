@@ -46,7 +46,6 @@ export function CreditsClient({
   const [method, setMethod] = useState<PayChannelMethod | null>(channels[0]?.method ?? null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [withdrawalConfirmed, setWithdrawalConfirmed] = useState(false);
   const pendingRef = useRef(false);
   const lifecycleRef = useRef<AbortController | null>(null);
 
@@ -64,7 +63,6 @@ export function CreditsClient({
   useBfcacheReset(() => {
     pendingRef.current = false;
     setPending(null);
-    setWithdrawalConfirmed(false);
   });
 
   const buy = async (product: CreditProduct) => {
@@ -74,12 +72,8 @@ export function CreditsClient({
       setError("결제 수단을 선택해주세요.");
       return;
     }
-    if (
-      !withdrawalConfirmed ||
-      offerEvidenceId === null ||
-      offerSnapshotSha256 === null
-    ) {
-      setError("사용한 생성권의 청약철회 제한을 별도로 확인해주세요.");
+    if (offerEvidenceId === null || offerSnapshotSha256 === null) {
+      setError("상품 안내를 불러오지 못했어요. 새로고침 후 다시 시도해주세요.");
       return;
     }
     setSentryLastAction("purchase_start");
@@ -226,7 +220,6 @@ export function CreditsClient({
         setError(e instanceof Error ? e.message : "결제 요청 실패");
         pendingRef.current = false;
         setPending(null);
-        setWithdrawalConfirmed(false);
       }
     }
   };
@@ -300,10 +293,7 @@ export function CreditsClient({
                   role="radio"
                   aria-checked={method === c.method}
                   disabled={!!pending}
-                  onClick={() => {
-                    setMethod(c.method);
-                    setWithdrawalConfirmed(false);
-                  }}
+                  onClick={() => setMethod(c.method)}
                   className={`rounded-full border px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${
                     method === c.method
                       ? "border-foreground bg-foreground text-paper-2"
@@ -316,24 +306,15 @@ export function CreditsClient({
             </div>
           )}
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-foreground/15 bg-foreground/[0.03] p-3.5 text-sm leading-relaxed">
-            <input
-              type="checkbox"
-              checked={withdrawalConfirmed}
-              disabled={!!pending}
-              onChange={(event) => {
-                setWithdrawalConfirmed(event.target.checked);
-                setError(null);
-              }}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-foreground"
-            />
-            <span>
-              <b className="block">사용분 청약철회 제한 별도 확인</b>
-              <span className="text-xs text-zinc-500">
-                {CHECKOUT_WITHDRAWAL_CONFIRMATION.statement}
-              </span>
+          <div className="rounded-xl border border-foreground/15 bg-foreground/[0.03] p-3.5 text-sm leading-relaxed">
+            <b className="block">사용분 청약철회 제한 안내</b>
+            <span className="block text-xs text-zinc-500">
+              {CHECKOUT_WITHDRAWAL_CONFIRMATION.statement}
             </span>
-          </label>
+            <span className="mt-1 block text-xs text-zinc-500">
+              결제 버튼을 누르면 위 내용을 확인한 것으로 봅니다.
+            </span>
+          </div>
 
           <div className="flex flex-col gap-3">
             {products.map((p) => {
@@ -342,7 +323,7 @@ export function CreditsClient({
                 <button
                   key={p.productId}
                   type="button"
-                  disabled={!!pending || !withdrawalConfirmed}
+                  disabled={!!pending}
                   onClick={() => void buy(p)}
                   className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/15 ui-surface p-4 text-left transition hover:bg-foreground/5 disabled:opacity-50"
                 >

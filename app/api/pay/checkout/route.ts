@@ -18,8 +18,6 @@ import {
 import {
   checkoutProductSnapshotMatches,
   checkoutPayModeMatches,
-  paymentCheckoutEnabled,
-  paymentRolloutIdentityHeaders,
 } from "@/lib/pay/checkout-rollout";
 import { parseCheckoutHttpResponse } from "@/lib/pay/http-contract";
 import { rateLimit } from "@/lib/rate-limit";
@@ -47,20 +45,6 @@ const CHECKOUT_DEPENDENCY_TIMEOUT_MS = 20_000;
  * 그대로 전달해야 하며, 최종 신뢰는 웹훅/폴링의 단건 조회 재검증(금액 대사)이 담당.
  */
 export async function POST(req: NextRequest) {
-  // Rollout freeze is the outermost route boundary and deliberately applies
-  // to reviewer/test accounts too. creditsEnabled alone has a reviewer bypass.
-  if (!paymentCheckoutEnabled()) {
-    return NextResponse.json(
-      { error: "payment_unavailable" },
-      {
-        status: 503,
-        headers: {
-          "X-Boss-Paegi-Payment-Rollout": "frozen",
-          ...paymentRolloutIdentityHeaders(),
-        },
-      },
-    );
-  }
   if (!portoneConfigured()) {
     return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
   }

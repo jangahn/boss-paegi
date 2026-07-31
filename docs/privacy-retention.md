@@ -21,7 +21,7 @@ migration receipt와 같은 release SHA의 앱·cron postflight를 확인하기 
 제거한다. 오류가 나면 해당 주문의 합계와 삭제가 함께 롤백되고, 원문 없이
 `order_uuid`·SQLSTATE·재시도 시각만 failure queue에 남는다.
 
-결제 전 별도 체크박스로 받은 사용분 청약철회 제한 확인은
+결제 버튼 위 고지와 결제 클릭으로 확인한 사용분 청약철회 제한 확인은
 `checkout_withdrawal_acceptance_evidence`에 사용자·주문·상품명/금액/수량·
 TEST/LIVE·채널·표시 snapshot hash·정확한 문구/버전·DB 확인시각·request ID로
 불변 저장된다. 주문 FK와 함께 최소 5년 보존하며 위 worker가 적법한 주문 상세를

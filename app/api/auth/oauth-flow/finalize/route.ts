@@ -369,16 +369,48 @@ export async function POST(request: NextRequest) {
       });
     };
 
+    // The three authority reads are data-independent. Start them together so
+    // the finalize hot path pays one round trip instead of three; each branch
+    // below still consumes its own settled result with unchanged attribution.
+    const settleRead = <T,>(read: Promise<T>) =>
+      read.then(
+        (value) => ({ ok: true as const, value }),
+        (error) => ({ ok: false as const, error: error as unknown }),
+      );
+    const profilePending = settleRead(
+      Promise.resolve(
+        admin
+          .from("profiles")
+          .select("deleted_at")
+          .eq("id", user.id)
+          .abortSignal(routeDeadline)
+          .maybeSingle(),
+      ),
+    );
+    const memberPending = settleRead(
+      Promise.resolve(
+        admin
+          .from("member_accounts")
+          .select(
+            "age_confirmed_at, terms_version, privacy_version, email",
+          )
+          .eq("user_id", user.id)
+          .abortSignal(routeDeadline)
+          .maybeSingle(),
+      ),
+    );
+    const legalPending = settleRead(
+      getCurrentLegalVersionsStrict(routeDeadline),
+    );
+
     let profileResult;
-    try {
-      profileResult = await admin
-        .from("profiles")
-        .select("deleted_at")
-        .eq("id", user.id)
-        .abortSignal(routeDeadline)
-        .maybeSingle();
-    } catch (error) {
-      readRetry("profile", error);
+    {
+      const settled = await profilePending;
+      if (settled.ok) {
+        profileResult = settled.value;
+      } else {
+        readRetry("profile", settled.error);
+      }
     }
     if (profileResult !== undefined) {
       const profileRead = resolveRequiredDbRead(
@@ -410,17 +442,13 @@ export async function POST(request: NextRequest) {
 
     if (!dependencyFailed && action === "continue") {
       let memberResult;
-      try {
-        memberResult = await admin
-          .from("member_accounts")
-          .select(
-            "age_confirmed_at, terms_version, privacy_version, email",
-          )
-          .eq("user_id", user.id)
-          .abortSignal(routeDeadline)
-          .maybeSingle();
-      } catch (error) {
-        readRetry("member", error);
+      {
+        const settled = await memberPending;
+        if (settled.ok) {
+          memberResult = settled.value;
+        } else {
+          readRetry("member", settled.error);
+        }
       }
       if (memberResult !== undefined) {
         const memberRead = resolveDbRead("member", memberResult);
@@ -428,11 +456,13 @@ export async function POST(request: NextRequest) {
           readRetry(memberRead.source, memberRead.error);
         } else {
           let currentLegal = null;
-          try {
-            currentLegal =
-              await getCurrentLegalVersionsStrict(routeDeadline);
-          } catch (error) {
-            readRetry("legal", error);
+          {
+            const settled = await legalPending;
+            if (settled.ok) {
+              currentLegal = settled.value;
+            } else {
+              readRetry("legal", settled.error);
+            }
           }
           const memberRow = memberRead.data as {
             age_confirmed_at: string | null;

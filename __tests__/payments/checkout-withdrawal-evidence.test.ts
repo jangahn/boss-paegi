@@ -218,23 +218,25 @@ test("UI, route, expand RPC and contract cleanup form one fail-closed boundary",
     "utf8",
   );
 
-  const checkbox = client.indexOf('type="checkbox"');
+  // 2026-07-31 product decision: the withdrawal-limit notice stays rendered
+  // before the purchase buttons, but purchase no longer requires a separate
+  // checkbox — clicking the purchase button is the confirmation the request
+  // payload records, byte-identical to the published copy.
   const confirmation = client.indexOf(
     "CHECKOUT_WITHDRAWAL_CONFIRMATION.statement",
-    checkbox,
   );
-  const buttonGate = client.indexOf(
-    "disabled={!!pending || !withdrawalConfirmed}",
-  );
+  const purchaseButtons = client.indexOf("disabled={!!pending}");
   const request = client.indexOf("withdrawalConfirmation:");
+  assert.equal(client.indexOf('type="checkbox"'), -1);
   assert.ok(
-    checkbox >= 0 &&
-      confirmation > checkbox &&
-      buttonGate > confirmation &&
+    confirmation >= 0 &&
+      purchaseButtons > confirmation &&
       request >= 0,
   );
-  assert.match(client, /useState\(false\)/);
-  assert.match(client, /setWithdrawalConfirmed\(false\)/);
+  assert.match(
+    client,
+    /결제 버튼을 누르면 위 내용을 확인한 것으로 봅니다\./,
+  );
 
   const parse = route.indexOf("parseCheckoutRequestBody(");
   const offerRead = route.indexOf('.from("commerce_display_evidence")');

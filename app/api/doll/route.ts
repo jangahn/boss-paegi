@@ -21,12 +21,6 @@ import {
 import { parseDollPickHttpResponse } from "@/lib/character-gen/http-contract";
 import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
 import {
-  GENERATION_COST_FROZEN_BODY,
-  GENERATION_COST_ROLLOUT_HEADER,
-  generationCostPathEnabled,
-} from "@/lib/generation-cost-rollout";
-import { paymentRolloutIdentityHeaders } from "@/lib/pay/checkout-rollout";
-import {
   createDollPickSubmitIntent,
   dollPickSubmitIntentRpcPayload,
   parseDollPickClaim,
@@ -38,7 +32,6 @@ import { materializeGenerationPick } from "@/lib/character-gen/doll-pick-materia
 import { publicFalWebhookOrigin } from "@/lib/character-gen/generation-submit-saga";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVER_ENV } from "@/lib/env.server";
-import { readGenerationProviderAcceptance } from "@/lib/generation-provider-acceptance";
 
 export const runtime = "nodejs";
 // 누끼(birefnet ~2s) + fetch/normalize/upload/insert. 30s 면 충분.
@@ -81,41 +74,12 @@ function dollPickProcessingResponse() {
  *   멱등(이미 picked 면 기존 doll)·동시성(done→picked 조건부 1승·패자 보상삭제)·pick 후 provenance 갱신.
  */
 export async function POST(req: NextRequest) {
-  // Only POST can start paid birefnet work. Keep this before auth/body/DB so a
-  // rolling old deployment has an externally provable, exact freeze boundary;
-  // GET/DELETE remain available while the generation cost ledger is deployed.
-  if (!generationCostPathEnabled()) {
-    return NextResponse.json(GENERATION_COST_FROZEN_BODY, {
-      status: 503,
-      headers: {
-        [GENERATION_COST_ROLLOUT_HEADER]: "frozen",
-        ...paymentRolloutIdentityHeaders(),
-      },
-    });
-  }
-
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
+  // Provider acceptance stays a recordable ledger, not an enforcement gate
+  // (2026-07-31 product decision restoring the pre-freeze generation flow).
   const admin = createAdminClient();
-  try {
-    const acceptance = await readGenerationProviderAcceptance(admin, user.id);
-    if (!acceptance.eligible) {
-      return NextResponse.json(
-        { error: "generation_provider_acceptance_required" },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-  } catch (error) {
-    log.error("doll.provider_acceptance_read_fail", {
-      userId: user.id,
-      ...errInfo(error),
-    });
-    return NextResponse.json(
-      { error: "service_unavailable" },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
-  }
 
   const requestBody = await readApiJsonObjectRequest(req);
   if (!requestBody.ok) {

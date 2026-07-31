@@ -554,11 +554,15 @@ prune RPC도 구현한다. 이 증거는 사용자, 탈퇴 세대(`withdrawal_ge
 효력 있는 서비스 terms/privacy version, fal bundle version, 별도 만 19세 확인과
 fal Terms/AUP 각각의 적극 동의를 불변 결속하고 5년 보존한다. 관련 UI/API와 DB
 경계가 source에 구현됐으므로 생성 연령/flow-down은 더 이상 법무 v2의 코드
-publication blocker가 아니다. 다만 `FAL_EXTERNAL_COMPLIANCE_APPROVED=false`인
-compile-time fence는 유지한다. fal의 exact 하위처리자·국가·보존기간, 얼굴/PII
-서면 허용·DPA, private ACL/owner-token 계약과 Vercel·Google OAuth의 exact 국외
-이전 inventory라는 외부 증거가 모두 해소되기 전에는 fal 생성과 법무 v2 발행을
-성공으로 판정하지 않는다.
+publication blocker가 아니다. 2026-07-31 제품 오너 결정으로
+`FAL_EXTERNAL_COMPLIANCE_APPROVED`는 true로 전환됐고 acceptance는 강제
+게이트가 아니라 기록 가능한 원장으로 유지되며, 생성 개방은
+`GENERATION_COST_PATH_ENABLED` env가 단일 스위치다. fal의 exact
+하위처리자·국가·보존기간, 얼굴/PII 서면 허용·DPA, private ACL/owner-token
+계약과 Vercel·Google OAuth의 exact 국외 이전 inventory는 여전히 미해소
+법무 후속이며, 이 보고서는 그 잔여 리스크가 제품 결정으로 수용됐음을
+기록한다(같은 결정으로 checkout의 청약철회 확인도 별도 체크박스에서 결제
+버튼 위 고지+결제 클릭 확인으로 전환).
 
 expand 동안 구 9-arg `create_pending_order`는 미해결 후보가 0이면
 `checkout_upgrade_required`, 정확히 같은 payment ID의 pending transport replay만

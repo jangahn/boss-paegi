@@ -920,13 +920,18 @@ export function OAuthCallbackClient() {
   }, [attempt, run]);
 
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="text-xl font-semibold">
-        로그인 마무리 중
+    <main className="mx-auto flex min-h-[80vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+      {!failed && (
+        <span
+          aria-hidden="true"
+          className="h-9 w-9 animate-spin rounded-full border-[3px] border-foreground/15 border-t-foreground"
+        />
+      )}
+      <h1 className="text-base font-semibold">
+        로그인 정보를 안전하게 확인하고 있어요
       </h1>
-      <p className="text-sm text-neutral-600">
-        안전하게 로그인 정보를 확인하고 있어요. 이 화면을
-        닫지 마세요.
+      <p className="text-xs text-zinc-500">
+        잠시만 기다려주세요. 이 화면을 닫지 마세요.
       </p>
       {failed && (
         <>

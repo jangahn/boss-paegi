@@ -6,10 +6,6 @@ import {
   isGenerationProviderAcceptanceRequest,
   parseGenerationProviderAcceptanceAck,
 } from "@/lib/generation-provider-acceptance";
-import {
-  generationCostPathEnabled,
-  GENERATION_COST_FROZEN_BODY,
-} from "@/lib/generation-cost-rollout";
 import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
 import { log, errInfo } from "@/lib/log";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -22,13 +18,6 @@ const NO_STORE = {
 } as const;
 
 export async function POST(req: Request) {
-  if (!generationCostPathEnabled()) {
-    return NextResponse.json(GENERATION_COST_FROZEN_BODY, {
-      status: 503,
-      headers: NO_STORE,
-    });
-  }
-
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
 

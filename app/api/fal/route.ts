@@ -37,13 +37,6 @@ import {
   readGenerationFormData,
 } from "@/lib/character-gen/request-boundary";
 import {
-  GENERATION_COST_FROZEN_BODY,
-  GENERATION_COST_ROLLOUT_HEADER,
-  generationCostPathEnabled,
-} from "@/lib/generation-cost-rollout";
-import { paymentRolloutIdentityHeaders } from "@/lib/pay/checkout-rollout";
-import { readGenerationProviderAcceptance } from "@/lib/generation-provider-acceptance";
-import {
   parseGenerationPreflightClaim,
   parseGenerationPreflightCommit,
   parseGenerationContinuationClaim,
@@ -103,19 +96,6 @@ function generationPreflightProcessingResponse() {
 }
 
 export async function POST(req: NextRequest) {
-  // Rollout bootstrap: this must remain the first executable boundary. Old
-  // application instances must not upload a face or start paid Moondream work
-  // before the DB-authoritative cost reservation migration is present.
-  if (!generationCostPathEnabled()) {
-    return NextResponse.json(GENERATION_COST_FROZEN_BODY, {
-      status: 503,
-      headers: {
-        [GENERATION_COST_ROLLOUT_HEADER]: "frozen",
-        ...paymentRolloutIdentityHeaders(),
-      },
-    });
-  }
-
   // Reject a declared oversize before any dependency work, but do not consume
   // a chunked body until the caller passes auth.
   if (
@@ -128,27 +108,11 @@ export async function POST(req: NextRequest) {
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
-  // Base 14+/terms/privacy are enforced by requireMember. fal generation has
-  // a separate immutable 19+ and provider ToS/AUP flow-down requirement.
+  // Base 14+/terms/privacy are enforced by requireMember. The provider
+  // acceptance ledger (008905) stays recordable but is not an enforcement
+  // gate: the product owner restored the pre-freeze generation flow on
+  // 2026-07-31, where the in-page photo consent dialog is the only prompt.
   const admin = createAdminClient();
-  try {
-    const acceptance = await readGenerationProviderAcceptance(admin, user.id);
-    if (!acceptance.eligible) {
-      return NextResponse.json(
-        { error: "generation_provider_acceptance_required" },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-  } catch (error) {
-    log.error("gen.provider_acceptance_read_fail", {
-      userId: user.id,
-      ...errInfo(error),
-    });
-    return NextResponse.json(
-      { error: "service_unavailable" },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
-  }
 
   // multipart/form-data() otherwise buffers the complete body. Read the raw
   // stream with an exact cap before config/provider calls; this second check
@@ -163,9 +127,6 @@ export async function POST(req: NextRequest) {
   const form = formRead.form;
 
   log.info("gen.request", { userId: user.id });
-
-  // 운영 계정은 생성권 무제한.
-  const isOps = !!SERVER_ENV.OPS_USER_ID && user.id === SERVER_ENV.OPS_USER_ID;
 
   const file = form.get("image");
   if (!(file instanceof File)) {
@@ -238,7 +199,7 @@ export async function POST(req: NextRequest) {
       p_request_id: requestId,
       p_role: role,
       p_image_digest: imageDigest,
-      p_requires_credit: !isOps,
+      p_requires_credit: true,
       p_worker_id: analysisWorkerId,
     },
   );
@@ -632,7 +593,6 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       genId,
       remaining: committed.remaining,
-      isOps,
     });
   }
 
@@ -1005,7 +965,7 @@ export async function POST(req: NextRequest) {
       settledBeforeSubmit + freshlySettled === 3;
     if (allThreeDurablySettled && definitivelyRejected === 3) {
       log.error("gen.submit_all_rejected", { genId, userId: user.id });
-      await failGeneration(admin, genId, user.id, isOps, "submit_rejected");
+      await failGeneration(admin, genId, user.id, "submit_rejected");
       await cleanupFace(facePath);
       return NextResponse.json({ error: "generation_failed" }, { status: 502 });
     }
