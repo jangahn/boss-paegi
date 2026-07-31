@@ -19,6 +19,8 @@ import {
   coverPathSchema,
   isEventType,
   type BannerSurface,
+  eventExposure,
+  type EventExposure,
   type EventRow,
   type EventType,
   type EventView,
@@ -121,6 +123,7 @@ function toView(row: EventRow): EventView {
     coverUrl: coverUrl(row.cover_image_path),
     coverThumbUrl: coverUrl(row.cover_image_path, COVER_THUMB_TRANSFORM),
     coverOgUrl: coverUrl(row.cover_image_path, COVER_OG_TRANSFORM),
+    exposure: eventExposure(row, Date.now()),
   };
 }
 
@@ -132,30 +135,38 @@ export async function getPublishedEvents(opts?: {
 }): Promise<{ items: EventView[]; total: number; totalPages: number }> {
   const type = opts?.type ?? null;
   const page = Math.max(1, opts?.page ?? 1);
-  const now = new Date().toISOString();
-  const from = (page - 1) * NEWS_PAGE_SIZE;
   const admin = createAdminClient();
-  let query = admin
-    .from("events")
-    .select(COLS, { count: "exact" })
-    .eq("status", "published")
-    .is("deleted_at", null)
-    // starts_at is inclusive and ends_at is exclusive.
-    .or(`starts_at.is.null,starts_at.lte.${now}`)
-    .or(`ends_at.is.null,ends_at.gt.${now}`);
-  if (type) query = query.eq("type", type);
-  const result = await requireSupabasePage<EventRow>(
-    "events.published_list",
-    () =>
-      query
-        .order("pinned", { ascending: false })
-        .order("published_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, from + NEWS_PAGE_SIZE - 1),
-  );
-  const total = result.count;
+  // 종료 글 영구 잔존 + 종료 시 pinned 해제 정렬은 (pinned AND 미종료)
+  // 표현식이라 RPC(list_news_events)가 페이지네이션·정렬을 함께 소유한다.
+  const { data, error } = await admin.rpc("list_news_events", {
+    p_type: type,
+    p_limit: NEWS_PAGE_SIZE,
+    p_offset: (page - 1) * NEWS_PAGE_SIZE,
+  });
+  if (error) {
+    throw new SupabaseOperationError("events.published_list", error);
+  }
+  const envelope =
+    data && typeof data === "object" && !Array.isArray(data)
+      ? (data as { total?: unknown; items?: unknown })
+      : null;
+  if (
+    !envelope ||
+    typeof envelope.total !== "number" ||
+    !Number.isSafeInteger(envelope.total) ||
+    envelope.total < 0 ||
+    !Array.isArray(envelope.items)
+  ) {
+    throw new SupabaseOperationError(
+      "events.published_list",
+      new Error("invalid_news_list_envelope"),
+    );
+  }
+  const total = envelope.total;
   return {
-    items: validateEventRows("events.published_list", result.rows).map(toView),
+    items: validateEventRows("events.published_list", envelope.items).map(
+      toView,
+    ),
     total,
     totalPages: Math.max(1, Math.ceil(total / NEWS_PAGE_SIZE)),
   };
@@ -164,7 +175,7 @@ export async function getPublishedEvents(opts?: {
 // ── 공개 단건 ─────────────────────────────────────────────
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** 공개 상세 — 발행+윈도우+미삭제만(draft/예약/만료/삭제 → null → notFound). 비-UUID는 즉시 null. */
+/** 공개 상세 — 발행+시작됨+미삭제(draft/예약/삭제 → null → notFound). 종료 글은 '종료' 딱지로 영구 열람(공유 링크 보존). 비-UUID는 즉시 null. */
 export async function getEventById(id: string): Promise<EventView | null> {
   if (!UUID_RE.test(id)) return null;
   const now = new Date().toISOString();
@@ -177,7 +188,6 @@ export async function getEventById(id: string): Promise<EventView | null> {
       .eq("status", "published")
       .is("deleted_at", null)
       .or(`starts_at.is.null,starts_at.lte.${now}`)
-      .or(`ends_at.is.null,ends_at.gt.${now}`)
       .maybeSingle(),
   );
   return data
@@ -268,8 +278,8 @@ export async function getSitemapEvents(): Promise<
         .eq("status", "published")
         .is("deleted_at", null)
         .eq("noindex", false)
+        // 종료 글도 공개 잔존 페이지이므로 사이트맵에 남긴다(예약만 제외).
         .or(`starts_at.is.null,starts_at.lte.${now}`)
-        .or(`ends_at.is.null,ends_at.gt.${now}`)
         .order("published_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1),
@@ -285,6 +295,8 @@ export async function getSitemapEvents(): Promise<
 export async function getAdminEvents(opts?: {
   status?: "draft" | "published";
   type?: EventType;
+  /** 발행 글의 노출 세분류 필터 — status 와 배타(항상 published 함의). */
+  exposure?: EventExposure;
   page?: number;
 }): Promise<{ items: EventView[]; total: number; totalPages: number }> {
   const page = Math.max(1, opts?.page ?? 1);
@@ -294,7 +306,22 @@ export async function getAdminEvents(opts?: {
     .from("events")
     .select(COLS, { count: "exact" })
     .is("deleted_at", null);
-  if (opts?.status) q = q.eq("status", opts.status);
+  if (opts?.exposure) {
+    // 쿼리 경계는 목록/상세와 동일: starts_at 포함·ends_at 배타.
+    const now = new Date().toISOString();
+    q = q.eq("status", "published");
+    if (opts.exposure === "scheduled") {
+      q = q.gt("starts_at", now);
+    } else if (opts.exposure === "ended") {
+      q = q.not("ends_at", "is", null).lte("ends_at", now);
+    } else {
+      q = q
+        .or(`starts_at.is.null,starts_at.lte.${now}`)
+        .or(`ends_at.is.null,ends_at.gt.${now}`);
+    }
+  } else if (opts?.status) {
+    q = q.eq("status", opts.status);
+  }
   if (opts?.type) q = q.eq("type", opts.type);
   const result = await requireSupabasePage<EventRow>("events.admin_list", () =>
     q

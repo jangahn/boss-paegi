@@ -73,6 +73,11 @@ export default async function NewsDetailPage({
               <span className="rounded-full bg-foreground/10 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-500">
                 {EVENT_TYPE_LABEL[e.type]}
               </span>
+              {e.exposure === "ended" && (
+                <span className="rounded-full bg-foreground/10 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-400">
+                  종료
+                </span>
+              )}
               <span className="text-xs text-zinc-400">{fmtKstDate(e.published_at)}</span>
             </div>
             <h1 className="mt-2 text-2xl font-bold leading-snug tracking-tight">{e.title}</h1>

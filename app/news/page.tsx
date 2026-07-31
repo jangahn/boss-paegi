@@ -112,10 +112,17 @@ export default async function NewsPage({
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        {e.pinned && <span className="text-[11px] text-amber-500">📌</span>}
+                        {e.pinned && e.exposure !== "ended" && (
+                          <span className="text-[11px] text-amber-500">📌</span>
+                        )}
                         <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold text-zinc-500">
                           {EVENT_TYPE_LABEL[e.type]}
                         </span>
+                        {e.exposure === "ended" && (
+                          <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold text-zinc-400">
+                            종료
+                          </span>
+                        )}
                         <span className="text-[11px] text-zinc-400">{fmtKstDate(e.published_at)}</span>
                       </div>
                       <p className="mt-1 truncate text-base font-semibold">{e.title}</p>

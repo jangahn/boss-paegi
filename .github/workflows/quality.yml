@@ -136,6 +136,9 @@ jobs:
       - name: Accept the provider's PNG output in the evidence contract (0098)
         run: npm run qa:db:apply:provider-output-png
 
+      - name: Install the news exposure lifecycle list (0099)
+        run: npm run qa:db:apply:news-exposure-lifecycle
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 
