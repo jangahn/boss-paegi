@@ -16,7 +16,7 @@ import { migrateCookieName } from "@/lib/signup-cookie";
 import { PUBLIC_ENV } from "@/lib/env";
 import { SERVER_ENV } from "@/lib/env.server";
 import { log, errInfo } from "@/lib/log";
-import { safeNext } from "@/lib/oauth-metadata";
+import { safeFlowDestination } from "@/lib/oauth-flow-status";
 
 export const runtime = "nodejs";
 export const maxDuration = 15;
@@ -78,9 +78,20 @@ export async function POST(request: NextRequest) {
     !status.targetUserId ||
     !status.targetSessionId ||
     !status.destination ||
-    safeNext(status.destination) !== status.destination ||
+    // 종착지는 서버 기록 값 — safeNext(로그인 차단목록)가 아니라
+    // safeFlowDestination 으로 검증한다(/login?error=account_deleted 가
+    // 정당한 종착지. 2026-08-01 운영 실측: safeNext 잔존으로 PR#203 이후에도
+    // ACK 409 무한 루프가 한 단계 뒤에서 재현).
+    !safeFlowDestination(status.destination) ||
     !["signout_revoked", "completed"].includes(status.state)
   ) {
+    // 이 409 는 클라 복구 루프의 원인이 된다 — 침묵 금지(M2).
+    log.error("auth.oauth_flow_complete_signout_not_completable", {
+      flowId,
+      state: status.state,
+      action: status.action,
+      destination: status.destination,
+    });
     return response(
       { error: "oauth_flow_signout_not_completable" },
       409,
@@ -137,9 +148,9 @@ export async function POST(request: NextRequest) {
       (value as Record<string, unknown>).flowId === flowId &&
       typeof (value as Record<string, unknown>).destination ===
         "string" &&
-      safeNext(
-        (value as Record<string, unknown>).destination as string,
-      ) === (value as Record<string, unknown>).destination
+      safeFlowDestination(
+        (value as Record<string, unknown>).destination,
+      )
     ) {
       destination = (value as Record<string, unknown>)
         .destination as string;
