@@ -56,7 +56,7 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
 
       {/* 디바이스별 */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="whitespace-nowrap w-full text-sm">
           <thead>
             <tr className="text-left text-[11px] text-zinc-400">
               <th className="py-1 pr-2">디바이스</th>

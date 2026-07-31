@@ -98,7 +98,7 @@ export function BusinessInfoEditor({
         채우면 전 페이지 푸터에 상시 노출되고, 전부 비우고 발행하면 푸터가 사라집니다.
       </p>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <input value={biz.companyName} maxLength={60} onChange={(e) => setB("companyName", e.target.value)} placeholder="상호 (예: 제이엔에이)" className={inputCls} />
         <input value={biz.ownerName} maxLength={30} onChange={(e) => setB("ownerName", e.target.value)} placeholder="대표자명" className={inputCls} />
         <input value={biz.bizRegNo} maxLength={20} onChange={(e) => setB("bizRegNo", e.target.value)} placeholder="사업자등록번호" className={inputCls} />

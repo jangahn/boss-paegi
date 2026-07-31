@@ -409,7 +409,7 @@ export function ReviewerAccountsPanel({
         <p className="text-sm text-zinc-400">등록된 심사 계정이 없어요.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-foreground/10">
-          <table className="w-full text-left text-xs">
+          <table className="whitespace-nowrap w-full text-left text-xs">
             <thead className="ui-surface text-zinc-500">
               <tr>
                 <th className="px-2 py-1.5">이메일</th>

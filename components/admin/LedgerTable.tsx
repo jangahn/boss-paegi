@@ -41,7 +41,7 @@ export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
   }
   return (
     <div className="overflow-x-auto rounded-xl border border-foreground/10">
-      <table className="w-full text-left text-xs">
+      <table className="whitespace-nowrap w-full text-left text-xs">
         <thead className="ui-surface text-zinc-500">
           <tr>
             <th className="px-2 py-1.5">시각(KST)</th>
