@@ -58,7 +58,7 @@ export function AcquisitionCard({ stats }: { stats: AcquisitionStats }) {
           <p className="text-[11px] text-zinc-400">데이터 없음</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs tabular-nums">
+            <table className="whitespace-nowrap w-full text-xs tabular-nums">
               <thead>
                 <tr className="text-left text-[10px] text-zinc-400">
                   <th className="pb-1 font-medium">소스</th>

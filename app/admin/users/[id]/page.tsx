@@ -69,7 +69,7 @@ function ReconIssueItem({ issue }: { issue: ReconIssueRow }) {
         {ISSUE_TYPE_LABELS[issue.type] ?? issue.type}
       </span>
       <span className="font-mono text-zinc-400">주문 {shortId(issue.order_uuid)}</span>
-      <span className="ml-auto tabular-nums text-zinc-400">{fmtKst(issue.created_at)}</span>
+      <span className="ml-auto whitespace-nowrap tabular-nums text-zinc-400">{fmtKst(issue.created_at)}</span>
     </li>
   );
 }
@@ -85,7 +85,7 @@ function LotsTable({ rows }: { rows: UserLotRow[] }) {
   }
   return (
     <div className="overflow-x-auto rounded-xl border border-foreground/10">
-      <table className="w-full text-left text-xs">
+      <table className="whitespace-nowrap w-full text-left text-xs">
         <thead className="ui-surface text-zinc-500">
           <tr>
             <th className="px-2 py-1.5">소스</th>

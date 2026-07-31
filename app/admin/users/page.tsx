@@ -27,7 +27,7 @@ function MemberLi({ c }: { c: MemberInfo }) {
           </span>
         )}
         <span className="text-zinc-500">{c.email ?? "—"}</span>
-        <span className="ml-auto text-xs text-zinc-400">
+        <span className="ml-auto whitespace-nowrap text-xs text-zinc-400">
           크레딧 {c.genCredits} · 가입 {fmtKst(c.memberSince)} · {shortId(c.userId)}
         </span>
       </Link>
@@ -105,7 +105,7 @@ export default async function AdminUsersPage({
                           탈퇴
                         </span>
                         <span className="text-zinc-500">{w.originalEmail ?? "—"}</span>
-                        <span className="ml-auto text-xs text-zinc-400">
+                        <span className="ml-auto whitespace-nowrap text-xs text-zinc-400">
                           탈퇴 {fmtKst(w.deletedAt)} · {shortId(w.userId)}
                         </span>
                       </Link>

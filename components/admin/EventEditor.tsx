@@ -820,8 +820,8 @@ export function EventEditor({ event }: { event: EventView | null }) {
           </div>
         </div>
 
-        {/* 노출 윈도우 */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* 노출 윈도우 — datetime-local 은 고유 최소폭이 커서 소형 화면에선 세로 스택 */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-zinc-500">노출 시작 <span className="text-zinc-400">· 비우면 즉시</span></span>
             <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputCls} />

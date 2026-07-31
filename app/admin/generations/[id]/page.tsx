@@ -205,14 +205,14 @@ export default async function AdminGenerationDetailPage({
                   const isPicked = gen.pickedIndex === c.index;
                   return (
                     <div key={c.index} className="rounded-xl border border-foreground/10 p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold">후보 #{c.index}</span>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="shrink-0 whitespace-nowrap text-xs font-bold">후보 #{c.index}</span>
                         {isPicked && (
-                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+                          <span className="shrink-0 whitespace-nowrap rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
                             선택됨
                           </span>
                         )}
-                        <span className="text-[11px] text-zinc-400">
+                        <span className="min-w-0 text-[11px] text-zinc-400">
                           {c.status} · 정장색 {c.suitColor} · seed {c.seed ?? "—"}
                         </span>
                       </div>

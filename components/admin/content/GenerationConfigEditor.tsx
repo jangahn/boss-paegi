@@ -116,7 +116,7 @@ export function GenerationConfigEditor({
       )}
 
       {/* 수치 (안전 서브레인지) */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-[400px]:grid-cols-1">
         <NumField label="steps" hint="20~40 정수" value={steps} onChange={setSteps} step="1" />
         <NumField label="guidance" hint="3~6" value={guidance} onChange={setGuidance} step="0.1" />
         <NumField label="true_cfg" hint="1~4" value={trueCfg} onChange={setTrueCfg} step="0.1" />

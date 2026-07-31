@@ -66,28 +66,30 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
         </div>
 
         <div className="min-w-0 flex-1 text-sm">
+          {/* 소형 화면에서 ml-auto 액션이 칩 위로 겹치던 레이아웃 —
+              1행=상태·차감·시각(nowrap), 액션은 별도 행 우측 정렬로 분리 */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.cls}`}>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${st.cls}`}>
               {st.label}
             </span>
-            <span className={`text-[11px] ${credit.cls}`}>{credit.label}</span>
-            <span className="text-[11px] text-zinc-400">· {fmtKst(row.createdAt)}</span>
-            <div className="ml-auto flex items-center gap-1">
-              <Link
-                href={`/admin/generations/${row.id}`}
-                className="rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-sky-600 transition hover:bg-foreground/10"
-                title="생성 파라미터·프롬프트 상세"
-              >
-                상세 페이지 →
-              </Link>
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                className="rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:bg-foreground/10"
-              >
-                요약 <span className="text-[10px]">{open ? "▴" : "▾"}</span>
-              </button>
-            </div>
+            <span className={`shrink-0 text-[11px] ${credit.cls}`}>{credit.label}</span>
+            <span className="whitespace-nowrap text-[11px] text-zinc-400">· {fmtKst(row.createdAt)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-end gap-1">
+            <Link
+              href={`/admin/generations/${row.id}`}
+              className="shrink-0 rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-sky-600 transition hover:bg-foreground/10"
+              title="생성 파라미터·프롬프트 상세"
+            >
+              상세 페이지 →
+            </Link>
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="shrink-0 rounded-full border border-foreground/15 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:bg-foreground/10"
+            >
+              요약 <span className="text-[10px]">{open ? "▴" : "▾"}</span>
+            </button>
           </div>
 
           {/* 클릭 필터: 회원 / 캐릭터 + 회원 상세 이동 */}
