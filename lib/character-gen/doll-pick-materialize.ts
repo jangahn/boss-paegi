@@ -7,6 +7,7 @@ import {
 } from "../media-download.ts";
 import { SERVER_ENV } from "../env.server.ts";
 import { fetchPrivateFalMediaBlob } from "./fal-private-media.ts";
+import { isStorageNotFoundError } from "../supabase-operation.ts";
 import {
   parseCreatedUploadIntent,
   resolveUploadIntentMutation,
@@ -124,10 +125,15 @@ export async function materializeGenerationPick(args: {
       : intent.error;
   }
 
+  // exists()는 부재를 data=false + 400/404 error로 표현한다(운영 실측: 이
+  // Storage 백엔드는 미존재 HEAD에 400). error 무조건 throw는 새 객체 업로드를
+  // 구조적으로 전부 막는다 — removeStorageObjects와 동일한 판별을 쓴다.
   const existence = await args.admin.storage
     .from(DOLLS_BUCKET)
     .exists(path);
-  if (existence.error) throw existence.error;
+  if (existence.error && !isStorageNotFoundError(existence.error)) {
+    throw existence.error;
+  }
   if (existence.data) {
     const { data: info, error: infoError } = await args.admin.storage
       .from(DOLLS_BUCKET)

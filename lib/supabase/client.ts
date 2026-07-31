@@ -870,7 +870,9 @@ const DEFINITIVE_REFRESH_REJECTION_CODES = new Set([
   "invalid_grant",
   "refresh_token_already_used",
   "refresh_token_not_found",
+  "session_expired",
   "session_not_found",
+  "user_banned",
   "user_not_found",
 ]);
 

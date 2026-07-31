@@ -139,8 +139,10 @@ function parseUnambiguousYesNo(value: string | null): boolean | null {
 }
 
 function parseUnambiguousPeopleCount(value: string | null): number | null {
+  // 문장 마침표("1.")는 수용하고 소수("1.5")만 거부한다 — 프롬프트가
+  // "Answer with a single number only."라 마침표 부착이 개연적 스타일이다.
   const matches = Array.from(
-    (value ?? "").matchAll(/(?:^|[^\d.+-])(\d+)(?![\d.])/g),
+    (value ?? "").matchAll(/(?:^|[^\d.+-])(\d+)(?!\d)(?!\.\d)/g),
     (match) => match[1],
   );
   if (matches.length !== 1) return null;
@@ -151,7 +153,7 @@ function parseUnambiguousPeopleCount(value: string | null): number | null {
 /**
  * moondream 각 체크의 raw 답변 → 정규화 판정.
  *
- * 생성 비용·얼굴 입력 정책을 결정하는 권위 게이트이므로 파싱 실패, 상충 응답,
+ * 생성 비용·얼굴 입력 정책을 결정하는 권위 게이트이므로 파싱 실패나
  * 일부 dependency 실패를 정상 사진으로 추정하지 않는다. 모호하면 호출자가 503으로
  * 재시도시키며, 생성 row/크레딧/FAL 생성 제출은 시작하지 않는다.
  */
@@ -174,12 +176,9 @@ export function interpretFaceChecks(raw: Record<FaceCheckKey, string | null>): {
   ) {
     throw new FaceAnalysisUnavailableError("ambiguous_face_analysis");
   }
-  if (
-    (faceVisible && peopleCount === 0) ||
-    (!faceVisible && peopleCount > 0)
-  ) {
-    throw new FaceAnalysisUnavailableError("contradictory_face_count");
-  }
+  // face("clearly visible face")와 count("How many people")는 서로 다른
+  // 술어다 — face=no+count=1(사람은 있으나 얼굴이 안 보임)은 모순이 아니라
+  // no_face 재촬영 안내로 합류해야 하는 정상 조합이다(기준선 동작).
   return {
     faceVisible,
     peopleCount,
