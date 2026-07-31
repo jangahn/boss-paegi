@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConsentDialog } from "@/components/ConsentDialog";
 import { PhotoCropper } from "@/components/PhotoCropper";
@@ -32,6 +32,7 @@ import {
 } from "@/lib/client-mutation";
 import {
   useGenerationPolling,
+  type GenerationProgressState,
   type Stage,
   type GeneratedImage,
 } from "./useGenerationPolling";
@@ -58,7 +59,22 @@ function GeneratePageInner() {
   };
 
   // 폴링 대상 genId — resume(URL) 우선, fresh 는 state. 리로드 시 URL 이 살아있어 이어짐.
-  const activeGenId = resumeId ?? generationId;
+  // 종결(gone/invalid/interrupted)로 resume 을 지운 뒤에는 URL 파라미터를 무시한다
+  // (replaceState 만으로는 useSearchParams 가 재평가되지 않을 수 있음).
+  const [resumeCleared, setResumeCleared] = useState(false);
+  const activeGenId = resumeCleared ? generationId : (resumeId ?? generationId);
+  // 대기 화면의 서버 실단계 — 폴 응답이 단일 소스(시간 휴리스틱 아님).
+  const [progress, setProgress] = useState<GenerationProgressState | null>(null);
+  // 누끼 저장의 서버 실단계(202 응답 phase) — 타이머 아님.
+  const [saveStage, setSaveStage] = useState<"background" | "saving" | "done">(
+    "background",
+  );
+  const clearResume = useCallback(() => {
+    window.history.replaceState(null, "", "/generate");
+    setResumeCleared(true);
+    setGenerationId(null);
+    setProgress(null);
+  }, []);
 
   // 진입 가드: 생성권 확인(getMyProfile 가 세션 워밍업도 겸함). resume 은 이미 진행 중이라 스킵.
   // **법적 동의는 서버 proxy 가 렌더 전 게이트** → 여기 도달 = 로그인+동의완료. 생성권 0 만 차단,
@@ -74,7 +90,7 @@ function GeneratePageInner() {
         const profile = await getMyProfile();
         if (cancelled) return;
         const delivery = await runBoundedClientJsonFetch({
-          input: "/api/generations",
+          input: "/api/generations?v=2",
           init: { cache: "no-store" },
           signal: entryAbort.signal,
         });
@@ -89,11 +105,41 @@ function GeneratePageInner() {
         const pending = parsePendingGenerationsResponse(body);
         // ready도 아직 pick되지 않은 소비 완료 생성이다. generating과 동일하게 먼저
         // 복귀시켜 새 요청/중복 차감을 막는다.
-        const active =
-          pending.find((generation) => generation.kind === "ready") ??
-          pending.find((generation) => generation.kind === "generating");
+        const readyRow = pending.find(
+          (generation) => generation.kind === "ready",
+        );
+        if (readyRow) {
+          // 이미 후보가 있는 생성은 "생성 중" 경유 없이 곧장 고르기로(U5) —
+          // 가드 응답이 후보·롤을 이미 들고 있다.
+          setResults(
+            readyRow.candidateUrls.map((url) => ({
+              url,
+              width: 512,
+              height: 512,
+            })),
+          );
+          setSelectedRole(readyRow.role);
+          setGenerationId(readyRow.id);
+          setStage("pick");
+          window.history.replaceState(
+            null,
+            "",
+            `/generate?resume=${readyRow.id}`,
+          );
+          return;
+        }
+        const active = pending.find(
+          (generation) => generation.kind === "generating",
+        );
         if (active) {
           setGenerationId(active.id);
+          if (active.phase !== undefined) {
+            setProgress({
+              phase: active.phase,
+              candidatesReady: active.candidatesReady ?? 0,
+              startedAtMs: Date.parse(active.createdAt),
+            });
+          }
           setStage("generating");
           window.history.replaceState(
             null,
@@ -101,6 +147,18 @@ function GeneratePageInner() {
             `/generate?resume=${active.id}`,
           );
           return;
+        }
+        // 방금 정리된 끊김(즉시 환불 완료) — 무언 소실 금지, 1회 안내 후 새 퍼널(U1).
+        const interruptedRow = pending.find(
+          (generation) => generation.kind === "interrupted",
+        );
+        if (interruptedRow) {
+          setError(
+            interruptedRow.reason === "photo"
+              ? "이전 생성이 사진 문제로 실패했어요. 사용한 생성권은 자동 환불되었어요."
+              : "이전 생성이 중단 정리되었어요. 사용한 생성권은 자동 환불되었어요.",
+          );
+          notifyCreditsChanged();
         }
         setStage(
           profile?.isLoggedIn && profile.genCredits === 0
@@ -131,6 +189,8 @@ function GeneratePageInner() {
     setStage,
     setError,
     setSelectedRole,
+    setProgress,
+    clearResume,
   });
 
   // 생성 퍼널 단계 태그(이탈 추적) — Sentry 저카디널리티 태그 + breadcrumb.
@@ -172,6 +232,13 @@ function GeneratePageInner() {
     if (!target) return;
     setSentryLastAction("generate");
     setStage("generating");
+    // 제출 요청이 시작되는 순간부터 서버는 분석 단계다 — 첫 폴 응답 전까지의
+    // 실단계 표시(폴이 도착하면 서버 값이 덮는다).
+    setProgress({
+      phase: "analyzing",
+      candidatesReady: 0,
+      startedAtMs: Date.now(),
+    });
     setError(null);
     const scope = "generation-submit";
     const controller = beginOperation();
@@ -299,12 +366,14 @@ function GeneratePageInner() {
     } catch (e) {
       if (controller.signal.aborted) return;
       log.warn("gen.client_request_fail", errInfo(e));
+      const raw =
+        e instanceof Error ? e.message : "알 수 없는 오류";
       setError(
-        e instanceof Error && e.message === "operation_poll_deadline"
+        raw === "operation_poll_deadline"
           ? "처리가 오래 걸리고 있어 자동 확인을 멈췄어요. 다시 시도하면 같은 요청을 안전하게 이어갑니다."
-          : e instanceof Error
-            ? e.message
-            : "알 수 없는 오류",
+          : /^[a-z0-9_]+$/.test(raw)
+            ? "캐릭터 생성에 실패했어요. 사용한 생성권은 자동 환불되었어요. 잠시 후 다시 시도해주세요."
+            : raw,
       );
       setStage("upload");
     }
@@ -327,6 +396,7 @@ function GeneratePageInner() {
       ) {
         throw new Error("저장 실패");
       }
+      setSaveStage("background");
       const scope = `doll-pick:${expectedGenerationId}`;
       const operation = await stableClientOperation({
         scope,
@@ -359,6 +429,16 @@ function GeneratePageInner() {
         res = delivery.value.response;
         payload = delivery.value.body;
         if (res.status !== 202) break;
+        // 서버 202가 실단계(phase)를 동봉 — 저장 화면 문구의 단일 소스.
+        const processingPhase =
+          payload !== null &&
+          typeof payload === "object" &&
+          !Array.isArray(payload)
+            ? (payload as Record<string, unknown>).phase
+            : undefined;
+        if (processingPhase === "background" || processingPhase === "saving") {
+          setSaveStage(processingPhase);
+        }
         const directive = parseClientPollDirective({
           retryAfter: res.headers.get("Retry-After"),
           pollUntil:
@@ -390,13 +470,45 @@ function GeneratePageInner() {
       ) {
         clearClientUploadOperation(scope, operation.requestId);
       }
-      if (!res.ok) throw new Error("저장 실패");
+      if (!res.ok) {
+        const errCode =
+          payload !== null &&
+          typeof payload === "object" &&
+          !Array.isArray(payload)
+            ? (payload as { error?: string }).error
+            : undefined;
+        if (errCode === "candidate_conflict") {
+          // 다른 후보의 저장이 이미 진행 중 — 실패가 아니라 경합 안내(U8).
+          throw new Error(
+            "다른 후보의 저장이 이미 진행 중이에요. 잠시 후 먼저 고른 후보로 완료돼요.",
+          );
+        }
+        throw new Error("저장 실패");
+      }
       const data = parseDollPickHttpResponse(
         payload,
         expectedGenerationId,
       );
       if (!data) throw new Error("저장 실패");
       clearClientUploadOperation(scope, operation.requestId);
+      setSaveStage("done");
+      // 이미 다른 후보로 확정돼 있던 경우(already_picked) — 무언 치환 금지(U9).
+      const committedIndex = (
+        data.doll as { style_meta?: { candidateIndex?: unknown } }
+      ).style_meta?.candidateIndex;
+      if (
+        typeof committedIndex === "number" &&
+        committedIndex !== candidateIndex
+      ) {
+        setError(
+          "이미 캐릭터가 선택되어 있어요. 확정된 캐릭터로 이동할게요.",
+        );
+        setStage("pick");
+        setTimeout(() => {
+          router.push(`/play?doll=${data.doll.id}`);
+        }, 1500);
+        return;
+      }
       router.push(`/play?doll=${data.doll.id}`);
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -474,12 +586,16 @@ function GeneratePageInner() {
             </button>
           </div>
         ) : (
-          <GeneratingProgress />
+          <GeneratingProgress
+            phase={progress?.phase ?? "analyzing"}
+            candidatesReady={progress?.candidatesReady ?? 0}
+            startedAtMs={progress?.startedAtMs ?? Date.now()}
+          />
         ))}
       {stage === "pick" && (
         <PickStage results={results} onPick={handlePick} error={error} />
       )}
-      {stage === "saving" && <SavingProgress />}
+      {stage === "saving" && <SavingProgress phase={saveStage} />}
       {stage === "no_credits" && (
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-amber-500/40 bg-amber-500/5 p-10 text-center">
           <span className="text-3xl" aria-hidden>

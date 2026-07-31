@@ -22,7 +22,11 @@ const ROW_KEYS = new Set([
   "createdAt",
   "role",
   "reason",
+  "phase",
+  "candidatesReady",
 ]);
+const PHASES = new Set(["analyzing", "drawing"]);
+const REASONS = new Set(["photo", "provider"]);
 
 export type ParsedPendingGeneration = Omit<PendingGeneration, "role"> & {
   role: RoleId;
@@ -96,7 +100,15 @@ export function parsePendingGenerationsResponse(
       (row.kind !== "interrupted" && row.reason !== undefined) ||
       (row.kind === "interrupted" &&
         row.reason !== undefined &&
-        row.reason !== "photo")
+        !REASONS.has(row.reason as string)) ||
+      (row.kind !== "generating" &&
+        (row.phase !== undefined || row.candidatesReady !== undefined)) ||
+      (row.phase !== undefined && !PHASES.has(row.phase as string)) ||
+      (row.candidatesReady !== undefined &&
+        (typeof row.candidatesReady !== "number" ||
+          !Number.isInteger(row.candidatesReady) ||
+          row.candidatesReady < 0 ||
+          row.candidatesReady > 3))
     ) {
       throw new InvalidPendingGenerationsResponseError("invalid_pending_row");
     }
@@ -108,6 +120,10 @@ export function parsePendingGenerationsResponse(
       createdAt: row.createdAt,
       role: row.role,
       ...(row.reason === undefined ? {} : { reason: row.reason }),
+      ...(row.phase === undefined ? {} : { phase: row.phase }),
+      ...(row.candidatesReady === undefined
+        ? {}
+        : { candidatesReady: row.candidatesReady }),
     } as ParsedPendingGeneration;
   });
 }

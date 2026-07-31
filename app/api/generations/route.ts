@@ -7,6 +7,8 @@ import {
   QUEUED_STALE_MS,
   SUBMIT_ACK_STALE_MS,
   INCOMPLETE_RECLAIM_MS,
+  PREFLIGHT_VISIBLE_MS,
+  PREFLIGHT_INTERRUPTED_VISIBLE_MS,
   cleanupCandidateStorage,
   type PendingGeneration,
 } from "@/lib/generation";
@@ -37,11 +39,16 @@ export const maxDuration = 30;
  * queued 를 처음부터 fal status 로 폴링한다. 단 30분 전엔 일시 실패도 generating
  * 으로 유지(조기 실패 방지). 행별 복구는 Promise.all 로 병렬(슬롯 점유 시간↓).
  */
-export async function GET() {
+export async function GET(req: Request) {
   // 회원 전용 + 동의 완료 게이트(lazy 모델). 익명/무세션/미동의 → 401/403.
   const gate = await requireMember();
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
+
+  // v2: 배포 시점에 열려 있던 구클라이언트의 strict 파서를 깨지 않도록,
+  // 신필드(phase/candidatesReady/reason "provider")와 예약(preflight) 행은
+  // v=2 를 명시한 클라이언트에만 내려준다.
+  const v2 = new URL(req.url).searchParams.get("v") === "2";
 
   const admin = createAdminClient();
   const baseQuery = (cols: string) =>
@@ -127,6 +134,84 @@ export async function GET() {
   const now = Date.now();
   const ownerId = user.id;
 
+  // v2: 미확정 예약(claim~commit 사이) 가시화 — "분석하고 있어요" 실단계.
+  // 끊긴 예약은 owner-scoped RPC 가 재진입 순간 즉시 환불·종결하고, 그 결과를
+  // interrupted 로 노출해 "증발"이 아니라 실패+환불로 전달한다(B2).
+  let preflightPending: PendingGeneration[] = [];
+  if (v2) {
+    const { data: releaseData, error: releaseError } = await admin.rpc(
+      "release_stale_generation_preflights",
+      { p_owner_id: ownerId },
+    );
+    const released =
+      !releaseError &&
+      releaseData &&
+      typeof releaseData === "object" &&
+      (releaseData as { ok?: unknown }).ok === true &&
+      typeof (releaseData as { released?: unknown }).released === "number"
+        ? ((releaseData as { released: number }).released)
+        : 0;
+    if (releaseError) {
+      log.warn("gen.preflight_release_fail", {
+        userId: ownerId,
+        ...errInfo(releaseError),
+      });
+    } else if (released > 0) {
+      log.info("gen.preflight_released", { userId: ownerId, released });
+    }
+    const { data: preflightRows, error: preflightError } = await admin
+      .from("ai_generations")
+      .select("id, created_at, role, status, fail_reason, refunded_at")
+      .eq("owner_id", ownerId)
+      .or("cost_preflight_pending.eq.true,fail_reason.eq.preflight_claim_expired")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (preflightError) {
+      log.warn("gen.preflight_list_fail", {
+        userId: ownerId,
+        ...errInfo(preflightError),
+      });
+    } else if (Array.isArray(preflightRows)) {
+      preflightPending = preflightRows.flatMap((row): PendingGeneration[] => {
+        const r = row as {
+          id?: unknown;
+          created_at?: unknown;
+          role?: unknown;
+          status?: unknown;
+          fail_reason?: unknown;
+          refunded_at?: unknown;
+        };
+        if (typeof r.id !== "string" || typeof r.created_at !== "string") {
+          return [];
+        }
+        const age = now - new Date(r.created_at).getTime();
+        const base = {
+          id: r.id,
+          candidateUrls: [] as string[],
+          createdAt: r.created_at,
+          ...(typeof r.role === "string" ? { role: r.role } : {}),
+        };
+        if (r.status === "queued") {
+          // 활성 예약은 lease 를 계속 갱신하므로 15분 넘게 queued+pending 인
+          // 예약은 다음 방문의 release 대상 — 그때까지는 분석 중으로 표시.
+          return age <= PREFLIGHT_VISIBLE_MS
+            ? [{ ...base, kind: "generating", phase: "analyzing" }]
+            : [];
+        }
+        if (
+          r.status === "failed" &&
+          r.fail_reason === "preflight_claim_expired" &&
+          r.refunded_at !== null &&
+          age <= PREFLIGHT_INTERRUPTED_VISIBLE_MS
+        ) {
+          // 방금(또는 최근) 정리된 끊김 — 환불 완료 안내 1회성 노출.
+          return [{ ...base, kind: "interrupted", reason: "provider" }];
+        }
+        return [];
+      });
+    }
+  }
+
   // 임시 얼굴 삭제(fal 이 fetch 끝난 뒤 — 정책 #1: 원본 폐기). 호출부에서 await 해야
   // 서버리스 freeze 전에 완료가 보장된다(fire-and-forget 은 응답 후 드랍될 수 있음).
   // 삭제 실패는 원본이 남아있을 수 있다는 정책 리스크이므로 반드시 가시화(Sentry).
@@ -193,16 +278,39 @@ export async function GET() {
           if (!failed) return null;
           await cleanupFace(id);
           log.info("gen.definitive_failed", { userId: ownerId, genId: id, ageMs: age });
-          return { id, kind: "interrupted", reason: "photo", candidateUrls: [], createdAt };
+          const photoFault =
+            rec.reason === "no_face" || rec.reason === "unsafe_content";
+          return {
+            id,
+            kind: "interrupted",
+            // v1 계약은 reason "photo" 만 허용 — 인프라 실패 이분은 v2 부터.
+            reason: v2 ? (photoFault ? "photo" : "provider") : "photo",
+            candidateUrls: [],
+            createdAt,
+          };
         }
         // pending, 또는 transient(copy 실패 등) → 마감(30분)까지 생성중 유지(조기 실패 방지)
         if (age <= queuedDeadline) {
-          return { id, kind: "generating", candidateUrls: [], createdAt };
+          return {
+            id,
+            kind: "generating",
+            candidateUrls: [],
+            createdAt,
+            ...(v2
+              ? { phase: "drawing", candidatesReady: candidateUrls.length }
+              : {}),
+          };
         }
         // acknowledgement는 fal webhook 재전송 창까지, 일반 복구는 30분까지 대기.
       } else if (age <= queuedDeadline) {
         // request_id 없음: claimed/uncertain이면 signed webhook 창, 레거시는 30분.
-        return { id, kind: "generating", candidateUrls: [], createdAt };
+        return {
+          id,
+          kind: "generating",
+          candidateUrls: [],
+          createdAt,
+          ...(v2 ? { phase: "drawing", candidatesReady: 0 } : {}),
+        };
       }
 
       // 끊김 확정 — failed 마킹 + "다시 만들기" 1회 노출, 임시 얼굴 정리
@@ -222,7 +330,14 @@ export async function GET() {
       );
       if (!failed) return null;
       await cleanupFace(id);
-      return { id, kind: "interrupted", candidateUrls: [], createdAt };
+      return {
+        id,
+        kind: "interrupted",
+        candidateUrls: [],
+        createdAt,
+        // 타임아웃·끊김은 사진 탓이 아니다(v1 은 사유 무표기 유지).
+        ...(v2 ? { reason: "provider" } : {}),
+      };
     }
 
     // status === "done" (미선택 — terminal 상태는 쿼리에서 제외)
@@ -324,11 +439,16 @@ export async function GET() {
   // 행별 복구를 병렬로 — 직렬이면 worst ~25s, 병렬이면 가장 느린 1건(~5s). 순서 보존.
   // handleRow 는 role 을 안 채우므로, 순서 보존되는 rows[i] 에서 role 을 덧붙인다(resume 복구용).
   const settled = await Promise.all(rows.map(handleRow));
-  const pending = settled
-    .map((p, i): (PendingGeneration & { role?: string }) | null =>
-      p ? { ...p, role: (rows[i].role as string | undefined) ?? undefined } : null
-    )
-    .filter((p): p is PendingGeneration & { role?: string } => p !== null);
+  const pending = [
+    ...preflightPending,
+    ...settled
+      .map((p, i): (PendingGeneration & { role?: string }) | null =>
+        p
+          ? { ...p, role: (rows[i].role as string | undefined) ?? undefined }
+          : null,
+      )
+      .filter((p): p is PendingGeneration & { role?: string } => p !== null),
+  ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
   if (pending.length > 0) {
     log.info("gen.recover_list", {

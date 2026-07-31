@@ -50,10 +50,14 @@ function dollPickResponse(doll: unknown, generationId: string) {
   return NextResponse.json(body);
 }
 
-function dollPickProcessingResponse() {
+function dollPickProcessingResponse(
+  phase: "background" | "saving" = "background",
+) {
   return NextResponse.json(
     {
       status: "processing",
+      // 실단계: background=배경제거(birefnet) 진행, saving=결과 저장 진행.
+      phase,
       pollUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     },
     {
@@ -189,7 +193,7 @@ export async function POST(req: NextRequest) {
     );
   }
   if (claim.kind === "processing" || claim.kind === "resume") {
-    return dollPickProcessingResponse();
+    return dollPickProcessingResponse("background");
   }
 
   if (claim.kind === "provider_done") {
@@ -203,14 +207,14 @@ export async function POST(req: NextRequest) {
       if (result.kind === "committed") {
         return dollPickResponse(result.doll, genId);
       }
-      return dollPickProcessingResponse();
+      return dollPickProcessingResponse("saving");
     } catch (error) {
       log.warn("doll.pick_materialization_deferred", {
         userId: user.id,
         genId,
         ...errInfo(error),
       });
-      return dollPickProcessingResponse();
+      return dollPickProcessingResponse("saving");
     }
   }
 

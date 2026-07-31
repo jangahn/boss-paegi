@@ -2,104 +2,104 @@
 
 import { useEffect, useState } from "react";
 
-type Stage = { at: number; text: string };
-
 /**
- * 경과시간(초) 기반 진행 표시 — fal/저장이 실제 진행률 신호를 안 주므로 시간 휴리스틱(점근 추정).
- * `tauSec` 가 작을수록 빨리 차오른다(짧은 단계용). asymptote 95% — 완료(부모 언마운트) 전엔 100% 안 됨,
- * 끝에서 "멈춘 듯" 보이지 않게. 숫자(카운트다운)는 미표시(실제 소요 분산이 커 자주 틀림).
+ * 생성 대기 진행 표시 — 단계 텍스트는 **서버 실상태**(2026-08-01 제품 결정:
+ * 타이머 휴리스틱 금지). phase=analyzing/drawing 은 폴 응답이 단일 소스이고,
+ * drawing 중 후보 적재 수(n/3)도 실제 웹훅 적재를 그대로 보여준다.
+ * 진행 바만 심리적 경과 표시로 남기되, 리마운트에 리셋되지 않도록 서버
+ * created_at(startedAtMs)에 앵커한다.
  */
-function TimedProgress({
-  stages,
-  tauSec,
-  footer,
-  ariaLabel,
-  longAfterSec,
-  longNote,
+export function GeneratingProgress({
+  phase,
+  candidatesReady,
+  startedAtMs,
 }: {
-  stages: Stage[];
-  tauSec: number;
-  footer: string;
-  ariaLabel: string;
-  /** 이 시간(초) 초과 시 longNote 노출 — 예상보다 오래 걸릴 때 안내(무피드백 방지). */
-  longAfterSec?: number;
-  longNote?: string;
+  phase: "analyzing" | "drawing";
+  candidatesReady: number;
+  startedAtMs: number;
 }) {
-  const [elapsed, setElapsed] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const start = Date.now();
-    const t = setInterval(() => setElapsed((Date.now() - start) / 1000), 500);
+    const t = setInterval(() => setNowMs(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
-
-  const pct = Math.min(95, 95 * (1 - Math.exp(-elapsed / tauSec))); // 항상 조금씩 차되 95% 점근
-  const stage = [...stages].reverse().find((s) => elapsed >= s.at) ?? stages[0];
-  const isLong = longAfterSec != null && longNote != null && elapsed >= longAfterSec;
+  const elapsed = Math.max(0, (nowMs - startedAtMs) / 1000);
+  const pct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 60)));
+  const text =
+    phase === "analyzing"
+      ? "사진을 분석하고 있어요"
+      : candidatesReady > 0
+        ? `캐릭터를 그리고 있어요 (${candidatesReady}/3)`
+        : "캐릭터를 그리고 있어요";
+  const isLong = elapsed >= 120;
 
   return (
     <div className="m-auto flex w-full max-w-xs flex-col items-center gap-4 text-center">
       <div className="h-14 w-14 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
-      <p className="text-lg font-medium">{stage.text}</p>
+      <p className="text-lg font-medium">{text}</p>
       <div
         className="h-2 w-full overflow-hidden rounded-full bg-foreground/10"
         role="progressbar"
-        aria-label={ariaLabel}
+        aria-label="캐릭터 생성 진행"
       >
         <div
           className="h-full rounded-full bg-foreground transition-[width] duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-xs text-zinc-500">{footer}</p>
+      <p className="text-xs text-zinc-500">
+        보통 1~2분 걸려요. 완료되면 자동으로 떠요.
+      </p>
       {isLong && (
         <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
-          {longNote}
+          예상보다 조금 더 걸리고 있어요. 완료되면 이 화면에 자동으로 떠요. 이
+          화면을 벗어나도 갤러리에서 확인·이어서 고를 수 있어요.
         </p>
       )}
     </div>
   );
 }
 
-// 생성 대기 단계 — fal 큐(실측 p90 ~4분). tau=60.
-const GEN_STAGES: Stage[] = [
-  { at: 0, text: "사진을 분석하고 있어요" },
-  { at: 8, text: "캐릭터를 그리고 있어요" },
-  { at: 30, text: "디테일을 다듬고 있어요" },
-  { at: 90, text: "거의 다 됐어요" },
-];
-
 /**
- * 생성 대기 진행 표시(#4) — 정적 스피너 대신 시간기반 진행바+단계 텍스트로 "멈춘 듯"한 이탈 완화.
+ * 선택한 후보 저장 진행 표시 — 단계 텍스트는 서버 202 응답의 실단계(phase)를
+ * 그대로 따른다(2026-08-01 제품 결정: 타이머 휴리스틱 금지).
+ * background=배경제거(birefnet) 진행 · saving=결과 저장 · done=응답 수신 후 /play 전환.
  */
-export function GeneratingProgress() {
-  return (
-    <TimedProgress
-      stages={GEN_STAGES}
-      tauSec={60}
-      footer="보통 1~2분 걸려요. 완료되면 자동으로 떠요."
-      ariaLabel="캐릭터 생성 진행"
-      longAfterSec={120}
-      longNote="예상보다 조금 더 걸리고 있어요. 완료되면 이 화면에 자동으로 떠요. 이 화면을 벗어나도 갤러리에서 확인·이어서 고를 수 있어요."
-    />
-  );
-}
+export function SavingProgress({
+  phase,
+}: {
+  phase: "background" | "saving" | "done";
+}) {
+  const [startMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, (nowMs - startMs) / 1000);
+  const pct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 7)));
+  const text =
+    phase === "background"
+      ? "배경을 정리하고 있어요"
+      : phase === "saving"
+        ? "캐릭터를 저장하고 있어요"
+        : "게임을 준비하고 있어요";
 
-// 저장(누끼+정규화+업로드) 단계 — Sentry 실측 p50 ~8s·p95 ~12s(birefnet 누끼가 ~4.4s 최대 병목).
-// 정적 "저장 중…" 스피너는 진행 신호가 없어 답답해 보여 → 단계 텍스트 + 시간기반 바로 교체. tau=7.
-const SAVE_STAGES: Stage[] = [
-  { at: 0, text: "배경을 정리하고 있어요" }, // birefnet 누끼 ~4.4s
-  { at: 4, text: "캐릭터를 저장하고 있어요" }, // fetch + normalize + upload ~4s
-  { at: 9, text: "게임을 준비하고 있어요" }, // /api/doll 응답 후 /play 이동 커버
-];
-
-/** 선택한 후보 저장 진행 표시 — GeneratingProgress 와 동일 패턴, 짧은 단계용 튜닝. */
-export function SavingProgress() {
   return (
-    <TimedProgress
-      stages={SAVE_STAGES}
-      tauSec={7}
-      footer="곧 게임이 시작돼요."
-      ariaLabel="캐릭터 저장 진행"
-    />
+    <div className="m-auto flex w-full max-w-xs flex-col items-center gap-4 text-center">
+      <div className="h-14 w-14 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+      <p className="text-lg font-medium">{text}</p>
+      <div
+        className="h-2 w-full overflow-hidden rounded-full bg-foreground/10"
+        role="progressbar"
+        aria-label="캐릭터 저장 진행"
+      >
+        <div
+          className="h-full rounded-full bg-foreground transition-[width] duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-zinc-500">곧 게임이 시작돼요.</p>
+    </div>
   );
 }
