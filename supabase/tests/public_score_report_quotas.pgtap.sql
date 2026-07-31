@@ -239,7 +239,7 @@ select is(
       from public.public_write_quota_buckets
      where endpoint = 'score'
   ),
-  102,
+  10002,
   'exact score replay consumes no quota dimension'
 );
 select throws_ok(
@@ -473,7 +473,7 @@ select is(
       from public.public_write_quota_buckets
      where endpoint = 'score'
   ),
-  5002,
+  500002,
   'global-cap exact score replay consumes no quota dimension'
 );
 select throws_ok(
@@ -687,7 +687,7 @@ select is(
       from public.public_write_quota_buckets
      where endpoint = 'report'
   ),
-  21,
+  2001,
   'exact report replay consumes no quota dimension'
 );
 select throws_ok(
@@ -710,7 +710,7 @@ select ok(
              '96000000-0000-4000-8000-000000000202'
   )
   and
-  (select pg_catalog.sum(request_count)::integer = 21
+  (select pg_catalog.sum(request_count)::integer = 2001
      from public.public_write_quota_buckets
     where endpoint = 'report'),
   'network rejection creates no report receipt and changes no counter'
@@ -883,7 +883,7 @@ select ok(
   'rolling-old report consumes only the global dimension'
 );
 update public.public_write_quota_buckets
-   set request_count = 500
+   set request_count = 50000
  where endpoint = 'report' and actor_key = 'global';
 select is(
   public.submit_content_report(

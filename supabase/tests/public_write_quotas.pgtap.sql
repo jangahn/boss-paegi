@@ -286,7 +286,7 @@ union all
 select 'track',
        (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
        actor_key,
-       199
+       19999
   from public_write_quota_ctx;
 
 update public_write_quota_ctx c
@@ -328,7 +328,7 @@ select ok(
       from public.public_write_quota_buckets q
       join public_write_quota_ctx c on c.actor_key = q.actor_key
      where q.endpoint = 'track'
-       and q.request_count = 2000000
+       and q.request_count = 20000
   )
   and exists (
     select 1
@@ -347,7 +347,7 @@ insert into public.public_write_quota_buckets(
 select 'track',
        (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
        'global',
-       1999;
+       199999;
 update public_write_quota_ctx c
    set track_global_ack = public.record_public_analytics_event(
          c.other_actor_key,
@@ -387,7 +387,7 @@ select ok(
       from public.public_write_quota_buckets q
      where q.endpoint = 'track'
        and q.actor_key = 'global'
-       and q.request_count = 20000000
+       and q.request_count = 200000
   )
   and not exists (
     select 1
@@ -412,7 +412,7 @@ select 'telemetry',
        (pg_catalog.clock_timestamp() at time zone 'Asia/Seoul')::date,
        actor_key,
        0,
-       29
+       2999
   from public_write_quota_ctx;
 
 update public_write_quota_ctx c

@@ -366,7 +366,7 @@ SQL
 grep -Eq '"duplicate"[[:space:]]*:[[:space:]]*true' \
   "$qa_tmp_dir/score-replay.out" \
   || fail "score exact replay did not recover after contention"
-[[ "$(db_value "select sum(request_count) from public.public_write_quota_buckets where endpoint = 'score';")" == "5002" ]] \
+[[ "$(db_value "select sum(request_count) from public.public_write_quota_buckets where endpoint = 'score';")" == "500002" ]] \
   || fail "score exact replay consumed quota"
 
 set +e
@@ -491,7 +491,7 @@ SQL
 grep -Eq '"duplicate"[[:space:]]*:[[:space:]]*true' \
   "$qa_tmp_dir/report-replay.out" \
   || fail "report exact replay did not recover after contention"
-[[ "$(db_value "select sum(request_count) from public.public_write_quota_buckets where endpoint = 'report';")" == "501" ]] \
+[[ "$(db_value "select sum(request_count) from public.public_write_quota_buckets where endpoint = 'report';")" == "50001" ]] \
   || fail "report exact replay consumed quota"
 
 set +e
