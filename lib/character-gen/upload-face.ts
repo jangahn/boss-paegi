@@ -28,9 +28,15 @@ export async function uploadFaceTmp(
   const admin = createAdminClient();
   const path = tmpFacePath(userId, genId);
 
+  // Next's multipart file bytes can arrive backed by a SharedArrayBuffer in
+  // the deployed runtime, which fetch bodies reject ("SharedArrayBuffer is
+  // not allowed"). Copy into a fresh plain ArrayBuffer before uploading.
+  const bytes = new Uint8Array(buf.byteLength);
+  bytes.set(buf);
+
   const { error: uploadError } = await admin.storage
     .from(BUCKET)
-    .upload(path, buf, {
+    .upload(path, bytes, {
       contentType: "image/jpeg",
       upsert: true, // 결정적 경로 — 재시도 시 덮어쓰기
     });

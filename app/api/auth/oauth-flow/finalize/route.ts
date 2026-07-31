@@ -309,6 +309,17 @@ export async function POST(request: NextRequest) {
     ) {
       return response({ error: "auth_session_changed" }, 409);
     }
+    // The bearer-token validity read and the identities-bearing admin read
+    // are independent verifications of the same session. Run them together;
+    // both results are still checked with unchanged semantics below.
+    const fullUserPending = requireSupabaseSuccess(
+      "auth.oauth_finalize_full_user",
+      () =>
+        admin.auth.admin.getUserById(cookieSession.userId),
+    ).then(
+      (value) => ({ ok: true as const, value }),
+      (error) => ({ ok: false as const, error: error as unknown }),
+    );
     const authRead = await readServerAuthUser({
       accessToken: cookieSession.accessToken,
       anonKey: PUBLIC_ENV.SUPABASE_ANON_KEY,
@@ -316,6 +327,7 @@ export async function POST(request: NextRequest) {
       supabaseUrl: PUBLIC_ENV.SUPABASE_URL,
     });
     if (authRead.kind === "unavailable") {
+      await fullUserPending;
       const result = response({ error: "auth_unavailable" }, 503);
       result.headers.set("Retry-After", "60");
       return result;
@@ -325,16 +337,15 @@ export async function POST(request: NextRequest) {
       authRead.user.id !== cookieSession.userId ||
       authRead.user.is_anonymous
     ) {
+      await fullUserPending;
       return response({ error: "auth_session_changed" }, 409);
     }
 
     let user;
     try {
-      const full = await requireSupabaseSuccess(
-        "auth.oauth_finalize_full_user",
-        () =>
-          admin.auth.admin.getUserById(cookieSession.userId),
-      );
+      const settledFull = await fullUserPending;
+      if (!settledFull.ok) throw settledFull.error;
+      const full = settledFull.value;
       if (
         !full.data.user ||
         full.data.user.id !== cookieSession.userId ||

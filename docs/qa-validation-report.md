@@ -78,6 +78,7 @@ npm run test:db:analytics-maintenance-bounds
 npm run test:db:dead-service-rpc-acl-cleanup
 npm run qa:db:analytics-maintenance-acl-upgrade
 npm run qa:db:analytics-maintenance-lock-race
+npm run qa:db:apply:generation-quota-relax
 npm run test:db
 ```
 

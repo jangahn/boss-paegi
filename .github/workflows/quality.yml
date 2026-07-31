@@ -123,6 +123,9 @@ jobs:
       - name: Prove analytics maintenance rebuilds and pruning serialize
         run: npm run qa:db:analytics-maintenance-lock-race
 
+      - name: Relax generation quotas to the product policy
+        run: npm run qa:db:apply:generation-quota-relax
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 

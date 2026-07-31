@@ -43,7 +43,7 @@ export function AppNav({ forceShow = false }: { forceShow?: boolean }) {
                   ? "page"
                   : undefined
               }
-              className={`flex h-11 items-center whitespace-nowrap rounded-full px-2 text-sm font-medium transition sm:px-3 ${
+              className={`flex h-11 items-center justify-center whitespace-nowrap rounded-full w-14 text-sm font-medium transition sm:w-16 ${
                 (l.href === "/" ? pathname === "/" : pathname.startsWith(l.href))
                   ? "bg-foreground text-paper-2"
                   : "text-zinc-500 hover:bg-foreground/5 hover:text-foreground"

@@ -267,9 +267,41 @@ export async function POST(req: NextRequest) {
   }
 
   if (preflight.kind === "claimed") {
+    // A claimed reservation has already consumed the credit and holds the
+    // in-flight slot. Every pre-submit failure below must hand both back
+    // immediately instead of parking them until the expiry sweep.
+    const releaseClaim = async (reason: string) => {
+      try {
+        const { data, error } = await admin.rpc(
+          "release_generation_preflight",
+          {
+            p_user_id: user.id,
+            p_request_id: requestId,
+            p_worker_id: analysisWorkerId,
+            p_reason: reason,
+          },
+        );
+        if (error) throw error;
+        log.info("gen.preflight_released", {
+          userId: user.id,
+          requestId,
+          reason,
+          outcome: (data as { outcome?: string } | null)?.outcome,
+        });
+      } catch (error) {
+        // The expiry sweep remains the durable backstop.
+        log.warn("gen.preflight_release_fail", {
+          userId: user.id,
+          requestId,
+          reason,
+          ...errInfo(error),
+        });
+      }
+    };
     const falWebhookOrigin = publicFalWebhookOrigin(PUBLIC_ENV.SITE_URL);
     if (!falWebhookOrigin) {
       log.error("gen.webhook_origin_invalid");
+      await releaseClaim("webhook_origin_invalid");
       return NextResponse.json(
         { error: "service_unavailable" },
         { status: 503 },
@@ -283,6 +315,7 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         ...errInfo(error),
       });
+      await releaseClaim("config_read_fail");
       return NextResponse.json(
         { error: "service_unavailable" },
         { status: 503 },
@@ -295,6 +328,7 @@ export async function POST(req: NextRequest) {
         balance: balance.balance,
         reason: balance.reason,
       });
+      await releaseClaim("balance_blocked");
       return NextResponse.json({ error: "service_paused" }, { status: 503 });
     }
 
@@ -307,6 +341,7 @@ export async function POST(req: NextRequest) {
         requestId,
         ...errInfo(error),
       });
+      await releaseClaim("face_upload_fail");
       return NextResponse.json(
         { error: "service_unavailable" },
         { status: 503 },

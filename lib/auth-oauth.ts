@@ -74,6 +74,37 @@ async function pkceChallenge(verifier: string): Promise<string> {
  * 신규/기존 판별·동의·마이그는 `/auth/callback`→`/signup`→onboard 에서 처리.
  * (opts.forceSignIn 은 더 이상 분기에 쓰이지 않음 — 항상 sign-in.)
  */
+const OAUTH_CALLBACK_WARM_TARGETS = [
+  "/api/auth/oauth-flow/preflight",
+  "/api/auth/oauth-flow/bind-target",
+  "/api/auth/oauth-flow/finalize",
+  "/api/auth/oauth-flow/release",
+  "/auth/callback/continue",
+] as const;
+
+/**
+ * The callback hand-off crosses five separately deployed functions. Booting
+ * them serially on cold starts dominates the perceived login time, so wake
+ * every one while the user is still on the provider page. keepalive requests
+ * survive the navigation away; HEAD carries no cookies, no body, and no
+ * domain effect, and any response (405 included) means the function is warm.
+ * Warming is strictly best-effort and must never touch the flow itself.
+ */
+function warmOAuthCallbackFunctions(): void {
+  for (const target of OAUTH_CALLBACK_WARM_TARGETS) {
+    try {
+      void fetch(target, {
+        method: "HEAD",
+        cache: "no-store",
+        credentials: "omit",
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      // Warming failures are irrelevant by design.
+    }
+  }
+}
+
 export async function startOAuth(
   provider: OAuthProvider,
   opts?: {
@@ -82,6 +113,7 @@ export async function startOAuth(
     signal?: AbortSignal;
   },
 ): Promise<void> {
+  warmOAuthCallbackFunctions();
   const next = safeNext(opts?.next);
   const lifecycleSignal =
     opts?.signal ?? new AbortController().signal;

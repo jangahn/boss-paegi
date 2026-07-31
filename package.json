@@ -33,6 +33,7 @@
     "qa:db:oauth-contract": "bash scripts/qa/test-oauth-rollout-contract-stage.sh",
     "qa:db:analytics-maintenance-raw-guard": "bash scripts/qa/test-analytics-maintenance-raw-guard.sh",
     "qa:db:apply:oauth-post-contract": "bash scripts/qa/apply-local-migrations.sh --only 0095",
+    "qa:db:apply:generation-quota-relax": "bash scripts/qa/apply-local-migrations.sh --only 0096",
     "test:db:analytics-maintenance-bounds": "bash scripts/qa/run-local-pgtap.sh --only analytics_maintenance_bounds.pgtap.sql",
     "test:db:dead-service-rpc-acl-cleanup": "bash scripts/qa/run-local-pgtap.sh --only dead_service_rpc_acl_cleanup.pgtap.sql",
     "qa:db:analytics-maintenance-acl-upgrade": "bash scripts/qa/test-analytics-maintenance-acl-upgrade.sh",
