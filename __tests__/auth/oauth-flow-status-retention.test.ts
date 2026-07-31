@@ -229,3 +229,47 @@ test("pruned proof-bound rows clear cookies instead of extending or retry-loopin
     /absent\?\.state === "absent"[\s\S]*?absent !== null && !absent\.active[\s\S]*?minimalFlowResponse\(absent\)/,
   );
 });
+
+test("탈퇴 계정 signout 흐름의 실제 운영 영수증이 파싱된다 — /login 종착지 거부 금지", () => {
+  // 2026-08-01 운영 실측 원형(flow 0ebea1a9): destination 이 게이트 경로
+  // (/login?error=account_deleted)라는 이유로 파서가 서버 기록을 거부하면
+  // 상태 조회가 503 루프가 되고 탈퇴 계정 로그인이 영구히 갇힌다. 재발 금지.
+  const receipt = {
+    ok: true,
+    state: "signout_required",
+    action: "signout",
+    active: true,
+    flowId: "0ebea1a9-774f-42fd-b4d0-66987393c3f6",
+    outcome: null,
+    provider: "google",
+    claimedAt: "2026-07-31T18:02:51.707023+00:00",
+    createdAt: "2026-07-31T18:02:42.937377+00:00",
+    expiresAt: "2026-07-31T18:12:42.937377+00:00",
+    finishedAt: null,
+    releasedAt: null,
+    destination: "/login?error=account_deleted",
+    targetUserId: "319481de-6a11-41f5-853a-5551ea8ebe22",
+    requestedNext: "/",
+    targetSessionId: "6dbf6689-5abf-4548-a9a6-7b92c4c1183f",
+    revokeConfirmedAt: null,
+    sourceIsAnonymous: true,
+    migrationConsumedAt: null,
+  };
+  const parsed = parseOAuthFlowStatusReadReceipt(
+    receipt,
+    receipt.flowId,
+  );
+  assert.ok(parsed && parsed.kind === "found");
+  assert.equal(parsed.status.state, "signout_required");
+  assert.equal(parsed.status.destination, "/login?error=account_deleted");
+  // 종착지의 open-redirect 봉쇄는 유지된다.
+  for (const bad of ["//evil.example", "https://evil.example/x", "/a#b"]) {
+    assert.equal(
+      parseOAuthFlowStatusReadReceipt(
+        { ...receipt, destination: bad },
+        receipt.flowId,
+      ),
+      null,
+    );
+  }
+});
