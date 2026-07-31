@@ -167,6 +167,35 @@ function safePath(value: unknown): value is string {
   );
 }
 
+/**
+ * 흐름 종착지(destination) 검증 — **서버가 기록한** 내부 리다이렉트 경로.
+ * next 와 달리 /login 같은 게이트 경로가 정당한 종착지다(탈퇴 안내
+ * `/login?error=account_deleted` 등). safeNext 의 로그인 루프 차단 목록을
+ * 여기 적용하면 서버가 쓴 값을 서버 파서가 거부해 탈퇴 계정 로그인이
+ * 무한 루프에 갇힌다(2026-08-01 운영 실측). origin 고정·해시 제거 등
+ * open-redirect 봉쇄만 수행한다.
+ */
+function safeFlowDestination(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 2048 ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value, "https://flow.internal");
+    return (
+      parsed.origin === "https://flow.internal" &&
+      parsed.pathname + parsed.search === value
+    );
+  } catch {
+    return false;
+  }
+}
+
 function timestamp(value: string): number {
   return Date.parse(value);
 }
@@ -417,7 +446,8 @@ export function parseOAuthFlowStatus(
     !uuidOrNull(value.targetSessionId) ||
     ((value.targetUserId === null) !==
       (value.targetSessionId === null)) ||
-    (value.destination !== null && !safePath(value.destination)) ||
+    (value.destination !== null &&
+      !safeFlowDestination(value.destination)) ||
     (value.action !== null &&
       value.action !== "continue" &&
       value.action !== "signout") ||
@@ -580,8 +610,7 @@ export function parseOAuthFlowFinalizeReceipt(
     !uuidOrNull(value.targetSessionId) ||
     ((value.targetUserId === null) !==
       (value.targetSessionId === null)) ||
-    typeof value.destination !== "string" ||
-    safeNext(value.destination) !== value.destination ||
+    !safeFlowDestination(value.destination) ||
     (value.action !== "continue" && value.action !== "signout")
   ) {
     return null;
