@@ -21,6 +21,8 @@ import { useClientOperationScope } from "@/lib/use-client-operation-scope";
  */
 const ERR_KO: Record<string, string> = {
   not_withdrawn: "이미 활성 계정이에요 (탈퇴 상태가 아님).",
+  account_cleanup_pending:
+    "탈퇴 자산 정리가 아직 끝나지 않았어요. 자산이 남은 계정은 정리 완료(최대 수 시간) 후 다시 시도해 주세요.",
   not_found: "존재하지 않는 계정이에요.",
   email_conflict: "같은 이메일을 쓰는 다른 활성 계정이 있어 복구할 수 없어요.",
   identity_email_missing: "원본 이메일을 찾을 수 없어요. 아래에 이메일을 직접 입력해 주세요.",

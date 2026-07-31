@@ -2,6 +2,7 @@ import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
+import { drainAccountDeletionCleanupJobs } from "@/lib/account-delete-cleanup-job";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminRpcErrorCode } from "@/lib/admin-rpc";
 import { isDeletedMarker } from "@/lib/oauth-metadata";
@@ -283,6 +284,65 @@ export async function POST(req: NextRequest) {
       ...errInfo(error),
     });
     return NextResponse.json({ error: "action_failed" }, { status: 500 });
+  }
+  if (
+    beginCall.error &&
+    (beginCall.error as { message?: string }).message ===
+      "account_cleanup_pending"
+  ) {
+    // 탈퇴 정리 미완 게이트 — 크론을 기다리지 않고 이 자리에서 정리를
+    // 한 차례 드레인한 뒤 재시도한다(U3). final_sweep 경과 후에는 이
+    // 인라인 패스가 곧바로 게이트를 연다. 드레인은 skip-locked lease 라
+    // 크론과 경합해도 안전하다.
+    try {
+      await drainAccountDeletionCleanupJobs(admin, 3);
+    } catch (drainError) {
+      log.warn("admin.reactivate_inline_drain_fail", {
+        userId: body.userId,
+        ...errInfo(drainError),
+      });
+    }
+    try {
+      beginCall = await runAccountReactivationBeforeDeadline(
+        workerDeadline,
+        () =>
+          Promise.resolve(
+            admin.rpc("admin_begin_account_reactivation", {
+              p_user_id: body.userId,
+              p_admin: gate.user.id,
+              p_reason: reason,
+              p_email_override: emailOverride,
+              p_expected_deleted_at: expectedDeletedAt,
+              p_expected_withdrawal_generation:
+                expectedWithdrawalGeneration,
+              p_request_id: requestId,
+            }),
+          ),
+      );
+    } catch (error) {
+      log.error("admin.reactivate_begin_throw", {
+        userId: body.userId,
+        ...errInfo(error),
+      });
+      return NextResponse.json({ error: "action_failed" }, { status: 500 });
+    }
+    if (
+      beginCall.error &&
+      (beginCall.error as { message?: string }).message ===
+        "account_cleanup_pending"
+    ) {
+      // 여전히 정리 대기(자산 보유 계정의 final_sweep 미도래 등) —
+      // 맹목 재시도를 유도하는 일반 오류가 아니라 상태 충돌로 명시한다(U4).
+      log.warn("admin.reactivate_begin_fail", {
+        userId: body.userId,
+        code: "account_cleanup_pending",
+        ...errInfo(beginCall.error),
+      });
+      return NextResponse.json(
+        { error: "account_cleanup_pending" },
+        { status: 409 },
+      );
+    }
   }
   if (beginCall.error) {
     const code = adminRpcErrorCode(beginCall.error);
