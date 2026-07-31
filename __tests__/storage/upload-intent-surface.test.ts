@@ -174,12 +174,12 @@ test("server-side doll upload also has an intent and DB-first compensation", () 
   before(
     materializer,
     ".exists(path)",
-    ".upload(path, normalized",
+    ".upload(path, uploadBytes",
     "existing deterministic object is checked before the one-shot write",
   );
   before(
     materializer,
-    ".upload(path, normalized",
+    ".upload(path, uploadBytes",
     '"commit_generation_pick"',
     "the confirmed deterministic object precedes the DB commit",
   );
