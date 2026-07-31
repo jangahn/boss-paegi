@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 import { PUBLIC_ENV } from "@/lib/env";
 import { sanitizeTrackPayload, type MemberState } from "@/lib/analytics/core";
 import { recordTrackEvent, memberStateFromUser } from "@/lib/analytics/server";
@@ -63,7 +64,14 @@ export async function POST(req: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    memberState = memberStateFromUser(user);
+    if (user) {
+      const sessionState = await readCurrentAuthSessionState(() =>
+        supabase.rpc("oauth_current_auth_session_live"),
+      );
+      if (sessionState.kind === "live") {
+        memberState = memberStateFromUser(user);
+      }
+    }
   } catch {
     /* 세션 조회 실패 → anon 취급 */
   }

@@ -1,4 +1,5 @@
 import { readBoundedResponseBytes } from "./http/bounded-response.ts";
+import { getDocumentMutationSignal } from "./session-reconciliation.ts";
 
 export const CLIENT_MUTATION_DEADLINE_MS = 20_000;
 export const CLIENT_MUTATION_ATTEMPT_MS = 12_000;
@@ -101,6 +102,54 @@ const defaultNow = (): number =>
 
 function isPositiveSafeInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function composeLifecycleSignals(
+  callerSignal: AbortSignal | undefined,
+  documentSignal: AbortSignal | undefined,
+): { signal: AbortSignal | undefined; dispose: () => void } {
+  if (!callerSignal) {
+    return { signal: documentSignal, dispose: () => {} };
+  }
+  if (!documentSignal || callerSignal === documentSignal) {
+    return { signal: callerSignal, dispose: () => {} };
+  }
+
+  const controller = new AbortController();
+  const forwardCallerAbort = () =>
+    controller.abort(callerSignal.reason);
+  const forwardDocumentAbort = () =>
+    controller.abort(documentSignal.reason);
+  if (callerSignal.aborted) {
+    forwardCallerAbort();
+  } else if (documentSignal.aborted) {
+    forwardDocumentAbort();
+  } else {
+    callerSignal.addEventListener("abort", forwardCallerAbort, {
+      once: true,
+    });
+    documentSignal.addEventListener(
+      "abort",
+      forwardDocumentAbort,
+      { once: true },
+    );
+    // Close the check/add race for custom AbortSignal implementations.
+    if (callerSignal.aborted) {
+      forwardCallerAbort();
+    } else if (documentSignal.aborted) {
+      forwardDocumentAbort();
+    }
+  }
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      callerSignal.removeEventListener("abort", forwardCallerAbort);
+      documentSignal.removeEventListener(
+        "abort",
+        forwardDocumentAbort,
+      );
+    },
+  };
 }
 
 /**
@@ -313,73 +362,89 @@ export async function runClientMutation<T>(
     throw new Error("invalid_client_mutation_deadline");
   }
 
-  if (options.signal?.aborted) return { kind: "aborted" };
-  const now = options.now ?? defaultNow;
-  const schedule = options.schedule ?? defaultSchedule;
-  const deadlineAt = now() + deadlineMs;
+  const lifecycle = composeLifecycleSignals(
+    options.signal,
+    getDocumentMutationSignal(),
+  );
+  try {
+    if (lifecycle.signal?.aborted) return { kind: "aborted" };
+    const now = options.now ?? defaultNow;
+    const schedule = options.schedule ?? defaultSchedule;
+    const deadlineAt = now() + deadlineMs;
 
-  const attempt = await runPhase({
-    work: options.attempt,
-    lifecycleSignal: options.signal,
-    timeoutMs: Math.min(attemptMs, Math.max(1, deadlineAt - now())),
-    schedule,
-  });
-  if (attempt.kind === "aborted") return { kind: "aborted" };
-  if (attempt.kind === "evidence") {
-    if (attempt.evidence.kind === "confirmed") {
-      return {
-        kind: "confirmed",
-        value: attempt.evidence.value,
-        source: "response",
-      };
+    const attempt = await runPhase({
+      work: options.attempt,
+      lifecycleSignal: lifecycle.signal,
+      timeoutMs: Math.min(
+        attemptMs,
+        Math.max(1, deadlineAt - now()),
+      ),
+      schedule,
+    });
+    if (attempt.kind === "aborted") return { kind: "aborted" };
+    if (attempt.kind === "evidence") {
+      if (attempt.evidence.kind === "confirmed") {
+        return {
+          kind: "confirmed",
+          value: attempt.evidence.value,
+          source: "response",
+        };
+      }
+      if (attempt.evidence.kind === "rejected") {
+        return { kind: "rejected", error: attempt.evidence.error };
+      }
     }
-    if (attempt.evidence.kind === "rejected") {
-      return { kind: "rejected", error: attempt.evidence.error };
-    }
-  }
 
-  if (!options.reconcile) return unconfirmedFromAttempt(attempt);
-  if (options.signal?.aborted) return { kind: "aborted" };
-  const remainingMs = deadlineAt - now();
-  if (remainingMs <= 0) {
-    return { kind: "unconfirmed", reason: "deadline" };
-  }
-
-  const reconciliation = await runPhase({
-    work: options.reconcile,
-    lifecycleSignal: options.signal,
-    timeoutMs: remainingMs,
-    schedule,
-  });
-  if (reconciliation.kind === "aborted") return { kind: "aborted" };
-  if (reconciliation.kind === "evidence") {
-    if (reconciliation.evidence.kind === "confirmed") {
-      return {
-        kind: "confirmed",
-        value: reconciliation.evidence.value,
-        source: "reconciled",
-      };
+    if (!options.reconcile) return unconfirmedFromAttempt(attempt);
+    if (lifecycle.signal?.aborted) return { kind: "aborted" };
+    const remainingMs = deadlineAt - now();
+    if (remainingMs <= 0) {
+      return { kind: "unconfirmed", reason: "deadline" };
     }
-    if (reconciliation.evidence.kind === "rejected") {
+
+    const reconciliation = await runPhase({
+      work: options.reconcile,
+      lifecycleSignal: lifecycle.signal,
+      timeoutMs: remainingMs,
+      schedule,
+    });
+    if (reconciliation.kind === "aborted") {
+      return { kind: "aborted" };
+    }
+    if (reconciliation.kind === "evidence") {
+      if (reconciliation.evidence.kind === "confirmed") {
+        return {
+          kind: "confirmed",
+          value: reconciliation.evidence.value,
+          source: "reconciled",
+        };
+      }
+      if (reconciliation.evidence.kind === "rejected") {
+        return {
+          kind: "rejected",
+          error: reconciliation.evidence.error,
+        };
+      }
       return {
-        kind: "rejected",
+        kind: "unconfirmed",
+        reason: "reconciliation_unconfirmed",
         error: reconciliation.evidence.error,
       };
     }
+    if (reconciliation.kind === "transport") {
+      return {
+        kind: "unconfirmed",
+        reason: "reconciliation_unconfirmed",
+        error: reconciliation.error,
+      };
+    }
     return {
       kind: "unconfirmed",
-      reason: "reconciliation_unconfirmed",
-      error: reconciliation.evidence.error,
+      reason: "deadline",
     };
+  } finally {
+    lifecycle.dispose();
   }
-  if (reconciliation.kind === "transport") {
-    return {
-      kind: "unconfirmed",
-      reason: "reconciliation_unconfirmed",
-      error: reconciliation.error,
-    };
-  }
-  return { kind: "unconfirmed", reason: "deadline" };
 }
 
 /**

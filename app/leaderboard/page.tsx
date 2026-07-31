@@ -17,7 +17,7 @@ const DEFAULT_AVATAR = "/avatars/default.png";
 
 /**
  * 랭킹 — 클라 컴포넌트. 진입 즉시 셸+스켈레톤(서버 await 차단 없음), 오늘/이번주는 클라 상태(풀네비 X).
- * 데이터는 캐시된 public API(/api/leaderboard, Vercel Edge 30s)에서 로드 → 서울 PoP 서빙.
+ * 개인정보 scrub 직후에도 stale 공개행을 재노출하지 않도록 no-store public API를 매번 새로 조회한다.
  */
 export default function LeaderboardPage() {
   const [period, setPeriod] = useState<Period>("monthly");

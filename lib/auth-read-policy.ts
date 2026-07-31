@@ -33,12 +33,32 @@ export type StrictAuthUserRead<T> =
 
 /** Only explicit missing/invalid-session errors are client 401s. */
 export function isInvalidSessionReadError(error: unknown): boolean {
-  if (isAuthSessionMissingError(error)) return true;
   if (!error || typeof error !== "object") return false;
-  const shape = error as { name?: unknown; code?: unknown };
+  const shape = error as {
+    name?: unknown;
+    code?: unknown;
+    error_code?: unknown;
+    status?: unknown;
+  };
+  if (shape.status !== undefined) {
+    if (
+      typeof shape.status !== "number" ||
+      !Number.isSafeInteger(shape.status) ||
+      shape.status < 400 ||
+      shape.status >= 500 ||
+      shape.status === 408 ||
+      shape.status === 425 ||
+      shape.status === 429
+    ) {
+      return false;
+    }
+  }
+  if (isAuthSessionMissingError(error)) return true;
   if (shape.name === "AuthInvalidJwtError") return true;
-  return (
-    typeof shape.code === "string" && INVALID_SESSION_CODES.has(shape.code)
+  return [shape.code, shape.error_code].some(
+    (code) =>
+      typeof code === "string" &&
+      INVALID_SESSION_CODES.has(code),
   );
 }
 
@@ -251,15 +271,16 @@ export type AnonMigrationPreparation =
   | { ok: false; attempted: true; result: "failed"; error?: unknown };
 
 /**
- * 익명 데이터 이전은 strict member read가 no-row인 신규 후보에서만 member INSERT 전에 수행한다.
- * 이렇게 해야 transient 이전 실패 시 member row가 생기지 않아, 보존된 MIGRATE_COOKIE로 같은 POST를
- * 실제 재시도할 수 있다. 기존 member는 callback을 호출하지 않아 재로그인 자동 병합 정책을 유지한다.
+ * 익명 데이터 이전은 strict member read가 no-row인 신규 후보에서 member INSERT 전에 수행한다.
+ * 다만 flow ledger가 아직 미종결이면 concurrent member 생성 뒤의 재시도에서도 callback을 실행해
+ * exact no-transfer receipt를 먼저 확정한다. 이 경로는 기존 member 소유권을 병합하지 않는다.
  */
 export async function prepareAnonMigration(
   member: ConsentMember,
   migrate: () => Promise<AnonMigrationResult>,
+  flowRequiresConvergence = false,
 ): Promise<AnonMigrationPreparation> {
-  if (member !== null) {
+  if (member !== null && !flowRequiresConvergence) {
     return { ok: true, attempted: false, result: "not_applicable" };
   }
   try {

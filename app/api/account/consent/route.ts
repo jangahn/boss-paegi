@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedNonDeleted, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -6,7 +7,15 @@ import { getCurrentLegalVersionsStrict } from "@/lib/legal/strict-versions";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { loadOAuthProfile, migrateAnonData } from "@/lib/account-onboard";
 import { resolveSignupBonusStrict } from "@/lib/signup-bonus";
-import { MIGRATE_COOKIE } from "@/lib/signup-cookie";
+import {
+  MIGRATE_COOKIE,
+  migrateCookieName,
+} from "@/lib/signup-cookie";
+import { isOAuthFlowId } from "@/lib/oauth-flow-lease";
+import {
+  readSupabaseSessionCookieHeader,
+} from "@/lib/supabase/session-cookie";
+import { PUBLIC_ENV } from "@/lib/env";
 import {
   displayedLegalVersionsMatch,
   prepareAnonMigration,
@@ -22,11 +31,37 @@ import type { RawSource } from "@/lib/analytics/core";
 import { publicWriteActorKey } from "@/lib/public-write-quota";
 import { log, errInfo } from "@/lib/log";
 import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
+import {
+  parseOAuthFlowDiscoveredAuthority,
+  parseOAuthFlowDiscoveryAbsent,
+  parseOAuthFlowRecoveredAuthority,
+} from "@/lib/oauth-flow-status";
+
+// The contract drain persists and verifies this exact provider execution
+// bound. Keeping it explicit prevents a platform-default change from silently
+// invalidating the 300 + 900 + 300 + 5 rollout proof.
+export const maxDuration = 300;
 
 export const runtime = "nodejs";
 
-const clearCookie = (res: NextResponse) => {
+function tokenDigest(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+const clearCookie = (
+  res: NextResponse,
+  migrationFlow: string | null,
+) => {
   res.cookies.set(MIGRATE_COOKIE, "", { maxAge: 0, path: "/" });
+  if (migrationFlow) {
+    res.cookies.set(migrateCookieName(migrationFlow), "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
+  }
   return res;
 };
 
@@ -34,7 +69,8 @@ const clearCookie = (res: NextResponse) => {
  * 동의 완료 + (콜백이 회원 생성 못 했을 때) **INSERT 복구**(I3). 보통은 콜백이 로그인 시 회원을 만들고
  * 여기선 UPDATE(stamp)만 하지만, row 없으면 INSERT(보너스·시드·익명이전 신규 1회).
  * 경량 가드(I6) → I5 재산출 → RPC insert/update(I7: 버전 null 항목은 미요구·미stamp).
- * 신규 후보의 익명이전은 INSERT 전에 수행해 transient 실패 시 row를 만들지 않는다.
+ * 신규 후보의 익명이전 또는 기존회원 no-transfer receipt를 회원 mutation 전에
+ * 확정해 transient 실패 시 flow와 member 상태가 갈라지지 않게 한다.
  * MIGRATE_COOKIE: 이전+INSERT 성공/이미완료=clear, 조회·이전·RPC 실패=유지(재시도).
  */
 export async function POST(req: NextRequest) {
@@ -100,9 +136,25 @@ export async function POST(req: NextRequest) {
     privacy?: boolean;
     termsVersion?: unknown;
     privacyVersion?: unknown;
+    migrationFlow?: unknown;
     /** 방문→가입 전환 분석 — first-touch source(있을 때만 적재). */
     acqSource?: unknown;
   };
+  const hasMigrationFlow = Object.prototype.hasOwnProperty.call(
+    body,
+    "migrationFlow",
+  );
+  const migrationFlow =
+    typeof body.migrationFlow === "string" &&
+    isOAuthFlowId(body.migrationFlow)
+      ? body.migrationFlow
+      : null;
+  if (hasMigrationFlow && migrationFlow === null) {
+    return NextResponse.json(
+      { error: "migration_flow_invalid" },
+      { status: 400 },
+    );
+  }
   if (
     required.length > 0 &&
     !required.every((item) => body[item] === true)
@@ -147,10 +199,146 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // strict no-row인 신규 후보만 익명이전. INSERT 전에 끝내야 실패 시 member row가 생기지 않아
-  // 보존된 MIGRATE_COOKIE로 재POST가 실제 이전을 다시 시도한다. 기존 member 재로그인은 호출 안 함(I4).
+  // The target session is the durable authority even when a second tab strips
+  // migrationFlow from the URL/body. An explicit flow is recovered by its
+  // exact session binding first; otherwise discover the sole matching flow.
+  // This lets duplicate released receipts converge one at a time without ever
+  // guessing when every hint is absent.
+  let resolvedMigrationFlow = migrationFlow;
+  let migrationAuthority: {
+    flowId: string;
+    sourceUserId: string;
+    targetSessionId: string;
+    targetAccessTokenSha256: string;
+    targetRefreshTokenSha256: string;
+  } | null = null;
+  const targetSession = await readSupabaseSessionCookieHeader(
+    req.headers.get("cookie"),
+    PUBLIC_ENV.SUPABASE_URL,
+  );
+  if (
+    targetSession.kind !== "present" ||
+    targetSession.session.userId !== user.id
+  ) {
+    return NextResponse.json(
+      { error: "migration_flow_conflict" },
+      { status: 409 },
+    );
+  }
+
+  let recovered:
+    ReturnType<typeof parseOAuthFlowRecoveredAuthority> = null;
+  if (migrationFlow === null) {
+    try {
+      const discoveredResult = await admin.rpc(
+        "recover_active_oauth_flow_by_observed_session",
+        {
+          p_observed_user_id: user.id,
+          p_observed_session_id:
+            targetSession.session.sessionId,
+        },
+      );
+      if (discoveredResult.error) throw discoveredResult.error;
+      const discovered = parseOAuthFlowDiscoveredAuthority(
+        discoveredResult.data,
+      );
+      const discoveryAbsent = parseOAuthFlowDiscoveryAbsent(
+        discoveredResult.data,
+      );
+      if (!discovered && !discoveryAbsent) {
+        return NextResponse.json(
+          { error: "migration_flow_conflict" },
+          { status: 409 },
+        );
+      }
+      if (discovered) {
+        resolvedMigrationFlow = discovered.status.flowId;
+        recovered = discovered;
+      }
+    } catch (error) {
+      log.error("account.consent_migration_discovery_fail", {
+        flowId: migrationFlow,
+        userId: user.id,
+        ...errInfo(error),
+      });
+      return NextResponse.json(
+        { error: "service_unavailable" },
+        { status: 503 },
+      );
+    }
+  }
+
+  if (resolvedMigrationFlow !== null) {
+    if (recovered === null) {
+      try {
+        const result = await admin.rpc(
+          "recover_oauth_flow_intent_authority",
+          {
+            p_flow_id: resolvedMigrationFlow,
+            p_observed_user_id: user.id,
+            p_observed_session_id:
+              targetSession.session.sessionId,
+          },
+        );
+        if (result.error) throw result.error;
+        recovered = parseOAuthFlowRecoveredAuthority(
+          result.data,
+          resolvedMigrationFlow,
+        );
+      } catch (error) {
+        log.error("account.consent_migration_authority_fail", {
+          flowId: resolvedMigrationFlow,
+          userId: user.id,
+          ...errInfo(error),
+        });
+        return NextResponse.json(
+          { error: "service_unavailable" },
+          { status: 503 },
+        );
+      }
+    }
+    if (
+      !recovered ||
+      recovered.status.state !== "completed" ||
+      recovered.status.action !== "continue" ||
+      recovered.status.releasedAt === null ||
+      recovered.status.revokeConfirmedAt !== null ||
+      !recovered.status.sourceIsAnonymous ||
+      recovered.status.targetUserId !== user.id ||
+      (
+        recovered.status.targetSessionId !==
+          targetSession.session.sessionId &&
+        recovered.status.migrationConsumedAt === null
+      ) ||
+      recovered.status.targetSessionId === null ||
+      recovered.sourceUserId === user.id
+    ) {
+      return NextResponse.json(
+        { error: "migration_flow_conflict" },
+        { status: 409 },
+      );
+    }
+    migrationAuthority = {
+      flowId: resolvedMigrationFlow,
+      sourceUserId: recovered.sourceUserId,
+      targetSessionId: recovered.status.targetSessionId,
+      targetAccessTokenSha256: tokenDigest(
+        targetSession.session.accessToken,
+      ),
+      targetRefreshTokenSha256: tokenDigest(
+        targetSession.session.refreshToken,
+      ),
+    };
+  }
   const migration = await prepareAnonMigration(member, () =>
-    migrateAnonData(admin, req.cookies.get(MIGRATE_COOKIE)?.value, user.id)
+    migrateAnonData(
+      admin,
+      user.id,
+      migrationAuthority,
+      req.cookies.get(MIGRATE_COOKIE)?.value,
+      targetSession.session.sessionId,
+    ),
+    migrationAuthority !== null,
   );
   if (!migration.ok) {
     log.error("account.consent_migrate_retry", {
@@ -393,5 +581,8 @@ export async function POST(req: NextRequest) {
     mutationMode: mutation.mode,
     anonMigration: migration.result,
   });
-  return clearCookie(NextResponse.json({ ok: true })); // 성공 → clear
+  return clearCookie(
+    NextResponse.json({ ok: true }),
+    resolvedMigrationFlow,
+  ); // 성공 → exact flow-scoped proof clear
 }

@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   displayedLegalVersionsMatch,
+  isInvalidSessionReadError,
   prepareAnonMigration,
   resolveAdminAuthorityRead,
   resolveAuthUserRead,
@@ -46,6 +47,50 @@ test("auth.getUser missing/invalid session만 unauthorized이고 dependency 오�
     resolveAuthUserRead({ data: { user: null }, error: dependency }),
     { ok: false, kind: "unavailable", error: dependency },
   );
+});
+
+test("auth session rejection은 exact code/error_code만 인정하고 retryable HTTP는 보존한다", () => {
+  for (const error of [
+    { code: "session_not_found", status: 401 },
+    { error_code: "invalid_jwt", status: 400 },
+    { code: "user_banned", status: 403 },
+    { error_code: "refresh_token_not_found", status: 422 },
+  ]) {
+    assert.equal(isInvalidSessionReadError(error), true);
+    const resolved = resolveAuthUserRead({
+      data: { user: null },
+      error,
+    });
+    assert.equal(resolved.ok, false);
+    if (resolved.ok) {
+      throw new Error("expected_unauthorized_auth_read");
+    }
+    assert.equal(resolved.kind, "unauthorized");
+  }
+
+  for (const error of [
+    { code: "session_not_found", status: 503 },
+    { error_code: "invalid_jwt", status: 429 },
+    {
+      name: "AuthSessionMissingError",
+      __isAuthError: true,
+      status: 503,
+    },
+    { code: "session_not_found", status: "503" },
+    { code: "request_timeout", status: 408 },
+    new TypeError("network unavailable"),
+  ]) {
+    assert.equal(isInvalidSessionReadError(error), false);
+    const resolved = resolveAuthUserRead({
+      data: { user: null },
+      error,
+    });
+    assert.equal(resolved.ok, false);
+    if (resolved.ok) {
+      throw new Error("expected_unavailable_auth_read");
+    }
+    assert.equal(resolved.kind, "unavailable");
+  }
 });
 
 test("auth.getUser가 data와 error를 함께 resolve해도 dependency error가 이긴다", () => {
@@ -369,6 +414,21 @@ test("migration throw도 retryable 실패이며 기존 member 재로그인은 mi
     result: "not_applicable",
   });
   assert.equal(existingMigrationCalls, 0);
+
+  const converged = await prepareAnonMigration(
+    CONSENTED_MEMBER,
+    async () => {
+      existingMigrationCalls += 1;
+      return "skipped";
+    },
+    true,
+  );
+  assert.deepEqual(converged, {
+    ok: true,
+    attempted: true,
+    result: "skipped",
+  });
+  assert.equal(existingMigrationCalls, 1);
 });
 
 test("consent mutation은 exact boolean commit 증거만 성공으로 인정한다", async () => {
@@ -423,7 +483,7 @@ test("consent route는 mutation 검증 실패에서 MIGRATE cookie를 지우지 
   const resolution = source.indexOf("await runConsentOnboardMutation");
   const failureGuard = source.indexOf("if (!mutation.ok)", resolution);
   const finalClear = source.lastIndexOf(
-    "return clearCookie(NextResponse.json({ ok: true }))",
+    "return clearCookie(",
   );
   assert.ok(resolution >= 0);
   assert.ok(failureGuard > resolution);

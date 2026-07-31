@@ -3,6 +3,21 @@ import * as Sentry from "@sentry/nextjs";
 // DSN 미설정이면 init 안 함 → getClient() undefined → 로그 브릿지/전송 전부 no-op (앱 정상).
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
+function containsOAuthCallback(value: unknown): boolean {
+  try {
+    const serialized = JSON.stringify(value);
+    if (typeof serialized !== "string") return true;
+    return (
+      serialized.includes("/auth/callback") ||
+      serialized.toLowerCase().includes(
+        "%2fauth%2fcallback",
+      )
+    );
+  } catch {
+    return true;
+  }
+}
+
 if (dsn) {
   Sentry.init({
     dsn,
@@ -16,6 +31,9 @@ if (dsn) {
       const a = (ctx?.attributes ?? {}) as Record<string, unknown>;
       const hay = `${ctx?.name ?? ""} ${a["http.route"] ?? ""} ${a["url"] ?? a["http.target"] ?? ""}`;
       if (hay.includes("/monitoring")) return 0; // Sentry 터널
+      // OAuth authorization codes arrive in the callback query. The callback
+      // is never traced, even though request fields are also scrubbed below.
+      if (hay.includes("/auth/callback")) return 0;
       if (hay.includes("/api/pay/")) return 1.0; // 결제(저볼륨·고가치) 전수 트레이싱
       if (hay.includes("/api/generations")) return 0.05;
       if (hay.includes("/api/fal") || hay.includes("/api/doll")) return 1.0;
@@ -27,10 +45,23 @@ if (dsn) {
     // 쿠키/IP/요청바디/인증헤더 미전송.
     sendDefaultPii: false,
     beforeSend(event) {
+      // Drop the whole event, rather than attempting a field allowlist:
+      // breadcrumbs, contexts and Referer can all retain the one-time code.
+      if (containsOAuthCallback(event)) return null;
       // 서명 URL(?token=...) 등 쿼리스트링 제거 (sendDefaultPii=false 가 쿠키/헤더는 이미 차단).
       const req = event.request;
       if (req?.url) req.url = req.url.split("?")[0];
       if (req && "query_string" in req) req.query_string = undefined;
+      return event;
+    },
+    beforeSendTransaction(event) {
+      if (containsOAuthCallback(event)) return null;
+      const req = event.request;
+      if (req?.url) req.url = req.url.split("?")[0];
+      if (req && "query_string" in req) req.query_string = undefined;
+      if (typeof event.transaction === "string") {
+        event.transaction = event.transaction.split(/[?#]/u, 1)[0];
+      }
       return event;
     },
   });

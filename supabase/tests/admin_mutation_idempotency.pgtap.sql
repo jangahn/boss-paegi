@@ -276,7 +276,7 @@ insert into admin_mutation_rpc_manifest(signature) values
   ('public.finish_account_reactivation_legacy_repair(uuid,uuid,uuid,integer,boolean,text)'),
   ('public.get_account_reactivation_legacy_repair_status(uuid,uuid)'),
   ('public.get_admin_settlement_receipt(uuid,uuid,text,uuid)'),
-  ('public.admin_settle_stuck_order_idempotent(uuid,uuid,text,uuid)');
+  ('public.admin_settle_stuck_order_verified(uuid,uuid,text,uuid,timestamptz,text,text,jsonb)');
 
 select is(
   (

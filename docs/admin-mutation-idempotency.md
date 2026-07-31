@@ -37,7 +37,7 @@
 | moderation permanent-delete | `admin_begin_doll_purge_idempotent` → 0078 purge saga | 모달을 열 때 생성하고 최초 전송부터 exact payload와 함께 고정한 UUID | 반드시 `hidden` + 정확한 `moderationVersion` | replay를 현재 상태 확인보다 먼저 수행해 같은 job ID 복구; claim이 `idle`이면 `get_moderation_purge_status`로 terminal 완료를 판정; 새 모달 intent에서만 UUID 회전 |
 | integrity clear/void/ban/unban | `admin_integrity_action_idempotent` | action+state+version 결합 결정론 UUID | score/member 상태 + version | 일반 영수증 복구; 같은 snapshot의 동등 경쟁은 한 단계 no-op 수렴 |
 | `POST /api/admin/reactivate` | begin → durable Auth-sync job → fenced activate/cancel finish | 삭제 시각·단조 증가 탈퇴 세대와 payload에 결합된 결정론 UUID | 정확한 `deleted_at` + `withdrawal_generation` + request/admin/user + action + lease token/version/expiry | begin은 DB를 활성화하지 않는다. route crash·응답 유실은 `content-maintain`이 이어받고, admin 상세는 최소 pending correlation을 복구한다. activate/cancel 각각의 exact terminal status만 성공으로 복구 |
-| `POST /api/admin/settle` | `admin_settle_stuck_order_idempotent` | 검증한 order/reason의 결정론 UUID | PortOne PAID·금액 검증을 HTTP 계층에서 먼저 수행 | 외부 재호출 전 non-tombstoning receipt peek. distinct stale tab도 unique 정산 원장으로 no-op 수렴 |
+| `POST /api/admin/settle` | `admin_settle_stuck_order_verified` + `get_admin_settlement_receipt` | 검증한 order/reason의 결정론 UUID | PortOne PAID·금액 검증을 HTTP 계층에서 먼저 수행 | 외부 재호출 전 non-tombstoning receipt peek, mutation 뒤 exact receipt postcondition. superseded `admin_settle_stuck_order_idempotent`는 0095부터 owner-only |
 
 이벤트 create의 `targetKey`는 논리적 생성 의도이고 `request_id`는 전송 시도다. 두
 전송 UUID가 동일한 intent와 payload를 사용하면 `event-create-intent` object lock 아래

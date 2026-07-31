@@ -6,13 +6,25 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
 import { startOAuth, type OAuthProvider } from "@/lib/auth-oauth";
+import { ensureAuth } from "@/lib/auth-client";
 import { safeNext } from "@/lib/oauth-metadata";
-import { createClient } from "@/lib/supabase/client";
+import { signInReviewer } from "@/lib/supabase/client";
 import { Spinner } from "@/components/Spinner";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
 import { ownRecordValue } from "@/lib/own-record";
 import { runClientMutation } from "@/lib/client-mutation";
+import {
+  resolveOAuthFlowBrowserRecoveryPath,
+} from "@/lib/oauth-flow-browser-recovery";
+
+function redirectUnfinishedOAuthFlow(): boolean {
+  const path =
+    resolveOAuthFlowBrowserRecoveryPath(document.cookie);
+  if (path === null) return false;
+  window.location.replace(path);
+  return true;
+}
 
 function KakaoIcon() {
   return (
@@ -52,6 +64,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   email_required: "이메일 제공에 동의해야 가입할 수 있어요. 다시 시도해주세요.",
   oauth: "로그인에 실패했어요. 다시 시도해주세요.",
   exchange: "로그인 처리 중 문제가 생겼어요. 다시 시도해주세요.",
+  oauth_flow: "다른 로그인 흐름이 끝나지 않았어요. 잠시 후 다시 시도해주세요.",
   account_deleted: "탈퇴 처리된 계정이에요. 같은 계정으로는 다시 이용할 수 없어요.",
 };
 
@@ -84,6 +97,7 @@ export function LoginForm() {
   const authAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    if (redirectUnfinishedOAuthFlow()) return;
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -129,6 +143,7 @@ export function LoginForm() {
   // OAuth 페이지에서 뒤로가기 → bfcache 복원 시 React 상태(busy 스피너)가 그대로 살아나
   // 버튼이 로딩 상태로 방치되는 문제 해결(공유 훅 — credits/signup/reconsent 와 동일 패턴).
   useBfcacheReset(() => {
+    if (redirectUnfinishedOAuthFlow()) return;
     authAbortRef.current?.abort(new Error("login_bfcache_restored"));
     authAbortRef.current = null;
     authOperationEpochRef.current += 1;
@@ -150,18 +165,22 @@ export function LoginForm() {
     const controller = new AbortController();
     authAbortRef.current = controller;
     try {
+      // Join SessionBootstrap's anonymous-session single-flight before the
+      // member sign-in. Otherwise a slower anonymous response can overwrite
+      // the reviewer session that completed first.
+      const expectedSession = await ensureAuth(controller.signal);
       const outcome = await runClientMutation({
         attempt: async (requestSignal) => {
           try {
-            const result = await createClient(
+            const session = await signInReviewer(
               requestSignal,
-            ).auth.signInWithPassword({
-              email: rvEmail.trim(),
-              password: rvPw,
-            });
+              expectedSession.user.id,
+              rvEmail,
+              rvPw,
+            );
             return {
               kind: "confirmed" as const,
-              value: result,
+              value: session,
             };
           } catch (error) {
             return { kind: "rejected" as const, error };
@@ -174,17 +193,10 @@ export function LoginForm() {
           ? outcome.error
           : new Error("reviewer_login_unconfirmed");
       }
-      const { error } = outcome.value;
       if (
         !mountedRef.current ||
         authOperationEpochRef.current !== operationEpoch
       ) {
-        return;
-      }
-      if (error) {
-        authBusyRef.current = false;
-        setRvErr("아이디 또는 비밀번호가 올바르지 않아요.");
-        setRvBusy(false);
         return;
       }
       // 성공 — 심사 동선 기본값은 충전 페이지(next 지정 시 그 경로).

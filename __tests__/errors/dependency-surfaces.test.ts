@@ -37,6 +37,8 @@ const reportMigration = source(
 );
 const profileSource = source("lib/profile.ts");
 const oauthSource = source("lib/auth-oauth.ts");
+const authClientSource = source("lib/auth-client.ts");
+const supabaseClientSource = source("lib/supabase/client.ts");
 const integritySource = source("lib/admin-integrity.ts");
 const configAuditSource = source("lib/config/audit.ts");
 const scoreDetailSource = source("lib/score-detail.ts");
@@ -506,21 +508,96 @@ test("profile/OAuth/integrity/config reads do not collapse dependency errors", (
   );
   assert.doesNotMatch(profileSource, /\.then\(\(r\) => r\.data/);
 
+  const oauthStart = oauthSource.slice(
+    oauthSource.indexOf("export async function startOAuth"),
+    oauthSource.indexOf("/** 로그아웃"),
+  );
+  assert.ok(oauthStart.length > 0);
+  const orderedOAuthStartSteps = [
+    "const expectedSession = await ensureAuth(lifecycleSignal)",
+    "await runExclusiveAuthLifecycle(",
+    "await auth.getSession()",
+    "readSupabaseAccessTokenIdentity(before.access_token)",
+    "await startSupabaseUnlockedSessionWriter(",
+    "await readBrowserSupabaseSessionSnapshot()",
+    "stageOAuthFlowBrowserBarrier(flowId)",
+    "const prepared = await runClientMutation({",
+    "rememberOAuthFlowLease(flowId)",
+    "await auth.signInWithOAuth({",
+    "const rawAfter =",
+    "window.location.assign(oauthUrl)",
+  ] as const;
+  let previous = -1;
+  for (const step of orderedOAuthStartSteps) {
+    const index = oauthStart.indexOf(step, previous + 1);
+    assert.ok(
+      index > previous,
+      `OAuth coordination step is missing or out of order: ${step}`,
+    );
+    previous = index;
+  }
   assert.match(
-    oauthSource,
-    /runClientMutation\(\{[\s\S]*createClient\(\s*requestSignal,\s*\)\.auth\.getUser\(\)/,
+    oauthStart,
+    /runExclusiveAuthLifecycle\(\s*lifecycleSignal,\s*async \(auth\) =>/u,
   );
   assert.match(
-    oauthSource,
-    /return error\s*\?\s*\{ kind: "rejected" as const, error \}\s*:\s*\{ kind: "confirmed" as const, value: data \}/,
+    oauthStart,
+    /const before = requireSuccessfulSessionRead\(\s*await auth\.getSession\(\),\s*\);/u,
   );
-  assert.match(oauthSource, /if \(userRead\.kind !== "confirmed"\)/);
   assert.match(
-    oauthSource,
+    oauthStart,
+    /before\.user\.id !== expectedSession\.user\.id[\s\S]*before\.user\.is_anonymous !==\s*expectedSession\.user\.is_anonymous/u,
+  );
+  assert.match(
+    oauthStart,
+    /rawBefore\.evidence\.userId !== before\.user\.id[\s\S]*rawBefore\.evidence\.sessionId !==\s*beforeIdentity\.sessionId[\s\S]*rawBefore\.evidence\.accessToken !==\s*before\.access_token[\s\S]*rawBefore\.evidence\.refreshToken !==\s*before\.refresh_token/u,
+  );
+  assert.doesNotMatch(
+    oauthStart,
+    /createClient\(\)|\.auth\.getUser\(\)/u,
+    "startOAuth must use the auth instance injected under the lifecycle lock",
+  );
+  assert.match(
+    oauthStart,
     /const prepared = await runClientMutation\(\{[\s\S]*attempt: prepare,[\s\S]*reconcile: prepare/,
   );
-  assert.match(oauthSource, /if \(prepared\.kind !== "confirmed"\)/);
-  assert.match(oauthSource, /auth\.prepare_signup_fail[\s\S]*throw e/);
+  assert.match(oauthStart, /signal: lifecycleSignal,/u);
+  assert.match(oauthStart, /if \(prepared\.kind !== "confirmed"\)/u);
+  assert.match(oauthStart, /auth\.prepare_signup_fail[\s\S]*throw error/u);
+  assert.match(
+    oauthStart,
+    /rawAfter\.rawCookieBytes !==\s*rawBefore\.rawCookieBytes[\s\S]*rawAfter\.evidence\.userId !==\s*rawBefore\.evidence\.userId[\s\S]*rawAfter\.evidence\.sessionId !==\s*rawBefore\.evidence\.sessionId[\s\S]*rawAfter\.evidence\.accessToken !==\s*rawBefore\.evidence\.accessToken[\s\S]*rawAfter\.evidence\.refreshToken !==\s*rawBefore\.evidence\.refreshToken/u,
+  );
+
+  assert.match(
+    authClientSource,
+    /let inflightAuth: Promise<Session> \| null = null;/u,
+  );
+  assert.match(
+    authClientSource,
+    /value: await establishAnonymousAuthSession\(\s*requestSignal,\s*\)/u,
+  );
+  assert.match(
+    authClientSource,
+    /\.finally\(\(\) => \{\s*inflightAuth = null;\s*\}\)/u,
+  );
+  const lifecycle = supabaseClientSource.slice(
+    supabaseClientSource.indexOf(
+      "async function runExclusiveAuthLifecycle",
+    ),
+    supabaseClientSource.indexOf(
+      "export function establishAnonymousAuthSession",
+    ),
+  );
+  assert.match(
+    lifecycle,
+    /authRequestScope\(\)\.runExclusive\(signal, \(\) =>\s*runAuthCrossContextExclusive\(/u,
+  );
+  assert.match(lifecycle, /return operation\(createClient\(\)\.auth\);/u);
+  assert.match(
+    lifecycle,
+    /runSignalAwareSupabaseAuthLock\(\s*authSdkLockName\(\),\s*signal,\s*\(\) => authRequestScope\(\)\.start\(signal, operation\),\s*\)/u,
+  );
 
   assert.match(integritySource, /requireSupabasePage\(/);
   assert.match(integritySource, /integrity\.detail\.score/);

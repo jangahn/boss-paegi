@@ -6,6 +6,9 @@ import TestRenderer, { act } from "react-test-renderer";
 
 register("../telemetry/node-loader.mjs", import.meta.url);
 
+process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://127.0.0.1:54321";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key";
+
 const { useScoreSubmission } = await import(
   "../../components/useScoreSubmission.ts"
 );

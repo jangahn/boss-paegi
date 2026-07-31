@@ -21,8 +21,14 @@ const TARGET_USER_ID = "22222222-2222-4222-8222-222222222222";
 const AUTHORIZATION: AnonMigrationAuthorization = {
   sourceUserId: SOURCE_USER_ID,
   targetUserId: TARGET_USER_ID,
-  signedSourceCookieVerified: true,
+  sourceAuthorityVerified: true,
 };
+const REASSIGN_SUCCESS = {
+  ok: true,
+  scores: 0,
+  badges: 0,
+  telemetry: 0,
+} as const;
 
 function successfulDependencies(): AnonMigrationDependencies {
   return {
@@ -39,7 +45,7 @@ function successfulDependencies(): AnonMigrationDependencies {
     countDolls: async () => ({ count: 0, error: null }),
     countOrders: async () => ({ count: 0, error: null }),
     countGenerations: async () => ({ count: 0, error: null }),
-    reassign: async () => ({ data: { ok: true }, error: null }),
+    reassign: async () => ({ data: REASSIGN_SUCCESS, error: null }),
     deleteAnonUser: async () => ({ deleted: true, error: null }),
   };
 }
@@ -85,7 +91,7 @@ function injectResolvedError(
       dependencies.countGenerations = async () => ({ count: 0, error });
       return;
     case "data.reassign":
-      dependencies.reassign = async () => ({ data: { ok: true }, error });
+      dependencies.reassign = async () => ({ data: REASSIGN_SUCCESS, error });
       return;
     case "auth.delete_user":
       dependencies.deleteAnonUser = async () => ({ deleted: true, error });
@@ -180,6 +186,59 @@ test("모든 연산 성공 뒤에만 migrated다", async () => {
   });
 });
 
+test("DB가 원자적으로 확정한 no-transfer receipt는 Auth 삭제 없이 exact skip으로 수렴한다", async () => {
+  for (const [skipped, reason] of [
+    ["target_already_member", "target_is_member"],
+    ["source_not_anonymous", "source_not_anonymous"],
+    ["source_is_member", "source_is_member"],
+    ["unexpected_source_data", "unexpected_data"],
+    ["source_generation_changed", "source_generation_changed"],
+  ] as const) {
+    const dependencies = successfulDependencies();
+    let deleteCalls = 0;
+    dependencies.reassign = async () => ({
+      data: { ok: true, skipped },
+      error: null,
+    });
+    dependencies.deleteAnonUser = async () => {
+      deleteCalls += 1;
+      return { deleted: true, error: null };
+    };
+
+    assert.deepEqual(await runMigration(dependencies), {
+      result: "skipped",
+      reason,
+    });
+    assert.equal(deleteCalls, 0);
+  }
+});
+
+test("unknown 또는 extra-key skip receipt는 Auth 삭제 성공으로 강등하지 않는다", async () => {
+  for (const data of [
+    { ok: true, skipped: "unknown" },
+    {
+      ok: true,
+      skipped: "target_already_member",
+      extra: true,
+    },
+  ]) {
+    const dependencies = successfulDependencies();
+    let deleteCalls = 0;
+    dependencies.reassign = async () => ({ data, error: null });
+    dependencies.deleteAnonUser = async () => {
+      deleteCalls += 1;
+      return { deleted: true, error: null };
+    };
+
+    const outcome = await runMigration(dependencies);
+    assert.equal(outcome.result, "failed");
+    if (outcome.result === "failed") {
+      assert.equal(outcome.operation, "data.reassign");
+    }
+    assert.equal(deleteCalls, 0);
+  }
+});
+
 test("서명 source 권한·UUID·source≠target 불변식이 없으면 외부 연산 전에 차단한다", async () => {
   const dependencies = successfulDependencies();
   let targetCalls = 0;
@@ -193,7 +252,7 @@ test("서명 source 권한·UUID·source≠target 불변식이 없으면 외부 
 
   const unsigned = await runMigration(dependencies, {
     ...AUTHORIZATION,
-    signedSourceCookieVerified: false,
+    sourceAuthorityVerified: false,
   } as unknown as AnonMigrationAuthorization);
   assert.equal(unsigned.result, "failed");
   if (unsigned.result === "failed") {
@@ -252,7 +311,7 @@ test("source Auth가 이미 없어도 orphan 데이터 복구를 위해 reassign
   missing.getAnonUser = async () => ({ data: null, error: null });
   missing.reassign = async () => {
     reassignCalls += 1;
-    return { data: { ok: true }, error: null };
+    return { data: REASSIGN_SUCCESS, error: null };
   };
   missing.deleteAnonUser = async () => {
     deleteCalls += 1;
@@ -371,16 +430,35 @@ test("유효한 개별 count의 합이 안전 정수 범위를 넘으면 차단�
 });
 
 test("resolved error가 없어도 reassign/delete 성공 증거가 없으면 migrated로 오인하지 않는다", async () => {
-  const invalidReassign = successfulDependencies();
-  invalidReassign.reassign = async () => ({ data: null, error: null });
-  const reassignOutcome = await runMigration(invalidReassign);
-  assert.equal(reassignOutcome.result, "failed");
-  if (reassignOutcome.result === "failed") {
-    assert.equal(reassignOutcome.operation, "data.reassign");
-    assert.match(
-      String((reassignOutcome.error as Error).message),
-      /reassign_result_invalid/,
-    );
+  for (const data of [
+    null,
+    { ok: true },
+    { ...REASSIGN_SUCCESS, extra: true },
+    { ...REASSIGN_SUCCESS, scores: -1 },
+    { ...REASSIGN_SUCCESS, badges: 0.5 },
+    { ...REASSIGN_SUCCESS, telemetry: "0" },
+    { ...REASSIGN_SUCCESS, scores: 2_147_483_648 },
+    { ...REASSIGN_SUCCESS, badges: Number.NaN },
+    { ...REASSIGN_SUCCESS, telemetry: Number.POSITIVE_INFINITY },
+    { ...REASSIGN_SUCCESS, ok: 1 },
+  ]) {
+    const invalidReassign = successfulDependencies();
+    let deleteCalls = 0;
+    invalidReassign.reassign = async () => ({ data, error: null });
+    invalidReassign.deleteAnonUser = async () => {
+      deleteCalls += 1;
+      return { deleted: true, error: null };
+    };
+    const reassignOutcome = await runMigration(invalidReassign);
+    assert.equal(reassignOutcome.result, "failed");
+    if (reassignOutcome.result === "failed") {
+      assert.equal(reassignOutcome.operation, "data.reassign");
+      assert.match(
+        String((reassignOutcome.error as Error).message),
+        /reassign_result_invalid/,
+      );
+    }
+    assert.equal(deleteCalls, 0);
   }
 
   const invalidDelete = successfulDependencies();

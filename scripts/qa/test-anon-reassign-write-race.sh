@@ -7,9 +7,9 @@ export LC_ALL=C
 project_id="$(
   sed -n 's/^project_id = "\(.*\)"$/\1/p' supabase/config.toml | head -n 1
 )"
-db_container="supabase_db_${project_id}"
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
 if [[ -z "$project_id" ]] \
-  || [[ "$db_container" != supabase_db_* ]] \
+  || ! [[ "$db_container" =~ ^supabase_db_[A-Za-z0-9._-]+$ ]] \
   || ! docker inspect "$db_container" >/dev/null 2>&1; then
   echo "disposable local Supabase database is unavailable" >&2
   exit 1
@@ -71,8 +71,15 @@ cleanup() {
             public.bp_telemetry_submitter_binding(id, '$source_b'::uuid),
             public.bp_telemetry_submitter_binding(id, '$target_b'::uuid)
           );
+      delete from public.oauth_anon_auth_cleanup_jobs
+       where legacy_source_user_id in (
+         '$source_a'::uuid,
+         '$source_b'::uuid
+       );
+      set local session_replication_role = replica;
       delete from public.anon_data_reassignments
        where source_user_id in ('$source_a'::uuid, '$source_b'::uuid);
+      set local session_replication_role = origin;
       delete from public.member_accounts
        where user_id in ('$target_a'::uuid, '$target_b'::uuid);
       delete from auth.users
@@ -120,6 +127,14 @@ cleanup() {
                     '$target_b'::uuid
                   )
                 )
+          )
+          + (
+            select pg_catalog.count(*)
+              from public.oauth_anon_auth_cleanup_jobs
+             where legacy_source_user_id in (
+               '$source_a'::uuid,
+               '$source_b'::uuid
+             )
           )
           + (
             select pg_catalog.count(*)
@@ -292,13 +307,36 @@ for id in \
 done
 
 db_psql -q -c "
-  insert into auth.users(id, email) values
-    ('$source_a'::uuid, 'reassign-write-source-a-$source_a@test.local'),
-    ('$target_a'::uuid, 'reassign-write-target-a-$target_a@test.local'),
-    ('$source_b'::uuid, 'reassign-write-source-b-$source_b@test.local'),
-    ('$target_b'::uuid, 'reassign-write-target-b-$target_b@test.local');
-  insert into public.member_accounts(user_id)
-  values ('$target_a'::uuid), ('$target_b'::uuid);
+  insert into auth.users(
+    id,
+    email,
+    is_anonymous,
+    created_at
+  ) values
+    (
+      '$source_a'::uuid,
+      'reassign-write-source-a-$source_a@test.local',
+      true,
+      clock_timestamp()
+    ),
+    (
+      '$target_a'::uuid,
+      'reassign-write-target-a-$target_a@test.local',
+      false,
+      clock_timestamp()
+    ),
+    (
+      '$source_b'::uuid,
+      'reassign-write-source-b-$source_b@test.local',
+      true,
+      clock_timestamp()
+    ),
+    (
+      '$target_b'::uuid,
+      'reassign-write-target-b-$target_b@test.local',
+      false,
+      clock_timestamp()
+    );
 " >/dev/null
 
 # A) Source telemetry+score commits first. Reassignment waits on the shared

@@ -9,6 +9,7 @@ import {
 } from "@/lib/legal/strict-versions";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { safeNext } from "@/lib/oauth-metadata";
+import { isOAuthFlowId } from "@/lib/oauth-flow-lease";
 import {
   resolveDbRead,
   resolveAuthUserRead,
@@ -17,6 +18,7 @@ import {
 import { SERVICE_NAME } from "@/lib/policy";
 import { log, errInfo } from "@/lib/log";
 import { ConsentForm, type LegalDocLite } from "./ConsentForm";
+import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -25,7 +27,27 @@ export const metadata: Metadata = {
   alternates: { canonical: "/consent" },
 };
 
-function ConsentReadUnavailable({ next }: { next: string }) {
+type MigrationFlowRead =
+  | { ok: true; flowId: string | null }
+  | { ok: false };
+
+function parseExactMigrationFlow(
+  value: string | string[] | undefined,
+): MigrationFlowRead {
+  if (value === undefined) return { ok: true, flowId: null };
+  if (typeof value !== "string" || !isOAuthFlowId(value)) {
+    return { ok: false };
+  }
+  return { ok: true, flowId: value };
+}
+
+function ConsentReadUnavailable({
+  next,
+  migrationFlow,
+}: {
+  next: string;
+  migrationFlow: string | null;
+}) {
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
@@ -41,6 +63,13 @@ function ConsentReadUnavailable({ next }: { next: string }) {
         </div>
         <form action="/consent" method="get">
           <input type="hidden" name="next" value={next} />
+          {migrationFlow !== null ? (
+            <input
+              type="hidden"
+              name="migrationFlow"
+              value={migrationFlow}
+            />
+          ) : null}
           <button
             type="submit"
             className="w-full rounded-full bg-foreground py-4 font-semibold text-paper-2 transition hover:opacity-90"
@@ -55,6 +84,7 @@ function ConsentReadUnavailable({ next }: { next: string }) {
 
 function readUnavailable(
   next: string,
+  migrationFlow: string | null,
   source: string,
   error: unknown,
   userId?: string,
@@ -64,38 +94,74 @@ function readUnavailable(
     source,
     ...errInfo(error),
   });
-  return <ConsentReadUnavailable next={next} />;
+  return (
+    <ConsentReadUnavailable
+      next={next}
+      migrationFlow={migrationFlow}
+    />
+  );
 }
 
 /**
  * 통합 동의 화면 — **로그인의 마지막·필수 단계**(신규가입·재활성·레거시·구버전 재동의 공용).
  * 경량 가드(I6, authed·비익명·비탈퇴 — requireMember 안 씀 → row 없는 in-between 도 통과).
  * profile/member/legal 읽기가 모두 성공한 뒤에만 항목을 산출하며, 오류는 재시도 UI로 fail-closed.
- * 빠진/구버전 동의 항목만 서버 산출(`lib/consent` 단일 규칙). 0개면(이미 회원) 목적지로.
+ * 빠진/구버전 동의 항목만 서버 산출(`lib/consent` 단일 규칙). 0개면(이미 회원) 목적지로 가되,
+ * 익명 이전 복구 flow가 있으면 빈 idempotent 폼을 제출해 미완료 이전을 수렴시킨다.
  */
 export default async function ConsentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{
+    next?: string;
+    migrationFlow?: string | string[];
+  }>;
 }) {
-  const { next } = await searchParams;
+  const { next, migrationFlow: migrationFlowParam } =
+    await searchParams;
   const dest = safeNext(next);
+  const migrationFlowRead = parseExactMigrationFlow(
+    migrationFlowParam,
+  );
+  if (!migrationFlowRead.ok) {
+    return readUnavailable(
+      dest,
+      null,
+      "migration_flow",
+      new Error("migration_flow_invalid"),
+    );
+  }
+  const migrationFlow = migrationFlowRead.flowId;
+  const unavailable = (
+    source: string,
+    error: unknown,
+    userId?: string,
+  ) => readUnavailable(dest, migrationFlow, source, error, userId);
 
   const supabase = await createClient();
   let authResult;
   try {
     authResult = await supabase.auth.getUser();
   } catch (error) {
-    return readUnavailable(dest, "auth", error);
+    return unavailable("auth", error);
   }
   const authRead = resolveAuthUserRead(authResult);
   if (!authRead.ok && authRead.kind === "unavailable") {
-    return readUnavailable(dest, "auth", authRead.error);
+    return unavailable("auth", authRead.error);
   }
   if (!authRead.ok || authRead.user.is_anonymous) {
     redirect(`/login?next=${encodeURIComponent(dest)}`);
   }
   const user = authRead.user;
+  const sessionState = await readCurrentAuthSessionState(() =>
+    supabase.rpc("oauth_current_auth_session_live"),
+  );
+  if (sessionState.kind === "revoked") {
+    redirect(`/login?next=${encodeURIComponent(dest)}`);
+  }
+  if (sessionState.kind === "unavailable") {
+    return unavailable("auth", sessionState.error, user.id);
+  }
 
   const admin = createAdminClient();
   let profileResult;
@@ -106,15 +172,14 @@ export default async function ConsentPage({
       .eq("id", user.id)
       .maybeSingle();
   } catch (error) {
-    return readUnavailable(dest, "profile", error, user.id);
+    return unavailable("profile", error, user.id);
   }
   const profileRead = resolveRequiredDbRead("profile", {
     data: profileResult.data as { deleted_at: string | null } | null,
     error: profileResult.error,
   });
   if (!profileRead.ok) {
-    return readUnavailable(
-      dest,
+    return unavailable(
       profileRead.source,
       profileRead.error,
       user.id,
@@ -133,23 +198,21 @@ export default async function ConsentPage({
     getCurrentLegalVersionsStrict(),
   ]);
   if (memberSettled.status === "rejected") {
-    return readUnavailable(dest, "member", memberSettled.reason, user.id);
+    return unavailable("member", memberSettled.reason, user.id);
   }
   const memberRead = resolveDbRead("member", {
     data: memberSettled.value.data as Exclude<ConsentMember, null> | null,
     error: memberSettled.value.error,
   });
   if (!memberRead.ok) {
-    return readUnavailable(
-      dest,
+    return unavailable(
       memberRead.source,
       memberRead.error,
       user.id,
     );
   }
   if (legalSettled.status === "rejected") {
-    return readUnavailable(
-      dest,
+    return unavailable(
       "legal_versions",
       legalSettled.reason,
       user.id,
@@ -158,7 +221,9 @@ export default async function ConsentPage({
   const member = (memberRead.data as ConsentMember) ?? null;
   const curr = legalSettled.value;
   const items = missingConsentItems(member, curr);
-  if (items.length === 0) redirect(dest); // 이미 동의 완료(member)
+  if (items.length === 0 && migrationFlow === null) {
+    redirect(dest); // 이미 동의 완료(member), 이전 복구도 불필요
+  }
 
   // 표시 항목의 약관/방침 전문(sections)을 함께 내려 "보기"를 인라인 모달로(네비게이션 없음).
   const [termsSettled, privacySettled] = await Promise.allSettled([
@@ -170,16 +235,14 @@ export default async function ConsentPage({
       : Promise.resolve(null),
   ]);
   if (termsSettled.status === "rejected") {
-    return readUnavailable(
-      dest,
+    return unavailable(
       "legal_document.terms",
       termsSettled.reason,
       user.id,
     );
   }
   if (privacySettled.status === "rejected") {
-    return readUnavailable(
-      dest,
+    return unavailable(
       "legal_document.privacy",
       privacySettled.reason,
       user.id,
@@ -189,8 +252,7 @@ export default async function ConsentPage({
     (items.includes("terms") && termsSettled.value === null) ||
     (items.includes("privacy") && privacySettled.value === null)
   ) {
-    return readUnavailable(
-      dest,
+    return unavailable(
       "legal_document",
       new Error("required_legal_document_missing"),
       user.id,
@@ -213,6 +275,7 @@ export default async function ConsentPage({
       items={items}
       next={dest}
       docs={{ terms: toLite(termsDoc), privacy: toLite(privacyDoc) }}
+      migrationFlow={migrationFlow}
     />
   );
 }

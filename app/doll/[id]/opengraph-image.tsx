@@ -16,8 +16,9 @@ import {
 } from "@/lib/media-download";
 
 export const runtime = "nodejs";
-// 크롤러 버스트(바이럴 공유) 시 매번 Supabase+이미지fetch+Satori 렌더하지 않게 ISR 캐시.
-export const revalidate = 3600;
+// 제작자 탈퇴·콘텐츠 숨김이 기존 OG 캐시에 남지 않게 매 요청 재검증.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const alt = "인사기록카드";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -262,6 +263,13 @@ export default async function OgImage({
         </div>
       </div>
     ),
-    { ...size }
+    {
+      ...size,
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+      },
+    }
   );
 }

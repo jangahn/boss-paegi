@@ -25,15 +25,17 @@ export type ConsentLegalDocument = Pick<
  * 이 읽기는 의도적으로 캐시하지 않는다. 미래 시행본은 별도의 publish 요청 없이 KST
  * 자정에 현재본이 되므로 TTL 캐시는 이미 시행된 새 약관을 구 버전으로 판정할 수 있다.
  */
-export async function getCurrentLegalVersionsStrict(): Promise<LegalVersions> {
+export async function getCurrentLegalVersionsStrict(
+  signal?: AbortSignal,
+): Promise<LegalVersions> {
   const admin = createAdminClient();
   const today = kstDateAt();
   // Query each document independently. A combined unbounded history read can
   // hit PostgREST's row cap (for example, many terms versions before the first
   // privacy row) and misclassify an existing current document as absent.
   const [terms, privacy] = await Promise.all(
-    (["terms", "privacy"] as const).map((docType) =>
-      admin
+    (["terms", "privacy"] as const).map((docType) => {
+      let query = admin
         .from("legal_documents")
         .select("doc_type, version")
         .eq("doc_type", docType)
@@ -42,9 +44,10 @@ export async function getCurrentLegalVersionsStrict(): Promise<LegalVersions> {
         .order("effective_date", { ascending: false })
         .order("version", { ascending: false })
         .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ),
+        .limit(1);
+      if (signal) query = query.abortSignal(signal);
+      return query.maybeSingle();
+    }),
   );
   const error = terms.error ?? privacy.error;
   const resolved = resolveLegalVersionsRead({

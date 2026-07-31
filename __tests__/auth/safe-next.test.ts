@@ -192,11 +192,11 @@ test("every user-controlled auth next surface uses the shared sanitizer before n
 
   assert.match(
     source("proxy.ts"),
-    /redirectKeep\(\s*request,\s*response,\s*safeNext\(request\.nextUrl\.searchParams\.get\("next"\)\)\s*\)/,
+    /redirectNoCookie\(\s*request,\s*safeNext\(request\.nextUrl\.searchParams\.get\("next"\)\)\s*\)/,
   );
   assert.match(
-    source("app/auth/callback/route.ts"),
-    /const next = safeNext\(url\.searchParams\.get\("next"\)\)/,
+    source("app/auth/callback/OAuthCallbackClient.tsx"),
+    /next: safeNext\(single\("next"\)\)/,
   );
   assert.match(
     source("app/consent/page.tsx"),

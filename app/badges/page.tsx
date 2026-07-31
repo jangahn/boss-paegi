@@ -33,7 +33,7 @@ export default function BadgesPage() {
         // self-RLS: 본인 owner_id 행만 반환. 구 badge_id 고아는 BADGE_FAMILIES 에 없어 자동 미표시.
         const result = await runBoundedClientOperation(
           (signal) =>
-            createClient(signal)
+            createClient()
               .from("user_badges")
               .select("badge_id")
               .abortSignal(signal),

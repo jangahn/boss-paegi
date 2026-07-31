@@ -94,11 +94,9 @@ export function AccountMenu() {
     const controller = new AbortController();
     // 1) 로컬 세션 → 캐시된 닉/프사 즉시 렌더(네트워크 없이) → nav 스피너 제거.
     void runClientMutation({
-      attempt: async (requestSignal) => {
+      attempt: async () => {
         try {
-          const result = await createClient(
-            requestSignal,
-          ).auth.getSession();
+          const result = await createClient().auth.getSession();
           return { kind: "confirmed" as const, value: result };
         } catch (error) {
           return { kind: "rejected" as const, error };

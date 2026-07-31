@@ -84,7 +84,7 @@ export default function GalleryPage() {
   }> => {
     const { data, error: qErr } = await runBoundedClientOperation(
       (signal) => {
-        let query = createClient(signal)
+        let query = createClient()
           .from("dolls")
           .select("id, image_url, created_at, role")
           .is("deleted_at", null) // takedown: 신고 삭제 캐릭터 숨김

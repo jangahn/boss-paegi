@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { PUBLIC_ENV } from "@/lib/env";
 import { supabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
+import { createServerAuthReadFetch } from "@/lib/http/server-auth-read-fetch";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -11,17 +12,17 @@ export async function createClient() {
     PUBLIC_ENV.SUPABASE_ANON_KEY,
     {
       cookieOptions: supabaseAuthCookieOptions(),
+      global: {
+        fetch: createServerAuthReadFetch({
+          supabaseUrl: PUBLIC_ENV.SUPABASE_URL,
+        }),
+      },
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (toSet) => {
-          try {
-            toSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // Server Components can't set cookies; middleware refreshes them.
-          }
-        },
+        // Generic server reads are deliberately unable to emit auth cookies.
+        // Browser-coordinated writers and the deferred OAuth callback are the
+        // only session mutation boundaries.
+        setAll: () => {},
       },
     }
   );

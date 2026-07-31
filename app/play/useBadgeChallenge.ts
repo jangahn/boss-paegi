@@ -166,7 +166,7 @@ export function useBadgeChallenge({
         await ensureAuth(controller.signal);
         const result = await runBoundedClientOperation(
           (signal) =>
-            createClient(signal)
+            createClient()
               .from("user_badges")
               .select("badge_id")
               .abortSignal(signal),

@@ -13,21 +13,36 @@ if [[ -z "$project_id" ]]; then
 fi
 
 shopt -s nullglob
-if (( $# > 1 )) || {
-  (( $# == 1 )) \
-    && [[ "$1" != "--self-test-empty" ]] \
-    && [[ "$1" != "--self-test-notests" ]]
-}; then
-  echo "usage: $0 [--self-test-empty|--self-test-notests]" >&2
+mode="run"
+only_file=""
+if (( $# == 1 )) \
+  && { [[ "$1" == "--self-test-empty" ]] \
+    || [[ "$1" == "--self-test-notests" ]]; }; then
+  mode="$1"
+elif (( $# == 2 )) && [[ "$1" == "--only" ]]; then
+  if [[ ! "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*[.]pgtap[.]sql$ ]]; then
+    echo "pgTAP --only requires a safe test basename" >&2
+    exit 2
+  fi
+  mode="only"
+  only_file="$2"
+elif (( $# != 0 )); then
+  echo "usage: $0 [--only BASENAME.pgtap.sql|--self-test-empty|--self-test-notests]" >&2
   exit 2
 fi
-mode="${1:-run}"
+
 if [[ "$mode" == "--self-test-empty" ]]; then
   # CI/unit self-check: a zero-file discovery must be a hard failure, never NOTESTS success.
   test_files=()
 elif [[ "$mode" == "--self-test-notests" ]]; then
   # Feed the real result validator a legacy false-green harness result without requiring Docker.
   test_files=("<self-test-notests>")
+elif [[ "$mode" == "only" ]]; then
+  test_files=("supabase/tests/$only_file")
+  if [[ ! -f "${test_files[0]}" ]]; then
+    echo "requested pgTAP file does not exist: $only_file" >&2
+    exit 1
+  fi
 else
   test_files=(supabase/tests/*.pgtap.sql)
 fi
@@ -36,7 +51,14 @@ if (( ${#test_files[@]} == 0 )); then
   exit 1
 fi
 
-db_container="supabase_db_${project_id}"
+default_db_container="supabase_db_${project_id}"
+db_container="${QA_DB_CONTAINER:-$default_db_container}"
+if [[ "$db_container" != "$default_db_container" ]] \
+  && [[ "$db_container" != "$default_db_container"-* ]] \
+  && [[ "$db_container" != "$default_db_container"_* ]]; then
+  echo "QA_DB_CONTAINER must be the local project container or its disposable derivative" >&2
+  exit 2
+fi
 if [[ "$mode" != "--self-test-notests" ]]; then
   if [[ "$db_container" != supabase_db_* ]] \
     || ! docker inspect "$db_container" >/dev/null 2>&1; then
@@ -45,12 +67,20 @@ if [[ "$mode" != "--self-test-notests" ]]; then
   fi
 fi
 
-if [[ "$mode" == "run" ]]; then
+db_name="${QA_DB_NAME:-postgres}"
+db_user="${QA_DB_USER:-postgres}"
+if [[ ! "$db_name" =~ ^[A-Za-z0-9_]+$ ]] \
+  || [[ ! "$db_user" =~ ^[A-Za-z0-9_]+$ ]]; then
+  echo "QA_DB_NAME/QA_DB_USER must be simple PostgreSQL identifiers" >&2
+  exit 2
+fi
+
+if [[ "$mode" == "run" || "$mode" == "only" ]]; then
   # Manual repository-order migration application intentionally does not run
   # Supabase's test bootstrap. Keep pgTAP out of production migrations while
   # making every disposable fresh DB self-sufficient and non-NOTESTS.
   docker exec -i "$db_container" \
-    psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+    psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" \
     -c "create schema if not exists extensions; create extension if not exists pgtap with schema extensions;" \
     >/dev/null
 fi
@@ -64,7 +94,7 @@ for test_file in "${test_files[@]}"; do
   else
     if ! output="$(
       docker exec -i "$db_container" \
-        psql -X -Aqt -v ON_ERROR_STOP=1 -U postgres -d postgres \
+        psql -X -Aqt -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" \
         < "$test_file" 2>&1
     )"; then
       printf '%s\n' "$output"

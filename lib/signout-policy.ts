@@ -6,11 +6,34 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-export function parseServerSignOutAck(value: unknown): boolean {
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export function parseServerSignOutAck(
+  value: unknown,
+  expected?: {
+    flowId: string | null;
+    userId: string;
+    sessionId: string;
+  },
+): boolean {
   return (
     isObject(value) &&
-    Object.keys(value).length === 1 &&
-    value.ok === true
+    Object.keys(value).length === 4 &&
+    value.ok === true &&
+    (value.flowId === null ||
+      (
+        typeof value.flowId === "string" &&
+        UUID_RE.test(value.flowId)
+      )) &&
+    typeof value.userId === "string" &&
+    UUID_RE.test(value.userId) &&
+    typeof value.sessionId === "string" &&
+    UUID_RE.test(value.sessionId) &&
+    (expected === undefined ||
+      (value.flowId === expected.flowId &&
+        value.userId === expected.userId &&
+        value.sessionId === expected.sessionId))
   );
 }
 

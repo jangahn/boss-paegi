@@ -128,10 +128,49 @@ test("활성 정책만 integration을 정확히 한 번 생성한다", () => {
   assert.equal(calls, 1);
 });
 
-test("클라이언트 init은 Replay gate와 무관하게 error·trace·feedback을 유지한다", () => {
+test("클라이언트 init은 일반 화면의 error·trace·feedback을 유지하고 OAuth callback은 완전 차단한다", () => {
   const source = readFileSync(
     new URL("../../instrumentation-client.ts", import.meta.url),
     "utf8",
+  );
+
+  const bootstrap = source.indexOf(
+    "callbackGlobals[CALLBACK_BOOTSTRAP_QUERY_KEY] =",
+  );
+  const nativeScrub = source.indexOf(
+    "History.prototype.replaceState.call(",
+  );
+  const sentryInit = source.indexOf("Sentry.init({");
+  assert.ok(bootstrap >= 0);
+  assert.ok(nativeScrub > bootstrap);
+  assert.ok(
+    sentryInit > nativeScrub,
+    "callback query capture and native URL scrub must finish before Sentry init",
+  );
+  assert.match(
+    source,
+    /window\.location\.pathname === "\/auth\/callback" \|\|[\s\S]*window\.location\.pathname\.startsWith\("\/auth\/callback\/"\)/u,
+  );
+  assert.match(
+    source,
+    /window\.location\.hash\.startsWith\("#oauth-callback="\)[\s\S]*callbackQuery = decodeURIComponent\([\s\S]*callbackGlobals\[CALLBACK_BOOTSTRAP_QUERY_KEY\] =\s*callbackQuery;/u,
+  );
+  assert.match(
+    source,
+    /History\.prototype\.replaceState\.call\(\s*window\.history,\s*null,\s*"",\s*window\.location\.pathname,\s*\);/u,
+  );
+  assert.match(
+    source,
+    /callbackUrlScrubbed =\s*window\.location\.search === "" &&\s*window\.location\.hash === "";/u,
+  );
+  assert.match(
+    source,
+    /catch \{[\s\S]*callbackUrlScrubbed = false;/u,
+    "native history failures must fail closed",
+  );
+  assert.match(
+    source,
+    /if \(dsn && callbackUrlScrubbed && !isOAuthCallbackPage\) \{\s*Sentry\.init\(/u,
   );
 
   assert.match(
@@ -143,8 +182,60 @@ test("클라이언트 init은 Replay gate와 무관하게 error·trace·feedback
     /\.\.\.sentryReplayIntegrations\(replay,\s*\(\) =>[\s\S]*Sentry\.replayIntegration\(/,
   );
   assert.match(source, /Sentry\.feedbackAsyncIntegration\(/);
-  assert.match(source, /tracesSampleRate:\s*isProd \? 0\.1 : 0/);
-  assert.match(source, /beforeSend\(event\)/);
+  assert.match(
+    source,
+    /tracesSampler: \(ctx\) => \{\s*if \(!isProd \|\| isOAuthCallbackPage\) return 0;/u,
+  );
+  assert.match(
+    source,
+    /const target = `\$\{ctx\.name \?\? ""\} \$\{[\s\S]*attributes\["http\.route"\][\s\S]*attributes\["url"\] \?\? attributes\["http\.target"\][\s\S]*return target\.includes\("\/auth\/callback"\) \? 0 : 0\.1;/u,
+  );
+  assert.match(
+    source,
+    /replaysOnErrorSampleRate: isOAuthCallbackPage\s*\? 0\s*:\s*replay\.replaysOnErrorSampleRate/u,
+  );
+  assert.match(
+    source,
+    /replaysSessionSampleRate: isOAuthCallbackPage\s*\? 0\s*:\s*replay\.replaysSessionSampleRate/u,
+  );
+  assert.match(
+    source,
+    /integrations: isOAuthCallbackPage\s*\? \[\]\s*:\s*\[/u,
+  );
+
+  assert.match(
+    source,
+    /const serialized = JSON\.stringify\(value\);[\s\S]*if \(typeof serialized !== "string"\) return true;/u,
+  );
+  assert.match(
+    source,
+    /serialized\.includes\("\/auth\/callback"\)[\s\S]*serialized\.toLowerCase\(\)\.includes\(\s*"%2fauth%2fcallback",\s*\)/u,
+  );
+  assert.match(
+    source,
+    /function containsOAuthCallback[\s\S]*catch \{\s*return true;\s*\}/u,
+  );
+  assert.match(
+    source,
+    /beforeSend\(event\) \{\s*if \(containsOAuthCallback\(event\)\) return null;/u,
+  );
+  assert.match(
+    source,
+    /beforeSendTransaction\(event\) \{\s*if \(containsOAuthCallback\(event\)\) return null;/u,
+  );
+  assert.equal(
+    source.match(/req\.url = req\.url\.split\("\?"\)\[0\];/gu)
+      ?.length ?? 0,
+    2,
+  );
+  assert.equal(
+    source.match(/req\.query_string = undefined;/gu)?.length ?? 0,
+    2,
+  );
+  assert.match(
+    source,
+    /event\.transaction = event\.transaction\.split\(\/\[\?#\]\/u, 1\)\[0\];/u,
+  );
   assert.match(
     source,
     /export const onRouterTransitionStart = Sentry\.captureRouterTransitionStart/,

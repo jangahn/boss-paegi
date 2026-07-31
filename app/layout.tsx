@@ -105,29 +105,30 @@ export default async function RootLayout({
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <JsonLd data={jsonLd} />
-        <SessionBootstrap />
-        <AnalyticsVisitTracker />
-        {/* 전역 내비 — root layout 에서 1회 렌더(내비 간 remount 제거). 라우트별 self-hide 는 AppNav 내부. */}
-        <AppNav />
-        <SiteContentProvider value={siteContent}>
-        <MediaAssetsProvider value={{ logoUrl: mediaAssets.logoUrl }}>
-        <MarketingCopyProvider value={marketingCopy}>
-          <RoleContentProvider value={roleConfig}>
-            <ScoreConfigProvider value={scoreConfig}>
-              <SessionLimitsProvider value={sessionLimits}>
-                <CreditProductsProvider value={creditsConfig(growthLevers)}>
-                  <BadgeCatalogProvider value={badgeCatalog}>
-                    {children}
-                    {/* 사업자정보 푸터 — PG 심사 요건(메인+결제페이지 상시 노출). 미설정 시 비노출. */}
-                    <SiteFooter info={businessInfo.info} />
-                  </BadgeCatalogProvider>
-                </CreditProductsProvider>
-              </SessionLimitsProvider>
-            </ScoreConfigProvider>
-          </RoleContentProvider>
-        </MarketingCopyProvider>
-        </MediaAssetsProvider>
-        </SiteContentProvider>
+        <SessionBootstrap>
+          <AnalyticsVisitTracker />
+          {/* 전역 내비 — root layout 에서 1회 렌더(내비 간 remount 제거). 라우트별 self-hide 는 AppNav 내부. */}
+          <AppNav />
+          <SiteContentProvider value={siteContent}>
+          <MediaAssetsProvider value={{ logoUrl: mediaAssets.logoUrl }}>
+          <MarketingCopyProvider value={marketingCopy}>
+            <RoleContentProvider value={roleConfig}>
+              <ScoreConfigProvider value={scoreConfig}>
+                <SessionLimitsProvider value={sessionLimits}>
+                  <CreditProductsProvider value={creditsConfig(growthLevers)}>
+                    <BadgeCatalogProvider value={badgeCatalog}>
+                      {children}
+                      {/* 사업자정보 푸터 — PG 심사 요건(메인+결제페이지 상시 노출). 미설정 시 비노출. */}
+                      <SiteFooter info={businessInfo.info} />
+                    </BadgeCatalogProvider>
+                  </CreditProductsProvider>
+                </SessionLimitsProvider>
+              </ScoreConfigProvider>
+            </RoleContentProvider>
+          </MarketingCopyProvider>
+          </MediaAssetsProvider>
+          </SiteContentProvider>
+        </SessionBootstrap>
       </body>
     </html>
   );

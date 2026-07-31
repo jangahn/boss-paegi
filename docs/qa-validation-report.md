@@ -1,6 +1,6 @@
 # Boss-paegi 전면 QA 검증 보고서
 
-검증 기준일: 2026-07-30 (Asia/Seoul)
+검증 기준일: 2026-07-31 (Asia/Seoul)
 
 ## 합격 기준과 증명 범위
 
@@ -66,6 +66,18 @@ npm run qa:db:rollout-expand
 npm run qa:db:checkout-convergence-race
 npm run qa:db:apply:contract
 npm run qa:db:rollout-contract
+npm run qa:db:apply:oauth-expand
+npm run qa:db:oauth-expand
+npm run test:db:oauth-expand-compat
+npm run qa:db:oauth-prune-lock-race
+npm run qa:db:apply:oauth-contract
+npm run qa:db:oauth-contract
+npm run qa:db:analytics-maintenance-raw-guard
+npm run qa:db:apply:oauth-post-contract
+npm run test:db:analytics-maintenance-bounds
+npm run test:db:dead-service-rpc-acl-cleanup
+npm run qa:db:analytics-maintenance-acl-upgrade
+npm run qa:db:analytics-maintenance-lock-race
 npm run test:db
 ```
 
@@ -73,8 +85,13 @@ npm run test:db
 `[db.migrations].enabled=false`로 고정한다. 따라서 `supabase db reset`,
 `supabase db push`, `supabase migration up`의 project-migration 0개 성공은
 검증 성공이 아니다. 로컬·CI의 유일한 권위 경로는 `supabase start` 뒤 위
-expand→호환성→contract custom runner 순서이고, 운영은 별도의
-`qa:prod:rollout:*` runner만 사용한다. 공식 CLI filename 인식·정렬 호환성은
+payment expand→호환성→contract → OAuth 0093 expand→legacy compatibility
+pgTAP→0094 contract→raw 0095 rollback→0095 post-contract custom runner
+순서다. 운영은 결제/스토리지
+`qa:prod:rollout:*`와 OAuth `qa:prod:oauth:*` 전용 runner만 사용한다.
+**OAuth 0093과 0094를 한 번에 적용하거나 0094와 0095를 같은 transaction에
+적용하는 명령은 운영에서 금지한다.**
+공식 CLI filename 인식·정렬 호환성은
 저장소 밖 임시 config에서 migrations만 활성화한 fresh-chain으로 별도 검증한다.
 2026-07-30 Supabase CLI 2.107.0 교차검증에서는 그 임시 config의
 `db reset --local --debug`가 101개를 적용했고, 문제 구간도
@@ -295,6 +312,193 @@ expand 경계를 검증한다. harness는 rollout flag와 세 RPC surface의 ACL
 contract 검증은 `qa:db:rollout-contract`, pgTAP, 나머지 PostgreSQL race harness가
 담당한다.
 
+### OAuth 0093/0094 staged rollout과 0095 post-contract
+
+OAuth flow ledger는 기존 `0090`~`0092` contract와 별개의 두 번째
+expand/contract 경계다. `0093_oauth_flow_intents.sql`은 새 flow-scoped
+`consume_oauth_flow_intent_migration`, pre-ledger cookie를 exact target
+session·TTL·append-only receipt에 묶는
+`consume_legacy_signup_migration`, generation-fenced 익명 Auth cleanup
+queue를 추가하면서 구 앱의 raw
+`reassign_anon_data` `service_role EXECUTE`도 유지한다. CI는 0093만 적용한
+상태에서 stage verifier와 legacy `score_submission_integrity.pgtap.sql`을 실행해
+이 호환 창을 실제로 검증한다. 별도 2-session harness는 eligible terminal row의
+flow advisory lock을 한 세션이 보유할 때 prune이 삭제 성공을 가장하지 않고
+`terminalRetentionBacklog=1`을 반환하며, lock release 뒤
+`prunedTerminal=1`·backlog 0으로 수렴하는지도 증명한다. 이후에만
+`0094_oauth_flow_migration_contract.sql`을
+단독 적용하고, stage verifier와 전체 pgTAP으로 raw와 legacy bridge 실행권이
+service_role/anon/authenticated/PUBLIC 모두에서 회수됐는지 확인한다.
+stage verifier와 production runner는 flow, cleanup, reassignment winner,
+quarantine-highlight marker, score-owner/session-ID tombstone, legacy receipt,
+provider qualification의 여덟 critical private relation과 25개 service-only
+scoped RPC exact inventory, 별도 legacy bridge 단일 signature·ACL·contract
+comment를 함께 검사한다. row-level append-only/delete-capture trigger뿐 아니라
+여덟 relation 모두의 owner-only `BEFORE TRUNCATE FOR EACH STATEMENT` guard와
+전체 21개 trigger inventory도 exact relation·function·tgtype으로 고정하므로,
+owner 실수로 receipt·marker·session reuse fence를 일괄 지운 상태나 일부
+surface가 빠진 0093/0094를 정상 stage로 오판하지 않는다.
+
+운영 runner도 `expand`, read-only `app-postflight`, `contract`,
+`post-contract` 중 한 stage만 받는다. exact production project, clean source commit/tree, immutable historical
+migration blob/manifest, Git ancestry, 원자 journal receipt를 확인하고 0093
+receipt가 없으면 contract SQL을 보내지 않는다. Vercel API는 canonical alias가
+exact GitHub `main` SHA의 immutable production `READY/PROMOTED` deployment를
+가리키는지 직접 증명한다. 제거된 `gitSource` 대신 exact `gitRepo`
+repo/owner ID·path·default branch와 Git metadata를 검증하고 GitHub API의 현재
+`main` branch SHA를 별도로 조회해 다른 branch·CLI 배포를 차단한다. canonical
+alias와 immutable URL 각각에서 OAuth status route를 세 번, frozen
+checkout·FAL·doll을 모두 probe하며 exact Supabase/build/
+Vercel deployment identity headers가 하나라도 다르면 실패한다.
+같은 immutable deployment의 `config.functionTimeout=300`도 evidence hash와
+append-only DB qualification에 저장해 1505초 계산이 mutable provider 기본값에
+의존하지 않게 한다.
+
+release branch는 unchanged `origin/main`의 후손인 clean HEAD로 CI를 끝낸 뒤 그
+exact source에서 0093을 먼저 적용하고, base 불변이면 동일 `HEAD:main`을 force
+없이 fast-forward push한다. 이후 main drift가 있으면 0093 receipt commit을
+조상으로 보존하는 merge fix-forward만 허용하고, rebase/cherry-pick/squash로 그
+조상을 제거하거나 0093 bytes를 수정하면 차단한다. alias-current 뒤에는 legacy
+구 issuer invocation timeout 300초 + cookie TTL 900초 + expiry 직전 검증한
+consumer invocation timeout 300초 + clock margin 5초인
+**1505초(25분 5초)**를 drain한다. runner는
+`0093 applied_at < Git deployment/Ready/alias-current <
+alias-current+1505초 ≤ qualification ≤ 0094 applied_at`을 검증하고, contract
+직전·직후 provider/route 증거가 같은지도 재확인한다. qualification과 0094
+journal은 한 transaction에 기록된다. 0094 원본 SQL의 intrinsic assert 때문에
+raw SQL, `db push`, `migration up`도 qualification 없이 rollback한다. 한 migration
+range나 Management API 요청에 0093+0094를 함께 넣는 것은
+금지한다.
+
+0094 contract 검증 뒤에는 원본
+`0095_analytics_maintenance_argument_bounds.sql`의 unconditional raw guard가
+함수/ACL/journal을 하나도 바꾸지 않고 rollback하는지 먼저 증명한다. 운영
+`post-contract` runner만 marker+exact guard를 OAuth catalog transaction lock과
+contract fingerprint assertion으로 교체한다. 0095 함수 body/default/security/
+search_path/owner/exact service-only ACL fingerprint, OAuth catalog pre/post
+fingerprint, 0095 source/manifest/lineage receipt가 0094보다 늦은 별도
+transaction에서 모두 일치할 때만 성공이다. raw-applied 함수만 있거나 receipt만
+있는 상태는 실제 적용 commit을 위조하는 사후 repair 없이 mismatch로 차단한다.
+같은 migration에 접힌 six superseded service RPC의 exact signature와 zero
+non-owner EXECUTE도 snapshot이 확인하며, 별도 16-assertion pgTAP이
+service_role/anon/authenticated/PUBLIC·임의 역할 grant 제거를 고정한다.
+0095 적용 전·직후까지 checkout/FAL/doll frozen identity를 유지한다. 완료 재진입은
+비용 기능 재개를 허용하면서도 current Vercel canonical/immutable attestation과
+두 origin의 OAuth status 400/no-store/Supabase·build·deployment identity
+headers를 검증해 구 앱 rollback을 차단한다. 상세 명령과 중단/복구 조건은
+`docs/oauth-flow-rollout.md`가 정본이다.
+
+`prune_oauth_flow_intents`는 exact 11-key ACK만 성공이다:
+`expiredPending`, `boundRecoveryConverged`, `prunedTerminal`,
+`targetAuthorityLossConverged`, `targetAuthorityLossBacklog`,
+`pendingExpiryBacklog`, `terminalRetentionBacklog`,
+`unconsumedMigrationBacklog`, `unreleasedContinueBacklog`,
+`unboundClaimBacklog`, `boundRecoveryBacklog`.
+추가/누락/비정수/음수는 system error이고, 일곱
+backlog 필드 중 하나라도 양수면 `content-maintain`은 200
+false-green이 아니라 429를 반환한다. terminal retention의 advisory-lock 경합도
+실제 남은 eligible row count로 노출한다. phase별 lock skip은 `p_limit`을
+소비하지 않아 잠긴 선두가 뒤의 eligible row를 굶기지 않는다. unbound claim은
+signed lease 경계에서 자동 expire하고, bound claim/sign-out은 원래 lease와
+target-session 생성시각 양쪽보다 5분이 지난 뒤 exact session revoke 또는 부재
+증명으로 종결한다. 완료됐지만 release 전인 continue와 35일을 넘긴 미소비
+migration receipt는 retention 삭제 대상으로 강등하지 않고 운영 backlog로
+보존한다.
+
+익명 Auth 삭제는 외부 side effect이므로 재할당 성공과 한 번의 삭제 응답을
+atomic success로 추정하지 않는다. `begin_oauth_flow_intent`가 원본
+`auth.users.created_at+instance_id`를 dormant receipt에 보존하고,
+`consume_oauth_flow_intent_migration`이 데이터 재할당·migration receipt·cleanup
+arm을 한 transaction에서 커밋한다. worker는 fresh Admin Auth read와 lease-scoped
+DB 검증 전후에만 삭제를 시도하고, delete throw/응답 유실 뒤에도 다시 읽은
+`user_not_found`와 DB 부재가 모두 맞아야 `completed`다. UUID가 다른 세대로
+재사용됐거나 비익명으로 승격됐으면 `protected`로 끝내고 삭제하지 않으며,
+pending/leased 중에는 Auth INSERT/UPDATE trigger가 그 재사용 자체를 차단한다.
+target session discovery는 query/body가 벗겨진 두 번째 `/consent` 탭도
+released+unconsumed anonymous flow에 다시 결속한다. target session 회전·소실은
+terminal 사유가 아니며, release 뒤 원래 session 부재가 24시간 지속되면 source
+profile을 generic shell로 바꾸고 highlight를 숨기며 source session을 revoke한
+quarantine으로 전이한다. 동일 target principal의 현재 live session은 flow
+expiry + 30일 + 5초인 exact deadline까지 recovery/consume할 수 있다. strict
+deadline 경과 또는 target profile 탈퇴·부재 시 score/Auth/profile shell은
+비식별 보존하고 badge·highlight·telemetry·source session은 제거·비식별화한
+`scrubbed`로 수렴한다.
+
+기존 target member와 target 선점은 닫힌 exact no-transfer receipt 뒤 source를
+즉시 quarantine하고 같은 recovery/scrub deadline으로 보낸다. source 비익명
+승격·회원화, 금지 source 데이터, source Auth 세대 변경은 별도 principal을
+보존하면서 cleanup을 `blocked/migration_blocked`로 남기고 privacy cron을
+non-green으로 만든다. source 이미 다른 target으로 이전됐거나 이미 사라진
+경우만 exact receipt 뒤 `completed`다. 미증명 reason·RPC/receipt 오류는 member
+mutation 전에 fail-closed한다. pgTAP은 모든 닫힌 skip reason, query-stripping
+discovery, quarantine recovery/scrub, 멱등 replay를 검증하고 실제 2-session
+harness는 target member INSERT와 finalize/consume의 lock wait 및 no-transfer
+수렴을 검증한다.
+
+flow authority가 없는 pre-ledger 3-part cookie는 신 앱이 raw RPC를 직접 호출하지
+않고 expand-only legacy bridge로 보낸다. bridge는 exact target Auth session,
+`issued_at + 15분 = expires_at`, DB clock의 5초 future margin, source/target
+단일 winner를 잠금 아래 재검증하고 transfer 또는 exact no-transfer 결과를
+append-only receipt에 남긴다. 응답 유실 재시도는 같은 target/session에만 exact
+ACK를 재생하며, 다른 target은 충돌한다. 구 배포의 raw RPC 재시도도 영구
+source UUID tombstone과 winner receipt에 의해 같은 네 count ACK로 수렴한다.
+0094는 1505초 drain 뒤 raw와 bridge 실행권을 함께 회수한다.
+모호한 결과는 최대 1시간 exponential backoff로 남고, due lease가 없는 다음
+cron도 claim idle ACK의 authoritative `pendingBacklog`를 보존해 429를 유지한다.
+Node fault injection은 resolved delete error, throw-after-commit, malformed/missing
+Auth read, Admin/DB divergence, finish 응답 유실, stale/future retry backlog를
+분리하며, `oauth_anon_auth_cleanup.pgtap.sql`은 transaction arm, exact generation,
+lease token/version, UUID reuse/promotion trigger, 재시도, fresh absence,
+protected terminal, 35일 retention을 rollback-only DB에서 검증한다.
+`attempt_count`/`lease_version`은 int4 최댓값 `2147483647`에서 wrap하지 않는다.
+마지막 representable 실패 또는 crash 뒤 만료된 마지막 lease는
+`protected/cleanup_attempt_limit_exhausted`로 안전 정지하고
+`oauthAnonAuthCleanupFailed`와 service-only exact 6-key privacy status의
+`failures`에 노출되어 503/non-green이 된다.
+
+old JWT는 현재 `auth.sessions`의 exact session/user/created-at 세대가 살아 있을
+때만 public RLS와 server read를 통과한다. flow/cleanup 삭제 때 session-ID를 영구
+tombstone하고 Auth trigger가 같은 UUID의 session 재사용을 거부한다. 공개
+leaderboard와 doll/share OG는 application/Vercel의 stale PII 재노출을 막도록
+`force-dynamic`, `private, no-store`, CDN별 `no-store`를 사용한다. 외부
+플랫폼이 이미 저장한 OG 사본은 서비스 권한 밖이므로 플랫폼별 cache purge가
+별도 운영 경계다.
+
+2026-07-31에는 별도 disposable DB를 새로 만들고 전체 migration chain을 적용한
+뒤 0093 직후 expand catalog=`ready`, local qualification을 넣은 0094 직후
+contract catalog=`ready`를 각각 확인했다. 이 격리 상태에서
+`oauth_flow_intents.pgtap.sql` 362/362,
+`oauth_anon_auth_cleanup.pgtap.sql` 71/71을 통과했다. relation fingerprint
+inventory는 13개 relation 전부 일치(13/13)했고, 별도의 14개 tamper case는 모두
+expected rejection으로 통과(14/14)했다. 이는 `13/14` 성공률이나 한 건 실패라는
+뜻이 아니다.
+
+같은 DB에서 terminal-prune locked-head starvation race와 target-member
+finalize→release/consume 양방향 실제 PostgreSQL session 경합도 통과했다. race
+harness는 영구 session-ID tombstone을 삭제하거나 재사용하지 않고 매 실행 새
+UUID를 사용한다. old/no/missing/deleted/other/tombstoned/malformed session의 RLS
+read는 모두 0행, exact live own-session만 허용되며 session tombstone append-only와
+UUID reuse 거부도 통과했다. 관련 focused Node 회귀는 7파일 87/87이었다. 이
+검증에서는 fal.ai 실제 생성·과금 요청을 수행하지 않았다.
+
+2026-07-31 오후 세션이 중단된 뒤 인수 재검증에서 release 후보 소스를 다시
+전체 게이트에 통과시켰고, 이 과정에서 결함 2건을 발견해 같은 release에
+수정했다. ① `test-analytics-maintenance-acl-upgrade.sh`가 package script와
+CI에 배선되지 않아 harness-coverage 인벤토리 테스트가 실패했다 —
+`qa:db:analytics-maintenance-acl-upgrade`로 배선하고 CI의 dead-service RPC
+검증 직후 단계로 추가했다. ② `lib/supabase/client.ts`가 module 평가 시점에
+`PUBLIC_ENV.SUPABASE_URL`을 `new URL`로 파싱해(storage key 파생과
+`createAuthTransportFetch` scope 초기화 2곳) env 없는 CI production build가
+`/_not-found`·`/badges` prerender에서 `ERR_INVALID_URL`로 실패했다 — storage
+key·code-verifier·SDK lock 이름과 auth transport scope를 첫 사용 시점의
+memoized lazy 파생으로 전환했다. globalThis 유지 singleton 의미는 그대로이며,
+env가 없는 실제 사용은 여전히 fail-closed로 throw한다. 소스 형태를 고정하는
+테스트 4파일을 같은 형태로 동기화했다. 재검증 결과: 새 빈 disposable DB
+fresh chain 43단계(expand 98 → contract 3 → 0093→0094→0095 staged 순서와
+신규 ACL-upgrade 단계 포함) 전부 통과, pgTAP 32파일 1,953 assertion 통과,
+실제 2-session race harness 전부 통과, env 없는 CI-mirror production build
+static page 89/89 생성 통과.
+
 구 서버에서 signed-upload token을 받은 뒤 새 서버에서 finalize하는 in-flight
 요청도 별도 계약으로 검증한다. avatar·highlight·event image·site asset은 새
 서버가 인증 주체, canonical path, 실제 object size/MIME, token 수명을 먼저
@@ -424,6 +628,23 @@ retry header와 207 금지 gate에 자동 편입된다.
 배포한 뒤 POST 방식으로 등록하고, 연속 두 성공 사이 26시간 이내와 queue drain
 HTTP 200을 실제 이력으로 확인하기 전에는 운영 cron 완료로 판정하지 않는다.
 
+유지보수 RPC의 정수 인자도 파괴적 작업의 권한 경계로 검증한다.
+`telemetry_rollup_days`는 1..31, `maintain_analytics_rollups`는 1..91,
+`prune_analytics_events`는 1..90만 허용한다. 31/91은 각각 오늘을 포함한 raw
+30/90일 전체 재집계 범위이고, 보존 90일은 공개된 개인정보 정책의 상한이다.
+NULL·`INT_MIN`·음수·0·상한+1·`INT_MAX`는 advisory lock, 날짜 산술, delete보다
+먼저 SQLSTATE `22023`으로 실패하며 기존 rollup/raw 행을 한 건도 바꾸지 않는다.
+`analytics_maintenance_bounds.pgtap.sql`은 양쪽 유효 경계, 기본값 3/7/90,
+KST cutoff 포함/제외, 상한 loop의 정확한 날짜 수와 비어 있지 않은 집계의
+기존 의미 보존, 사전 임의 역할 EXECUTE grant 제거와 exact service-only ACL까지
+50개 assertion으로 고정한다. telemetry rebuild는 전용 transaction advisory
+lock, analytics rebuild와 raw prune은 공유 lock을 validation 직후 DML 전에
+획득한다. 실제 2-session harness는 각 동일/교차 호출이 lock을 기다린 뒤
+성공하고 rollup/raw 결과를 손상시키지 않는지 검증한다.
+`dead_service_rpc_acl_cleanup.pgtap.sql`은 더 이상 직접 호출되지 않는 admin,
+legal, generation 내부 primitive 여섯 개가 owner-only인지 16개 assertion으로
+별도 검증한다.
+
 ## 관리자 page 권한 경계
 
 Next.js layout과 page는 병렬 렌더될 수 있으므로 layout gate만 privileged read의
@@ -538,8 +759,12 @@ FAL queue/JWKS/billing처럼 credential이 붙는 fetch와 OG media fetch는
   `force-dynamic`이다. ISR TTL을 signed URL보다 짧게 두더라도 장기간 무방문 뒤 첫
   요청에는 stale HTML을 먼저 줄 수 있으므로, 요청마다 새 URL을 발급한다.
 - doll/share OG 이미지는 signed image를 서버에서 bounded download해 data URI로
-  렌더한 결과만 1시간(`revalidate=3600`) 캐시한다. takedown/restore/permanent-delete는
-  해당 doll·share·history·OG 경로를 명시적으로 무효화한다.
+  렌더하되 제작자 탈퇴·quarantine/scrub 직후 stale identity/highlight를 다시
+  노출하지 않도록 `force-dynamic`, `revalidate=0`, `private, no-store`와 CDN별
+  `no-store`를 사용한다. 공개 leaderboard도 같은 no-store 계약이다.
+  takedown/restore/permanent-delete는 관련 동적 경로를 명시적으로 무효화한다.
+  카카오 등 외부 crawler가 보유한 OG 사본은 서비스가 직접 무효화할 수 없으므로
+  플랫폼별 cache purge를 운영 경계로 둔다.
 - config 일반 read는 tag SWR와 1시간 backstop을 쓴다. 발행은
   `revalidateTag(tag,"max")`로 다음 읽기부터 갱신하며, 결제·가입 보너스·생성 제출처럼
   불변 금융/외부 효과를 만드는 경로는 uncached strict read를 사용해 DB 오류나 손상된
@@ -574,12 +799,89 @@ adjust/cancel/refund처럼 브라우저 영수증이 필요한 흐름은 먼저 
 검사상 0개다.
 
 HTTP 바깥 SDK 경계도 별도로 검증한다. Supabase Auth의 session read, 익명 로그인,
-OAuth user/start, reviewer password login과 signout은 signal-bound non-singleton
-client와 hard deadline을 사용한다. 익명 로그인 singleton은 무응답 하나로 영구 고정되지
-않으며, LoginForm unmount·bfcache 복원 뒤 늦은 OAuth 이동을 막는다. profile, gallery,
-badge, play doll SDK read는 단일 bounded operation과 abortable query를 사용한다.
-nickname PostgREST update는 같은 normalized 값의 exact replay이고, avatar/highlight/
-event/site asset signed upload는 60초/45초 단일 bounded attempt다.
+OAuth user/start, reviewer password login과 signout은 auth cookie, refresh
+single-flight, storage event, auto-refresh lifecycle을 소유하는 단 하나의
+GoTrueClient browser singleton을 공유한다. 설치된 SDK가 호출의 동기 구간에서
+`fetch`를 시작하는 익명 로그인과 reviewer password login만 FIFO로 직렬화한
+operation-scoped `AbortSignal`을 transport와 response body 종료까지 결합한다.
+`getSession`/`getUser`, OAuth URL 생성, local signout은 같은 singleton에서
+실행하고 deadline과 component lifecycle fence가 늦은 결과·이동·UI publish를
+폐기한다. 필수 server signout POST는 별도 abortable fetch와 exact replay로
+수렴한다. fresh login은 SessionBootstrap의 익명 session single-flight에 먼저
+합류하므로 늦은 익명 응답이 member session을 덮거나 이른 OAuth click이
+missing-session으로 실패하지 않는다. LoginForm unmount·bfcache 복원 뒤 늦은
+OAuth 이동도 막는다. profile, gallery, badge, play doll PostgREST read는 shared
+client에 query별 `.abortSignal`을 적용한다. nickname PostgREST update는 같은
+normalized 값의 exact replay이고, avatar/highlight/event/site asset signed
+upload는 60초/45초 단일 bounded attempt다.
+
+2026-07-31 auth singleton hotfix source 안정 회차에서는 직전 production
+`d1d6c91b8de2e379fefdeb3de0117ee26167c6fc` 홈 reload마다 동일 storage key의
+GoTrueClient 7개와 SDK 경고 6개가 생기는 것을 브라우저에서 재현했다. 원인은
+signal마다 `isSingleton:false` client를 새로 만들던 경로였다. 수정 source는
+반복 7회 생성의 identity 1개, 경고 0개, BroadcastChannel/visibility lifecycle
+owner 수 불변, Fast Refresh scope 재사용, 두 session-establishing mutation의
+동기 fetch 포착, FIFO, pre-aborted queued mutation의 network 0회, 서로 다른
+signal 격리, header 이후 느린 body abort, anonymous→password 순서의 최종 member
+session을 설치된 `@supabase/ssr 0.10.3`·`@supabase/auth-js 2.107.0`으로 직접
+검증했다. 전체 source gate는 Node 22.14.0에서 182파일 1,076/1,076, TypeScript,
+ESLint, golden vector 8/8, custom rule self-test, 취약점 0, Next.js 16.2.12
+production build 77 artifact를 통과했다. 로컬 실제 hydration의 desktop↔gallery
+SPA 전환과 390×844 reload도 성공했고 horizontal overflow 0, H1 1개, image
+load 2/2였다. production 재배포 뒤 동일 console 경고 6→0 증거와 exact release
+SHA는 배포 postflight에서 이 블록에 덧붙인다.
+
+Root layout의 `SessionBootstrap`은 OAuth discovery와 안정 Auth baseline이 끝날
+때까지 ordinary client subtree의 **hydration만** Suspense로 보류한다. 서버
+렌더에서는 같은 subtree를 그대로 통과시키므로 인증 API/Web Locks 장애가
+지속돼도 홈·FAQ·이용약관·개인정보처리방침의 H1과 본문은 initial HTML에 남고,
+검색·열람·native link navigation이 bootstrap spinner에 대체되지 않는다.
+브라우저 첫 hydration은 완료된 SSR DOM을 유지한 채 descendant effect를 0개로
+묶고, exact null-flow discovery와 `ensureAuth` 성공 뒤에만 subtree를 hydrate한다.
+`/auth/**`는 기존대로 ordinary bootstrap owner를 아예 mount하지 않는다.
+
+초기 discovery/Auth 실패는 안정 identity change가 아니므로 document
+invalidation 경로를 호출하지 않는다. 해당 attempt의 reconciliation owner와
+subscription을 clean release하고 5초 local retry를 예약한다. 실제 owner
+harness는 이 경로에서 `reload=0`, `body.inert=false`, profile/Sentry clear 0,
+unsubscribe 1을 확인하고 다음 attempt가 새 owner를 얻는 것도 검증한다.
+production build 뒤
+`BOSS_PAEGI_VERIFY_BUILT_HTML=1 node --experimental-strip-types --test __tests__/qa/session-bootstrap-initial-html.test.ts`
+를 실행하면 built Next server의 `/`, `/faq`, `/terms`, `/privacy` 응답에서 script
+payload를 제외한 실제 initial markup의 route별 H1과 non-blocking shell을
+검증한다.
+
+`/auth/reconcile`은 직접 URL 방문이 auth storage mutation 권한을 얻지 못하도록
+random nonce·reason·next·exact user/session CAS·원래 query/fragment 없는 pathname·
+proxy가 raw Cookie header에서 본 Supabase auth-token/code-verifier cookie 이름의
+canonical exact set을 SHA-256으로 묶어 HttpOnly capability cookie와 대조한다. cookie
+값은 URL·React payload·digest 입력에 포함하지 않는다. canonical name 목록은 4KiB가
+상한이며, 비-GET/HEAD 요청은 303으로 전환해 원 mutation method/body가 복구 페이지로
+재전송되지 않는다. 브라우저는 H→S 안에서 원 pathname의 non-root RFC path-match 경계
+(`/account/settings/`이면 `/account`, `/account/`, `/account/settings`,
+`/account/settings/`)에 capability-bound exact names를 지우고, 동시에 복구 페이지에서
+보이는 auth/verifier names도 `/auth`·`/auth/`·`/auth/reconcile` non-root 경계에서
+먼저 지운다. OAuth marker/barrier 부재를 확인한 뒤 verifier의 root/current 변형까지
+제거하고 나서만 root auth를 재판정한다. valid root는 보존하고 corrupt/absent root만
+visible exact names와 verifier를 지운다.
+
+구조상 유효하고 만료 전이어도 서버에서 폐기된 세션은 실제 storage와 분리된
+non-persisting Auth probe로 조회한다. `session_not_found`/invalid JWT처럼 명시적인
+rejection만 폐기로 분류하고, raw-cookie bytes/fingerprint·access/refresh token·
+user/session ID가 최초 snapshot 및 SDK session과 exact 일치하는지 SDK S lock 안에서
+다시 확인한 뒤 로컬 세션을 지운다. 같은 UUID의 token rotation을 포함한 새 세션 경합,
+network/429/5xx/모호 응답은 mutation 없이 보존·재시도한다.
+
+마지막 same-origin HEAD probe는 원 pathname과 현재 `/auth/reconcile` 양쪽에서 auth와
+verifier raw pair의 order-independent·multiplicity-preserving fingerprint가 보존한
+root 또는 empty와 같은지 proxy에서 확인한다. 따라서 원 path stale cookie와 `/auth`
+scoped cookie의 역방향 조합, 동일 이름의 root+scoped duplicate, arbitrary safe suffix
+`.64`/`.foo`, Domain tombstone 실패, JS에 보이지 않는 HttpOnly verifier가 정상 root
+오삭제나 다음 원 pathname redirect loop로 넘어가지 않고 재시도 UI에서 fail-closed한다.
+단일 capability cookie를 두 탭이 경합하면 digest가 다른 losing query는 mutation-capable
+client를 받지 못한다. 이 계약은
+`__tests__/auth/auth-session-reconcile.test.ts`의 parser/digest/path/name/fingerprint와
+source-order 회귀로 고정한다.
 
 Pixi `Assets.load`는 20초/19초 단일 attempt로 제한한다. asset cache/load를 독립
 두 작업으로 재실행하지 않고, 실패를 기본 캐릭터나 성공으로 축소하지 않으며, play

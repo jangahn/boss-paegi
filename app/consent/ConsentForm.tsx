@@ -42,10 +42,12 @@ export function ConsentForm({
   items,
   next,
   docs,
+  migrationFlow,
 }: {
   items: ConsentItem[];
   next: string;
   docs: Partial<Record<ConsentItem, LegalDocLite | null>>;
+  migrationFlow: string | null;
 }) {
   const router = useRouter();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -93,13 +95,19 @@ export function ConsentForm({
     setBusy(true);
     setErr(null);
     try {
-      const payload: Record<string, boolean | number> = {};
+      const payload: Record<
+        string,
+        boolean | number | string
+      > = {};
       items.forEach((i) => (payload[i] = true));
       if (items.includes("terms") && docs.terms) {
         payload.termsVersion = docs.terms.version;
       }
       if (items.includes("privacy") && docs.privacy) {
         payload.privacyVersion = docs.privacy.version;
+      }
+      if (migrationFlow !== null) {
+        payload.migrationFlow = migrationFlow;
       }
       const requestBody = JSON.stringify({
         ...payload,

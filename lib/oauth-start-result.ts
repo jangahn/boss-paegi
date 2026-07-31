@@ -12,8 +12,26 @@ function exactObject(
   );
 }
 
-export function isExactPrepareSignupAck(value: unknown): boolean {
-  return exactObject(value, ["ok"]) && value.ok === true;
+export function parsePrepareSignupAck(
+  value: unknown,
+  expectedFlowId: string,
+): string | null {
+  return (
+    exactObject(value, ["ok", "flowId"]) &&
+    value.ok === true &&
+    value.flowId === expectedFlowId
+  )
+    ? expectedFlowId
+    : null;
+}
+
+export function parsePrepareSignupActiveConflict(
+  value: unknown,
+): boolean {
+  return (
+    exactObject(value, ["error"]) &&
+    value.error === "oauth_flow_already_active"
+  );
 }
 
 /**
@@ -29,6 +47,7 @@ export function parseOAuthStartUrl(
     provider: OAuthStartProvider;
     supabaseUrl: string;
     redirectTo: string;
+    codeChallenge: string;
   },
 ): string | null {
   if (result.error !== null && result.error !== undefined) return null;
@@ -46,6 +65,24 @@ export function parseOAuthStartUrl(
     const authority = new URL(expected.supabaseUrl);
     const redirect = new URL(expected.redirectTo);
     const target = new URL(result.data.url);
+    const expectedKeys =
+      expected.provider === "google"
+        ? [
+            "provider",
+            "redirect_to",
+            "code_challenge",
+            "code_challenge_method",
+            "prompt",
+            "skip_http_redirect",
+          ]
+        : [
+            "provider",
+            "redirect_to",
+            "code_challenge",
+            "code_challenge_method",
+            "skip_http_redirect",
+          ];
+    const entries = [...target.searchParams.entries()];
     const authorizePath = new URL(
       "auth/v1/authorize",
       authority.href.endsWith("/") ? authority.href : `${authority.href}/`,
@@ -55,8 +92,24 @@ export function parseOAuthStartUrl(
       target.pathname !== authorizePath ||
       target.username !== "" ||
       target.password !== "" ||
-      target.searchParams.get("provider") !== expected.provider ||
+      target.hash !== "" ||
+      !/^[A-Za-z0-9_-]{43}$/u.test(expected.codeChallenge) ||
+      entries.length !== expectedKeys.length ||
+      expectedKeys.some(
+        (key) =>
+          target.searchParams.getAll(key).length !== 1,
+      ) ||
+      entries.some(([key]) => !expectedKeys.includes(key)) ||
+      target.searchParams.get("provider") !==
+        expected.provider ||
       target.searchParams.get("redirect_to") !== redirect.href ||
+      target.searchParams.get("code_challenge") !==
+        expected.codeChallenge ||
+      target.searchParams.get("code_challenge_method") !==
+        "s256" ||
+      (expected.provider === "google"
+        ? target.searchParams.get("prompt") !== "select_account"
+        : target.searchParams.has("prompt")) ||
       target.searchParams.get("skip_http_redirect") !== "true"
     ) {
       return null;

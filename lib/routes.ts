@@ -7,6 +7,16 @@ export function isMemberOnlyPath(pathname: string): boolean {
   return MEMBER_ONLY_PAGES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
+/**
+ * Browser Auth coordination owns the complete `/auth` subtree. Global UI that
+ * initializes or reads the ordinary Supabase client must not mount there:
+ * callback/recovery pages need an isolated H -> S critical section with zero
+ * AccountMenu/SessionBootstrap background Auth work.
+ */
+export function isAuthSubtreePath(pathname: string): boolean {
+  return pathname === "/auth" || pathname.startsWith("/auth/");
+}
+
 // 글로벌 동의 게이트 **예외** — 미동의 로그인 사용자도 이 경로는 /consent 로 보내지 않음.
 // `/consent`(동의 화면 자체)·`/auth/*`(OAuth 콜백)·`/api/*`(자체 requireMember 게이트).
 // 정적/`_next`는 proxy matcher 에서 이미 제외. **`/login`은 예외 아님** — anon 만 허용(proxy 가 처리).

@@ -48,13 +48,14 @@ export type AnonMigrationDependencies = {
 };
 
 /**
- * runner를 호출할 수 있는 최소 권한 증거. `signedSourceCookieVerified`는 server-only HMAC/TTL
- * 검증을 통과한 뒤에만 true로 구성하고, target은 현재 인증 gate의 user id를 전달한다.
+ * runner를 호출할 수 있는 최소 권한 증거. `sourceAuthorityVerified`는
+ * server-only flow ledger/HMAC 검증을 통과한 뒤에만 true로 구성하고,
+ * target은 현재 인증 gate의 user id를 전달한다.
  */
 export type AnonMigrationAuthorization = {
   sourceUserId: string;
   targetUserId: string;
-  signedSourceCookieVerified: true;
+  sourceAuthorityVerified: true;
 };
 
 export type AnonMigrationOutcome =
@@ -63,8 +64,12 @@ export type AnonMigrationOutcome =
       result: "skipped";
       reason:
         | "source_not_anonymous"
+        | "source_generation_changed"
         | "source_is_member"
         | "target_is_member"
+        | "target_already_claimed"
+        | "source_already_claimed"
+        | "source_already_absent"
         | "unexpected_data";
       counts?: {
         dolls: number;
@@ -125,6 +130,77 @@ function validCount(
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const POSTGRES_INTEGER_MAX = 2_147_483_647;
+
+function isReassignmentCount(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= POSTGRES_INTEGER_MAX
+  );
+}
+
+function isExactReassignmentSuccess(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  return (
+    keys.length === 4 &&
+    keys.includes("ok") &&
+    keys.includes("scores") &&
+    keys.includes("badges") &&
+    keys.includes("telemetry") &&
+    record.ok === true &&
+    isReassignmentCount(record.scores) &&
+    isReassignmentCount(record.badges) &&
+    isReassignmentCount(record.telemetry)
+  );
+}
+
+function reassignmentSkipReason(
+  value: unknown,
+): Extract<AnonMigrationOutcome, { result: "skipped" }>["reason"] | null {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (
+    keys.length !== 2 ||
+    !keys.includes("ok") ||
+    !keys.includes("skipped") ||
+    record.ok !== true
+  ) {
+    return null;
+  }
+  switch (record.skipped) {
+    case "target_already_member":
+      return "target_is_member";
+    case "target_already_claimed":
+      return "target_already_claimed";
+    case "source_already_claimed":
+      return "source_already_claimed";
+    case "source_already_absent":
+      return "source_already_absent";
+    case "source_not_anonymous":
+      return "source_not_anonymous";
+    case "source_is_member":
+      return "source_is_member";
+    case "unexpected_source_data":
+      return "unexpected_data";
+    case "source_generation_changed":
+      return "source_generation_changed";
+    default:
+      return null;
+  }
+}
 
 /**
  * `getUserById`는 삭제된 사용자를 `{ data: { user: null }, error: user_not_found }`로 반환한다.
@@ -151,7 +227,7 @@ export async function runAnonDataMigration(
   authorization: AnonMigrationAuthorization,
 ): Promise<AnonMigrationOutcome> {
   if (
-    authorization.signedSourceCookieVerified !== true ||
+    authorization.sourceAuthorityVerified !== true ||
     !UUID_RE.test(authorization.sourceUserId) ||
     !UUID_RE.test(authorization.targetUserId) ||
     authorization.sourceUserId === authorization.targetUserId
@@ -249,11 +325,13 @@ export async function runAnonDataMigration(
 
   const reassigned = await capture("data.reassign", dependencies.reassign);
   if (!reassigned.ok) return reassigned.failure;
-  if (
-    typeof reassigned.value.data !== "object" ||
-    reassigned.value.data === null ||
-    (reassigned.value.data as { ok?: unknown }).ok !== true
-  ) {
+  const reassignedSkip = reassignmentSkipReason(
+    reassigned.value.data,
+  );
+  if (reassignedSkip !== null) {
+    return { result: "skipped", reason: reassignedSkip };
+  }
+  if (!isExactReassignmentSuccess(reassigned.value.data)) {
     return failure("data.reassign", new Error("reassign_result_invalid"));
   }
 

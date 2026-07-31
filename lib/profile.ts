@@ -55,7 +55,7 @@ export async function getMyProfile(
     attempt: async (requestSignal) => {
       try {
         const session = await ensureAuth(requestSignal);
-        const sb = createClient(requestSignal);
+        const sb = createClient();
         const profileRow = await requireSupabaseData(
           "profile.self",
           () =>
@@ -133,7 +133,7 @@ export async function updateNickname(
     throw new Error("닉네임은 2자 이상이어야 해요");
   }
   const session = await ensureAuth(signal);
-  const sb = createClient(signal);
+  const sb = createClient();
   const deliver = async (requestSignal: AbortSignal) => {
     const { data, error } = await sb
       .from("profiles")

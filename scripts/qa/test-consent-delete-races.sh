@@ -11,8 +11,8 @@ if [[ -z "$project_id" ]]; then
   echo "supabase project_id is missing" >&2
   exit 1
 fi
-db_container="supabase_db_${project_id}"
-if [[ "$db_container" != supabase_db_* ]] \
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
+if [[ ! "$db_container" =~ ^supabase_db_[A-Za-z0-9._-]+$ ]] \
   || ! docker inspect "$db_container" >/dev/null 2>&1; then
   echo "disposable local Supabase database container is not running: $db_container" >&2
   exit 1

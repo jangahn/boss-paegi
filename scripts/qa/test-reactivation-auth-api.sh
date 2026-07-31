@@ -25,6 +25,10 @@ if ! command -v supabase >/dev/null 2>&1; then
   echo "Supabase CLI is required for the local Auth API contract" >&2
   exit 1
 fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required for the local Auth API contract" >&2
+  exit 1
+fi
 
 qa_tmp_dir="$(
   mktemp -d "${TMPDIR:-/tmp}/boss-paegi-reactivation-auth-api.XXXXXX"
@@ -167,17 +171,13 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-status_env="$qa_tmp_dir/supabase.env"
-if ! supabase status -o env >"$status_env" 2>/dev/null; then
+if ! status_json="$(supabase status -o json 2>/dev/null)"; then
   echo "could not read disposable local Supabase status" >&2
   exit 1
 fi
-set -a
-# shellcheck disable=SC1090
-source "$status_env"
-set +a
-qa_api_url="${API_URL:-}"
-qa_service_key="${SERVICE_ROLE_KEY:-}"
+qa_api_url="$(jq -er '.API_URL' <<<"$status_json")"
+qa_service_key="$(jq -er '.SERVICE_ROLE_KEY' <<<"$status_json")"
+unset status_json
 if [[ ! "$qa_api_url" =~ ^http://(127\.0\.0\.1|localhost):[0-9]+$ ]] \
   || [[ -z "$qa_service_key" ]]; then
   echo "local Supabase API URL/service key is unavailable" >&2

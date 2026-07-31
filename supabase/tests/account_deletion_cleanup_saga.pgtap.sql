@@ -151,9 +151,9 @@ select ok(
            where r.rolname = 'authenticated')
        ]::oid[]
        and pg_catalog.pg_get_expr(p.polqual, p.polrelid)
-         = '((auth.uid() = id) AND (deleted_at IS NULL))'
+         = '((auth.uid() = id) AND (deleted_at IS NULL) AND oauth_current_auth_session_live())'
        and pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
-         = '((auth.uid() = id) AND (deleted_at IS NULL))'
+         = '((auth.uid() = id) AND (deleted_at IS NULL) AND oauth_current_auth_session_live())'
   ),
   'profile self-update policy is authenticated active-self only'
 );
@@ -203,6 +203,7 @@ select has_trigger(
 -- ── fixture + atomic manifest/soft-delete ────────────────────────────────────
 create temporary table cleanup_ctx (
   user_id uuid not null,
+  session_id uuid not null,
   doll_id uuid not null,
   score_id uuid not null,
   spare_score_id uuid not null,
@@ -214,6 +215,7 @@ create temporary table cleanup_ctx (
 do $fixture$
 declare
   v_user uuid := gen_random_uuid();
+  v_session uuid := gen_random_uuid();
   v_doll uuid := gen_random_uuid();
   v_score uuid := gen_random_uuid();
   v_spare_score uuid := gen_random_uuid();
@@ -222,6 +224,13 @@ declare
 begin
   insert into auth.users(id, email)
   values (v_user, 'cleanup-saga@example.test');
+  insert into auth.sessions(id, user_id, created_at, updated_at)
+  values (
+    v_session,
+    v_user,
+    pg_catalog.clock_timestamp(),
+    pg_catalog.clock_timestamp()
+  );
   insert into public.member_accounts(user_id, gen_credits)
   values (v_user, 0)
   on conflict (user_id) do nothing;
@@ -250,9 +259,25 @@ begin
 
   v_start := public.admin_soft_delete_account(v_user);
   insert into cleanup_ctx
-    (user_id, doll_id, score_id, spare_score_id, report_id, start_result)
+    (
+      user_id,
+      session_id,
+      doll_id,
+      score_id,
+      spare_score_id,
+      report_id,
+      start_result
+    )
   values
-    (v_user, v_doll, v_score, v_spare_score, v_report, v_start);
+    (
+      v_user,
+      v_session,
+      v_doll,
+      v_score,
+      v_spare_score,
+      v_report,
+      v_start
+    );
 end;
 $fixture$;
 
@@ -340,8 +365,15 @@ select is(
 
 -- ── stale request / reactivation backstop ───────────────────────────────────
 select set_config(
-  'request.jwt.claim.sub',
-  (select user_id::text from cleanup_ctx),
+  'request.jwt.claims',
+  (
+    select pg_catalog.jsonb_build_object(
+      'sub', user_id,
+      'role', 'authenticated',
+      'session_id', session_id
+    )::text
+      from cleanup_ctx
+  ),
   true
 );
 set local role authenticated;
@@ -648,8 +680,15 @@ select lives_ok(
   'profile can reactivate after cleanup completion'
 );
 select set_config(
-  'request.jwt.claim.sub',
-  (select user_id::text from cleanup_ctx),
+  'request.jwt.claims',
+  (
+    select pg_catalog.jsonb_build_object(
+      'sub', user_id,
+      'role', 'authenticated',
+      'session_id', session_id
+    )::text
+      from cleanup_ctx
+  ),
   true
 );
 set local role authenticated;

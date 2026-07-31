@@ -186,6 +186,78 @@ export type CommerceDisplayRetentionResult = Readonly<{
   hasMore: boolean;
 }>;
 
+export type OAuthAnonPrivacyStatus = Readonly<{
+  openFuture: number;
+  due: number;
+  blocked: number;
+  failures: number;
+  scrubbedRecent: number;
+  capped: boolean;
+}>;
+
+const OAUTH_ANON_PRIVACY_STATUS_KEYS = [
+  "blocked",
+  "capped",
+  "due",
+  "failures",
+  "openFuture",
+  "scrubbedRecent",
+] as const;
+
+/** Exact fail-closed shape for OAuth anonymous-data privacy convergence. */
+export function parseOAuthAnonPrivacyStatus(
+  value: unknown,
+): OAuthAnonPrivacyStatus | null {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const keys = Object.keys(row).sort();
+  if (
+    keys.length !== OAUTH_ANON_PRIVACY_STATUS_KEYS.length ||
+    keys.some(
+      (key, index) =>
+        key !== OAUTH_ANON_PRIVACY_STATUS_KEYS[index],
+    ) ||
+    !count(row.openFuture, PRIVACY_RETENTION_COUNT_CAP) ||
+    !count(row.due, PRIVACY_RETENTION_COUNT_CAP) ||
+    !count(row.blocked, PRIVACY_RETENTION_COUNT_CAP) ||
+    !count(row.failures, PRIVACY_RETENTION_COUNT_CAP) ||
+    !count(row.scrubbedRecent, PRIVACY_RETENTION_COUNT_CAP) ||
+    typeof row.capped !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    openFuture: row.openFuture,
+    due: row.due,
+    blocked: row.blocked,
+    failures: row.failures,
+    scrubbedRecent: row.scrubbedRecent,
+    capped: row.capped,
+  };
+}
+
+export function oauthAnonPrivacyNeedsRetry(
+  status: OAuthAnonPrivacyStatus,
+): boolean {
+  return (
+    status.due > 0 ||
+    status.blocked > 0 ||
+    status.capped
+  );
+}
+
+export function oauthAnonPrivacyHasFailure(
+  status: OAuthAnonPrivacyStatus,
+): boolean {
+  return status.failures > 0;
+}
+
 function parseBoundedEvidenceRetentionResult(
   value: unknown,
   limit: number,

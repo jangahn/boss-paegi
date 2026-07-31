@@ -18,6 +18,14 @@ export const PAYMENT_ROLLOUT_PROJECT_HEADER =
   "x-boss-paegi-supabase-project-ref";
 export const PAYMENT_ROLLOUT_COMMIT_HEADER =
   "x-boss-paegi-build-commit";
+export const PAYMENT_ROLLOUT_VERCEL_PROJECT_HEADER =
+  "x-boss-paegi-vercel-project-id";
+export const PAYMENT_ROLLOUT_VERCEL_DEPLOYMENT_HEADER =
+  "x-boss-paegi-vercel-deployment-id";
+export const PAYMENT_ROLLOUT_VERCEL_URL_HEADER =
+  "x-boss-paegi-vercel-deployment-url";
+export const PAYMENT_ROLLOUT_VERCEL_ENVIRONMENT_HEADER =
+  "x-boss-paegi-vercel-environment";
 
 /** @typedef {Record<string, string | undefined>} RuntimeEnvironment */
 
@@ -467,6 +475,7 @@ async function readFrozenSurface({
   surface,
   expectedProjectRef,
   allowedCommits,
+  expectedDeploymentIdentity,
   fetchImpl,
 }) {
   let response;
@@ -493,7 +502,21 @@ async function readFrozenSurface({
   if (
     response.headers.get(surface.rolloutHeader) !== "frozen" ||
     response.headers.get(PAYMENT_ROLLOUT_PROJECT_HEADER) !==
-      expectedProjectRef
+      expectedProjectRef ||
+    (
+      expectedDeploymentIdentity !== null &&
+      (
+        response.headers.get(PAYMENT_ROLLOUT_VERCEL_PROJECT_HEADER) !==
+          expectedDeploymentIdentity.projectId ||
+        response.headers.get(PAYMENT_ROLLOUT_VERCEL_DEPLOYMENT_HEADER) !==
+          expectedDeploymentIdentity.deploymentId ||
+        response.headers.get(PAYMENT_ROLLOUT_VERCEL_URL_HEADER) !==
+          expectedDeploymentIdentity.url ||
+        response.headers.get(
+          PAYMENT_ROLLOUT_VERCEL_ENVIRONMENT_HEADER,
+        ) !== expectedDeploymentIdentity.environment
+      )
+    )
   ) {
     try {
       await response.body?.cancel();
@@ -538,6 +561,12 @@ async function readFrozenSurface({
  *   origin?: string,
  *   expectedProjectRef?: string,
  *   allowedCommits?: Set<string>,
+ *   expectedDeploymentIdentity?: null | {
+ *     projectId: string,
+ *     deploymentId: string,
+ *     url: string,
+ *     environment: "production"
+ *   },
  *   fetchImpl?: typeof fetch
  * }} [options]
  */
@@ -545,9 +574,29 @@ export async function verifyFrozenSurfaces({
   origin = DEFAULT_PRODUCTION_ORIGIN,
   expectedProjectRef,
   allowedCommits,
+  expectedDeploymentIdentity = null,
   fetchImpl = fetch,
 } = {}) {
   const checkedOrigin = productionOrigin(origin);
+  const deploymentIdentityValid =
+    expectedDeploymentIdentity === null ||
+    (
+      expectedDeploymentIdentity &&
+      typeof expectedDeploymentIdentity === "object" &&
+      !Array.isArray(expectedDeploymentIdentity) &&
+      Object.keys(expectedDeploymentIdentity).sort().join(",") ===
+        "deploymentId,environment,projectId,url" &&
+      /^prj_[A-Za-z0-9]{16,64}$/.test(
+        expectedDeploymentIdentity.projectId,
+      ) &&
+      /^dpl_[A-Za-z0-9]{16,64}$/.test(
+        expectedDeploymentIdentity.deploymentId,
+      ) &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.vercel\.app$/.test(
+        expectedDeploymentIdentity.url,
+      ) &&
+      expectedDeploymentIdentity.environment === "production"
+    );
   if (
     typeof expectedProjectRef !== "string" ||
     !/^[a-z0-9]{20}$/.test(expectedProjectRef) ||
@@ -556,7 +605,8 @@ export async function verifyFrozenSurfaces({
     [...allowedCommits].some(
       (commit) =>
         typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit),
-    )
+    ) ||
+    !deploymentIdentityValid
   ) {
     throw new Error("frozen_surface_expectation_invalid");
   }
@@ -567,6 +617,7 @@ export async function verifyFrozenSurfaces({
         surface,
         expectedProjectRef,
         allowedCommits,
+        expectedDeploymentIdentity,
         fetchImpl,
       }),
     ),

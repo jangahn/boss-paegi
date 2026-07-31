@@ -2,28 +2,67 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  isExactPrepareSignupAck,
+  parsePrepareSignupActiveConflict,
+  parsePrepareSignupAck,
   parseOAuthStartUrl,
 } from "../../lib/oauth-start-result.ts";
 
+const FLOW_ID = "11111111-1111-4111-8111-111111111111";
 const SUPABASE_URL = "https://project.supabase.co";
 const REDIRECT_TO =
-  "https://boss.example/auth/callback?next=%2Fgallery&p=google";
+  "https://boss.example/auth/callback" +
+  `?next=%2Fgallery&p=google&flow=${FLOW_ID}`;
+const CODE_CHALLENGE =
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const VALID_URL =
   `${SUPABASE_URL}/auth/v1/authorize` +
   `?provider=google&redirect_to=${encodeURIComponent(REDIRECT_TO)}` +
+  `&code_challenge=${CODE_CHALLENGE}` +
+  "&code_challenge_method=s256&prompt=select_account" +
   "&skip_http_redirect=true";
 
-test("prepare-signup HTTP body는 exact {ok:true}만 승인한다", () => {
-  assert.equal(isExactPrepareSignupAck({ ok: true }), true);
+test("prepare-signup HTTP body는 exact flow-bound ack만 승인한다", () => {
+  assert.equal(
+    parsePrepareSignupAck(
+      { ok: true, flowId: FLOW_ID },
+      FLOW_ID,
+    ),
+    FLOW_ID,
+  );
   for (const malformed of [
     null,
     {},
     { ok: false },
     { ok: 1 },
-    { ok: true, extra: true },
+    { ok: true },
+    { ok: true, flowId: "22222222-2222-4222-8222-222222222222" },
+    { ok: true, flowId: FLOW_ID, extra: true },
   ]) {
-    assert.equal(isExactPrepareSignupAck(malformed), false);
+    assert.equal(
+      parsePrepareSignupAck(malformed, FLOW_ID),
+      null,
+    );
+  }
+});
+
+test("prepare-signup active-flow conflict는 exact error receipt만 승인한다", () => {
+  assert.equal(
+    parsePrepareSignupActiveConflict({
+      error: "oauth_flow_already_active",
+    }),
+    true,
+  );
+  for (const malformed of [
+    null,
+    {},
+    { error: "oauth_flow_already_active", flowId: FLOW_ID },
+    { error: "oauth_flow_already_active", extra: true },
+    { error: "auth_unavailable" },
+  ]) {
+    assert.equal(
+      parsePrepareSignupActiveConflict(malformed),
+      false,
+    );
   }
 });
 
@@ -38,6 +77,7 @@ test("OAuth start ack는 provider/Supabase origin/authorize path/redirect를 모
         provider: "google",
         supabaseUrl: SUPABASE_URL,
         redirectTo: REDIRECT_TO,
+        codeChallenge: CODE_CHALLENGE,
       },
     ),
     VALID_URL,
@@ -60,6 +100,7 @@ test("OAuth start ack는 provider/Supabase origin/authorize path/redirect를 모
           provider: "google",
           supabaseUrl: SUPABASE_URL,
           redirectTo: REDIRECT_TO,
+          codeChallenge: CODE_CHALLENGE,
         },
       ),
       null,
@@ -75,6 +116,7 @@ test("OAuth start ack는 provider/Supabase origin/authorize path/redirect를 모
         provider: "google",
         supabaseUrl: SUPABASE_URL,
         redirectTo: REDIRECT_TO,
+        codeChallenge: CODE_CHALLENGE,
       },
     ),
     null,
@@ -92,5 +134,16 @@ test("OAuth surface는 SDK 자동 navigation을 끄고 검증 후 직접 이동�
   assert.ok(skip >= 0);
   assert.ok(parse > skip);
   assert.ok(assign > parse);
-  assert.match(source, /isExactPrepareSignupAck\(preparedAck\)/);
+  assert.match(
+    source,
+    /parsePrepareSignupAck\([\s\S]*?flowId/,
+  );
+  assert.match(
+    source,
+    /const prepareBody = JSON\.stringify\([\s\S]*?body: prepareBody,[\s\S]*?attempt: prepare,[\s\S]*?reconcile: prepare/,
+  );
+  assert.match(
+    source,
+    /prepared\.status === 409[\s\S]*?parsePrepareSignupActiveConflict\(parsed\.value\)[\s\S]*?OAuthExistingFlowConflictError[\s\S]*?clearOAuthFlowBrowserBarrier\(flowId\)[\s\S]*?window\.location\.replace\("\/auth\/flow-pending"\)[\s\S]*?return;[\s\S]*?cancelOAuthFlowLease/,
+  );
 });

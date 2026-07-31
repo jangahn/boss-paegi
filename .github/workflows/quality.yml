@@ -75,6 +75,54 @@ jobs:
       - name: Verify legacy closure and permanent app surfaces
         run: npm run qa:db:rollout-contract
 
+      - name: Apply only the 0093 OAuth expand migration
+        run: npm run qa:db:apply:oauth-expand
+
+      - name: Verify the OAuth expand compatibility window
+        run: npm run qa:db:oauth-expand
+
+      - name: Prove OAuth relation fingerprints reject catalog tampering
+        run: npm run qa:db:oauth-relation-fingerprint-tamper
+
+      - name: Prove OAuth rollout catalog mutations are transaction-fenced
+        run: npm run qa:db:oauth-catalog-mutation-locks
+
+      - name: Prove the legacy reassignment caller remains available during 0093
+        run: npm run test:db:oauth-expand-compat
+
+      - name: Prove a locked terminal OAuth row remains non-green
+        run: npm run qa:db:oauth-prune-lock-race
+
+      - name: Prove OAuth migration and member creation serialize to no-transfer
+        run: npm run qa:db:oauth-migration-member-race
+
+      - name: Prove raw 0094 fails closed without provider qualification
+        run: npm run qa:db:oauth-contract-raw-guard
+
+      - name: Apply only the 0094 OAuth contract migration
+        run: npm run qa:db:apply:oauth-contract
+
+      - name: Verify raw reassignment closure after 0094
+        run: npm run qa:db:oauth-contract
+
+      - name: Prove raw 0095 cannot bypass the staged post-contract runner
+        run: npm run qa:db:analytics-maintenance-raw-guard
+
+      - name: Apply only the 0095 analytics maintenance hardening
+        run: npm run qa:db:apply:oauth-post-contract
+
+      - name: Verify every analytics maintenance argument boundary
+        run: npm run test:db:analytics-maintenance-bounds
+
+      - name: Verify superseded service RPCs are owner-only
+        run: npm run test:db:dead-service-rpc-acl-cleanup
+
+      - name: Prove superseded RPC closure reconverges over later ACL drift
+        run: npm run qa:db:analytics-maintenance-acl-upgrade
+
+      - name: Prove analytics maintenance rebuilds and pruning serialize
+        run: npm run qa:db:analytics-maintenance-lock-race
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 

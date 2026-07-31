@@ -5,6 +5,10 @@ import test from "node:test";
 import {
   PAYMENT_ROLLOUT_COMMIT_HEADER,
   PAYMENT_ROLLOUT_PROJECT_HEADER,
+  PAYMENT_ROLLOUT_VERCEL_DEPLOYMENT_HEADER,
+  PAYMENT_ROLLOUT_VERCEL_ENVIRONMENT_HEADER,
+  PAYMENT_ROLLOUT_VERCEL_PROJECT_HEADER,
+  PAYMENT_ROLLOUT_VERCEL_URL_HEADER,
   WITHDRAWAL_LIMIT_EVIDENCE_IMPLEMENTED,
   checkoutProductSnapshotMatches,
   checkoutPayModeMatches,
@@ -38,13 +42,33 @@ test("checkout freeze exposes only a complete validated deployment identity", ()
       NEXT_PUBLIC_SUPABASE_URL:
         "https://abcdefghijklmnopqrst.supabase.co/",
       VERCEL_GIT_COMMIT_SHA: commit.toUpperCase(),
+      VERCEL_PROJECT_ID: "prj_1234567890abcdefghijklmnop",
+      VERCEL_DEPLOYMENT_ID: "dpl_1234567890abcdefghijklmnop",
+      VERCEL_URL: "Boss-Paegi-AbCdEf.vercel.app",
+      VERCEL_TARGET_ENV: "production",
     }),
     {
       [PAYMENT_ROLLOUT_PROJECT_HEADER]: "abcdefghijklmnopqrst",
       [PAYMENT_ROLLOUT_COMMIT_HEADER]: commit,
+      [PAYMENT_ROLLOUT_VERCEL_PROJECT_HEADER]:
+        "prj_1234567890abcdefghijklmnop",
+      [PAYMENT_ROLLOUT_VERCEL_DEPLOYMENT_HEADER]:
+        "dpl_1234567890abcdefghijklmnop",
+      [PAYMENT_ROLLOUT_VERCEL_URL_HEADER]:
+        "boss-paegi-abcdef.vercel.app",
+      [PAYMENT_ROLLOUT_VERCEL_ENVIRONMENT_HEADER]: "production",
     },
   );
 
+  const complete = {
+    NEXT_PUBLIC_SUPABASE_URL:
+      "https://abcdefghijklmnopqrst.supabase.co/",
+    VERCEL_GIT_COMMIT_SHA: commit,
+    VERCEL_PROJECT_ID: "prj_1234567890abcdefghijklmnop",
+    VERCEL_DEPLOYMENT_ID: "dpl_1234567890abcdefghijklmnop",
+    VERCEL_URL: "boss-paegi-abcdef.vercel.app",
+    VERCEL_TARGET_ENV: "production",
+  };
   for (const env of [
     {},
     {
@@ -71,6 +95,11 @@ test("checkout freeze exposes only a complete validated deployment identity", ()
         "https://abcdefghijklmnopqrst.supabase.co/path",
       VERCEL_GIT_COMMIT_SHA: commit,
     },
+    { ...complete, VERCEL_PROJECT_ID: "project" },
+    { ...complete, VERCEL_DEPLOYMENT_ID: "deployment" },
+    { ...complete, VERCEL_URL: "boss-paegi.vercel.app.evil.example" },
+    { ...complete, VERCEL_URL: "https://boss-paegi.vercel.app" },
+    { ...complete, VERCEL_TARGET_ENV: "preview" },
   ]) {
     assert.deepEqual(paymentRolloutIdentityHeaders(env), {});
   }

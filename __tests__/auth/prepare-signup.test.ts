@@ -72,16 +72,44 @@ test("route resolves Auth authority before creating or signing a success respons
     new URL("../../app/api/auth/prepare-signup/route.ts", import.meta.url),
     "utf8",
   );
-  const getUser = source.indexOf("await supabase.auth.getUser()");
-  const decision = source.indexOf("decidePrepareSignupUser(authResult)");
-  const success = source.indexOf(
-    "const res = NextResponse.json({ ok: true })",
+  const post = source.slice(
+    source.indexOf("export async function POST"),
   );
-  const sign = source.indexOf("signMigrateValue(decision.user.id)");
+  const rawSession = post.indexOf(
+    "readSupabaseSessionCookieHeader(",
+  );
+  const getUser = post.indexOf("readServerAuthUser({");
+  const actorFence = post.indexOf(
+    "authResult.user.id !== input.expectedUserId",
+  );
+  const begin = post.indexOf(
+    '.rpc("begin_oauth_flow_intent"',
+  );
+  const sign = post.indexOf("signOAuthFlowProof(");
+  const success = source.indexOf(
+    "const response = json({ ok: true, flowId: input.flowId })",
+  );
+  const migrate = source.indexOf(
+    "signMigrateValue(authResult.user.id, input.flowId)",
+  );
+  assert.ok(rawSession >= 0);
   assert.ok(getUser >= 0);
-  assert.ok(decision > getUser);
-  assert.ok(success > decision);
-  assert.ok(sign > success);
-  assert.match(source, /kind === "unauthorized" \? 401 : 503/);
-  assert.match(source, /catch \(error\)[\s\S]*auth_unavailable/);
+  assert.ok(getUser > rawSession);
+  assert.ok(actorFence > getUser);
+  assert.ok(begin > actorFence);
+  assert.ok(sign > begin);
+  assert.ok(success > sign);
+  assert.ok(migrate > success);
+  assert.match(
+    post,
+    /p_source_access_token_sha256: tokenDigest\([\s\S]*?cookieSession\.accessToken[\s\S]*?p_source_refresh_token_sha256: tokenDigest\([\s\S]*?cookieSession\.refreshToken/,
+  );
+  assert.match(
+    source,
+    /authResult\.kind === "invalid"\s*\? "unauthorized"\s*: "auth_unavailable"[\s\S]*?authResult\.kind === "invalid" \? 401 : 503/,
+  );
+  assert.match(
+    source,
+    /catch \(error\)[\s\S]*?auth\.oauth_flow_begin_fail[\s\S]*?auth_unavailable/,
+  );
 });

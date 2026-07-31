@@ -7,9 +7,9 @@ export LC_ALL=C
 project_id="$(
   sed -n 's/^project_id = "\(.*\)"$/\1/p' supabase/config.toml | head -n 1
 )"
-db_container="supabase_db_${project_id}"
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
 if [[ -z "$project_id" ]] \
-  || [[ "$db_container" != supabase_db_* ]] \
+  || ! [[ "$db_container" =~ ^supabase_db_[A-Za-z0-9._-]+$ ]] \
   || ! docker inspect "$db_container" >/dev/null 2>&1; then
   echo "disposable local Supabase database is unavailable" >&2
   exit 1
@@ -54,8 +54,12 @@ cleanup() {
       begin;
       delete from public.telemetry_sessions
        where id = '$session_id'::uuid;
+      delete from public.oauth_anon_auth_cleanup_jobs
+       where legacy_source_user_id = '$source_user'::uuid;
+      set local session_replication_role = replica;
       delete from public.anon_data_reassignments
        where source_user_id = '$source_user'::uuid;
+      set local session_replication_role = origin;
       delete from public.member_accounts
        where user_id in ('$target_a'::uuid, '$target_b'::uuid);
       delete from auth.users
@@ -75,6 +79,11 @@ cleanup() {
             select pg_catalog.count(*)
               from public.telemetry_sessions
              where id = '$session_id'::uuid
+          )
+          + (
+            select pg_catalog.count(*)
+              from public.oauth_anon_auth_cleanup_jobs
+             where legacy_source_user_id = '$source_user'::uuid
           )
           + (
             select pg_catalog.count(*)
@@ -248,21 +257,30 @@ for id in "$source_user" "$target_a" "$target_b" "$session_id"; do
 done
 
 db_psql -q -c "
-  insert into auth.users(id, email) values
+  insert into auth.users(
+    id,
+    email,
+    is_anonymous,
+    created_at
+  ) values
     (
       '$source_user'::uuid,
-      'reassign-source-$source_user@test.local'
+      'reassign-source-$source_user@test.local',
+      true,
+      clock_timestamp()
     ),
     (
       '$target_a'::uuid,
-      'reassign-target-a-$target_a@test.local'
+      'reassign-target-a-$target_a@test.local',
+      false,
+      clock_timestamp()
     ),
     (
       '$target_b'::uuid,
-      'reassign-target-b-$target_b@test.local'
+      'reassign-target-b-$target_b@test.local',
+      false,
+      clock_timestamp()
     );
-  insert into public.member_accounts(user_id)
-  values ('$target_a'::uuid), ('$target_b'::uuid);
   select public.ingest_telemetry_delta(
     '$session_id'::uuid,
     '$source_user'::uuid,

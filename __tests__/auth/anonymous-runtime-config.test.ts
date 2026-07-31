@@ -10,6 +10,10 @@ const authClient = readFileSync(
   new URL("../../lib/auth-client.ts", import.meta.url),
   "utf8",
 );
+const supabaseClient = readFileSync(
+  new URL("../../lib/supabase/client.ts", import.meta.url),
+  "utf8",
+);
 
 test("the committed Supabase runtime enables the anonymous identity required by free play", () => {
   assert.match(
@@ -20,5 +24,12 @@ test("the committed Supabase runtime enables the anonymous identity required by 
     supabaseConfig,
     /^\s*anonymous_users\s*=\s*(?:[1-9]\d*)\s*$/m,
   );
-  assert.match(authClient, /\.signInAnonymously\(\)/);
+  assert.match(
+    authClient,
+    /establishAnonymousAuthSession\([\s\S]*?requestSignal/,
+  );
+  assert.match(
+    supabaseClient,
+    /export function establishAnonymousAuthSession\([\s\S]*?auth\.getSession\(\)[\s\S]*?startSupabaseUnlockedSessionWriter\([\s\S]*?auth\.signInAnonymously\(\)[\s\S]*?anonymous_session_commit_mismatch/,
+  );
 });

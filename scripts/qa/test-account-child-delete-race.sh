@@ -12,8 +12,8 @@ if [[ -z "$project_id" ]]; then
   exit 1
 fi
 
-db_container="supabase_db_${project_id}"
-if [[ "$db_container" != supabase_db_* ]] \
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
+if [[ ! "$db_container" =~ ^supabase_db_[A-Za-z0-9._-]+$ ]] \
   || ! docker inspect "$db_container" >/dev/null 2>&1; then
   echo "disposable local Supabase database container is not running: $db_container" >&2
   exit 1
@@ -34,6 +34,8 @@ generation_first_user=""
 delete_first_user=""
 profile_first_user=""
 profile_delete_first_user=""
+profile_first_session=""
+profile_delete_first_session=""
 report_delete_first_user=""
 telemetry_delete_first_user=""
 report_score=""
@@ -408,9 +410,9 @@ catalog_ok="$(
                where r.rolname = 'authenticated')
            ]::oid[]
            and pg_catalog.pg_get_expr(p.polqual, p.polrelid)
-             = '((auth.uid() = id) AND (deleted_at IS NULL))'
+             = '((auth.uid() = id) AND (deleted_at IS NULL) AND oauth_current_auth_session_live())'
            and pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
-             = '((auth.uid() = id) AND (deleted_at IS NULL))'
+             = '((auth.uid() = id) AND (deleted_at IS NULL) AND oauth_current_auth_session_live())'
       )
       and not has_function_privilege(
         'service_role',
@@ -427,6 +429,8 @@ generation_first_user="$(db_value "select gen_random_uuid();")"
 delete_first_user="$(db_value "select gen_random_uuid();")"
 profile_first_user="$(db_value "select gen_random_uuid();")"
 profile_delete_first_user="$(db_value "select gen_random_uuid();")"
+profile_first_session="$(db_value "select gen_random_uuid();")"
+profile_delete_first_session="$(db_value "select gen_random_uuid();")"
 report_delete_first_user="$(db_value "select gen_random_uuid();")"
 telemetry_delete_first_user="$(db_value "select gen_random_uuid();")"
 spare_score="$(db_value "select gen_random_uuid();")"
@@ -437,6 +441,8 @@ for id in \
   "$delete_first_user" \
   "$profile_first_user" \
   "$profile_delete_first_user" \
+  "$profile_first_session" \
+  "$profile_delete_first_session" \
   "$report_delete_first_user" \
   "$telemetry_delete_first_user" \
   "$spare_score" \
@@ -479,6 +485,19 @@ db_psql -q -c "
     ('$report_delete_first_user'::uuid, 0),
     ('$telemetry_delete_first_user'::uuid, 0)
   on conflict (user_id) do nothing;
+  insert into auth.sessions(id, user_id, created_at, updated_at) values
+    (
+      '$profile_first_session'::uuid,
+      '$profile_first_user'::uuid,
+      pg_catalog.clock_timestamp(),
+      pg_catalog.clock_timestamp()
+    ),
+    (
+      '$profile_delete_first_session'::uuid,
+      '$profile_delete_first_user'::uuid,
+      pg_catalog.clock_timestamp(),
+      pg_catalog.clock_timestamp()
+    );
   insert into public.scores(
     id, owner_id, score, weapon, duration_ms
   ) values
@@ -533,8 +552,9 @@ telemetry_waiter_app="bp_qa_telemetry_waiter_$$"
 active_profile_update_count="$(
   db_value "
     begin;
+    set local request.jwt.claims =
+      '{\"sub\":\"$profile_first_user\",\"role\":\"authenticated\",\"session_id\":\"$profile_first_session\"}';
     set local role authenticated;
-    set local request.jwt.claim.sub = '$profile_first_user';
     with updated as (
       update public.profiles
          set display_name = 'active-self'
@@ -827,8 +847,9 @@ printf "%s\n" "
   set application_name = '$profile_writer_app';
   set statement_timeout = '15s';
   begin;
+  set local request.jwt.claims =
+    '{\"sub\":\"$profile_first_user\",\"role\":\"authenticated\",\"session_id\":\"$profile_first_session\"}';
   set local role authenticated;
-  set local request.jwt.claim.sub = '$profile_first_user';
   update public.profiles
      set display_name = 'profile-first'
    where id = auth.uid();
@@ -891,8 +912,9 @@ db_psql -qAt -c "
   set application_name = '$profile_waiter_app';
   set statement_timeout = '15s';
   begin;
+  set local request.jwt.claims =
+    '{\"sub\":\"$profile_delete_first_user\",\"role\":\"authenticated\",\"session_id\":\"$profile_delete_first_session\"}';
   set local role authenticated;
-  set local request.jwt.claim.sub = '$profile_delete_first_user';
   with updated as (
     update public.profiles
        set display_name = 'stale-profile'

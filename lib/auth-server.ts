@@ -14,6 +14,7 @@ import {
   type AuthReadSource,
 } from "@/lib/auth-read-policy";
 import { log, errInfo } from "@/lib/log";
+import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 
 export type MemberRow = {
   user_id: string;
@@ -51,6 +52,36 @@ function unavailable(
   return { ok: false, status: 503, error: "service_unavailable" };
 }
 
+async function requireCurrentAuthUser(): Promise<AuthGateResult> {
+  const supabase = await createClient();
+  let authResult;
+  try {
+    authResult = await supabase.auth.getUser();
+  } catch (error) {
+    return unavailable(null, "auth", error);
+  }
+  const authRead = resolveAuthUserRead(authResult);
+  if (!authRead.ok) {
+    return authRead.kind === "unauthorized"
+      ? { ok: false, status: 401, error: "unauthorized" }
+      : unavailable(null, "auth", authRead.error);
+  }
+  const sessionState = await readCurrentAuthSessionState(() =>
+    supabase.rpc("oauth_current_auth_session_live"),
+  );
+  if (sessionState.kind === "revoked") {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+  if (sessionState.kind === "unavailable") {
+    return unavailable(
+      authRead.user.id,
+      "auth",
+      sessionState.error,
+    );
+  }
+  return { ok: true, user: authRead.user };
+}
+
 /**
  * 멤버 전용 라우트 게이트 — 모든 member-only API/RSC 의 단일 choke point.
  * - 세션 없음 → 401 `unauthorized`
@@ -65,19 +96,8 @@ function unavailable(
  * self-block 을 구조적으로 방지한다(I6).
  */
 export async function requireMember(): Promise<RequireMemberResult> {
-  const supabase = await createClient();
-  let authResult;
-  try {
-    authResult = await supabase.auth.getUser();
-  } catch (error) {
-    return unavailable(null, "auth", error);
-  }
-  const authRead = resolveAuthUserRead(authResult);
-  if (!authRead.ok) {
-    return authRead.kind === "unauthorized"
-      ? { ok: false, status: 401, error: "unauthorized" }
-      : unavailable(null, "auth", authRead.error);
-  }
+  const authRead = await requireCurrentAuthUser();
+  if (!authRead.ok) return authRead;
   const user = authRead.user;
   if (user.is_anonymous) return { ok: false, status: 403, error: "member_only" };
 
@@ -137,19 +157,8 @@ export async function requireMember(): Promise<RequireMemberResult> {
  * profiles 조회 실패·no-row는 상태 없음으로 강등하지 않고 503 fail-closed한다.
  */
 export async function requireActiveUser(): Promise<AuthGateResult> {
-  const supabase = await createClient();
-  let authResult;
-  try {
-    authResult = await supabase.auth.getUser();
-  } catch (error) {
-    return unavailable(null, "auth", error);
-  }
-  const authRead = resolveAuthUserRead(authResult);
-  if (!authRead.ok) {
-    return authRead.kind === "unauthorized"
-      ? { ok: false, status: 401, error: "unauthorized" }
-      : unavailable(null, "auth", authRead.error);
-  }
+  const authRead = await requireCurrentAuthUser();
+  if (!authRead.ok) return authRead;
   const user = authRead.user;
 
   const admin = createAdminClient();
@@ -177,19 +186,8 @@ export async function requireActiveUser(): Promise<AuthGateResult> {
  * 동의를 완료할 수 있다). 동의 게이트가 동의 화면을 막는 self-block 을 방지.
  */
 export async function requireAuthedNonDeleted(): Promise<AuthGateResult> {
-  const supabase = await createClient();
-  let authResult;
-  try {
-    authResult = await supabase.auth.getUser();
-  } catch (error) {
-    return unavailable(null, "auth", error);
-  }
-  const authRead = resolveAuthUserRead(authResult);
-  if (!authRead.ok) {
-    return authRead.kind === "unauthorized"
-      ? { ok: false, status: 401, error: "unauthorized" }
-      : unavailable(null, "auth", authRead.error);
-  }
+  const authRead = await requireCurrentAuthUser();
+  if (!authRead.ok) return authRead;
   const user = authRead.user;
   if (user.is_anonymous) return { ok: false, status: 403, error: "member_only" };
 

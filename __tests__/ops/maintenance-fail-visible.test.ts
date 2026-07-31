@@ -496,6 +496,31 @@ test("content maintenance uses the same non-green scheduler contract", () => {
   );
   assert.match(
     source,
+    /\.rpc\("prune_oauth_flow_intents",[\s\S]*?const parsed = parseOAuthFlowPruneResult\(prune\);[\s\S]*?if \(pruneError \|\| !parsed\)/,
+    "OAuth pruning must reject failures and malformed acknowledgements through the exact parser",
+  );
+  assert.match(
+    source,
+    /result\.oauthFlowTargetAuthorityLossConverged =[\s\S]*?parsed\.targetAuthorityLossConverged[\s\S]*?result\.oauthFlowTargetAuthorityLossBacklog =[\s\S]*?parsed\.targetAuthorityLossBacklog[\s\S]*?result\.oauthFlowPendingExpiryBacklog =[\s\S]*?parsed\.pendingExpiryBacklog[\s\S]*?result\.oauthFlowTerminalRetentionBacklog =[\s\S]*?parsed\.terminalRetentionBacklog[\s\S]*?result\.oauthFlowUnconsumedMigrationBacklog =[\s\S]*?parsed\.unconsumedMigrationBacklog[\s\S]*?result\.oauthFlowUnreleasedContinueBacklog =[\s\S]*?parsed\.unreleasedContinueBacklog[\s\S]*?result\.oauthFlowUnboundClaimBacklog =[\s\S]*?parsed\.unboundClaimBacklog/,
+    "all five authoritative OAuth backlog counts must be preserved in the response",
+  );
+  assert.match(
+    source,
+    /oauthFlowPruneHasBacklog\(parsed\)[\s\S]*?result\.boundedBacklogs \+= 1/,
+    "any OAuth expiry, terminal-retention, unconsumed-migration, unreleased-continue, or unbound-claim backlog must keep cron non-green",
+  );
+  assert.match(
+    source,
+    /oauthFlowPruneErrors \+= 1;[\s\S]*?systemErrors \+= 1;/,
+    "malformed or failed OAuth pruning must be a 503-class system error",
+  );
+  assert.match(
+    source,
+    /oauthAnonAuthCleanupBacklog = cleanup\.backlog[\s\S]*?retryPending =[\s\S]*?result\.oauthAnonAuthCleanupBacklog/,
+    "future OAuth Auth-cleanup retries must remain non-green when no lease is due",
+  );
+  assert.match(
+    source,
     /retryPending =[\s\S]*?result\.generationProviderOutputScrubBacklog/,
     "private provider URL scrub backlog must remain retry-visible",
   );

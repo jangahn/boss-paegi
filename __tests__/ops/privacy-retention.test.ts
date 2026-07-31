@@ -8,7 +8,10 @@ import {
   PRIVACY_RETENTION_LIMIT,
   parseCommerceDisplayRetentionResult,
   parseGenerationProviderAcceptanceRetentionResult,
+  parseOAuthAnonPrivacyStatus,
   parsePrivacyRetentionResult,
+  oauthAnonPrivacyHasFailure,
+  oauthAnonPrivacyNeedsRetry,
   privacyRetentionNeedsRetry,
 } from "../../lib/privacy-retention.ts";
 
@@ -196,6 +199,50 @@ test("generation provider acceptance prune result is exact and bounded", () => {
   }
 });
 
+test("OAuth anonymous privacy status is exact and never hides terminal cleanup exhaustion", () => {
+  const zero = {
+    openFuture: 0,
+    due: 0,
+    blocked: 0,
+    failures: 0,
+    scrubbedRecent: 0,
+    capped: false,
+  };
+  assert.deepEqual(parseOAuthAnonPrivacyStatus(zero), zero);
+  assert.equal(oauthAnonPrivacyNeedsRetry(zero), false);
+  assert.equal(oauthAnonPrivacyHasFailure(zero), false);
+
+  for (const patch of [
+    { due: 1 },
+    { blocked: 1 },
+    { capped: true },
+  ]) {
+    const status = parseOAuthAnonPrivacyStatus({
+      ...zero,
+      ...patch,
+    });
+    assert.ok(status);
+    assert.equal(oauthAnonPrivacyNeedsRetry(status), true);
+  }
+  const exhausted = parseOAuthAnonPrivacyStatus({
+    ...zero,
+    failures: 1,
+  });
+  assert.ok(exhausted);
+  assert.equal(oauthAnonPrivacyHasFailure(exhausted), true);
+
+  for (const malformed of [
+    null,
+    [],
+    { ...zero, extra: 0 },
+    { ...zero, failures: -1 },
+    { ...zero, due: 1001 },
+    { ...zero, capped: 0 },
+  ]) {
+    assert.equal(parseOAuthAnonPrivacyStatus(malformed), null);
+  }
+});
+
 test("ops route authenticates before RPC and never turns backlog into 2xx", () => {
   const route = readFileSync(
     new URL("../../app/api/ops/privacy-maintain/route.ts", import.meta.url),
@@ -215,12 +262,16 @@ test("ops route authenticates before RPC and never turns backlog into 2xx", () =
         '.rpc("prune_generation_provider_acceptance_evidence"',
       ),
   );
-  assert.match(route, /retryPending \? 429 : 200/);
+  assert.match(
+    route,
+    /oauthAnonPrivacyHasFailure\(oauthAnonPrivacy\)[\s\S]*?\? 503[\s\S]*?: retryPending[\s\S]*?\? 429[\s\S]*?: 200/u,
+  );
   assert.match(route, /opsMaintenanceResponseInit\(status\)/);
   assert.match(route, /policyReady: result\.legalBlockers\.length === 0/);
   assert.match(route, /maintenance_time_budget/);
   assert.match(route, /commerceDisplayEvidence\.hasMore/);
   assert.match(route, /generationProviderAcceptanceEvidence\.hasMore/);
+  assert.match(route, /\.rpc\("oauth_anon_privacy_status"\)/);
 });
 
 test("migration maps terminal UGC complaints to immutable three-year retention", () => {

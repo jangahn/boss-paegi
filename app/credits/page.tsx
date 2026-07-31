@@ -12,6 +12,7 @@ import { recordCreditsOfferDisplayEvidence } from "@/lib/pay/display-evidence";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { log, errInfo } from "@/lib/log";
 import { CreditsClient } from "./CreditsClient";
+import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 
 /**
  * 생성권 충전 — 서버 페이지. 노출 여부는 발행 config(creditsEnabled) + PG 심사용 계정
@@ -46,9 +47,23 @@ export default async function CreditsPage({
   }
   const growth = growthRead.value;
   const {
-    data: { user },
+    data: { user: authUser },
     error: userError,
   } = await supabase.auth.getUser();
+  const sessionState =
+    !userError && authUser
+      ? await readCurrentAuthSessionState(() =>
+          supabase.rpc("oauth_current_auth_session_live"),
+        )
+      : null;
+  const user = sessionState?.kind === "live" ? authUser : null;
+  const identityError =
+    userError ??
+    (sessionState?.kind === "unavailable"
+      ? sessionState.error
+      : sessionState?.kind === "revoked"
+        ? new Error("credits_session_revoked")
+        : null);
 
   const cfg = creditsConfig(growth);
   // reviewer = config allowlist(OAuth 심사관) OR reviewer_accounts(ID/PW 테스트 계정) — lib/reviewer.ts.
@@ -57,7 +72,7 @@ export default async function CreditsPage({
       ? await getReviewerStatus(growth, user)
       : {
           ok: false as const,
-          error: userError ?? new Error("credits_user_missing"),
+          error: identityError ?? new Error("credits_user_missing"),
         };
   if (!reviewer.ok) {
     log.error("credits.reviewer_lookup_fail", {

@@ -48,7 +48,7 @@ insert into lock_rpc_manifest(signature, lock_mode) values
   ('public.admin_unban_member(uuid,uuid,text)', 'user'),
   ('public.request_avatar_clear(uuid)', 'user'),
   ('public.request_avatar_replace(uuid,text,text)', 'user'),
-  ('public.reassign_anon_data(uuid,uuid)', 'object_many'),
+  ('public.reassign_anon_data(uuid,uuid)', 'delegated'),
   ('public.record_reviewer_provision_auth(uuid,uuid,integer,uuid)', 'object'),
   ('public.finalize_reviewer_provision(uuid,uuid,integer)', 'object_user');
 
@@ -94,7 +94,8 @@ select ok(
          'public.create_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean)',
          'public.admin_reactivate_account(uuid,uuid,text,text)',
          'public.admin_ban_member(uuid,uuid,text)',
-         'public.admin_unban_member(uuid,uuid,text)'
+         'public.admin_unban_member(uuid,uuid,text)',
+         'public.reassign_anon_data(uuid,uuid)'
        )
        and pg_catalog.has_function_privilege(
          'service_role', p.oid, 'EXECUTE'
@@ -104,7 +105,8 @@ select ok(
          'public.create_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean)',
          'public.admin_reactivate_account(uuid,uuid,text,text)',
          'public.admin_ban_member(uuid,uuid,text)',
-         'public.admin_unban_member(uuid,uuid,text)'
+         'public.admin_unban_member(uuid,uuid,text)',
+         'public.reassign_anon_data(uuid,uuid)'
        )
        and not pg_catalog.has_function_privilege(
          'service_role', p.oid, 'EXECUTE'
@@ -237,6 +239,12 @@ select ok(
          and positions.impl_pos > positions.object_pos
          and positions.user_pos = 0
        )
+     ) or (
+       wrapped.lock_mode = 'delegated'
+       and pg_catalog.strpos(
+         wrapped.def,
+         'public.bp_0093_reassign_legacy_anon_data'
+       ) = 0
      )
   ),
   'every wrapper follows object(s) -> sorted user(s) -> isolated impl'
@@ -526,7 +534,7 @@ select ok(
         pg_catalog.strpos(def, 'bp_user_mutation_lock_many')
     from (
       select pg_catalog.pg_get_functiondef(
-        'public.reassign_anon_data(uuid,uuid)'::regprocedure
+        'public.bp_0093_reassign_legacy_anon_data(uuid,uuid,timestamptz,timestamptz,boolean)'::regprocedure
       ) as def
     ) source
   ),

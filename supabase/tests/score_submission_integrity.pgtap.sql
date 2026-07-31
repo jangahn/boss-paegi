@@ -1,8 +1,10 @@
 -- 0074 score/telemetry integrity contracts.
 -- Run only on a disposable database with migrations through 0074 applied.
+-- The raw reassignment ACL assertion is stage-aware: it proves service_role
+-- compatibility after 0093 and the exact privilege contraction after 0094.
 
 begin;
-select plan(86);
+select plan(87);
 
 select has_column(
   'public',
@@ -352,26 +354,54 @@ update score_integrity_ctx
          'submissionFingerprint', pg_catalog.repeat('2', 64)
        );
 
-insert into auth.users(id, email)
-select member_a, 'score-member-a-' || member_a || '@test.local'
+insert into auth.users(id, email, is_anonymous, created_at)
+select
+  member_a,
+  'score-member-a-' || member_a || '@test.local',
+  false,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx
 union all
-select member_b, 'score-member-b-' || member_b || '@test.local'
+select
+  member_b,
+  'score-member-b-' || member_b || '@test.local',
+  false,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx
 union all
-select anon_a, 'score-anon-' || anon_a || '@test.local'
+select
+  anon_a,
+  'score-anon-' || anon_a || '@test.local',
+  true,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx
 union all
-select admin_id, 'score-admin-' || admin_id || '@test.local'
+select
+  admin_id,
+  'score-admin-' || admin_id || '@test.local',
+  false,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx
 union all
-select migrate_source, 'score-migrate-source-' || migrate_source || '@test.local'
+select
+  migrate_source,
+  'score-migrate-source-' || migrate_source || '@test.local',
+  true,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx
 union all
-select migrate_target_a, 'score-migrate-target-a-' || migrate_target_a || '@test.local'
+select
+  migrate_target_a,
+  'score-migrate-target-a-' || migrate_target_a || '@test.local',
+  false,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx
 union all
-select migrate_target_b, 'score-migrate-target-b-' || migrate_target_b || '@test.local'
+select
+  migrate_target_b,
+  'score-migrate-target-b-' || migrate_target_b || '@test.local',
+  false,
+  pg_catalog.clock_timestamp() - interval '1 minute'
   from score_integrity_ctx;
 
 insert into public.member_accounts(user_id, is_admin)
@@ -380,10 +410,6 @@ union all
 select member_b, false from score_integrity_ctx
 union all
 select admin_id, true from score_integrity_ctx;
-insert into public.member_accounts(user_id, is_admin)
-select migrate_target_a, false from score_integrity_ctx
-union all
-select migrate_target_b, false from score_integrity_ctx;
 
 insert into public.dolls(id, owner_id, image_url)
 select doll_a, member_a, member_a::text || '/doll-a.png'
@@ -1201,8 +1227,16 @@ select ok(
         on r.source_user_id = c.migrate_source
        and r.target_user_id = c.migrate_target_a
   )
-  and has_function_privilege(
+  and not has_table_privilege(
     'service_role',
+    'public.anon_data_reassignments',
+    'SELECT,INSERT,UPDATE,DELETE'
+  ),
+  'reassignment winner receipt is durable and RPC-only'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
     'public.reassign_anon_data(uuid,uuid)',
     'EXECUTE'
   )
@@ -1211,12 +1245,31 @@ select ok(
     'public.reassign_anon_data(uuid,uuid)',
     'EXECUTE'
   )
-  and not has_table_privilege(
-    'service_role',
-    'public.anon_data_reassignments',
-    'SELECT,INSERT,UPDATE,DELETE'
+  and (
+    case
+      when pg_catalog.obj_description(
+        'public.reassign_anon_data(uuid,uuid)'::regprocedure,
+        'pg_proc'
+      ) is null
+      then has_function_privilege(
+        'service_role',
+        'public.reassign_anon_data(uuid,uuid)',
+        'EXECUTE'
+      )
+      when pg_catalog.obj_description(
+        'public.reassign_anon_data(uuid,uuid)'::regprocedure,
+        'pg_proc'
+      ) =
+        'Internal primitive; invoke only through flow-scoped OAuth migration consumption.'
+      then not has_function_privilege(
+        'service_role',
+        'public.reassign_anon_data(uuid,uuid)',
+        'EXECUTE'
+      )
+      else false
+    end
   ),
-  'reassignment winner receipt is durable and RPC-only'
+  'raw reassignment keeps service_role during 0093 expand and revokes it at the exact 0094 contract marker'
 );
 select throws_ok(
   format(

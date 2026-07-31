@@ -89,6 +89,10 @@ test("database integration runner rejects empty and NOTESTS suites in CI", () =>
   assert.match(runner, /no pgTAP files found/);
   assert.match(runner, /Result: NOTESTS/);
   assert.match(runner, /plan mismatch/);
+  assert.match(runner, /--only BASENAME[.]pgtap[.]sql/);
+  assert.match(runner, /requested pgTAP file does not exist/);
+  assert.match(runner, /db_name="\$\{QA_DB_NAME:-postgres\}"/);
+  assert.match(runner, /-d "\$db_name"/);
   assert.match(runner, /create extension if not exists pgtap with schema extensions/);
   assert.match(workflow, /npm run test:db/);
 });
@@ -101,12 +105,23 @@ test("CI proves expand compatibility before applying the rollout contract", () =
     "bash scripts/qa/test-payment-evidence-contract-gate.sh",
     "npm run qa:db:apply:contract",
     "npm run qa:db:rollout-contract",
+    "npm run qa:db:apply:oauth-expand",
+    "npm run qa:db:oauth-expand",
+    "npm run test:db:oauth-expand-compat",
+    "npm run qa:db:oauth-prune-lock-race",
+    "npm run qa:db:oauth-migration-member-race",
+    "npm run qa:db:apply:oauth-contract",
+    "npm run qa:db:oauth-contract",
     "npm run test:db",
     "npm run qa:db:race",
   ];
+  const workflowLines = workflow.split("\n").map((line) => line.trim());
   let previous = -1;
   for (const command of orderedCommands) {
-    const index = workflow.indexOf(command);
+    const index = workflowLines.findIndex(
+      (line, candidateIndex) =>
+        candidateIndex > previous && line === `run: ${command}`,
+    );
     assert.ok(index > previous, `${command} must appear in rollout order`);
     previous = index;
   }
@@ -127,6 +142,30 @@ test("CI proves expand compatibility before applying the rollout contract", () =
   assert.equal(
     pkg.scripts["qa:prod:rollout:app-postflight"],
     "node scripts/qa/apply-production-rollout.mjs --stage app-postflight"
+  );
+  assert.equal(
+    pkg.scripts["qa:db:apply:oauth-expand"],
+    "bash scripts/qa/apply-local-migrations.sh --only 0093"
+  );
+  assert.equal(
+    pkg.scripts["test:db:oauth-expand-compat"],
+    "bash scripts/qa/run-local-pgtap.sh --only score_submission_integrity.pgtap.sql"
+  );
+  assert.equal(
+    pkg.scripts["qa:db:oauth-prune-lock-race"],
+    "bash scripts/qa/test-oauth-prune-lock-backlog.sh",
+  );
+  assert.equal(
+    pkg.scripts["qa:db:oauth-migration-member-race"],
+    "bash scripts/qa/test-oauth-migration-member-races.sh",
+  );
+  assert.equal(
+    pkg.scripts["qa:db:apply:oauth-contract"],
+    "bash scripts/qa/apply-local-migrations.sh --only 0094"
+  );
+  assert.equal(
+    pkg.scripts["qa:prod:oauth:app-postflight"],
+    "node scripts/qa/apply-oauth-production-rollout.mjs --stage app-postflight"
   );
 });
 
@@ -156,7 +195,7 @@ test("implicit Supabase migration commands cannot false-green the staged rollout
   }
   assert.match(
     workflow,
-    /supabase start[\s\S]*npm run qa:db:apply:expand[\s\S]*npm run qa:db:apply:contract/,
+    /supabase start[\s\S]*npm run qa:db:apply:expand[\s\S]*npm run qa:db:apply:contract[\s\S]*npm run qa:db:apply:oauth-expand[\s\S]*npm run test:db:oauth-expand-compat[\s\S]*npm run qa:db:apply:oauth-contract/,
   );
 
   const migrationFiles = readdirSync(
@@ -186,6 +225,273 @@ test("implicit Supabase migration commands cannot false-green the staged rollout
     migrationFiles,
     "official CLI filename order and staged runner digit-version order must match",
   );
+});
+
+test("OAuth contract rollout cannot bypass the 0093 app drain boundary", () => {
+  const runner = readFileSync(
+    new URL("scripts/qa/apply-oauth-production-rollout.mjs", root),
+    "utf8",
+  );
+  const runbook = readFileSync(
+    new URL("docs/oauth-flow-rollout.md", root),
+    "utf8",
+  );
+  const migration = readFileSync(
+    new URL("supabase/migrations/0093_oauth_flow_intents.sql", root),
+    "utf8",
+  );
+  const contractMigration = readFileSync(
+    new URL(
+      "supabase/migrations/0094_oauth_flow_migration_contract.sql",
+      root,
+    ),
+    "utf8",
+  );
+  const postContractMigration = readFileSync(
+    new URL(
+      "supabase/migrations/0095_analytics_maintenance_argument_bounds.sql",
+      root,
+    ),
+    "utf8",
+  );
+  const verifier = readFileSync(
+    new URL("scripts/qa/verify-oauth-rollout-stage.sh", root),
+    "utf8",
+  );
+  const catalogVerifier = readFileSync(
+    new URL(
+      "scripts/qa/render-oauth-catalog-integrity-query.mjs",
+      root,
+    ),
+    "utf8",
+  );
+  const rawContractGuard = readFileSync(
+    new URL("scripts/qa/test-oauth-contract-raw-guard.sh", root),
+    "utf8",
+  );
+  const rawPostContractGuard = readFileSync(
+    new URL(
+      "scripts/qa/test-analytics-maintenance-raw-guard.sh",
+      root,
+    ),
+    "utf8",
+  );
+  const allCommands = Object.values(pkg.scripts).join("\n");
+
+  assert.match(runner, /OAUTH_EXPAND_MIGRATION = "0093_oauth_flow_intents"/);
+  assert.match(
+    runner,
+    /OAUTH_CONTRACT_MIGRATION =\s*"0094_oauth_flow_migration_contract"/,
+  );
+  assert.match(
+    runner,
+    /OAUTH_POST_CONTRACT_MIGRATION =\s*"0095_analytics_maintenance_argument_bounds"/,
+  );
+  assert.match(runner, /postflight_is_read_only/);
+  assert.match(
+    runner,
+    /MIN_DEPLOYMENT_DRAIN_MS = \(300 \+ 15 \* 60 \+ 300 \+ 5\) \* 1_000/,
+  );
+  assert.match(runner, /applied_at_ms/);
+  assert.match(runner, /pg_catalog\.clock_timestamp\(\)/);
+  assert.match(runner, /readVercelProductionAttestation/);
+  assert.match(runner, /verifyOAuthReceiptSourceLineage/);
+  assert.match(runner, /readOAuthReceiptMigrationSource/);
+  assert.match(runner, /attestAndProbeDeployment\(/);
+  assert.match(runner, /sameVercelProductionAttestation/);
+  assert.match(runner, /expectedDeploymentIdentity/);
+  assert.match(runner, /oauth_deployment_attestation_invalid/);
+  assert.match(runner, /oauth_contract_precedes_drain/);
+  assert.match(runner, /verifyFrozenSurfaces\(/);
+  assert.match(
+    runner,
+    /probeOAuthApplication\(\s*checkedOrigin,\s*fetchImpl,\s*expectedApplicationIdentity/u,
+  );
+  assert.match(runner, /attestAndProbeCurrentDeployment/);
+  assert.match(runner, /analytics_maintenance_bounds_ready/);
+  assert.match(runner, /post_contract_owner_only_rpcs_ready/);
+  assert.match(runner, /oauth_expand_incomplete/);
+  assert.match(runner, /oauth_contract_precondition_failed/);
+  assert.match(
+    runner,
+    /stage === "contract" \? expectedQualification : null/,
+  );
+  assert.match(
+    runner,
+    /insert into public\.oauth_rollout_deployment_qualifications/,
+  );
+  assert.match(
+    runner,
+    /provider_function_timeout_seconds[\s\S]*BOSS_PAEGI_VERCEL_FUNCTION_TIMEOUT_SECONDS/,
+  );
+  assert.match(
+    migration,
+    /provider_function_timeout_seconds[\s\S]*check[\s\S]*provider_function_timeout_seconds = 300/u,
+  );
+  assert.match(runner, /OAUTH_PRUNE_ACK_KEYS[\s\S]*terminalRetentionBacklog/);
+  assert.match(
+    verifier,
+    /prune_oauth_flow_intents\(1\)[\s\S]*expected_prune_keys="[^"]*terminalRetentionBacklog/,
+  );
+  assert.match(
+    migration,
+    /revoke all on function public\.reassign_anon_data\(uuid, uuid\)[\s\S]*grant execute on function public\.reassign_anon_data\(uuid, uuid\)\s+to service_role/u,
+  );
+  assert.match(
+    migration,
+    /create table public\.legacy_signup_migration_receipts[\s\S]*grant execute on function public\.consume_legacy_signup_migration\([\s\S]*to service_role/u,
+  );
+  assert.match(
+    contractMigration,
+    /revoke all on function public\.reassign_anon_data\(uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/u,
+  );
+  assert.match(
+    contractMigration,
+    /revoke all on function public\.consume_legacy_signup_migration\([\s\S]*from public, anon, authenticated, service_role/u,
+  );
+  assert.match(
+    verifier,
+    /legacy_signup_migration_receipts[\s\S]*consume_legacy_signup_migration/u,
+  );
+  assert.match(
+    runner,
+    /target_auth_created_at[\s\S]*bp_0093_oauth_target_generation_matches[\s\S]*auth_user_generation_fences_ready[\s\S]*auth_session_generation_fence_ready/u,
+  );
+  assert.match(
+    runner,
+    /readOAuthExpandFunctionBodyManifest[\s\S]*oauth_function_bodies_ready/u,
+  );
+  assert.match(
+    verifier,
+    /target_auth_created_at[\s\S]*bp_0093_oauth_target_generation_matches[\s\S]*target_generation_fences_ready/u,
+  );
+  assert.match(
+    verifier,
+    /render-oauth-catalog-integrity-query\.mjs[\s\S]*catalog_integrity/u,
+  );
+  assert.match(
+    catalogVerifier,
+    /pg_catalog\.sha256[\s\S]*p\.prosecdef[\s\S]*p\.proconfig[\s\S]*p\.proowner/u,
+  );
+  assert.match(
+    catalogVerifier,
+    /pg_get_expr[\s\S]*oauth_flow_intents_target_identity_check[\s\S]*owner_integrity/u,
+  );
+  assert.match(
+    runner,
+    /t\.tgtype = 27[\s\S]*trg_oauth_rollout_deployment_qualification_append_only/u,
+  );
+  assert.match(
+    runner,
+    /t\.tgtype = 27[\s\S]*trg_legacy_signup_migration_receipt_append_only/u,
+  );
+  assert.match(
+    verifier,
+    /t\.tgtype = 27[\s\S]*trg_legacy_signup_migration_receipt_append_only/u,
+  );
+  assert.match(
+    contractMigration,
+    /boss_paegi_oauth_contract_qualification_injection_point[\s\S]*assert_oauth_rollout_deployment_qualification/u,
+  );
+  assert.match(
+    rawContractGuard,
+    /has_function_privilege\([\s\S]*reassign_anon_data[\s\S]*has_function_privilege\([\s\S]*consume_legacy_signup_migration/u,
+  );
+  assert.match(
+    rawContractGuard,
+    /obj_description\([\s\S]*reassign_anon_data[\s\S]*obj_description\([\s\S]*consume_legacy_signup_migration/u,
+  );
+  assert.match(
+    allCommands,
+    /scripts\/qa\/test-oauth-contract-raw-guard\.sh/u,
+  );
+  assert.match(
+    postContractMigration,
+    /boss_paegi_oauth_post_contract_catalog_injection_point[\s\S]*0095 requires the staged post-contract runner/u,
+  );
+  assert.match(
+    postContractMigration,
+    /aclexplode[\s\S]*a\.grantee = v_service_role_oid[\s\S]*a\.grantee not in \(p\.proowner, v_service_role_oid\)/u,
+  );
+  assert.match(
+    rawPostContractGuard,
+    /raw 0095 unexpectedly bypassed the staged runner/u,
+  );
+  assert.match(
+    allCommands,
+    /scripts\/qa\/test-analytics-maintenance-raw-guard\.sh/u,
+  );
+  assert.match(
+    allCommands,
+    /dead_service_rpc_acl_cleanup\.pgtap\.sql/u,
+  );
+  assert.match(
+    allCommands,
+    /apply-oauth-production-rollout\.mjs --stage post-contract --apply/u,
+  );
+  assert.doesNotMatch(allCommands, /--range 0093 0094/);
+  assert.match(runbook, /0093과 0094를 한 요청[\s\S]*적용하는 것은\s*금지/);
+  assert.match(
+    runbook,
+    /qa:prod:oauth:expand:apply[\s\S]*qa:prod:oauth:app-postflight[\s\S]*qa:prod:oauth:contract:apply[\s\S]*qa:prod:oauth:post-contract:apply/,
+  );
+  assert.match(
+    runbook,
+    /0093을 적용하는 release branch는 `origin\/main`의 후손/,
+  );
+  assert.match(runbook, /exact `HEAD:main`을 force 없이 \*\*fast-forward\*\* push/);
+  assert.match(
+    runbook,
+    /rebase, cherry-pick, squash merge[\s\S]*receipt 조상을 제거하는 이력 재작성은 금지/,
+  );
+  assert.match(
+    runbook,
+    /0093 뒤[\s\S]*`origin\/main`이 움직이면[\s\S]*0093 receipt commit을 조상으로 보존/,
+  );
+
+  const grantedRpcSignatures = new Set(
+    [...migration.matchAll(
+      /grant execute on function\s+public\.([a-z0-9_]+)\(\s*([^()]*)\s*\)\s+to service_role;/gu,
+    )]
+      .map(
+        ([, name, argumentsList]) =>
+          `public.${name}(${argumentsList.replace(/\s+/gu, "").toLowerCase()})`,
+      )
+      .filter(
+        (signature) =>
+          !signature.startsWith("public.reassign_anon_data(") &&
+          !signature.startsWith(
+            "public.consume_legacy_signup_migration(",
+          ),
+      ),
+  );
+  const probedSignatures = (source: string) =>
+    new Set(
+      [...source.matchAll(
+        /pg_catalog\.to_regprocedure\(\s*'([^']+)'\s*\)/gu,
+      )]
+        .map(([, signature]) => signature)
+        .filter((signature) => grantedRpcSignatures.has(signature)),
+    );
+  assert.equal(grantedRpcSignatures.size, 25);
+  assert.deepEqual(
+    probedSignatures(runner),
+    grantedRpcSignatures,
+    "the production gate must inventory every flow-scoped service RPC",
+  );
+  assert.deepEqual(
+    probedSignatures(verifier),
+    grantedRpcSignatures,
+    "the local stage verifier must inventory every flow-scoped service RPC",
+  );
+  for (const source of [runner, verifier]) {
+    assert.match(source, /public\.oauth_flow_intents/);
+    assert.match(source, /public\.oauth_anon_auth_cleanup_jobs/);
+    assert.match(
+      source,
+      /public\.oauth_rollout_deployment_qualifications/,
+    );
+  }
 });
 
 test("Node unit runner discovers test files recursively and deterministically", () => {
@@ -249,6 +555,7 @@ test("stateful QA harness cleanup is exact and cannot report false green", () =>
     "test-fal-submit-races.sh",
     "test-legal-state-machine-race.sh",
     "test-moderation-purge-races.sh",
+    "test-oauth-migration-member-races.sh",
     "test-order-observation-races.sh",
     "test-payment-evidence-contract-gate.sh",
     "test-public-score-report-quota-races.sh",
@@ -320,6 +627,44 @@ test("stateful QA harness cleanup is exact and cannot report false green", () =>
     /cleanup_remaining="\$\([\s\S]*from public\.credit_ledger[\s\S]*from public\.credit_lots/,
     "the exact cleanup postcondition must cover both ledger and lot rows",
   );
+
+  const oauthMemberRace = readFileSync(
+    new URL(
+      "scripts/qa/test-oauth-migration-member-races.sh",
+      root,
+    ),
+    "utf8",
+  );
+  assert.match(
+    oauthMemberRace,
+    /delete from public\.oauth_flow_intents[\s\S]*delete from public\.scores[\s\S]*delete from public\.member_accounts[\s\S]*delete from auth\.users/u,
+    "OAuth member-race cleanup must remove flow children, score children, target members, then Auth users",
+  );
+  assert.match(
+    oauthMemberRace,
+    /cleanup_remaining="\$\([\s\S]*from public\.oauth_flow_intents[\s\S]*from public\.oauth_anon_auth_cleanup_jobs[\s\S]*from public\.scores[\s\S]*from public\.member_accounts[\s\S]*from auth\.users/u,
+    "OAuth member-race cleanup must prove every owned durable fixture is absent",
+  );
+
+  for (const file of [
+    "test-anon-reassign-race.sh",
+    "test-anon-reassign-write-race.sh",
+  ]) {
+    const harness = readFileSync(
+      new URL(`scripts/qa/${file}`, root),
+      "utf8",
+    );
+    assert.match(
+      harness,
+      /delete from public\.oauth_anon_auth_cleanup_jobs[\s\S]*set local session_replication_role = replica[\s\S]*delete from public\.anon_data_reassignments/u,
+      `${file} must remove cleanup-job children before disabling receipt cascade triggers`,
+    );
+    assert.match(
+      harness,
+      /cleanup_remaining="\$\([\s\S]*from public\.oauth_anon_auth_cleanup_jobs[\s\S]*from public\.anon_data_reassignments/u,
+      `${file} must include cleanup jobs in its exact residue proof`,
+    );
+  }
 });
 
 test("rollout verifier covers runtime protocols, ACLs, and PostgREST reads", () => {

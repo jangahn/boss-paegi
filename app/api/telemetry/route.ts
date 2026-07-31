@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   readTelemetryRequestBody,
@@ -62,14 +63,30 @@ export async function POST(req: NextRequest) {
   const actor = await resolveTelemetryActor({
     getAuthUser: async () => {
       const result = await supabase.auth.getUser();
+      if (result.error || !result.data.user) {
+        return {
+          data: null,
+          error: result.error,
+        };
+      }
+      const sessionState = await readCurrentAuthSessionState(() =>
+        supabase.rpc("oauth_current_auth_session_live"),
+      );
+      if (sessionState.kind !== "live") {
+        return {
+          data: null,
+          error:
+            sessionState.kind === "unavailable"
+              ? sessionState.error
+              : new Error("telemetry_auth_session_revoked"),
+        };
+      }
       return {
-        data: result.data.user
-          ? {
-              id: result.data.user.id,
-              isAnonymous: result.data.user.is_anonymous === true,
-            }
-          : null,
-        error: result.error,
+        data: {
+          id: result.data.user.id,
+          isAnonymous: result.data.user.is_anonymous === true,
+        },
+        error: null,
       };
     },
     getProfile: async (userId) => {

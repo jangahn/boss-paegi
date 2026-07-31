@@ -1,4 +1,14 @@
 import type { CreditProduct } from "@/lib/credit-products";
+import {
+  DEPLOYMENT_IDENTITY_COMMIT_HEADER,
+  DEPLOYMENT_IDENTITY_PROJECT_HEADER,
+  DEPLOYMENT_IDENTITY_VERCEL_DEPLOYMENT_HEADER,
+  DEPLOYMENT_IDENTITY_VERCEL_ENVIRONMENT_HEADER,
+  DEPLOYMENT_IDENTITY_VERCEL_PROJECT_HEADER,
+  DEPLOYMENT_IDENTITY_VERCEL_URL_HEADER,
+  deploymentIdentityHeaders,
+  type DeploymentIdentityEnvironment,
+} from "../deployment-identity.ts";
 
 /**
  * Deliberate compile-time legal fence. An environment toggle alone cannot
@@ -18,18 +28,17 @@ export function paymentCheckoutEnabled(
 }
 
 export const PAYMENT_ROLLOUT_PROJECT_HEADER =
-  "X-Boss-Paegi-Supabase-Project-Ref";
+  DEPLOYMENT_IDENTITY_PROJECT_HEADER;
 export const PAYMENT_ROLLOUT_COMMIT_HEADER =
-  "X-Boss-Paegi-Build-Commit";
-
-type DeploymentEnvironment = Readonly<
-  Partial<
-    Record<
-      "NEXT_PUBLIC_SUPABASE_URL" | "VERCEL_GIT_COMMIT_SHA",
-      string | undefined
-    >
-  >
->;
+  DEPLOYMENT_IDENTITY_COMMIT_HEADER;
+export const PAYMENT_ROLLOUT_VERCEL_PROJECT_HEADER =
+  DEPLOYMENT_IDENTITY_VERCEL_PROJECT_HEADER;
+export const PAYMENT_ROLLOUT_VERCEL_DEPLOYMENT_HEADER =
+  DEPLOYMENT_IDENTITY_VERCEL_DEPLOYMENT_HEADER;
+export const PAYMENT_ROLLOUT_VERCEL_URL_HEADER =
+  DEPLOYMENT_IDENTITY_VERCEL_URL_HEADER;
+export const PAYMENT_ROLLOUT_VERCEL_ENVIRONMENT_HEADER =
+  DEPLOYMENT_IDENTITY_VERCEL_ENVIRONMENT_HEADER;
 
 /**
  * Public, non-secret deployment identity used by the production migration
@@ -40,39 +49,16 @@ type DeploymentEnvironment = Readonly<
  * look authoritative to the rollout runner.
  */
 export function paymentRolloutIdentityHeaders(
-  env: DeploymentEnvironment = {
+  env: DeploymentIdentityEnvironment = {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
+    VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+    VERCEL_DEPLOYMENT_ID: process.env.VERCEL_DEPLOYMENT_ID,
+    VERCEL_URL: process.env.VERCEL_URL,
+    VERCEL_TARGET_ENV: process.env.VERCEL_TARGET_ENV,
   },
 ): Readonly<Record<string, string>> {
-  const commit = env.VERCEL_GIT_COMMIT_SHA?.toLowerCase() ?? "";
-  if (!/^[0-9a-f]{40}$/.test(commit)) return {};
-
-  let projectRef = "";
-  try {
-    const url = new URL(env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-    const match = /^([a-z0-9]{20})\.supabase\.co$/.exec(url.hostname);
-    if (
-      url.protocol !== "https:" ||
-      url.port !== "" ||
-      url.username !== "" ||
-      url.password !== "" ||
-      url.search !== "" ||
-      url.hash !== "" ||
-      (url.pathname !== "" && url.pathname !== "/") ||
-      match === null
-    ) {
-      return {};
-    }
-    projectRef = match[1];
-  } catch {
-    return {};
-  }
-
-  return {
-    [PAYMENT_ROLLOUT_PROJECT_HEADER]: projectRef,
-    [PAYMENT_ROLLOUT_COMMIT_HEADER]: commit,
-  };
+  return deploymentIdentityHeaders(env);
 }
 
 export type CheckoutPayMode = "test" | "live";

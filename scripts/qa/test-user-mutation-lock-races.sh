@@ -12,10 +12,10 @@ if [[ -z "$project_id" ]]; then
   exit 1
 fi
 
-db_container="supabase_db_${project_id}"
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
 db_name="${QA_DB_NAME:-postgres}"
 db_user="${QA_DB_USER:-postgres}"
-if [[ "$db_container" != supabase_db_* ]] \
+if [[ ! "$db_container" =~ ^supabase_db_[A-Za-z0-9._-]+$ ]] \
   || ! docker inspect "$db_container" >/dev/null 2>&1; then
   echo "disposable local Supabase database container is not running: $db_container" >&2
   exit 1

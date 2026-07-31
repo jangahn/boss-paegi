@@ -7,9 +7,9 @@ export LC_ALL=C
 project_id="$(
   sed -n 's/^project_id = "\(.*\)"$/\1/p' supabase/config.toml | head -n 1
 )"
-db_container="supabase_db_${project_id}"
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
 if [[ -z "$project_id" ]] \
-  || [[ "$db_container" != supabase_db_* ]] \
+  || [[ ! "$db_container" =~ ^supabase_db_[A-Za-z0-9._-]+$ ]] \
   || ! docker inspect "$db_container" >/dev/null 2>&1; then
   echo "score/report quota race QA requires disposable local Supabase" >&2
   exit 1

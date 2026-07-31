@@ -15,7 +15,7 @@ export const DOC_PATH: Record<DocType, string> = {
   terms: "/terms",
 };
 
-// 구조화 섹션(제목+본문). 사이즈 한도 = RPC(legal_sections_valid)와 동일.
+// 구조화 섹션(제목+본문). 사이즈 한도는 DB write 계약과 동일하다.
 export const legalSectionSchema = z.object({
   heading: z.string().trim().min(1).max(120),
   body: z.string().trim().min(1).max(20000),

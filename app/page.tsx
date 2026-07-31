@@ -24,7 +24,7 @@ export default function Home() {
       try {
         const { data: sessionData } =
           await runBoundedClientOperation(
-            (signal) => createClient(signal).auth.getSession(),
+            () => createClient().auth.getSession(),
             { signal: controller.signal },
           );
         if (!sessionData.session) return;

@@ -51,6 +51,9 @@ const EXPECTED_PAGES = [
   "/admin/users",
   "/admin/users/[id]",
   "/badges",
+  "/auth/callback/continue",
+  "/auth/flow-pending",
+  "/auth/reconcile",
   "/consent",
   "/credits",
   "/credits/done",
@@ -70,6 +73,12 @@ const EXPECTED_PAGES = [
   "/share/[scoreId]",
   "/signup",
   "/terms",
+] as const;
+
+const EXPECTED_NON_API_ROUTE_HANDLERS = [
+  "/auth/callback",
+  "/auth/callback/bootstrap",
+  "/llms.txt",
 ] as const;
 
 const EXPECTED_APIS = [
@@ -103,6 +112,18 @@ const EXPECTED_APIS = [
   "/api/admin/site-asset",
   "/api/auth/prepare-signup",
   "/api/auth/signout",
+  "/api/auth/oauth-flow/abandon",
+  "/api/auth/oauth-flow/bind-target",
+  "/api/auth/oauth-flow/cancel",
+  "/api/auth/oauth-flow/complete-signout",
+  "/api/auth/oauth-flow/expire",
+  "/api/auth/oauth-flow/finalize",
+  "/api/auth/oauth-flow/preflight",
+  "/api/auth/oauth-flow/release",
+  "/api/auth/oauth-flow/revoke-bound-target",
+  "/api/auth/oauth-flow/rotate-target",
+  "/api/auth/oauth-flow/signout",
+  "/api/auth/oauth-flow/status",
   "/api/avatar",
   "/api/config/public",
   "/api/doll",
@@ -131,6 +152,21 @@ const EXPECTED_APIS = [
   "/api/score",
   "/api/telemetry",
   "/api/track",
+] as const;
+
+const EXPECTED_OAUTH_FLOW_APIS = [
+  "/api/auth/oauth-flow/abandon",
+  "/api/auth/oauth-flow/bind-target",
+  "/api/auth/oauth-flow/cancel",
+  "/api/auth/oauth-flow/complete-signout",
+  "/api/auth/oauth-flow/expire",
+  "/api/auth/oauth-flow/finalize",
+  "/api/auth/oauth-flow/preflight",
+  "/api/auth/oauth-flow/release",
+  "/api/auth/oauth-flow/revoke-bound-target",
+  "/api/auth/oauth-flow/rotate-target",
+  "/api/auth/oauth-flow/signout",
+  "/api/auth/oauth-flow/status",
 ] as const;
 
 const HTTP_METHODS = [
@@ -183,11 +219,39 @@ test("every page and API route is enrolled in the exact app surface manifest", (
   const apis = walkForLeaf(API_ROOT, "route.ts")
     .map((absolute) => toRoute(absolute, API_ROOT, "route.ts", "/api"))
     .sort();
+  const nonApiRouteHandlers = walkForLeaf(
+    APP_ROOT,
+    "route.ts",
+  )
+    .filter(
+      (absolute) =>
+        !absolute.startsWith(`${API_ROOT}${sep}`),
+    )
+    .map((absolute) =>
+      toRoute(absolute, APP_ROOT, "route.ts"),
+    )
+    .sort();
 
-  assert.equal(pages.length, 56, "page count changed; update the exact manifest");
-  assert.equal(apis.length, 58, "API count changed; update the exact manifest");
+  assert.equal(pages.length, 59, "page count changed; update the exact manifest");
+  assert.equal(apis.length, 70, "API count changed; update the exact manifest");
+  assert.equal(
+    nonApiRouteHandlers.length,
+    3,
+    "non-API route-handler count changed; update the exact manifest",
+  );
   assert.deepEqual(pages, sorted(EXPECTED_PAGES));
   assert.deepEqual(apis, sorted(EXPECTED_APIS));
+  assert.deepEqual(
+    nonApiRouteHandlers,
+    sorted(EXPECTED_NON_API_ROUTE_HANDLERS),
+  );
+  assert.deepEqual(
+    apis.filter((route) =>
+      route.startsWith("/api/auth/oauth-flow/"),
+    ),
+    sorted(EXPECTED_OAUTH_FLOW_APIS),
+    "OAuth flow API security surface changed; update its exact manifest and rollout probes",
+  );
   assert.equal(
     apis.filter((route) => route.startsWith("/api/ops/")).length,
     8,

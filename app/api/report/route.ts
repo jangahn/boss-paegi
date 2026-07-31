@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 import { rateLimit } from "@/lib/rate-limit";
 import { PUBLIC_ENV } from "@/lib/env";
 import { log, errInfo } from "@/lib/log";
@@ -152,8 +153,18 @@ export async function POST(req: NextRequest) {
       const { data, error } = await sb.auth.getUser();
       if (error) {
         log.warn("report.reporter_auth_unavailable", errInfo(error));
-      } else {
-        reporterUserId = data.user?.id ?? null;
+      } else if (data.user) {
+        const sessionState = await readCurrentAuthSessionState(() =>
+          sb.rpc("oauth_current_auth_session_live"),
+        );
+        if (sessionState.kind === "unavailable") {
+          log.warn(
+            "report.reporter_session_unavailable",
+            errInfo(sessionState.error),
+          );
+        } else if (sessionState.kind === "live") {
+          reporterUserId = data.user.id;
+        }
       }
     } catch (error) {
       // 공개 보호수단이므로 세션 판별 장애가 접수를 막아서는 안 된다.

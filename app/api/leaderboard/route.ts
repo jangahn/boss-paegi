@@ -5,11 +5,12 @@ import { log, errInfo } from "@/lib/log";
 import { parseLeaderboardRows } from "@/lib/leaderboard-response";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
- * 공개 랭킹 API — **쿠키/세션 비의존**(public)이라 CDN 캐시 가능.
+ * 공개 랭킹 API — **쿠키/세션 비의존**(public).
  * 데이터는 전부 공개(닉네임·점수·아바타)이므로 admin client 로 RLS 우회 호출.
- * 캐시: 브라우저는 no-store(항상 CDN 경유), Vercel Edge 만 30s 캐시(+swr) → 서울 PoP 서빙.
+ * 닉네임/아바타 격리·탈퇴가 즉시 반영되어야 하므로 모든 공유 캐시를 금지한다.
  */
 export async function GET(req: NextRequest) {
   const raw = new URL(req.url).searchParams.get("period");
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = result;
   if (error) {
     log.warn("leaderboard.api_query_fail", { period, ...errInfo(error) });
-    // 에러는 캐시하지 않음(no-store) — transient 에러가 30s 굳지 않게.
+    // 에러도 no-store — transient 실패가 브라우저/CDN에 고정되지 않게 한다.
     return NextResponse.json(
       { error: "leaderboard_unavailable" },
       { status: 503, headers: { "Cache-Control": "no-store" } }
@@ -55,8 +56,9 @@ export async function GET(req: NextRequest) {
     { rows },
     {
       headers: {
-        "Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "max-age=30, stale-while-revalidate=300",
+        "Cache-Control": "private, no-store, max-age=0",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
       },
     }
   );

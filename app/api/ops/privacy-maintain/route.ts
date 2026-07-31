@@ -13,6 +13,9 @@ import {
   GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
   parseCommerceDisplayRetentionResult,
   parseGenerationProviderAcceptanceRetentionResult,
+  parseOAuthAnonPrivacyStatus,
+  oauthAnonPrivacyHasFailure,
+  oauthAnonPrivacyNeedsRetry,
   parsePrivacyRetentionResult,
   privacyRetentionNeedsRetry,
 } from "@/lib/privacy-retention";
@@ -104,14 +107,40 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        const {
+          data: oauthAnonPrivacyData,
+          error: oauthAnonPrivacyError,
+        } = await admin
+          .rpc("oauth_anon_privacy_status")
+          .abortSignal(deadline.signal);
+        if (oauthAnonPrivacyError) {
+          throw oauthAnonPrivacyError;
+        }
+        const oauthAnonPrivacy =
+          parseOAuthAnonPrivacyStatus(
+            oauthAnonPrivacyData,
+          );
+        if (!oauthAnonPrivacy) {
+          throw new Error(
+            "oauth_anon_privacy_status_invalid_result",
+          );
+        }
+
         const retryPending =
           privacyRetentionNeedsRetry(
             result,
             PRIVACY_RETENTION_LIMIT,
           ) ||
           commerceDisplayEvidence.hasMore ||
-          generationProviderAcceptanceEvidence.hasMore;
-        const status = !result.ok ? 503 : retryPending ? 429 : 200;
+          generationProviderAcceptanceEvidence.hasMore ||
+          oauthAnonPrivacyNeedsRetry(oauthAnonPrivacy);
+        const status =
+          !result.ok ||
+          oauthAnonPrivacyHasFailure(oauthAnonPrivacy)
+            ? 503
+            : retryPending
+              ? 429
+              : 200;
         return NextResponse.json(
           {
             ...result,
@@ -120,6 +149,7 @@ export async function POST(req: NextRequest) {
             retryPending,
             commerceDisplayEvidence,
             generationProviderAcceptanceEvidence,
+            oauthAnonPrivacy,
           },
           opsMaintenanceResponseInit(status),
         );

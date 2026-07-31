@@ -148,9 +148,21 @@ for migration_index in "${!ordered_migration_files[@]}"; do
   fi
 
   echo "Applying $migration_name to $db_name"
-  docker exec -i "$db_container" \
-    psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" \
-    < "$migration_file"
+  if [[ "$migration_version" == "0094" ]]; then
+    BOSS_PAEGI_LOCAL_OAUTH_CONTRACT_FIXTURE=1 \
+      node scripts/qa/render-local-oauth-contract.mjs \
+      | docker exec -i "$db_container" \
+          psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name"
+  elif [[ "$migration_version" == "0095" ]]; then
+    BOSS_PAEGI_LOCAL_ANALYTICS_MAINTENANCE_BOUNDS_FIXTURE=1 \
+      node scripts/qa/render-local-analytics-maintenance-bounds.mjs \
+      | docker exec -i "$db_container" \
+          psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name"
+  else
+    docker exec -i "$db_container" \
+      psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" \
+      < "$migration_file"
+  fi
   selected_count=$((selected_count + 1))
 done
 

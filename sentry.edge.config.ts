@@ -3,6 +3,21 @@ import * as Sentry from "@sentry/nextjs";
 // edge 런타임(proxy/edge route)용. DSN 미설정이면 no-op.
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
+function containsOAuthCallback(value: unknown): boolean {
+  try {
+    const serialized = JSON.stringify(value);
+    if (typeof serialized !== "string") return true;
+    return (
+      serialized.includes("/auth/callback") ||
+      serialized.toLowerCase().includes(
+        "%2fauth%2fcallback",
+      )
+    );
+  } catch {
+    return true;
+  }
+}
+
 if (dsn) {
   Sentry.init({
     dsn,
@@ -12,9 +27,20 @@ if (dsn) {
     tracesSampleRate: 0,
     sendDefaultPii: false,
     beforeSend(event) {
+      if (containsOAuthCallback(event)) return null;
       const req = event.request;
       if (req?.url) req.url = req.url.split("?")[0];
       if (req && "query_string" in req) req.query_string = undefined;
+      return event;
+    },
+    beforeSendTransaction(event) {
+      if (containsOAuthCallback(event)) return null;
+      const req = event.request;
+      if (req?.url) req.url = req.url.split("?")[0];
+      if (req && "query_string" in req) req.query_string = undefined;
+      if (typeof event.transaction === "string") {
+        event.transaction = event.transaction.split(/[?#]/u, 1)[0];
+      }
       return event;
     },
   });

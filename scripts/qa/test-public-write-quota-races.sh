@@ -7,7 +7,7 @@ export LC_ALL=C
 project_id="$(
   sed -n 's/^project_id = "\(.*\)"$/\1/p' supabase/config.toml | head -n 1
 )"
-db_container="supabase_db_${project_id}"
+db_container="${QA_DB_CONTAINER:-supabase_db_${project_id}}"
 db_name="${QA_DB_NAME:-postgres}"
 db_user="${QA_DB_USER:-postgres}"
 if [[ -z "$project_id" ]] \

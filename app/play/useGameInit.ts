@@ -81,7 +81,7 @@ export function useGameInit(opts: {
           }
           const lookup = await runBoundedClientOperation(
             (signal) =>
-              createClient(signal)
+              createClient()
                 .from("dolls")
                 .select("image_url, role")
                 .eq("id", dollId)

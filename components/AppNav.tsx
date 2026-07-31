@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AccountMenu } from "@/components/AccountMenu";
+import { isAuthSubtreePath } from "@/lib/routes";
 
 /**
  * 전역 네비게이션 — 홈/갤러리/랭킹 자유 이동 + 계정 메뉴(닉네임·로그인·아바타·로그아웃).
@@ -17,6 +18,9 @@ const NAV_HIDDEN_PREFIXES = ["/play", "/login", "/signup", "/consent", "/reconse
 // forceShow: 어드민 layout 이 theme-admin(다크) 안에서 직접 렌더할 때 hide 우회.
 export function AppNav({ forceShow = false }: { forceShow?: boolean }) {
   const pathname = usePathname();
+  // `/auth` is an identity-mutation isolation boundary. This return must stay
+  // before AccountMenu is instantiated; even forceShow may not bypass it.
+  if (isAuthSubtreePath(pathname)) return null;
   if (!forceShow && NAV_HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return null;
 
   const links = [

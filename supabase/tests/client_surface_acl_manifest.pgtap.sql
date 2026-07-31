@@ -174,9 +174,9 @@ select ok(
            where r.rolname = 'authenticated')
        ]::oid[]
        and pg_catalog.pg_get_expr(p.polqual, p.polrelid)
-         = '((auth.uid() = id) AND (deleted_at IS NULL))'
+         = '((auth.uid() = id) AND (deleted_at IS NULL) AND oauth_current_auth_session_live())'
        and pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
-         = '((auth.uid() = id) AND (deleted_at IS NULL))'
+         = '((auth.uid() = id) AND (deleted_at IS NULL) AND oauth_current_auth_session_live())'
   ),
   'profile nickname RLS is exactly active authenticated self-update'
 );

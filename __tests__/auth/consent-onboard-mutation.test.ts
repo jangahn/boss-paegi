@@ -482,7 +482,7 @@ test("route는 no-missing partial retry에서도 mutation을 실행하고 실패
   const mutation = source.indexOf("await runConsentOnboardMutation", required);
   const failure = source.indexOf("if (!mutation.ok)", mutation);
   const finalClear = source.lastIndexOf(
-    "return clearCookie(NextResponse.json({ ok: true }))",
+    "return clearCookie(",
   );
   assert.ok(required >= 0);
   assert.ok(mutation > required);

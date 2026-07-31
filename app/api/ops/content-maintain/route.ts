@@ -29,6 +29,11 @@ import {
 } from "@/lib/ops-maintenance-status";
 import { log, errInfo } from "@/lib/log";
 import { materializeGenerationPick } from "@/lib/character-gen/doll-pick-materialize";
+import {
+  oauthFlowPruneHasBacklog,
+  parseOAuthFlowPruneResult,
+} from "@/lib/oauth-flow-prune";
+import { drainOAuthAnonAuthCleanupJobs } from "@/lib/oauth-anon-auth-cleanup-job";
 
 export const runtime = "nodejs";
 // 외부 scheduler 90초보다 짧은 fail-visible hard ceiling. Durable job/lease가
@@ -47,6 +52,7 @@ const LEGACY_UPLOAD_SWEEP_LIMIT = 10;
 const REACTIVATION_BUDGET_MS = 10_000;
 const PICK_MATERIALIZATION_LIMIT = 2;
 const GENERATION_COST_PRUNE_LIMIT = 100;
+const OAUTH_FLOW_PRUNE_LIMIT = 100;
 
 function maintenanceTimeBudgetResponse() {
   return NextResponse.json(
@@ -127,6 +133,25 @@ export async function POST(req: NextRequest) {
         generationCostRetentionBacklog: 0,
         generationCostRetentionDeleted: 0,
         generationCostPruneErrors: 0,
+        oauthFlowExpiredPending: 0,
+        oauthFlowBoundRecoveryConverged: 0,
+        oauthFlowBoundRecoveryBacklog: 0,
+        oauthFlowTargetAuthorityLossConverged: 0,
+        oauthFlowTargetAuthorityLossBacklog: 0,
+        oauthFlowPendingExpiryBacklog: 0,
+        oauthFlowTerminalRetentionBacklog: 0,
+        oauthFlowUnconsumedMigrationBacklog: 0,
+        oauthFlowUnreleasedContinueBacklog: 0,
+        oauthFlowUnboundClaimBacklog: 0,
+        oauthFlowRetentionDeleted: 0,
+        oauthFlowPruneErrors: 0,
+        oauthAnonAuthCleanupClaimed: 0,
+        oauthAnonAuthCleanupCompleted: 0,
+        oauthAnonAuthCleanupProtected: 0,
+        oauthAnonAuthCleanupFailed: 0,
+        oauthAnonAuthCleanupPending: 0,
+        oauthAnonAuthCleanupBacklog: 0,
+        oauthAnonAuthCleanupClaimErrors: 0,
         reactivationFailures: [] as Array<{
           requestId: string;
           userId: string;
@@ -287,7 +312,126 @@ export async function POST(req: NextRequest) {
         return maintenanceTimeBudgetResponse();
       }
 
-      // ── ③ FAL provider result → private durable doll materialization ──────
+      // ── ③ OAuth intent expiry + terminal retention ───────────────────────
+      // Pending and unbound claims expire at the signed lease boundary.
+      // Bound claims/sign-out states get a separate bounded recovery grace,
+      // then the exact target session is revoked (or proven absent).
+      try {
+        const { data: prune, error: pruneError } = await admin
+          .rpc("prune_oauth_flow_intents", {
+            p_limit: OAUTH_FLOW_PRUNE_LIMIT,
+          })
+          .abortSignal(deadline.signal);
+        const parsed = parseOAuthFlowPruneResult(prune);
+        if (pruneError || !parsed) {
+          throw pruneError ?? new Error("oauth_flow_prune_invalid");
+        }
+        result.oauthFlowExpiredPending =
+          parsed.expiredPending;
+        result.oauthFlowBoundRecoveryConverged =
+          parsed.boundRecoveryConverged;
+        result.oauthFlowBoundRecoveryBacklog =
+          parsed.boundRecoveryBacklog;
+        result.oauthFlowRetentionDeleted =
+          parsed.prunedTerminal;
+        result.oauthFlowTargetAuthorityLossConverged =
+          parsed.targetAuthorityLossConverged;
+        result.oauthFlowTargetAuthorityLossBacklog =
+          parsed.targetAuthorityLossBacklog;
+        result.oauthFlowPendingExpiryBacklog =
+          parsed.pendingExpiryBacklog;
+        result.oauthFlowTerminalRetentionBacklog =
+          parsed.terminalRetentionBacklog;
+        result.oauthFlowUnconsumedMigrationBacklog =
+          parsed.unconsumedMigrationBacklog;
+        result.oauthFlowUnreleasedContinueBacklog =
+          parsed.unreleasedContinueBacklog;
+        result.oauthFlowUnboundClaimBacklog =
+          parsed.unboundClaimBacklog;
+        if (
+          oauthFlowPruneHasBacklog(parsed) ||
+          boundedBatchMayHaveMore(
+            result.oauthFlowExpiredPending,
+            OAUTH_FLOW_PRUNE_LIMIT,
+          ) ||
+          boundedBatchMayHaveMore(
+            result.oauthFlowRetentionDeleted,
+            OAUTH_FLOW_PRUNE_LIMIT,
+          )
+        ) {
+          result.boundedBacklogs += 1;
+        }
+      } catch (error) {
+        result.oauthFlowPruneErrors += 1;
+        result.systemErrors += 1;
+        log.error(
+          "content_maintain.oauth_flow_prune_fail",
+          errInfo(error),
+        );
+      }
+      if (opsMaintenanceDeadlineReached(deadline)) {
+        return maintenanceTimeBudgetResponse();
+      }
+
+      // ── ④ Committed anonymous migration → Auth-user cleanup ──────────────
+      // The reassignment transaction arms a durable job before any external
+      // Auth delete. Each attempt verifies the exact source generation, and a
+      // lost delete acknowledgement is terminal only after a fresh Auth read
+      // confirms absence.
+      try {
+        const cleanup = await drainOAuthAnonAuthCleanupJobs(
+          admin,
+          DURABLE_CLEANUP_LIMIT,
+        );
+        result.oauthAnonAuthCleanupClaimed = cleanup.claimed;
+        result.oauthAnonAuthCleanupCompleted = cleanup.completed;
+        result.oauthAnonAuthCleanupProtected = cleanup.protected;
+        result.oauthAnonAuthCleanupFailed = cleanup.failed;
+        result.oauthAnonAuthCleanupPending = cleanup.pending;
+        result.oauthAnonAuthCleanupBacklog = cleanup.backlog;
+        result.oauthAnonAuthCleanupClaimErrors = cleanup.claimErrors;
+        if (
+          cleanup.backlog > 0 ||
+          boundedBatchMayHaveMore(
+            cleanup.claimed,
+            DURABLE_CLEANUP_LIMIT,
+          )
+        ) {
+          result.boundedBacklogs += 1;
+        }
+        if (cleanup.protected > 0) {
+          log.warn(
+            "content_maintain.oauth_anon_auth_cleanup_protected",
+            cleanup,
+          );
+        }
+        if (cleanup.failed > 0) {
+          result.systemErrors += cleanup.failed;
+          log.error(
+            "content_maintain.oauth_anon_auth_cleanup_exhausted",
+            cleanup,
+          );
+        }
+        if (cleanup.claimErrors > 0) {
+          result.systemErrors += cleanup.claimErrors;
+          log.error(
+            "content_maintain.oauth_anon_auth_cleanup_claim_fail",
+            cleanup,
+          );
+        }
+      } catch (error) {
+        result.oauthAnonAuthCleanupClaimErrors += 1;
+        result.systemErrors += 1;
+        log.error(
+          "content_maintain.oauth_anon_auth_cleanup_fail",
+          errInfo(error),
+        );
+      }
+      if (opsMaintenanceDeadlineReached(deadline)) {
+        return maintenanceTimeBudgetResponse();
+      }
+
+      // ── ⑤ FAL provider result → private durable doll materialization ──────
       // Provider StoreIO objects have a finite six-hour lifecycle. This worker
       // makes materialization independent of a browser/client retry.
       try {
@@ -603,7 +747,8 @@ export async function POST(req: NextRequest) {
         result.generationCostManualReviewOpen +
         result.generationCostExpiryBacklog +
         result.generationProviderOutputScrubBacklog +
-        result.generationCostRetentionBacklog;
+        result.generationCostRetentionBacklog +
+        result.oauthAnonAuthCleanupBacklog;
       const status = opsMaintenanceStatus({
         systemErrors: result.systemErrors,
         retryPending,
