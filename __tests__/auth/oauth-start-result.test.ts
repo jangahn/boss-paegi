@@ -14,12 +14,13 @@ const REDIRECT_TO =
   `?next=%2Fgallery&p=google&flow=${FLOW_ID}`;
 const CODE_CHALLENGE =
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+// The pinned auth-js signInWithOAuth URL builder never appends
+// skip_http_redirect; skipBrowserRedirect only suppresses navigation.
 const VALID_URL =
   `${SUPABASE_URL}/auth/v1/authorize` +
   `?provider=google&redirect_to=${encodeURIComponent(REDIRECT_TO)}` +
   `&code_challenge=${CODE_CHALLENGE}` +
-  "&code_challenge_method=s256&prompt=select_account" +
-  "&skip_http_redirect=true";
+  "&code_challenge_method=s256&prompt=select_account";
 
 test("prepare-signup HTTP body는 exact flow-bound ack만 승인한다", () => {
   assert.equal(
@@ -91,6 +92,10 @@ test("OAuth start ack는 provider/Supabase origin/authorize path/redirect를 모
     { provider: "google", url: VALID_URL.replace("%252Fgallery", "%252Fadmin") },
     { provider: "google", url: "javascript:alert(1)" },
     { provider: "google", url: VALID_URL, extra: true },
+    {
+      provider: "google",
+      url: `${VALID_URL}&skip_http_redirect=true`,
+    },
   ];
   for (const data of attacks) {
     assert.equal(

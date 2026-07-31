@@ -933,15 +933,22 @@ OAuth flow ledger rollout은 2026-07-31 저녁 이 문서의 staged 순서 그�
 Git 배포(`fae67dd`, 17:40 KST alias-current) → 1505초 초과 drain →
 `app-postflight` 통과 → `0094`(18:09:47 KST, qualification receipt 동일
 transaction) → 별도 transaction `0095`(18:10:16 KST) → `contract`·
-`post-contract` 재진입 green. 적용 중 발견한 운영 전용 결함 두 가지는 같은
-release로 수정했다: ① runner `injectReceipt`의 문자열 치환형
+`post-contract` 재진입 green. 적용 중 발견한 운영 전용 결함 세 가지는 같은
+release 라인으로 수정했다: ① runner `injectReceipt`의 문자열 치환형
 `String.replace`가 `$'` 특수 패턴으로 병합 SQL을 오염시켜 Management API가
 42601로 원자 거부(함수형 replacement + byte-for-byte 포함 가드 + `$'` 보존
 assertion으로 수정), ② Vercel deployment protection이 immutable deployment
 URL probe를 401 SSO로 가로막음(automation bypass 스코프 주입을 runner에
-네이티브 지원, 위 production runner 절 참조). 재개방은 이 완료 기록을 포함한
-재개방 커밋의 Git 배포로 수행하며, 재개방 smoke와 운영 사후 관측 실측치는
-KB `payments-runtime`에 기록한다.
+네이티브 지원, 위 production runner 절 참조), ③ `parseOAuthStartUrl`이
+pinned auth-js가 절대 붙이지 않는 `skip_http_redirect` 파라미터를 exact
+key로 요구해 실제 브라우저의 모든 OAuth 시작이 `invalid_oauth_start_ack`로
+취소·차단됨 — 단위 테스트가 라이브러리 URL을 mock으로 자기일관되게 고정해
+잡지 못했고, 배포 후 실 브라우저 smoke에서 발견해 pinned
+`_handleProviderSignIn`의 실제 URL 형태(4키, google은 +`prompt`)로 검증기를
+교정하고 잉여 파라미터 거부 attack fixture를 추가했다. 실 브라우저에서
+카카오 authorize 페이지까지의 시작 경로 재검증을 통과했다. 재개방은 이 완료
+기록을 포함한 재개방 커밋의 Git 배포로 수행하며, 재개방 smoke와 운영 사후
+관측 실측치는 KB `payments-runtime`에 기록한다.
 
 ## 종료 조건
 

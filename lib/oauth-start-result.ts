@@ -37,6 +37,9 @@ export function parsePrepareSignupActiveConflict(
 /**
  * Supabase's default OAuth method navigates before returning its acknowledgement.
  * Callers use skipBrowserRedirect, validate this URL, then navigate themselves.
+ * In the pinned auth-js, signInWithOAuth's URL builder receives only
+ * redirectTo/scopes/queryParams, so skipBrowserRedirect never appends a
+ * skip_http_redirect parameter; it only suppresses the automatic navigation.
  */
 export function parseOAuthStartUrl(
   result: {
@@ -73,14 +76,12 @@ export function parseOAuthStartUrl(
             "code_challenge",
             "code_challenge_method",
             "prompt",
-            "skip_http_redirect",
           ]
         : [
             "provider",
             "redirect_to",
             "code_challenge",
             "code_challenge_method",
-            "skip_http_redirect",
           ];
     const entries = [...target.searchParams.entries()];
     const authorizePath = new URL(
@@ -109,8 +110,7 @@ export function parseOAuthStartUrl(
         "s256" ||
       (expected.provider === "google"
         ? target.searchParams.get("prompt") !== "select_account"
-        : target.searchParams.has("prompt")) ||
-      target.searchParams.get("skip_http_redirect") !== "true"
+        : target.searchParams.has("prompt"))
     ) {
       return null;
     }
