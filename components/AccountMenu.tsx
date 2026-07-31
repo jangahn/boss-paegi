@@ -175,14 +175,14 @@ export function AccountMenu() {
         <button
           type="button"
           onClick={refreshProfile}
-          className="h-11 max-w-[40vw] truncate rounded-full border border-red-500/30 px-2 text-sm text-red-500 sm:max-w-[48vw] sm:px-3"
+          className="max-w-[48vw] truncate rounded-full border border-red-500/30 px-2.5 py-1 text-sm text-red-500"
         >
           계정 정보 재조회
         </button>
       );
     }
     return (
-      <div className="flex h-11 w-16 max-w-[40vw] items-center justify-end sm:w-24 sm:max-w-[48vw]">
+      <div className="flex h-8 w-24 items-center justify-end">
         <Spinner className="h-4 w-4" />
       </div>
     );
@@ -251,7 +251,7 @@ export function AccountMenu() {
 
   return (
     <div
-      className="relative min-w-0 max-w-[40vw] shrink sm:max-w-[48vw]"
+      className="relative"
       ref={ref}
     >
       <button
@@ -268,7 +268,7 @@ export function AccountMenu() {
             event.key === "ArrowUp" ? "last" : "first";
           setOpen(true);
         }}
-        className="flex h-11 w-full min-w-0 max-w-full items-center gap-1.5 rounded-full border border-foreground/15 ui-surface pl-1 pr-2 text-sm transition hover:bg-foreground/5 sm:pr-2.5"
+        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 ui-surface py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -280,8 +280,8 @@ export function AccountMenu() {
           loading="eager"
           fallbackSrc={DEFAULT_AVATAR}
         />
-        <span className="min-w-0 flex-1 truncate">{profile.display_name}</span>
-        <span aria-hidden className="shrink-0 text-xs text-zinc-500">
+        <span className="truncate">{profile.display_name}</span>
+        <span aria-hidden className="text-xs text-zinc-500">
           ▾
         </span>
       </button>

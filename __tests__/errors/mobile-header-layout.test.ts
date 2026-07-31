@@ -6,18 +6,17 @@ function source(path: string): string {
   return readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 }
 
-test("mobile header gives navigation and account a bounded shared width", () => {
+test("header keeps the pre-QA original geometry (2026-08-01 product decision)", () => {
+  // 사용자 확정: 네비는 라벨 맞춤 가변 폭(px-2.5 py-1.5 text-sm), 계정 pill은
+  // py-1 pl-1 pr-2.5 원형. 고정폭(w-14/w-16)·h-11 확대·text-xs 축소 재도입 금지.
   const nav = source("components/AppNav.tsx");
   const account = source("components/AccountMenu.tsx");
-  assert.match(nav, /gap-1 px-2/);
-  // 2026-07-31 product decision: every header control shares the h-11 (44px)
-  // touch target and the text-sm baseline confirmed in PR #82.
-  assert.match(nav, /flex h-11 items-center[^"]*text-sm/);
-  assert.match(account, /max-w-\[40vw\]/);
-  assert.equal((account.match(/\bh-11\b/g) ?? []).length, 3);
-  assert.match(account, /className="relative min-w-0/);
-  assert.match(account, /w-full min-w-0 max-w-full/);
-  assert.match(account, /min-w-0 flex-1 truncate/);
+  assert.match(nav, /gap-1\.5 px-3 py-2\.5 sm:px-4/);
+  assert.match(nav, /rounded-full px-2\.5 py-1\.5 text-sm font-medium/);
+  assert.doesNotMatch(nav, /\bw-14\b|\bh-11\b|\btext-xs\b/);
+  assert.match(account, /py-1 pl-1 pr-2\.5 text-sm/);
+  assert.match(account, /className="relative"/);
+  assert.doesNotMatch(account, /\bh-11\b/);
 });
 
 test("home has a single programmatic page title in main content", () => {
