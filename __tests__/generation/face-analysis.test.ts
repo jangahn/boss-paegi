@@ -76,21 +76,27 @@ test("대소문자 무시 — YES/NO 도 판정", () => {
   assert.equal(r.wearsGlasses, true);
 });
 
-test("얼굴 유무와 인원수가 상충하면 재시도 대상으로 차단한다", () => {
-  for (const raw of [
-    { face: "yes", count: "0", covered: "no", glasses: "no" },
-    { face: "no", count: "1", covered: "no", glasses: "no" },
-    { face: "no", count: "2", covered: "no", glasses: "no" },
-  ]) {
-    assert.throws(
-      () => interpretFaceChecks(raw),
-      FaceAnalysisUnavailableError,
-    );
-  }
+test("face와 count는 서로 다른 술어라 조합이 상충으로 차단되지 않는다", () => {
+  // face=no + count=1(사람은 있으나 얼굴이 안 보임)은 no_face 후보 사진의
+  // 대표 형태다 — throw가 아니라 faceVisible:false로 재촬영 안내에 합류한다.
+  const r = interpretFaceChecks({ face: "no", count: "1", covered: "no", glasses: "no" });
+  assert.equal(r.faceVisible, false);
+  assert.equal(r.peopleCount, 1);
+  const crowd = interpretFaceChecks({ face: "no", count: "2", covered: "no", glasses: "no" });
+  assert.equal(crowd.faceVisible, false);
+  assert.equal(crowd.singlePerson, false);
+  const empty = interpretFaceChecks({ face: "yes", count: "0", covered: "no", glasses: "no" });
+  assert.equal(empty.faceVisible, true);
+  assert.equal(empty.peopleCount, 0);
 });
 
 test("인원수는 하나의 안전 정수 증거만 허용한다", () => {
   const base = { face: "yes", covered: "no", glasses: "no" };
+  // "1."(숫자+문장 마침표)은 유효한 단일 정수 증거로 수용한다.
+  assert.equal(
+    interpretFaceChecks({ ...base, count: "1." }).peopleCount,
+    1,
+  );
   for (const count of [
     "1 or 2",
     "-1",

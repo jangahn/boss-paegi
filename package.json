@@ -35,6 +35,7 @@
     "qa:db:apply:oauth-post-contract": "bash scripts/qa/apply-local-migrations.sh --only 0095",
     "qa:db:apply:generation-quota-relax": "bash scripts/qa/apply-local-migrations.sh --only 0096",
     "qa:db:apply:public-write-quota-relax": "bash scripts/qa/apply-local-migrations.sh --only 0097",
+    "qa:db:apply:provider-output-png": "bash scripts/qa/apply-local-migrations.sh --only 0098",
     "test:db:analytics-maintenance-bounds": "bash scripts/qa/run-local-pgtap.sh --only analytics_maintenance_bounds.pgtap.sql",
     "test:db:dead-service-rpc-acl-cleanup": "bash scripts/qa/run-local-pgtap.sh --only dead_service_rpc_acl_cleanup.pgtap.sql",
     "qa:db:analytics-maintenance-acl-upgrade": "bash scripts/qa/test-analytics-maintenance-acl-upgrade.sh",

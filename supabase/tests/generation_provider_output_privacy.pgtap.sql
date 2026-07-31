@@ -1,7 +1,7 @@
 -- 008901 private fal output persistence and raw-face terminal proof.
 
 begin;
-select plan(26);
+select plan(28);
 
 select has_column(
   'public',
@@ -296,6 +296,36 @@ select ok(
   ),
   'only the exact canonical output and timestamp are durable'
 );
+-- fal flux-pulid의 실제 기본 출력은 image/png다(2026-07-31 운영 실측) —
+-- jpeg 전용 제약은 정상 웹훅 증거 기록을 전부 거부했다(0098에서 교정).
+select lives_ok(
+  $png$
+    update public.generation_submit_intents i
+       set provider_output = pg_catalog.jsonb_set(
+             i.provider_output, '{image,content_type}', '"image/png"'::jsonb
+           )
+      from generation_output_ctx c
+     where c.generation_id = i.generation_id
+       and i.candidate_index = 0
+  $png$,
+  'provider evidence accepts the live PNG content type'
+);
+select ok(
+  (
+    select i.provider_output->'image'->>'content_type' = 'image/png'
+      from public.generation_submit_intents i
+      join generation_output_ctx c
+        on c.generation_id = i.generation_id
+     where i.candidate_index = 0
+  ),
+  'PNG content type is durably stored'
+);
+-- 이후 테스트는 원 jpeg 증거를 전제하므로 원복한다.
+update public.generation_submit_intents i
+   set provider_output = c.output
+  from generation_output_ctx c
+ where c.generation_id = i.generation_id
+   and i.candidate_index = 0;
 select is(
   (
     select public.record_generation_submit_provider_output(

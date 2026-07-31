@@ -133,6 +133,9 @@ jobs:
       - name: Relax public write quotas to the product policy
         run: npm run qa:db:apply:public-write-quota-relax
 
+      - name: Accept the provider's PNG output in the evidence contract (0098)
+        run: npm run qa:db:apply:provider-output-png
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 
