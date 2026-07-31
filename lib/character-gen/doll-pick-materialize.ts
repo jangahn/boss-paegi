@@ -107,6 +107,11 @@ export async function materializeGenerationPick(args: {
   if (normalized.byteLength < 1 || normalized.byteLength > DOLL_OBJECT_MAX_BYTES) {
     throw new Error("pick_materialization_output_size_invalid");
   }
+  // 배포 런타임에서 파생 버퍼가 SharedArrayBuffer 기반일 수 있고 fetch 바디가
+  // 이를 거부한다("SharedArrayBuffer is not allowed" — upload-face와 동일 함정,
+  // 운영 실측: doll.pick_materialization_deferred). 업로드 전 일반 버퍼로 복사.
+  const uploadBytes = new Uint8Array(normalized.byteLength);
+  uploadBytes.set(normalized);
 
   const path = `${args.userId}/${claim.attemptId}.png`;
   const intent = await resolveUploadIntentMutation(() =>
@@ -151,7 +156,7 @@ export async function materializeGenerationPick(args: {
   } else {
     const { error: uploadError } = await args.admin.storage
       .from(DOLLS_BUCKET)
-      .upload(path, normalized, {
+      .upload(path, uploadBytes, {
         contentType: "image/png",
         upsert: false,
       });
