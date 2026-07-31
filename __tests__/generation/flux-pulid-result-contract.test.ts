@@ -64,6 +64,37 @@ test("Flux PuLID result requires exact media and safety evidence", () => {
   );
 });
 
+test("live default output (PNG, no file size) parses — 2026-07-31 production shape", () => {
+  // fal-ai/flux-pulid의 실제 응답: 제출 페이로드에 output_format이 없으면
+  // content_type=image/png, file_size 없음. jpeg 전용 핀은 정상 결과를 전부
+  // 거부해 회수가 무한 pending에 빠졌다(gen b8eabd26). 재도입 금지.
+  const live = {
+    images: [
+      {
+        url: "https://v3b.fal.media/files/b/0aa4760a/PJ5piKx6MAV6Q8Djyc57v.png",
+        width: 1024,
+        height: 1024,
+        content_type: "image/png",
+      },
+    ],
+    seed: 845_614_763,
+    has_nsfw_concepts: [false],
+    prompt: "A full body chibi character",
+    timings: { inference: 7.1 },
+  };
+  assert.deepEqual(parseFluxPulidResult(live), {
+    image: {
+      url: live.images[0].url,
+      width: 1024,
+      height: 1024,
+      contentType: "image/png",
+      fileSize: null,
+    },
+    seed: 845_614_763,
+    nsfw: false,
+  });
+});
+
 test("malformed, unsafe-origin, ambiguous, and coerced verdicts fail closed", () => {
   for (const value of [
     null,
@@ -86,7 +117,7 @@ test("malformed, unsafe-origin, ambiguous, and coerced verdicts fail closed", ()
         height: FAL_GENERATED_IMAGE_MAX_PIXELS,
       }],
     },
-    { ...valid, images: [{ ...valid.images[0], content_type: "image/png" }] },
+    { ...valid, images: [{ ...valid.images[0], content_type: "image/webp" }] },
     { ...valid, images: [{ ...valid.images[0], file_size: 0 }] },
     { ...valid, seed: -1 },
     { ...valid, seed: 1.5 },
