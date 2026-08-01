@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * 생성 대기 진행 표시 — 단계 텍스트는 **서버 실상태**(2026-08-01 제품 결정:
@@ -24,7 +24,12 @@ export function GeneratingProgress({
     return () => clearInterval(t);
   }, []);
   const elapsed = Math.max(0, (nowMs - startedAtMs) / 1000);
-  const pct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 60)));
+  // 앵커가 로컬 클릭 시각 → 서버 created_at 으로 갈아탈 때(업로드 시간만큼
+  // 경과가 줄어) 바가 뒤로 역행한다 — 진행 표시는 단조 증가로 래칫.
+  const maxPctRef = useRef(0);
+  const rawPct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 60)));
+  const pct = Math.max(rawPct, maxPctRef.current);
+  maxPctRef.current = pct;
   const text =
     phase === "analyzing"
       ? "사진을 분석하고 있어요"
@@ -77,7 +82,11 @@ export function SavingProgress({
     return () => clearInterval(t);
   }, []);
   const elapsed = Math.max(0, (nowMs - startMs) / 1000);
-  const pct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 7)));
+  // 생성 바와 동일 — 어떤 상태 전이에서도 뒤로 가지 않는다(단조 래칫).
+  const maxPctRef = useRef(0);
+  const rawPct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 7)));
+  const pct = Math.max(rawPct, maxPctRef.current);
+  maxPctRef.current = pct;
   const text =
     phase === "background"
       ? "배경을 정리하고 있어요"
