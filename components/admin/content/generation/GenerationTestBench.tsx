@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PhotoCropper } from "@/components/PhotoCropper";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
@@ -164,6 +165,9 @@ function SlotNumField({
  */
 export function GenerationTestBench({ current }: { current: GenerationConfig }) {
   const [file, setFile] = useState<File | null>(null);
+  // 유저 서비스와 동일한 크롭 단계 — 원본 선택 → 3:4 크롭 확정 → 제출용 파일.
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [croppedPreview, setCroppedPreview] = useState<string | null>(null);
   const [slots, setSlots] = useState<BenchSlot[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -296,16 +300,59 @@ export function GenerationTestBench({ current }: { current: GenerationConfig }) 
         정장색은 각 설정의 첫 색 고정.
       </p>
 
+      {cropSrc && (
+        <PhotoCropper
+          imageUrl={cropSrc}
+          onConfirm={(blob) => {
+            URL.revokeObjectURL(cropSrc);
+            setCropSrc(null);
+            if (croppedPreview) URL.revokeObjectURL(croppedPreview);
+            setCroppedPreview(URL.createObjectURL(blob));
+            setFile(new File([blob], "bench-cropped.jpg", { type: "image/jpeg" }));
+          }}
+          onCancel={() => {
+            URL.revokeObjectURL(cropSrc);
+            setCropSrc(null);
+          }}
+        />
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <label className="text-xs text-zinc-500">
           원본 사진{" "}
           <input
             type="file"
             accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const picked = e.target.files?.[0] ?? null;
+              if (!picked) return;
+              if (cropSrc) URL.revokeObjectURL(cropSrc);
+              setCropSrc(URL.createObjectURL(picked));
+              e.target.value = "";
+            }}
             className="text-xs"
           />
         </label>
+        {croppedPreview && (
+          <span className="inline-flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- 세션 로컬 blob 미리보기 */}
+            <img
+              src={croppedPreview}
+              alt="크롭된 원본 미리보기"
+              className="h-14 w-auto rounded-md border border-foreground/15"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (croppedPreview) URL.revokeObjectURL(croppedPreview);
+                setCroppedPreview(null);
+                setFile(null);
+              }}
+              className="text-xs text-zinc-500 underline underline-offset-2"
+            >
+              제거
+            </button>
+          </span>
+        )}
         <button
           type="button"
           disabled={slots.length >= MAX_SLOTS}
