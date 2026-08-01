@@ -65,10 +65,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   oauth: "로그인에 실패했어요. 다시 시도해주세요.",
   exchange: "로그인 처리 중 문제가 생겼어요. 다시 시도해주세요.",
   oauth_flow: "다른 로그인 흐름이 끝나지 않았어요. 잠시 후 다시 시도해주세요.",
-  account_deleted: "탈퇴 처리된 계정이에요. 같은 계정으로는 다시 이용할 수 없어요.",
+  // 약관 제5조 7항(본인 요청·확인 후 재활성화 가능)·탈퇴 화면 고지와 정합.
+  account_deleted:
+    "탈퇴 처리된 계정이에요. 재이용은 제한되며, 계정 복구를 원하시면 고객센터로 문의해 주세요. (캐릭터·하이라이트·생성권 등 데이터는 복구되지 않아요.)",
 };
 
-export function LoginForm() {
+export function LoginForm({ supportEmail }: { supportEmail?: string }) {
   const { logoUrl } = useMediaAssets();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
@@ -295,12 +297,22 @@ export function LoginForm() {
           </p>
         )}
         {errorMsg && (
-          <p
+          <div
             role="alert"
             className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500"
           >
-            {errorMsg}
-          </p>
+            <p>{errorMsg}</p>
+            {/* 탈퇴 안내 분기 한정 고객센터 노출 — 푸터가 /login self-hide 라
+                복구 문의 창구가 없던 공백(약관 제5조 7항 정합) */}
+            {errorKey === "account_deleted" && supportEmail && (
+              <p className="mt-2 text-xs text-red-400">
+                고객센터:{" "}
+                <a className="underline underline-offset-2" href={`mailto:${supportEmail}`}>
+                  {supportEmail}
+                </a>
+              </p>
+            )}
+          </div>
         )}
 
         {reviewerMode && (

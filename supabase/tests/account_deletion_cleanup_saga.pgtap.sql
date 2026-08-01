@@ -2,7 +2,7 @@
 -- disposable DB에서 0001~0072 적용 + pgTAP extension 뒤 실행한다. 전체 transaction rollback.
 
 begin;
-select plan(62);
+select plan(65);
 
 -- ── schema / ACL ─────────────────────────────────────────────────────────────
 select has_table(
@@ -256,6 +256,17 @@ begin
   values (v_score, v_user::text || '/highlight.webm');
   insert into public.content_reports(id, target_type, target_id, reason)
   values (v_report, 'doll', v_doll, 'privacy');
+
+  -- 0101: final_sweep 은 intent horizon 단일 소스 — 이 픽스처의 '호라이즌
+  -- 대기' 시맨틱(테스트 50~)은 고정 floor 가 아니라 실제 미결 업로드
+  -- intent(기본 expires now+2h5m)가 만들어야 한다.
+  insert into public.storage_upload_intents(owner_user_id, purpose, bucket, path)
+  values (
+    v_user,
+    'avatar_upload',
+    'avatars',
+    v_user::text || '/avatar-intent.png'
+  );
 
   v_start := public.admin_soft_delete_account(v_user);
   insert into cleanup_ctx
@@ -597,6 +608,13 @@ select throws_ok(
   'reactivation remains blocked during signed-upload final-sweep wait'
 );
 
+-- 호라이즌을 만들던 픽스처 intent 를 정리(실제 intent cleanup 완료 재현) —
+-- 열린 intent 는 pending_intent_drain·auth fence 를 정당하게 막기 때문.
+delete from public.storage_upload_intents i
+ using cleanup_ctx c
+ where i.owner_user_id = c.user_id
+   and i.purpose = 'avatar_upload'
+   and i.path = c.user_id::text || '/avatar-intent.png';
 update public.account_deletion_cleanup_jobs j
    set final_sweep_after = clock_timestamp() - interval '1 second',
        next_attempt_at = clock_timestamp() - interval '1 second'
@@ -736,6 +754,83 @@ select lives_ok(
     'boss'
   ),
   'reactivated owner can create generation'
+);
+
+-- ── 0101: 자산·미결 intent 0 계정 — 첫 패스 즉시 완료·재활성 즉시 해제 ──
+create temporary table empty_cleanup_ctx (
+  user_id uuid not null,
+  start_result jsonb not null,
+  lease_result jsonb
+) on commit drop;
+do $empty$
+declare
+  v_user uuid := gen_random_uuid();
+  v_start jsonb;
+begin
+  insert into auth.users(id, email)
+  values (v_user, 'cleanup-empty@example.test');
+  insert into public.member_accounts(user_id, gen_credits)
+  values (v_user, 0)
+  on conflict (user_id) do nothing;
+  v_start := public.admin_soft_delete_account(v_user);
+  insert into empty_cleanup_ctx(user_id, start_result)
+  values (v_user, v_start);
+end;
+$empty$;
+
+update empty_cleanup_ctx
+   set lease_result = public.claim_account_deletion_cleanup_v2(
+     (start_result ->> 'job_id')::uuid,
+     120,
+     100
+   );
+-- 워커의 auth 스크럽(HTTP)을 메인 픽스처와 동일하게 시뮬레이트 —
+-- 자산 0 이어도 auth 스크럽은 완료 전 필수 단계(수 초짜리, 스윕 대기 아님).
+do $arm_empty_auth$
+begin
+  perform public.arm_account_deletion_cleanup_auth_fence(
+    (start_result ->> 'job_id')::uuid,
+    user_id,
+    (lease_result ->> 'lease_token')::uuid,
+    (lease_result ->> 'lease_version')::integer
+  )
+  from empty_cleanup_ctx;
+end;
+$arm_empty_auth$;
+update auth.users u
+   set email = 'deleted+' || c.user_id::text || '@deleted.invalid',
+       raw_user_meta_data = '{}'::jsonb
+  from empty_cleanup_ctx c
+ where u.id = c.user_id;
+select is(
+  (
+    select public.finish_account_deletion_cleanup_v2(
+      (start_result ->> 'job_id')::uuid,
+      (lease_result ->> 'lease_token')::uuid,
+      (lease_result ->> 'lease_version')::integer,
+      true,
+      null
+    ) ->> 'status'
+      from empty_cleanup_ctx
+  ),
+  'completed',
+  'empty-manifest account completes on the first pass (0101)'
+);
+select ok(
+  (
+    select j.status = 'completed' and j.completed_at is not null
+      from public.account_deletion_cleanup_jobs j
+      join empty_cleanup_ctx c
+        on j.id = (c.start_result ->> 'job_id')::uuid
+  ),
+  'empty-manifest job is durably completed without a sweep wait'
+);
+select lives_ok(
+  format(
+    'update public.profiles set deleted_at = null where id = %L::uuid',
+    (select user_id::text from empty_cleanup_ctx)
+  ),
+  'reactivation unblocks immediately for asset-free accounts'
 );
 
 select * from finish();
