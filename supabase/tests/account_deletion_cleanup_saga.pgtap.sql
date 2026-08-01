@@ -608,6 +608,13 @@ select throws_ok(
   'reactivation remains blocked during signed-upload final-sweep wait'
 );
 
+-- 호라이즌을 만들던 픽스처 intent 를 정리(실제 intent cleanup 완료 재현) —
+-- 열린 intent 는 pending_intent_drain·auth fence 를 정당하게 막기 때문.
+delete from public.storage_upload_intents i
+ using cleanup_ctx c
+ where i.owner_user_id = c.user_id
+   and i.purpose = 'avatar_upload'
+   and i.path = c.user_id::text || '/avatar-intent.png';
 update public.account_deletion_cleanup_jobs j
    set final_sweep_after = clock_timestamp() - interval '1 second',
        next_attempt_at = clock_timestamp() - interval '1 second'
@@ -777,6 +784,24 @@ update empty_cleanup_ctx
      120,
      100
    );
+-- 워커의 auth 스크럽(HTTP)을 메인 픽스처와 동일하게 시뮬레이트 —
+-- 자산 0 이어도 auth 스크럽은 완료 전 필수 단계(수 초짜리, 스윕 대기 아님).
+do $arm_empty_auth$
+begin
+  perform public.arm_account_deletion_cleanup_auth_fence(
+    (start_result ->> 'job_id')::uuid,
+    user_id,
+    (lease_result ->> 'lease_token')::uuid,
+    (lease_result ->> 'lease_version')::integer
+  )
+  from empty_cleanup_ctx;
+end;
+$arm_empty_auth$;
+update auth.users u
+   set email = 'deleted+' || c.user_id::text || '@deleted.invalid',
+       raw_user_meta_data = '{}'::jsonb
+  from empty_cleanup_ctx c
+ where u.id = c.user_id;
 select is(
   (
     select public.finish_account_deletion_cleanup_v2(

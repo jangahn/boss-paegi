@@ -831,7 +831,11 @@ begin
     if v_finish->>'status' not in (
       'pending_batch',
       'pending_final_sweep',
-      'pending_generation_reconciliation'
+      'pending_generation_reconciliation',
+      -- 0101: final_sweep 이 intent horizon 단일 소스가 되면서, 과거
+      -- horizon 픽스처는 final_sweep 주차 없이 정당한 후속 단계
+      -- (intent 드레인)까지 진행한다.
+      'pending_intent_drain'
     ) then
       raise exception 'account drain status invariant failed: %',
         v_finish;
