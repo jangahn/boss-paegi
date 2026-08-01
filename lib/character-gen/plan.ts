@@ -1,7 +1,10 @@
+// generation 도메인은 상대 .ts 경로 — node --test(테스트벤치 등)에서 별칭 로더 없이 로드 가능 유지.
 import {
   assembleGenerationPrompts,
+  convertGenerationRoleBodyV1toV2,
+  convertGenerationTemplateV1toV2,
   type GenerationConfig,
-} from "@/lib/config/domains/generation";
+} from "../config/domains/generation.ts";
 import type { RoleId } from "@/lib/roles";
 
 // 고정(비-config) fal 파라미터 — 노출하지 않되 provider default drift 제거 위해 명시 제출·기록.
@@ -29,16 +32,14 @@ export type GenRequestParams = {
   maxSequenceLength: number;
 };
 
+// generation_config v2 감사 스냅샷(표시 전용) — 최종 프롬프트는 candidates.positivePrompt 가 소유.
 export type GenSnapshot = {
-  headTemplate: string;
-  tail: string;
-  identity: string;
+  template: string;
+  roleSubject: string;
+  roleBody: string;
+  glasses: string;
+  glassesIdentity: string;
   negative: string;
-  glassesPrompt: string;
-  glassesIdentityPrompt: string;
-  subject: string;
-  attireTemplate: string;
-  expression: string;
 };
 
 export type GenerationPlan = {
@@ -85,25 +86,8 @@ export function parsePersistedGenerationPlan(
   ) {
     return null;
   }
-  const snapshotKeys = [
-    "attireTemplate",
-    "expression",
-    "glassesIdentityPrompt",
-    "glassesPrompt",
-    "headTemplate",
-    "identity",
-    "negative",
-    "subject",
-    "tail",
-  ];
-  if (
-    Object.keys(snapshot).sort().join(",") !== snapshotKeys.join(",") ||
-    snapshotKeys.some(
-      (key) =>
-        typeof snapshot[key] !== "string" ||
-        (snapshot[key] as string).length > 4000,
-    )
-  ) {
+  const parsedSnapshot = parsePersistedGenSnapshot(snapshot);
+  if (!parsedSnapshot) {
     return null;
   }
   const candidates: GenCandidatePlan[] = [];
@@ -131,10 +115,81 @@ export function parsePersistedGenerationPlan(
   }
   return {
     request: request as GenerationPlan["request"],
-    snapshot: snapshot as GenerationPlan["snapshot"],
+    snapshot: parsedSnapshot,
     negative: row.negative,
     candidates,
   };
+}
+
+const SNAPSHOT_KEYS: readonly (keyof GenSnapshot)[] = [
+  "glasses",
+  "glassesIdentity",
+  "negative",
+  "roleBody",
+  "roleSubject",
+  "template",
+];
+// 배포 경계 창 back-compat — v2 배포 전에 커밋된 plan 의 v1 스냅샷 키.
+const LEGACY_SNAPSHOT_KEYS = [
+  "attireTemplate",
+  "expression",
+  "glassesIdentityPrompt",
+  "glassesPrompt",
+  "headTemplate",
+  "identity",
+  "negative",
+  "subject",
+  "tail",
+] as const;
+
+function allBoundedStrings(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  return keys.every(
+    (key) =>
+      typeof record[key] === "string" && (record[key] as string).length <= 4000,
+  );
+}
+
+/**
+ * 스냅샷은 표시 전용 감사 데이터(최종 프롬프트는 candidates 가 소유) — v2 키를 정확히 요구하되,
+ * v2 배포 전 커밋된 v1 스냅샷은 v1 고정 스캐폴드 전개(converter 와 동일 규칙)로 매핑해 수용한다.
+ */
+function parsePersistedGenSnapshot(
+  snapshot: Record<string, unknown>,
+): GenSnapshot | null {
+  const joined = Object.keys(snapshot).sort().join(",");
+  if (joined === SNAPSHOT_KEYS.join(",")) {
+    if (!allBoundedStrings(snapshot, SNAPSHOT_KEYS)) return null;
+    return {
+      template: snapshot.template as string,
+      roleSubject: snapshot.roleSubject as string,
+      roleBody: snapshot.roleBody as string,
+      glasses: snapshot.glasses as string,
+      glassesIdentity: snapshot.glassesIdentity as string,
+      negative: snapshot.negative as string,
+    };
+  }
+  if (joined === LEGACY_SNAPSHOT_KEYS.join(",")) {
+    if (!allBoundedStrings(snapshot, LEGACY_SNAPSHOT_KEYS)) return null;
+    return {
+      template: convertGenerationTemplateV1toV2(
+        snapshot.headTemplate as string,
+        snapshot.tail as string,
+        snapshot.identity as string,
+      ),
+      roleSubject: snapshot.subject as string,
+      roleBody: convertGenerationRoleBodyV1toV2(
+        snapshot.attireTemplate as string,
+        snapshot.expression as string,
+      ),
+      glasses: snapshot.glassesPrompt as string,
+      glassesIdentity: snapshot.glassesIdentityPrompt as string,
+      negative: snapshot.negative as string,
+    };
+  }
+  return null;
 }
 
 /**
@@ -211,15 +266,12 @@ export function buildGenerationPlan(
       maxSequenceLength: FIXED_FLUX.maxSequenceLength,
     },
     snapshot: {
-      headTemplate: config.prompt.headTemplate,
-      tail: config.prompt.tail,
-      identity: config.prompt.identity,
+      template: config.prompt.template,
+      roleSubject: rv.subject,
+      roleBody: rv.body,
+      glasses: config.prompt.glasses,
+      glassesIdentity: config.prompt.glassesIdentity,
       negative: config.prompt.negative,
-      glassesPrompt: config.prompt.glassesPrompt,
-      glassesIdentityPrompt: config.prompt.glassesIdentityPrompt,
-      subject: rv.subject,
-      attireTemplate: rv.attireTemplate,
-      expression: rv.expression,
     },
     negative: config.prompt.negative,
     candidates,

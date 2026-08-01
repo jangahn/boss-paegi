@@ -31,16 +31,14 @@ const fullGeneration = {
     enableSafetyChecker: true,
     maxSequenceLength: 256,
   },
+  // v2 스냅샷(현행) — 통짜 template + 롤 subject/body.
   snapshot: {
-    headTemplate: "h",
-    tail: "t",
-    identity: "i",
+    template: "t",
+    roleSubject: "s",
+    roleBody: "b",
+    glasses: "",
+    glassesIdentity: "",
     negative: "n",
-    glassesPrompt: "",
-    glassesIdentityPrompt: "",
-    subject: "s",
-    attireTemplate: "a",
-    expression: "e",
   },
   candidates: [
     { index: 0, suitColor: "navy", positivePrompt: "p", requestId: "r0", seed: 1, status: "completed" },
@@ -85,6 +83,32 @@ test("구 레코드(레거시 analyze 단일콜 필드) — 파싱 OK(back-compa
     generation: fullGeneration,
   });
   assert.notEqual(p, null);
+});
+
+test("구 레코드(v1 스냅샷 필드) — 파싱 OK(back-compat, 있는 필드만 표기)", () => {
+  const p = parseProvenance({
+    schemaVersion: 1,
+    config: { key: "generation_config", source: "db", version: 6, invalid: false },
+    analyze,
+    generation: {
+      ...fullGeneration,
+      snapshot: {
+        headTemplate: "h",
+        tail: "t",
+        identity: "i",
+        negative: "n",
+        glassesPrompt: "",
+        glassesIdentityPrompt: "",
+        subject: "s",
+        attireTemplate: "a",
+        expression: "e",
+      },
+    },
+  });
+  assert.notEqual(p, null);
+  assert.equal(p?.generation?.snapshot.template, undefined);
+  assert.equal(p?.generation?.snapshot.headTemplate, "h");
+  assert.equal(p?.generation?.snapshot.negative, "n");
 });
 
 test("parseProvenance — null/손상은 null 반환(상세 안 깨짐)", () => {

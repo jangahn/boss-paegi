@@ -84,6 +84,7 @@ export async function readGenerationRequestBody(
 
 export async function readGenerationFormData(
   request: RequestBodySurface,
+  maxBytes = GENERATION_FORM_MAX_BODY_BYTES,
 ): Promise<GenerationFormReadResult> {
   const contentType = request.headers.get("content-type");
   if (
@@ -93,7 +94,7 @@ export async function readGenerationFormData(
     return { ok: false, error: "invalid_body" };
   }
 
-  const body = await readGenerationRequestBody(request);
+  const body = await readGenerationRequestBody(request, maxBytes);
   if (!body.ok) return body;
   try {
     const form = await new Response(body.bytes.buffer as ArrayBuffer, {

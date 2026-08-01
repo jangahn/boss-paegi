@@ -50,6 +50,8 @@ const CLIENT_MUTATION_SURFACES: readonly Surface[] = [
   { method: "POST", endpoint: "/api/admin/config", source: "lib/admin-config-client.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/admin/legal", source: "components/admin/content/LegalDocEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/admin/events", source: "components/admin/EventEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
+  // 테스트 벤치 제출 = fal 실비 유발이나 세션 일회성·무원장(재시도/복구 없음 — 단일 시도 바운드).
+  { method: "POST", endpoint: "/api/admin/generation-test/submit", source: "components/admin/content/generation/GenerationTestBench.tsx", helper: "runBoundedClientJsonFetch", strategy: "bounded_best_effort" },
   { method: "POST", endpoint: "/api/admin/event-image", source: "components/admin/EventEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "PATCH", endpoint: "/api/admin/event-image", source: "components/admin/EventEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/admin/site-asset", source: "components/admin/content/MediaConfigEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
@@ -95,6 +97,12 @@ const DOMAIN_READ_ONLY_POSTS = [
     endpoint: "/api/account/reconsent",
     source: "app/api/account/reconsent/route.ts",
   },
+  {
+    // fal queue status/result 프록시(읽기 전용 폴링) — 도메인 상태 무변경.
+    method: "POST",
+    endpoint: "/api/admin/generation-test/status",
+    source: "components/admin/content/generation/GenerationTestBench.tsx",
+  },
 ] as const;
 
 function read(path: string): string {
@@ -109,10 +117,10 @@ function key(surface: Pick<Surface, "method" | "endpoint">): string {
   return `${surface.method} ${surface.endpoint}`;
 }
 
-test("all 46 current first-party client-triggered domain mutations are explicit", () => {
+test("all 47 current first-party client-triggered domain mutations are explicit", () => {
   assert.equal(
     CLIENT_MUTATION_SURFACES.length,
-    46,
+    47,
     "mutation count changed; classify the new/removed edge explicitly",
   );
   const unique = new Set(CLIENT_MUTATION_SURFACES.map(key));
@@ -158,7 +166,7 @@ test("side-effecting GET recovery edges cannot be misclassified as reads", () =>
 
 test("domain-read-only POST exclusions are exact and never overlap mutations", () => {
   const mutationKeys = new Set(CLIENT_MUTATION_SURFACES.map(key));
-  assert.equal(DOMAIN_READ_ONLY_POSTS.length, 4);
+  assert.equal(DOMAIN_READ_ONLY_POSTS.length, 5);
   for (const exclusion of DOMAIN_READ_ONLY_POSTS) {
     assert.equal(mutationKeys.has(key(exclusion)), false, key(exclusion));
     const body = read(exclusion.source);
