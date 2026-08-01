@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * 생성 대기 진행 표시 — 단계 텍스트는 **서버 실상태**(2026-08-01 제품 결정:
@@ -18,18 +18,21 @@ export function GeneratingProgress({
   candidatesReady: number;
   startedAtMs: number;
 }) {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 500);
-    return () => clearInterval(t);
-  }, []);
-  const elapsed = Math.max(0, (nowMs - startedAtMs) / 1000);
   // 앵커가 로컬 클릭 시각 → 서버 created_at 으로 갈아탈 때(업로드 시간만큼
   // 경과가 줄어) 바가 뒤로 역행한다 — 진행 표시는 단조 증가로 래칫.
-  const maxPctRef = useRef(0);
-  const rawPct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 60)));
-  const pct = Math.max(rawPct, maxPctRef.current);
-  maxPctRef.current = pct;
+  const [pct, setPct] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const tick = () => {
+      const seconds = Math.max(0, (Date.now() - startedAtMs) / 1000);
+      const raw = Math.min(95, 95 * (1 - Math.exp(-seconds / 60)));
+      setElapsed(seconds);
+      setPct((prev) => Math.max(prev, raw));
+    };
+    tick();
+    const t = setInterval(tick, 500);
+    return () => clearInterval(t);
+  }, [startedAtMs]);
   const text =
     phase === "analyzing"
       ? "사진을 분석하고 있어요"
@@ -75,18 +78,19 @@ export function SavingProgress({
 }: {
   phase: "background" | "saving" | "done";
 }) {
-  const [startMs] = useState(() => Date.now());
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 500);
-    return () => clearInterval(t);
-  }, []);
-  const elapsed = Math.max(0, (nowMs - startMs) / 1000);
   // 생성 바와 동일 — 어떤 상태 전이에서도 뒤로 가지 않는다(단조 래칫).
-  const maxPctRef = useRef(0);
-  const rawPct = Math.min(95, 95 * (1 - Math.exp(-elapsed / 7)));
-  const pct = Math.max(rawPct, maxPctRef.current);
-  maxPctRef.current = pct;
+  const [startMs] = useState(() => Date.now());
+  const [pct, setPct] = useState(0);
+  useEffect(() => {
+    const tick = () => {
+      const seconds = Math.max(0, (Date.now() - startMs) / 1000);
+      const raw = Math.min(95, 95 * (1 - Math.exp(-seconds / 7)));
+      setPct((prev) => Math.max(prev, raw));
+    };
+    tick();
+    const t = setInterval(tick, 500);
+    return () => clearInterval(t);
+  }, [startMs]);
   const text =
     phase === "background"
       ? "배경을 정리하고 있어요"
