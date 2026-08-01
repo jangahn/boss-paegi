@@ -14,7 +14,9 @@ export const FIXED_FLUX = {
   idWeight: 1,
   candidateCount: 3,
   enableSafetyChecker: true,
-  maxSequenceLength: 128,
+  // 256: 본문 T5 토큰이 128을 넘어 뒤쪽(identity 블록)이 절단될 개연성 —
+  // fal 과금은 장당 고정이라 상향 비용 0 (2026-08-01 제품 결정).
+  maxSequenceLength: 256,
 } as const;
 
 export type GenCandidatePlan = { index: number; suitColor: string; positivePrompt: string };

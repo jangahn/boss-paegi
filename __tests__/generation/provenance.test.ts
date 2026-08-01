@@ -29,7 +29,7 @@ const fullGeneration = {
     idWeight: 1,
     candidateCount: 3,
     enableSafetyChecker: true,
-    maxSequenceLength: 128,
+    maxSequenceLength: 256,
   },
   // v2 스냅샷(현행) — 통짜 template + 롤 subject/body.
   snapshot: {
