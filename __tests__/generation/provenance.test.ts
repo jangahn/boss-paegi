@@ -29,7 +29,7 @@ const fullGeneration = {
     idWeight: 1,
     candidateCount: 3,
     enableSafetyChecker: true,
-    maxSequenceLength: 128,
+    maxSequenceLength: 256,
   },
   snapshot: {
     headTemplate: "h",
