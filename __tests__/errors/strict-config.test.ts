@@ -81,25 +81,37 @@ test("invalid persisted config cannot be silently replaced by code defaults", ()
 });
 
 test("config writes accept only an exact positive safe-integer RPC result", () => {
+  // 실계약(0085 idempotent 래퍼): {ok, key, version, idempotent} 4키.
+  // 2026-08-01 운영 실측 — 3키 정확일치 요구는 실제 성공 영수증을 전부
+  // 거부해 콘솔 저장이 '커밋됐는데 실패 표시'가 됐다. 재도입 금지.
   assert.deepEqual(
     parseConfigWriteResult(
-      { ok: true, key: "growth_levers", version: 12 },
+      { ok: true, key: "growth_levers", version: 12, idempotent: false },
       "growth_levers",
     ),
     { version: 12 },
+  );
+  assert.deepEqual(
+    parseConfigWriteResult(
+      { ok: true, key: "generation_config", version: 10, idempotent: true },
+      "generation_config",
+    ),
+    { version: 10 },
   );
 
   for (const invalid of [
     null,
     "12",
     {},
-    { ok: false, key: "growth_levers", version: 12 },
-    { ok: true, key: "other_domain", version: 12 },
-    { ok: true, key: "growth_levers", version: null },
-    { ok: true, key: "growth_levers", version: "12" },
-    { ok: true, key: "growth_levers", version: -1 },
-    { ok: true, key: "growth_levers", version: 0 },
-    { ok: true, key: "growth_levers", version: 1.5 },
+    // idempotent 필드 없는 구형(내부 RPC 직접 반환형)은 래퍼 경유가 아니므로 거부.
+    { ok: true, key: "growth_levers", version: 12 },
+    { ok: false, key: "growth_levers", version: 12, idempotent: false },
+    { ok: true, key: "other_domain", version: 12, idempotent: false },
+    { ok: true, key: "growth_levers", version: null, idempotent: false },
+    { ok: true, key: "growth_levers", version: "12", idempotent: false },
+    { ok: true, key: "growth_levers", version: -1, idempotent: false },
+    { ok: true, key: "growth_levers", version: 0, idempotent: false },
+    { ok: true, key: "growth_levers", version: 1.5, idempotent: false },
     {
       ok: true,
       key: "growth_levers",
@@ -110,6 +122,7 @@ test("config writes accept only an exact positive safe-integer RPC result", () =
       ok: true,
       key: "growth_levers",
       version: Number.MAX_SAFE_INTEGER + 1,
+      idempotent: false,
     },
   ]) {
     assert.throws(

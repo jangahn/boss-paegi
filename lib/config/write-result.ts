@@ -17,14 +17,17 @@ export function parseConfigWriteResult(
     throw new InvalidConfigWriteResultError();
   }
   const row = value as Record<string, unknown>;
-  const keys = Object.keys(row);
+  const keys = Object.keys(row).sort();
+  // 실계약: admin_update_app_setting_idempotent 는 내부 RPC 의
+  // {ok, key, version} 에 'idempotent'(fresh=false / replay=true 가능)를
+  // 합성해 4키를 반환한다(0085). 3키 정확일치 요구는 실제 성공 영수증을
+  // 전부 거부해 콘솔 저장이 "커밋됐는데 실패 표시 + 캐시 미무효화"가
+  // 됐다(2026-08-01 운영 실측, config.update_fail).
   if (
-    keys.length !== 3 ||
-    !keys.includes("ok") ||
-    !keys.includes("key") ||
-    !keys.includes("version") ||
+    keys.join(",") !== "idempotent,key,ok,version" ||
     row.ok !== true ||
     row.key !== expectedKey ||
+    typeof row.idempotent !== "boolean" ||
     !Number.isSafeInteger(row.version) ||
     (row.version as number) < 1
   ) {
