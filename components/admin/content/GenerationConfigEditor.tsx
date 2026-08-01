@@ -100,7 +100,14 @@ export function GenerationConfigEditor({
         setMsg({ ok: true, text: "발행됐어요. 다음 생성부터 반영됩니다." });
         router.refresh();
       } else {
-        setMsg({ ok: false, text: ERR_KO[result.error] ?? result.error });
+        const detail =
+          "issues" in result && result.issues?.length
+            ? ` — ${result.issues.slice(0, 2).join(" / ")}`
+            : "";
+        setMsg({
+          ok: false,
+          text: (ERR_KO[result.error] ?? result.error) + detail,
+        });
       }
     } catch {
       setMsg({ ok: false, text: "네트워크 오류 — 다시 시도하세요." });

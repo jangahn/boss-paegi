@@ -21,6 +21,8 @@ export type AdminConfigClientResult =
       ack: null;
       error: string;
       unconfirmed: boolean;
+      /** validation_failed 시 서버 zod issues 요약 — 어느 규칙이 걸렸는지 그대로 표시용. */
+      issues?: string[];
     }
   | {
       ok: false;
@@ -71,6 +73,27 @@ export async function submitAdminConfigMutation(
         typeof (body as { error?: unknown }).error === "string"
           ? (body as { error: string }).error
           : null;
+      const rawIssues =
+        body && typeof body === "object" && !Array.isArray(body)
+          ? (body as { issues?: unknown }).issues
+          : undefined;
+      const issues = Array.isArray(rawIssues)
+        ? rawIssues
+            .slice(0, 5)
+            .flatMap((issue) => {
+              if (!issue || typeof issue !== "object") return [];
+              const row = issue as {
+                path?: unknown;
+                message?: unknown;
+              };
+              const path = Array.isArray(row.path)
+                ? row.path.join(".")
+                : "";
+              return typeof row.message === "string"
+                ? [path ? `${path}: ${row.message}` : row.message]
+                : [];
+            })
+        : undefined;
       if (
         clientMutationResponseNeedsReconciliation(
           response.status,
@@ -85,7 +108,7 @@ export async function submitAdminConfigMutation(
       }
       return {
         kind: "rejected",
-        error: { status: response.status, code: error },
+        error: { status: response.status, code: error, issues },
       };
     },
   });
@@ -116,6 +139,7 @@ export async function submitAdminConfigMutation(
     const rejection = outcome.error as {
       status?: unknown;
       code?: unknown;
+      issues?: unknown;
     };
     return {
       ok: false,
@@ -128,6 +152,10 @@ export async function submitAdminConfigMutation(
           ? rejection.code
           : "config_update_failed",
       unconfirmed: false,
+      ...(Array.isArray(rejection.issues) &&
+      rejection.issues.every((v) => typeof v === "string")
+        ? { issues: rejection.issues as string[] }
+        : {}),
     };
   }
   return {
