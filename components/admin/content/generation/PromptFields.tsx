@@ -56,8 +56,9 @@ function Area({
 }
 
 /**
- * generation_config.prompt 편집 — 공용 템플릿({placeholder} 표기) + 정장색 + 롤별 변주(subject/attire/expression).
- * 프롬프트 텍스트 100% config 소유. 검증(placeholder 규칙 등)은 서버 Zod(발행 시 validation_failed).
+ * generation_config.prompt v2 편집 — 통짜 template({subject}{role}{glasses}{idGlasses} 각 1회)
+ * + 안경 절 + 정장색 + 롤별 변주(subject/body). 프롬프트 텍스트 100% config 소유.
+ * 검증(placeholder 규칙 등)은 서버 Zod(발행 시 validation_failed).
  */
 export function PromptFields({
   prompt,
@@ -77,48 +78,35 @@ export function PromptFields({
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-foreground/10 bg-foreground/[0.02] p-3">
         <p className="mb-2 text-xs text-zinc-400">
-          최종 프롬프트 = <code>positiveTemplate</code> 에{" "}
-          <code>{"{head}{attire}{glasses}{expression}{tail}{identity}{idGlasses}"}</code> 치환.{" "}
-          <code>{"{subject}"}</code>→headTemplate, <code>{"{suitColor}"}</code>→각 롤 attire.
+          최종 프롬프트 = <code>template</code> 에{" "}
+          <code>{"{subject}{role}{glasses}{idGlasses}"}</code> 치환.{" "}
+          <code>{"{subject}"}</code>→각 롤 호칭, <code>{"{role}"}</code>→각 롤 body(복장+표정,{" "}
+          <code>{"{suitColor}"}</code> 치환), <code>{"{glasses}"}</code>/<code>{"{idGlasses}"}</code>
+          →안경 시에만 삽입.
         </p>
         <Area
-          label="positiveTemplate"
-          hint="{head}{attire}{glasses}{expression}{tail}{identity}{idGlasses} 각 1회"
-          value={prompt.positiveTemplate}
-          onChange={(v) => set({ positiveTemplate: v })}
-          minRows={2}
+          label="template (통짜 고정문)"
+          hint="{subject}{role}{glasses}{idGlasses} 각 1회"
+          value={prompt.template}
+          onChange={(v) => set({ template: v })}
+          minRows={6}
         />
-        <div className="mt-3">
-          <Area
-            label="headTemplate"
-            hint="{subject} 정확히 1회"
-            value={prompt.headTemplate}
-            onChange={(v) => set({ headTemplate: v })}
-            minRows={2}
-          />
-        </div>
-        <div className="mt-3">
-          <Area label="tail (스타일·배경·포커스)" value={prompt.tail} onChange={(v) => set({ tail: v })} minRows={3} />
-        </div>
-        <div className="mt-3">
-          <Area label="identity (identity 보존 지시)" value={prompt.identity} onChange={(v) => set({ identity: v })} minRows={3} />
-        </div>
         <div className="mt-3">
           <Area label="negative prompt" value={prompt.negative} onChange={(v) => set({ negative: v })} minRows={3} />
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Area
-            label="glassesPrompt (안경 시 삽입)"
+            label="glasses (안경 시 {glasses} 위치 삽입)"
             hint="빈값=비활성"
-            value={prompt.glassesPrompt}
-            onChange={(v) => set({ glassesPrompt: v })}
+            value={prompt.glasses}
+            onChange={(v) => set({ glasses: v })}
             minRows={2}
           />
           <Area
-            label="glassesIdentityPrompt"
+            label="glassesIdentity (안경 시 {idGlasses} 위치 삽입)"
             hint="빈값=비활성"
-            value={prompt.glassesIdentityPrompt}
-            onChange={(v) => set({ glassesIdentityPrompt: v })}
+            value={prompt.glassesIdentity}
+            onChange={(v) => set({ glassesIdentity: v })}
             minRows={2}
           />
         </div>
@@ -137,30 +125,23 @@ export function PromptFields({
       </div>
 
       <div className="flex flex-col gap-3">
-        <p className="text-sm font-semibold text-zinc-500">롤별 변주 (복장·표정)</p>
+        <p className="text-sm font-semibold text-zinc-500">롤별 변주 (호칭·복장+표정)</p>
         {ROLES.map((role) => (
           <div key={role} className="rounded-xl border border-foreground/10 p-3">
             <p className="mb-2 text-xs font-bold text-foreground">{ROLE_LABEL[role]}</p>
             <div className="flex flex-col gap-2">
               <Area
-                label="subject (직군)"
+                label="subject (호칭 — 짧은 명사구)"
                 value={prompt.roles[role].subject}
                 onChange={(v) => setRole(role, { subject: v })}
                 minRows={1}
                 mono={false}
               />
               <Area
-                label="attireTemplate ({suitColor} 1회)"
-                value={prompt.roles[role].attireTemplate}
-                onChange={(v) => setRole(role, { attireTemplate: v })}
-                minRows={2}
-              />
-              <Area
-                label="expression (표정/분위기)"
-                value={prompt.roles[role].expression}
-                onChange={(v) => setRole(role, { expression: v })}
-                minRows={1}
-                mono={false}
+                label="body (복장+표정 통합, {suitColor} 1회)"
+                value={prompt.roles[role].body}
+                onChange={(v) => setRole(role, { body: v })}
+                minRows={3}
               />
             </div>
           </div>

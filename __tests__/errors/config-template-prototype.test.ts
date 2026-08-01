@@ -10,7 +10,7 @@ import { copyVarValue } from "../../lib/config/copy-var.ts";
 
 test("generation prompt substitution never reads Object.prototype keys", () => {
   const prompt = structuredClone(GENERATION_CONFIG_DEFAULT.prompt);
-  prompt.headTemplate += " {toString} {constructor} {__proto__}";
+  prompt.template += " {toString} {constructor} {__proto__}";
 
   const result = assembleGenerationPrompts(prompt, "boss", {
     wearsGlasses: false,

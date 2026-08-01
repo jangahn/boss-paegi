@@ -196,7 +196,30 @@ export default async function AdminGenerationDetailPage({
               </Row>
               <div className="mt-2">
                 <span className="text-sm text-zinc-500">공통 프롬프트 스냅샷</span>
-                <Pre>{`head: ${p.generation.snapshot.headTemplate}\ntail: ${p.generation.snapshot.tail}\nidentity: ${p.generation.snapshot.identity}\nnegative: ${p.generation.snapshot.negative}\nglasses: ${p.generation.snapshot.glassesPrompt} | ${p.generation.snapshot.glassesIdentityPrompt}\nrole: ${p.generation.snapshot.subject} / ${p.generation.snapshot.attireTemplate} / ${p.generation.snapshot.expression}`}</Pre>
+                {/* v2 필드 기준 표기 — 구 레코드(v1)는 있는 필드만 표기(back-compat). */}
+                <Pre>
+                  {[
+                    p.generation.snapshot.template != null &&
+                      `template: ${p.generation.snapshot.template}`,
+                    p.generation.snapshot.roleSubject != null &&
+                      `role: ${p.generation.snapshot.roleSubject} / ${p.generation.snapshot.roleBody ?? ""}`,
+                    p.generation.snapshot.glasses != null &&
+                      `glasses: ${p.generation.snapshot.glasses} | ${p.generation.snapshot.glassesIdentity ?? ""}`,
+                    p.generation.snapshot.headTemplate != null &&
+                      `head: ${p.generation.snapshot.headTemplate}`,
+                    p.generation.snapshot.tail != null &&
+                      `tail: ${p.generation.snapshot.tail}`,
+                    p.generation.snapshot.identity != null &&
+                      `identity: ${p.generation.snapshot.identity}`,
+                    p.generation.snapshot.glassesPrompt != null &&
+                      `glasses: ${p.generation.snapshot.glassesPrompt} | ${p.generation.snapshot.glassesIdentityPrompt ?? ""}`,
+                    p.generation.snapshot.subject != null &&
+                      `role: ${p.generation.snapshot.subject} / ${p.generation.snapshot.attireTemplate ?? ""} / ${p.generation.snapshot.expression ?? ""}`,
+                    `negative: ${p.generation.snapshot.negative}`,
+                  ]
+                    .filter((line): line is string => typeof line === "string")
+                    .join("\n")}
+                </Pre>
               </div>
 
               <div className="mt-3 flex flex-col gap-3">

@@ -81,16 +81,26 @@ export const provenanceSchema = z.object({
       enableSafetyChecker: z.boolean(),
       maxSequenceLength: z.number().int(),
     }),
+    // 스냅샷은 표시 전용 감사 데이터(최종 프롬프트는 candidates 소유).
+    // v2(2026-08 generation_config v2) 필드가 현행 — 구 v1 레코드는 v1 필드만 가져
+    // 양쪽 다 optional(negative 만 공통 필수). 상세 화면은 있는 필드만 표기.
     snapshot: z.object({
-      headTemplate: z.string(),
-      tail: z.string(),
-      identity: z.string(),
       negative: z.string(),
-      glassesPrompt: z.string(),
-      glassesIdentityPrompt: z.string(),
-      subject: z.string(),
-      attireTemplate: z.string(),
-      expression: z.string(),
+      // v2 — 통짜 template + 롤 subject/body + 안경 절.
+      template: z.string().optional(),
+      roleSubject: z.string().optional(),
+      roleBody: z.string().optional(),
+      glasses: z.string().optional(),
+      glassesIdentity: z.string().optional(),
+      // v1 레거시(구 레코드 back-compat) — 신규 기록 금지.
+      headTemplate: z.string().optional(),
+      tail: z.string().optional(),
+      identity: z.string().optional(),
+      glassesPrompt: z.string().optional(),
+      glassesIdentityPrompt: z.string().optional(),
+      subject: z.string().optional(),
+      attireTemplate: z.string().optional(),
+      expression: z.string().optional(),
     }),
     candidates: z.array(candidateSchema),
     })

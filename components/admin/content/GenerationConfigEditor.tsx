@@ -8,6 +8,7 @@ import {
   type GenerationConfig,
   type GenerationPromptConfig,
 } from "@/lib/config/domains/generation";
+import { GenerationTestBench } from "@/components/admin/content/generation/GenerationTestBench";
 import { PromptFields } from "@/components/admin/content/generation/PromptFields";
 import { PromptPreview } from "@/components/admin/content/generation/PromptPreview";
 import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
@@ -15,7 +16,7 @@ import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
   validation_failed:
-    "형식 위반이에요. 수치 범위·placeholder 규칙(예: headTemplate {subject} 1회, attire {suitColor} 1회, positiveTemplate 7종)·정장색 3개 이상을 확인하세요.",
+    "형식 위반이에요. 수치 범위·placeholder 규칙(예: template {subject}{role}{glasses}{idGlasses} 각 1회, 롤 body {suitColor} 1회)·정장색 3개 이상을 확인하세요.",
   update_failed: "저장 실패. 잠시 후 다시 시도하세요.",
 };
 
@@ -73,20 +74,23 @@ export function GenerationConfigEditor({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // 현재 편집값 조립 — 발행과 테스트 벤치("현재 편집값 복제")가 공유하는 단일 소스.
+  const composeValue = (): GenerationConfig => ({
+    numbers: {
+      numInferenceSteps: Number(steps),
+      guidanceScale: Number(guidance),
+      trueCfg: Number(trueCfg),
+      imageSize,
+    },
+    prompt,
+  });
+
   const submit = async () => {
     if (busy) return;
     setBusy(true);
     setMsg(null);
     try {
-      const value: GenerationConfig = {
-        numbers: {
-          numInferenceSteps: Number(steps),
-          guidanceScale: Number(guidance),
-          trueCfg: Number(trueCfg),
-          imageSize,
-        },
-        prompt,
-      };
+      const value = composeValue();
       const result = await submitAdminConfigMutation({
         body: { key: "generation_config", value, baseVersion },
         baseVersion,
@@ -152,6 +156,8 @@ export function GenerationConfigEditor({
         {busy && <Spinner className="h-4 w-4" />}
         발행
       </button>
+
+      <GenerationTestBench current={composeValue()} />
     </div>
   );
 }
