@@ -12,7 +12,10 @@ type Props = {
   hrefFor: (page: number) => string;
 };
 
-const BASE = "rounded-full border px-3 py-2 text-sm transition";
+// 소형 화면(iPhone SE)에서 5셀이 줄폭을 넘치면 라벨이 세로로 쪼개진다 —
+// 셀은 절대 줄바꿈·수축하지 않고, 모바일에선 패딩·글자만 줄인다.
+const BASE =
+  "shrink-0 whitespace-nowrap rounded-full border px-2.5 py-2 text-xs transition sm:px-3 sm:text-sm";
 const ENABLED = "border-foreground/15 hover:bg-foreground/5";
 const DISABLED = "pointer-events-none border-foreground/10 text-zinc-600";
 
@@ -21,10 +24,13 @@ export function Pagination({ page, totalPages, hrefFor }: Props) {
   const atFirst = page <= 1;
   const atLast = page >= totalPages;
   return (
-    <nav className="flex items-center justify-center gap-2 text-sm" aria-label="페이지 이동">
+    <nav
+      className="flex items-center justify-center gap-1.5 text-sm sm:gap-2"
+      aria-label="페이지 이동"
+    >
       <Cell href={hrefFor(1)} disabled={atFirst} label="« 맨앞" />
       <Cell href={hrefFor(page - 1)} disabled={atFirst} label="‹ 이전" />
-      <span className="px-1 tabular-nums text-zinc-500">
+      <span className="shrink-0 whitespace-nowrap px-1 tabular-nums text-zinc-500">
         {page} / {totalPages}
       </span>
       <Cell href={hrefFor(page + 1)} disabled={atLast} label="다음 ›" />
