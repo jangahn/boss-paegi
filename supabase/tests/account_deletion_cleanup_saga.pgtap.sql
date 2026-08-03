@@ -1,8 +1,9 @@
--- account_deletion_cleanup_saga.pgtap.sql — 0072 cleanup outbox/lease 실행 검증.
--- disposable DB에서 0001~0072 적용 + pgTAP extension 뒤 실행한다. 전체 transaction rollback.
+-- account_deletion_cleanup_saga.pgtap.sql — cleanup outbox/lease 실행 검증
+-- (0072 원형 + 008903 v2 + 0102 백오프 리셋).
+-- disposable DB에서 전체 마이그레이션 적용 + pgTAP extension 뒤 실행한다. 전체 transaction rollback.
 
 begin;
-select plan(65);
+select plan(68);
 
 -- ── schema / ACL ─────────────────────────────────────────────────────────────
 select has_table(
@@ -598,6 +599,15 @@ select ok(
   ),
   'pre-horizon success retains active manifest and schedules final sweep'
 );
+select is(
+  (
+    select j.attempt_count
+      from public.account_deletion_cleanup_jobs j
+      join cleanup_ctx c on j.id = (c.start_result ->> 'job_id')::uuid
+  ),
+  0,
+  'successful finish resets attempt_count to a fresh streak'
+);
 select throws_ok(
   format(
     'update public.profiles set deleted_at = null where id = %L::uuid',
@@ -626,6 +636,16 @@ update cleanup_ctx
      120,
      100
    );
+
+select is(
+  (
+    select j.attempt_count
+      from public.account_deletion_cleanup_jobs j
+      join cleanup_ctx c on j.id = (c.start_result ->> 'job_id')::uuid
+  ),
+  1,
+  'claim after a successful pass counts consecutive failures from one'
+);
 
 do $arm_cleanup_auth$
 begin
@@ -677,6 +697,15 @@ select ok(
       join cleanup_ctx c on j.id = (c.start_result ->> 'job_id')::uuid
   ),
   'completed job clears lease and stamps completion'
+);
+select is(
+  (
+    select j.attempt_count
+      from public.account_deletion_cleanup_jobs j
+      join cleanup_ctx c on j.id = (c.start_result ->> 'job_id')::uuid
+  ),
+  0,
+  'completed job resets attempt_count'
 );
 select is(
   (
