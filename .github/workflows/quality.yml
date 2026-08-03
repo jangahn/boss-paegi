@@ -145,6 +145,9 @@ jobs:
       - name: Anchor empty-manifest cleanup to the intent horizon (0101)
         run: npm run qa:db:apply:empty-manifest-sweep
 
+      - name: Reset cleanup backoff to consecutive failures (0102)
+        run: npm run qa:db:apply:cleanup-backoff
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 
