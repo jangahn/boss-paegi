@@ -3,7 +3,7 @@
 -- fencing 및 참조 상태의 원자 수렴을 이 disposable transaction에서 검증한다.
 
 begin;
-select plan(80);
+select plan(82);
 
 select has_table(
   'public',
@@ -955,6 +955,39 @@ select is(
   ),
   0,
   'objects outside the finite rollout window are not reclassified as protected'
+);
+
+-- ── 부활 upsert 는 새 수명주기 — attempt_count 를 승계하지 않는다 (0102) ──────
+update public.storage_object_cleanup_jobs j
+   set status = 'completed',
+       completed_at = clock_timestamp(),
+       attempt_count = 9,
+       lease_token = null,
+       leased_until = null
+  from storage_ctx c
+ where j.id = c.avatar_old_job;
+select is(
+  (
+    select public.bp_enqueue_detached_storage_asset(
+             'avatar_replace',
+             c.user_id,
+             null,
+             'avatars',
+             c.avatar_old_path
+           )
+      from storage_ctx c
+  ),
+  (select avatar_old_job from storage_ctx),
+  'completed cleanup receipt revives in place on re-detach'
+);
+select is(
+  (
+    select j.status || ':' || j.attempt_count::text
+      from public.storage_object_cleanup_jobs j
+      join storage_ctx c on c.avatar_old_job = j.id
+  ),
+  'pending:0',
+  'revived cleanup lifecycle starts a fresh attempt_count'
 );
 
 select * from finish();

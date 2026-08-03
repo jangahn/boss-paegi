@@ -3,7 +3,7 @@
 -- stale-finish fencing, residual-object proof, token horizon and intent drain.
 
 begin;
-select plan(82);
+select plan(83);
 
 select has_column(
   'public', 'account_deletion_cleanup_jobs', 'lease_version',
@@ -1403,6 +1403,15 @@ select ok(
   moderation_batches > 100,
   'moderation purge required and completed more than 100 bounded claims'
 ) from bounded_cleanup_ctx;
+select is(
+  (
+    select j.attempt_count
+      from public.moderation_purge_jobs j
+      join bounded_cleanup_ctx c on c.moderation_job_id = j.id
+  ),
+  0,
+  'each successful purge batch resets attempt_count to a fresh streak'
+);
 select throws_ok(
   format(
     'update public.storage_upload_intents set last_token_horizon = clock_timestamp() + interval ''1 hour'' where id = %L::uuid',
