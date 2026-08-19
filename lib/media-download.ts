@@ -2,7 +2,7 @@ export const HIGHLIGHT_DOWNLOAD_MAX_BYTES = 4 * 1024 * 1024;
 export const DOLL_IMAGE_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024;
 
-type MediaKind = "video" | "image";
+type MediaKind = "video" | "image" | "ogImage";
 type SupportedMediaType =
   | "video/mp4"
   | "video/webm"
@@ -16,6 +16,11 @@ const TYPES: Record<
 > = {
   video: ["video/mp4", "video/webm"],
   image: ["image/png", "image/jpeg", "image/webp"],
+  // OG 이미지(satori/next/og) 임베드용: satori 는 png/apng/jpeg/gif/svg 만 지원하고 webp 를
+  // 못 그린다(`u2 is not iterable` 로 렌더 전체가 500). accept 목록은 그대로 콘텐츠 협상
+  // 헤더가 되는데, Supabase 이미지 변환 엔드포인트는 accept 에 webp 가 있으면 webp 로
+  // 응답하므로 이 kind 에서는 webp 를 협상에서 제외한다(→ 원본 포맷 png 유지).
+  ogImage: ["image/png", "image/jpeg"],
 };
 
 const EXTENSIONS: Record<SupportedMediaType, string> = {

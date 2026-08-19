@@ -3,9 +3,12 @@ import { JsonLd } from "@/components/JsonLd";
 import { getSiteContent } from "@/lib/config/getters";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SITE_URL } from "@/lib/site";
+import { resolveOgImages } from "@/lib/site-assets";
 
 export async function generateMetadata(): Promise<Metadata> {
   const sc = await getSiteContent();
+  // openGraph 는 layout 과 deep-merge 되지 않아 images 를 항상 명시(누락 시 기본 OG 이미지 소실).
+  const ogImages = await resolveOgImages();
   return {
     title: "소개·자주 묻는 질문",
     description: sc.metaDescription,
@@ -15,6 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description: sc.definition,
       url: `${SITE_URL}/faq`,
       type: "website",
+      images: ogImages,
     },
   };
 }
