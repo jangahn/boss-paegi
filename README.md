@@ -917,6 +917,10 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
+v0.89 (2026-08-19, checkout 오류 분류·구 탭 자가치유 — 가짜 fatal 제거; 마이그레이션 없음):
+- **가짜 fatal 제거**: refund RPC 오류 매퍼가 미등록 P0001 을 전부 `invariant_violation`(fatal) 으로 승격 — checkout 계열 정상 거절(`withdrawal_limit_confirmation_required`·`checkout_prior_intent_unresolved` 등)이 Sentry fatal 로 보고되던 결함. 008899/008905 raise 코드 전수를 409/400/404 로 정식 분류.
+- **구 탭 자가치유**: v0.86 문구 배포 경계에서 열려 있던 구 /credits 탭의 stale 문구/증거 거절(2026-08-19 실관측)을 클라가 감지해 **1회 자동 새로고침**(sessionStorage 마커로 루프 방지, 재발 시 명시 안내) — 결제 확정 시 마커 해제.
+
 v0.78 (2026-07-29, 긴급 Storage·공급망 보안 하드닝; **Migration 0071**):
 - **private Storage RLS 폐쇄(0071)**: Dashboard 에 남아 있던 `storage.objects`의 public-role SELECT/INSERT 정책을 제거했다. `dolls`·`highlights`는 client policy 0개를 불변식으로 두고, 서버 발급 signed URL·signed upload token 및 service-role 경로만 사용한다. 프로덕션에는 선적용했고 anon list=빈 배열, cache-busting object GET=차단, synthetic signed upload=성공·정리까지 확인했다. 기존 공개 캐시 응답은 당시 `max-age=3600`이어서 최장 1시간 잔존 가능했으며 만료 후 재검증 대상으로 기록했다.
 - **권위 조회 false-empty/false-default 제거**: 어드민·법무·이벤트·설정감사·결제/환불·캐릭터/생성 상태의 서버 조회는 resolved `{error}`, `data:null`, 손상된 행·count·timestamp·부분 enrichment를 빈 배열·0·기본 이미지로 축소하지 않는다. 목록은 안정 정렬 전페이지 조회 또는 exact count를 쓰고, window-count의 범위 밖 빈 페이지는 offset 0 probe로 실제 total을 복원한다. 갤러리는 `(created_at,id)` keyset+중복 제거, 플레이는 캐릭터 조회/서명/텍스처 실패와 배경 hot-swap 실패를 재시도/롤백으로 노출한다. 탈퇴는 환불가능 수량 권위 조회가 성공하기 전에는 확정할 수 없고, 진행 중 생성 조회 실패도 갤러리에서 별도 재시도한다. 공통 runtime 계약과 fault-injection/source inventory 테스트가 이 경계를 강제한다.

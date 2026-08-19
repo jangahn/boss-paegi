@@ -65,6 +65,17 @@ export function CreditsClient({
     setPending(null);
   });
 
+// 배포 경계의 구 탭이 보내는 stale 문구/증거 거절 코드 — 자동 새로고침 1회로 자가 치유.
+const STALE_CHECKOUT_CODES = new Set([
+  "withdrawal_limit_confirmation_required",
+  "checkout_offer_evidence_mismatch",
+  "checkout_product_name_changed",
+  "client_refresh_required",
+  "legacy_checkout_refresh_required",
+  "checkout_upgrade_required",
+]);
+const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
+
   const buy = async (product: CreditProduct) => {
     if (pendingRef.current) return; // 중복 클릭 가드
     const channel = channels.find((c) => c.method === method);
@@ -162,7 +173,22 @@ export function CreditsClient({
             "결제 환경이 변경됐어요. 페이지를 새로고침한 뒤 다시 시도해주세요.",
           );
         }
+        if (code && STALE_CHECKOUT_CODES.has(code)) {
+          // 배포로 고지 문구/표시 증거 버전이 바뀐 **구 탭** — 1회 자동 새로고침으로
+          // 자가 치유(마커로 루프 방지). 재발이면 명시 안내로 강등.
+          if (!sessionStorage.getItem(STALE_RELOAD_MARKER)) {
+            sessionStorage.setItem(STALE_RELOAD_MARKER, "1");
+            window.location.reload();
+            return;
+          }
+          throw new Error(
+            "결제 화면 정보가 갱신됐어요. 페이지를 새로고침한 뒤 다시 시도해주세요.",
+          );
+        }
         throw new Error("결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.");
+      }
+      if (delivery.kind === "confirmed") {
+        try { sessionStorage.removeItem(STALE_RELOAD_MARKER); } catch { /* noop */ }
       }
       if (delivery.kind !== "confirmed") {
         throw new Error(

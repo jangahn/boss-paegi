@@ -47,7 +47,33 @@ import {
 export const PG_RETRY_CUTOFF_MS = 3 * 60 * 60 * 1000;
 
 // ── §38 오류코드 → HTTP 매핑 (saga.test.ts 계약과 동일 멤버십) ─────────────────────────────
+// checkout 계열 P0001(008899/008905 raise)의 정상 분류 — 미등록 코드는 아래 매퍼가 전부
+// fatal `invariant_violation` 으로 승격하므로, 배포 경계의 구 탭(stale 문구/증거)이나 잔존
+// intent 같은 **정상 거절**이 가짜 fatal 로 보고되던 결함의 수정(2026-08-19 실관측:
+// withdrawal_limit_confirmation_required·checkout_prior_intent_unresolved).
+const CHECKOUT_CONFLICT_409 = [
+  "checkout_prior_intent_unresolved",
+  "checkout_reuse_required",
+  "checkout_upgrade_required",
+  "checkout_request_conflict",
+  "request_conflict",
+  "checkout_evidence_conflict",
+  "payment_evidence_snapshot_conflict",
+  "checkout_withdrawal_evidence_immutable",
+  "commerce_display_evidence_immutable",
+] as const;
+const CHECKOUT_VALIDATION_400 = [
+  "withdrawal_limit_confirmation_required",
+  "checkout_offer_evidence_mismatch",
+  "checkout_product_name_changed",
+  "client_refresh_required",
+  "checkout_receipt_invalid",
+  "cancel_intent_receipt_invalid",
+  "user_id_required",
+] as const;
+
 const CONFLICT_409 = new Set([
+  ...CHECKOUT_CONFLICT_409,
   "request_conflict", "invalid_state", "version_conflict", "order_has_open_refund", "payout_ref_duplicate",
   "refund_preflight_mismatch", "cancellation_amount_mismatch", "cancellation_status_mismatch",
   "cancellation_event_conflict", "payment_evidence_mismatch", "checkout_prior_intent_unresolved",
@@ -60,9 +86,10 @@ const TRANSIENT_503 = new Set([
 ]);
 const NOT_FOUND_404 = new Set([
   "order_not_found", "attempt_not_found", "generation_not_found", "purchase_lot_not_found",
-  "event_not_found", "issue_not_found", "member_not_found",
+  "event_not_found", "issue_not_found", "member_not_found", "account_not_found",
 ]);
 const VALIDATION_400 = new Set([
+  ...CHECKOUT_VALIDATION_400,
   "reason_invalid", "qty_invalid", "rail_invalid", "cra_future", "amount_nonpositive", "payout_ref_invalid",
   "order_not_paid", "qty_exceeds_available", "qty_exceeds_order_remaining", "nothing_to_refund",
   "insufficient_credits", "rail_not_pg", "rail_not_manual", "malformed", "note_invalid",
