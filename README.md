@@ -917,6 +917,10 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
+v0.93 (2026-08-20, 발행 콘솔 uncached 강한읽기 — 컷오버 out-of-band 발행 사고 수정; 마이그레이션 없음):
+- **어드민 발행 콘솔의 baseVersion 을 uncached 강한읽기로**(9 도메인 — generation_config 의 기존 관례를 전 도메인 통일): WithMeta(에디터의 CAS 기준 version)가 `unstable_cache` 를 경유하면, out-of-band 발행(v0.92 컷오버의 직접 SQL — revalidateTag 미발생)·SWR 특성 탓에 **새로고침해도 stale version 을 SSR** → `version_conflict` 가 최대 1h(백스톱 TTL) 영구화(2026-08-19 17:0x 실사고 — 성장레버 발행 4회 연속 거절, Sentry `config.update_fail` count 4 로 실측). 핫패스 값 읽기는 기존 캐시 getter 그대로.
+- 운영 교훈: config 를 직접 SQL 로 발행하면 태그 무효화가 우회된다 — 콘솔/API 경유가 원칙, 불가피하면 직후 redeploy(캐시 리셋).
+
 v0.92 (2026-08-20, copy registry 전문 등록제·checkout 단일 검증 계층·prior-intent 정상 흐름화 — 재설계 3/3; **Migration 0105**, creditsEnabled OFF 컷오버):
 - **문구 계약 = registry 전문 등록제(0105)**: `commerce_copy_registry(surface, copy_version, copy 원문 jsonb, active)` — RPC 는 제출 문구가 active 행과 **jsonb 등가**인지로만 검증(해시가 아닌 원문 비교라 TS↔PG 정규화 함정 자체가 없음). 함수 리터럴·증거 테이블 CHECK 의 문구 박제 전부 철거. **문구 변경 = 상수 수정 + `npm run gen:copy-registry-migration -- <버전>` 1개** — 함수는 불변. 계약 테스트가 "마이그 seed 누적 상태(공용 파서 replay) = 코드 상수"를 강제해 상수만 바꾼 머지를 차단. surface 당 active 1행은 partial unique index 가 보장.
 - **checkout 단일 검증 계층**: route 의 사전 fence(expectedMode/expectedProduct 대조·offer evidence 사전 조회 대조— 완전 중복 검증 6쌍의 route 측)와 RPC 후 재SELECT(사후조건 이중화)를 철거 — impl 의 18항 사후조건을 통과한 receipt 가 단일 권위. 요청 본문에서 expected\* 제거(구 탭은 `client_refresh_required` 자가치유 브릿지), 심사자 실결제 opt-in 은 `reviewerLive` 로 의미 명확화(대조 fence 아님·일반 계정 효력 0). `checkout_state_changed`/checkout-rollout 모듈 소멸.

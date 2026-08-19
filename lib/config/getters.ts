@@ -1,7 +1,6 @@
 import "server-only";
 import {
   getSetting,
-  getSettingWithMeta,
   getSettingUncached,
   getSettingWithMetaUncached,
   getSettingStrictUncached,
@@ -63,35 +62,35 @@ export function getMarketingCopy(): Promise<MarketingCopy> {
   return getSetting("marketing_copy", marketingCopySchema, MARKETING_COPY_DEFAULT);
 }
 export function getMarketingCopyWithMeta() {
-  return getSettingWithMeta("marketing_copy", marketingCopySchema, MARKETING_COPY_DEFAULT);
+  return getSettingWithMetaUncached("marketing_copy", marketingCopySchema, MARKETING_COPY_DEFAULT);
 }
 
 export function getRoleConfig(): Promise<RoleConfig> {
   return getSetting("role_content", roleConfigSchema, ROLE_CONFIG_DEFAULT);
 }
 export function getRoleConfigWithMeta() {
-  return getSettingWithMeta("role_content", roleConfigSchema, ROLE_CONFIG_DEFAULT);
+  return getSettingWithMetaUncached("role_content", roleConfigSchema, ROLE_CONFIG_DEFAULT);
 }
 
 export function getScoreConfig(): Promise<ScoreConfig> {
   return getSetting("score_config", scoreConfigSchema, SCORE_CONFIG_DEFAULT);
 }
 export function getScoreConfigWithMeta() {
-  return getSettingWithMeta("score_config", scoreConfigSchema, SCORE_CONFIG_DEFAULT);
+  return getSettingWithMetaUncached("score_config", scoreConfigSchema, SCORE_CONFIG_DEFAULT);
 }
 
 export function getSessionLimits(): Promise<SessionLimits> {
   return getSetting("session_limits", sessionLimitsSchema, SESSION_LIMITS_DEFAULT);
 }
 export function getSessionLimitsWithMeta() {
-  return getSettingWithMeta("session_limits", sessionLimitsSchema, SESSION_LIMITS_DEFAULT);
+  return getSettingWithMetaUncached("session_limits", sessionLimitsSchema, SESSION_LIMITS_DEFAULT);
 }
 
 export function getGrowthLevers(): Promise<GrowthLevers> {
   return getSetting("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
 }
 export function getGrowthLeversWithMeta() {
-  return getSettingWithMeta("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
+  return getSettingWithMetaUncached("growth_levers", growthLeversSchema, GROWTH_LEVERS_DEFAULT);
 }
 export function getGrowthLeversStrict(): Promise<GrowthLevers> {
   return getSettingStrictUncached(
@@ -113,30 +112,33 @@ export function getBadgeCatalogStrictUncached(): Promise<BadgeCatalog> {
   );
 }
 export function getBadgeCatalogWithMeta() {
-  return getSettingWithMeta("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
+  return getSettingWithMetaUncached("badge_catalog", badgeCatalogSchema, BADGE_CATALOG_DEFAULT);
 }
 
 export function getSiteContent(): Promise<SiteContent> {
   return getSetting("site_content", siteContentSchema, SITE_CONTENT_DEFAULT);
 }
 export function getSiteContentWithMeta() {
-  return getSettingWithMeta("site_content", siteContentSchema, SITE_CONTENT_DEFAULT);
+  return getSettingWithMetaUncached("site_content", siteContentSchema, SITE_CONTENT_DEFAULT);
 }
 
 export function getMediaConfig(): Promise<MediaConfig> {
   return getSetting("media_config", mediaConfigSchema, MEDIA_CONFIG_DEFAULT);
 }
 export function getMediaConfigWithMeta() {
-  return getSettingWithMeta("media_config", mediaConfigSchema, MEDIA_CONFIG_DEFAULT);
+  return getSettingWithMetaUncached("media_config", mediaConfigSchema, MEDIA_CONFIG_DEFAULT);
 }
 
 export function getBusinessInfo(): Promise<BusinessInfoConfig> {
   return getSetting("business_info", businessInfoConfigSchema, BUSINESS_INFO_DEFAULT);
 }
 export function getBusinessInfoWithMeta() {
-  return getSettingWithMeta("business_info", businessInfoConfigSchema, BUSINESS_INFO_DEFAULT);
+  return getSettingWithMetaUncached("business_info", businessInfoConfigSchema, BUSINESS_INFO_DEFAULT);
 }
 
+// WithMeta 계열(발행 콘솔의 baseVersion 소스)은 **전부 uncached** — 캐시본 version 을 보면
+// out-of-band 발행(컷오버 직접 SQL 등)·revalidateTag 의 SWR 특성 탓에 새로고침해도
+// version_conflict 가 영구화된다(2026-08-19 컷오버 실사고). 핫패스 값 읽기는 캐시 getter 가 담당.
 // generation_config 는 **uncached 강한읽기** — 발행 직후 첫 생성이 새 값을 써야 하므로 SWR 우회.
 // 소비는 생성 제출 시 1회(비핫패스)라 캐시 이득 없음.
 export function getGenerationConfig(): Promise<GenerationConfig> {
