@@ -49,6 +49,26 @@ function isUuidAssetPath(
   );
 }
 
+/**
+ * doll 오브젝트 경로: `<생성 시점 소유자 uuid>/<subject_id>.png`.
+ * 폴더는 **현재 user_id 로 강제하지 않는다** — 익명 계정에서 생성 후 가입 이전
+ * (flow-scoped migration)된 doll 은 소유권만 바뀌고 storage 폴더는 원 uuid 로
+ * 불변이라, 폴더=현재소유자 강제는 이전받은 doll 의 삭제 정리를 영구 거부하는
+ * poison job 을 만든다(2026-08-19 실사고: 매시 cron 마다 claim_fail 3건).
+ * 파일명=subject_id 상관은 유지 — 어떤 job 도 자기 대상 파일만 지운다.
+ */
+function isDollObjectPath(path: string, subjectId: unknown): boolean {
+  if (typeof subjectId !== "string" || !isCanonicalStoragePath(path)) {
+    return false;
+  }
+  const segments = path.split("/");
+  return (
+    segments.length === 2 &&
+    isUuid(segments[0]) &&
+    segments[1] === `${subjectId}.png`
+  );
+}
+
 function validUploadLease(row: Record<string, unknown>): boolean {
   if (!isUuid(row.owner_user_id)) return false;
   const subjectId = row.subject_id;
@@ -125,10 +145,7 @@ function validObjectLease(row: Record<string, unknown>): boolean {
     row.kind === "doll_delete" ||
     row.kind === "doll_create_compensation"
   ) {
-    return (
-      row.bucket === "dolls" &&
-      row.path === `${row.user_id}/${row.subject_id}.png`
-    );
+    return row.bucket === "dolls" && isDollObjectPath(row.path, row.subject_id);
   }
   if (row.kind === "highlight_expired") {
     return (

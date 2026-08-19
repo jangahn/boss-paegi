@@ -89,10 +89,17 @@ test("storage cleanup lease는 fence와 owner/subject/path를 한 계약으로 �
     );
   }
 
+  // 이전(flow-scoped migration)받은 doll: 폴더=원 소유자 uuid, user_id=현 소유자.
+  // 폴더는 현재 user_id 와 상관하지 않는다 — 파일명=subject 상관만 강제(2026-08-19
+  // poison-job 실사고의 수정 계약).
+  assert.ok(
+    parseStorageCleanupLease(objectLease({ user_id: OBJECT_ID }), "object"),
+  );
+
   for (const malformed of [
-    objectLease({ user_id: OBJECT_ID }),
     objectLease({ subject_id: OBJECT_ID }),
     objectLease({ path: `${USER_ID}/${OBJECT_ID}.png` }),
+    objectLease({ path: `not-a-uuid/${SUBJECT_ID}.png` }),
     objectLease({ path: `../${USER_ID}/${SUBJECT_ID}.png` }),
     objectLease({ kind: "unknown" }),
   ]) {
