@@ -18,7 +18,7 @@ import {
   type PayErrorEntry,
 } from "../../lib/pay/error-catalog.ts";
 import { DB_RAISE_CODES } from "../../lib/pay/db-raise-codes.gen.ts";
-// @ts-ignore — .mjs 생성기 모듈(타입 선언 없음). 추출 규칙의 단일 소스.
+// .mjs 생성기 모듈 — 추출 규칙의 단일 소스(타입은 호출부 단언으로 좁힘).
 import { extractDbRaiseCodes } from "../../scripts/gen/db-raise-codes.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");

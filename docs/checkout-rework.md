@@ -153,9 +153,17 @@ database job:
   raw-guard 시대 검증 스텝·`qa:db:apply:<버전>` 사다리 삭제. 시대 전용 스크립트
   (verify-rollout-stage 2287줄, verify-oauth-rollout-stage 925줄, convergence 1102줄 등) 삭제
   — 최신 스키마에서의 동시성·계약은 pgTAP 34종 + 잔존 race 하네스가 커버.
+- **convergence 이식(조사 확정)**: mixed-version 케이스만 시대 전용 — "같은 유저 2탭 동시
+  checkout → 단일 intent 수렴"과 "withdrawal 증거 user-boundary 직렬화(owner/waiter replay)"는
+  시대 무관 가치라 최신 스키마 대상 `test-checkout-concurrency-races.sh` 로 이식 후 원본 삭제.
 - race 동기화 공통 헬퍼: 상한 8s→120s(러너 속도 무관화)·실패 시 홀더 세션 출력 전체 덤프·
-  pg_sleep 협조 대기 제거. analytics 하네스(holder 조기 사망)는 근본 수정하고 quality.yml 의
-  `|| 재시도` 제거 — rerun 관행 철폐.
+  pg_sleep 협조 대기 제거.
+- **analytics 하네스 근본 수정(조사 확정)**: CI 로그의 FATAL 은 하네스가 holder 를
+  pg_terminate_backend 로 죽이는 정상 절차의 흔적이고, flake 의 실체는 "holder 준비"를
+  pg_stat_activity 의 PgSleep 상태 폴링으로 판정하는 간접 관측(two-core 러너에서 holder 가
+  도달하기 전 false|false 오판) — holder 가 락 획득 직후 스스로 내는 준비 마커(출력 파일)
+  대기 + fifo 종료 신호(terminate 제거) 구조로 재작성하고 quality.yml 의 `|| 재시도` 삭제
+  — rerun 관행 철폐.
 - harness-coverage 테스트 재작성 + "모든 마이그레이션이 CI 에서 적용된다" 어서션 추가.
 
 **PR-C. registry + RPC 단일 계층 + 흐름 단층화 (OFF 컷오버)**
