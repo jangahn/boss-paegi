@@ -3,9 +3,10 @@ import type { PayChannelMethod, PayMode } from "@/lib/pay-channels";
 
 export const CHECKOUT_WITHDRAWAL_CONFIRMATION = Object.freeze({
   schemaVersion: 1,
-  copyVersion: "checkout-withdrawal-limit-2026-07-30-v1",
+  // v2(2026-08-19): 문구 축약 — §17⑥ 요건(제공 개시 시 청약철회 제한의 사전 고지)은 유지.
+  copyVersion: "checkout-withdrawal-limit-2026-08-19-v2",
   statement:
-    "구매할 생성권 중 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한된다는 점을 확인합니다.",
+    "이미 사용한 생성권은 디지털콘텐츠 제공이 개시되어 청약철회가 제한돼요.",
 });
 
 const UUID_RE =
