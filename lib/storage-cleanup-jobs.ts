@@ -1,3 +1,4 @@
+import { log, errInfo } from "@/lib/log";
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -262,6 +263,7 @@ export async function processUploadCleanupJob(
 }
 
 async function drain(
+  name: string,
   limit: number,
   processOne: () => Promise<
     FencedStorageCleanupOutcome | { kind: "idle" }
@@ -280,6 +282,9 @@ async function drain(
       outcome = await processOne();
     } catch (error) {
       result.claimErrors += 1;
+      // 카운터만 남기면 원인이 소실된다(2026-08-19 17:00 objectCleanup_claim_fail
+      // 1건 — 원문 미로깅으로 사후 판독 불가였던 관측성 공백의 수정).
+      log.error("storage_cleanup.claim_fail", { drain: name, ...errInfo(error) });
       if (error instanceof SupabaseOperationError) break;
       continue;
     }
@@ -295,12 +300,12 @@ export function drainStorageObjectCleanupJobs(
   admin: AdminClient,
   limit = 10,
 ): Promise<StorageCleanupDrainResult> {
-  return drain(limit, () => processStorageObjectCleanupJob(admin));
+  return drain("objectCleanup", limit, () => processStorageObjectCleanupJob(admin));
 }
 
 export function drainUploadCleanupJobs(
   admin: AdminClient,
   limit = 10,
 ): Promise<StorageCleanupDrainResult> {
-  return drain(limit, () => processUploadCleanupJob(admin));
+  return drain("uploadCleanup", limit, () => processUploadCleanupJob(admin));
 }
