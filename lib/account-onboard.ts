@@ -48,6 +48,10 @@ export async function loadOAuthProfile(
  * Existing-member OAuth sync. The DB RPC locks profile -> member and rejects a
  * deleted account, so a delayed callback cannot repopulate scrubbed PII.
  * Failure is intentionally thrown: callers must not redirect as success.
+ *
+ * 0103: 여기서 프로필(닉네임·프사)은 덮어쓰지 않는다 — 마이페이지 커스터마이징이
+ * 재로그인마다 OAuth 값으로 초기화되던 결함의 수정. RPC 는 email 만 동기화하고,
+ * 탈퇴 스크럽 플레이스홀더('탈퇴한 사용자')가 남은 재활성 계정만 OAuth 로 재시드한다.
  */
 export async function seedOAuthProfile(
   admin: SupabaseClient,

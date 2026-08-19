@@ -148,6 +148,9 @@ jobs:
       - name: Reset cleanup backoff to consecutive failures (0102)
         run: npm run qa:db:apply:cleanup-backoff
 
+      - name: Preserve member profile customization (0103)
+        run: npm run qa:db:apply:profile-customization-preserve
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 

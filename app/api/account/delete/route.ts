@@ -11,6 +11,7 @@ import {
   requireSupabaseSuccess,
   SupabaseOperationError,
 } from "@/lib/supabase-operation";
+import { SCRUBBED_PROFILE_DISPLAY_NAME } from "@/lib/oauth-metadata";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
       !member ||
       profile.id !== userId ||
       typeof profile.deleted_at !== "string" ||
-      profile.display_name !== "탈퇴한 사용자" ||
+      profile.display_name !== SCRUBBED_PROFILE_DISPLAY_NAME ||
       profile.avatar_url !== null ||
       member.user_id !== userId ||
       member.email !== null ||

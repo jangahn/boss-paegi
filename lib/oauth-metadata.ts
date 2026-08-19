@@ -14,10 +14,22 @@ export function isDeletedMarker(email: string | null | undefined): boolean {
   return typeof email === "string" && /@deleted\.invalid$/i.test(email);
 }
 
+/**
+ * 탈퇴 스크럽이 profiles.display_name 에 남기는 플레이스홀더 — deletion saga(0072 계열)와
+ * 단일 문자열로 합의된 값. 0103 이후 기존 회원 OAuth sync/재동의는 프로필을 덮어쓰지 않고,
+ * 이 플레이스홀더가 남아 있을 때만(=재활성 직후) OAuth 값으로 재시드한다.
+ */
+export const SCRUBBED_PROFILE_DISPLAY_NAME = "탈퇴한 사용자";
+
 export type OAuthProfile = {
-  /** OAuth 제공 닉네임 (12자 클램프). 없으면 null → 기존 display_name 유지(덮어쓰지 않음). */
+  /**
+   * OAuth 제공 닉네임 (12자 클램프). 없으면 null.
+   * 신규 가입 시드에만 그대로 쓰이고, 기존 회원 sync/재동의에서는 프로필을 덮어쓰지
+   * 않는다(0103 — 탈퇴 스크럽 플레이스홀더 재시드 제외). 사용자가 마이페이지에서 바꾼
+   * 닉네임·프사가 재로그인에 되돌아가지 않게 하는 결정.
+   */
   displayName: string | null;
-  /** OAuth 프로필 이미지 URL (외부 핫링크). 없으면 null. */
+  /** OAuth 프로필 이미지 URL (외부 핫링크). 없으면 null. displayName 과 같은 시드 규칙. */
   avatarUrl: string | null;
   /** 계정 이메일. 없으면 null → 멤버화 차단. */
   email: string | null;
