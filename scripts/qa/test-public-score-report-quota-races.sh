@@ -38,7 +38,7 @@ fail() {
 wait_for_sleep() {
   app_name="$1"
   description="$2"
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 2400); do
     state="$(
       db_value "
         select coalesce(

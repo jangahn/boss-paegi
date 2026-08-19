@@ -917,6 +917,14 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
+v0.91 (2026-08-20, CI 최신 스키마 단일 검증·race 하네스 결정론화 — checkout 구조 재설계 2/3; 마이그레이션 없음):
+- **시대별 rollout 시뮬레이션 폐지**: database CI 가 마이그레이션을 14개 경계로 단계 적용하며 각 시점의 신구 호환을 검증하던 구조(픽스처가 시대별 문구를 벌여야 했던 0104 사고 표면·CI 장시간의 원천)를 "전체 마이그레이션 1회 적용(`qa:db:apply`) → pgTAP 전량 → 영구 표면 계약 → race 스위트"로 재작성. 배포 순서 계약(additive 마이그 → 코드 배포)은 docs/checkout-rework.md 에 문서화.
+- **시대 전용 검증 10종 폐기**: verify-rollout-stage(2287줄)·verify-oauth-rollout-stage(925줄)·checkout-convergence(1102줄)·payment-evidence-contract-gate·raw-guard 2종·래퍼 4종 + `qa:db:apply:*` 사다리 스크립트 14개. 시대 판정 전수조사로 KEEP 6종(oauth fingerprint-tamper/catalog-locks/prune-backlog/member-race·analytics acl-upgrade/lock-race)은 최신 구간 이동만.
+- **pgTAP 미커버 고유 가치 이식 3종**: `test-permanent-surface-contract.sh`(rollout 플래그 off·service_role 직접 DML 차단·dolls 컬럼 GRANT 정확 집합·25테이블 service SELECT·미커버 레거시 7 시그니처 봉인·PostgREST 실 HTTP 25종+JWT 프로브·backfill 404), `test-oauth-target-fence-contract.sh`(카탈로그 무결성 sha256+target 세대 펜스+receipt append-only 트리거), `test-checkout-concurrency-races.sh`(영구 19-arg 경계의 동시 checkout 단일 intent·단일 청약철회 증거 수렴 — 구 convergence 의 시대 무관 케이스를 v2/v3 문구로 이식; 12-arg 시절 케이스는 오버로드가 0092 에서 드롭되어 재현 불가·불필요).
+- **race 하네스 결정론화**: 공용 `scripts/qa/lib/wait-sync.sh` — activity 폴링 상한 8~12s→**120s**(two-core 러너에서 상대 세션 도달 전 포기하던 flake 의 원천 제거·성공 경로 영향 없음)·타임아웃 시 세션 스냅샷 stderr 덤프·출력 마커 대기(`wait_for_output_marker`, 프로세스 사망 즉시 감지). 동일 구현 6군집 13개 하네스 편입, 변형 3개는 상한만 통일.
+- **analytics lock-race 하네스 재작성**: pg_sleep(60)+pg_terminate+PgSleep 상태 폴링(holder 준비를 순간 상태로 오판하던 실체) → fifo 명령 스트림+준비/완료 마커+프로세스 join. quality.yml 의 `|| 1회 재시도`(유일한 flake 면죄부) 삭제 — **rerun 관행 철폐**.
+- harness-coverage 계약 재작성: "모든 마이그레이션이 CI 에서 적용된다"(apply 사다리 부재) 어서션 신설, 25 RPC 인벤토리 검증을 폐기된 verifier 에서 pgTAP 스위트로 재지향.
+
 v0.90 (2026-08-20, 결제 오류 카탈로그 단일화 — checkout 구조 재설계 1/3; 마이그레이션 없음):
 - **오류 카탈로그 단일 소스**(`lib/pay/error-catalog.ts`): 코드→HTTP status→사용자 문구→클라 동작(login/consent/stale_reload)을 한 곳에 정의. 서버 매퍼(`mapRefundRpcError`)와 클라(/credits) 문구·자가치유 분기가 전부 여기서 유도 — 2026-08-19 사고의 구조 원인이던 "RPC 문자열→매퍼 Set→route 분기→클라 문구" 4계층 수동 동기화를 철거. 유령 코드 3종(`cancellation_ingest_failed`·`issue_not_open`·`payout_ref_duplicate`) 삭제, 정상 거절인데 fatal 이던 코드(`invalid_payment_evidence_snapshot`·`order_status_changed`·`stale_cancel_lease`·`payment_pending`) 정식 분류 편입.
 - **DB raise 전수 스냅샷**(`lib/pay/db-raise-codes.gen.ts`, `npm run gen:db-raise-codes`): 마이그레이션의 리터럴 raise 코드 500종 자동 추출. 미지 토큰 3분류 확정 — cataloged(정상 거절)/invariant(스냅샷 안·카탈로그 밖=도달 자체가 버그, 500 fatal)/uncataloged(계약 밖=등록 누락 결함 신호, 500 비-fatal `pay.uncataloged_reject`).

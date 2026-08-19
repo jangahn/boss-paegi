@@ -59,16 +59,6 @@ db_psql() {
     psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" "$@"
 }
 
-terminate_app() {
-  local app_name="$1"
-  db_psql -v app_name="$app_name" -Atq <<'SQL' >/dev/null 2>&1 || true
-select pg_catalog.pg_terminate_backend(activity.pid)
-  from pg_catalog.pg_stat_activity activity
- where activity.application_name = :'app_name'
-   and activity.pid <> pg_catalog.pg_backend_pid();
-SQL
-}
-
 terminate_run_sessions() {
   db_psql -v run_prefix="$run_prefix" -Atq <<'SQL' >/dev/null 2>&1 || true
 select pg_catalog.pg_terminate_backend(activity.pid)
@@ -134,11 +124,14 @@ fail() {
   exit 1
 }
 
-run_maintenance_session() {
-  local app_name="$1"
-  local operation="$2"
-  local is_holder="$3"
-  local statement_timeout="$4"
+# 세션 동기화 프리미티브(출력 마커·activity 폴링) — 상한 120s, 러너 속도 무관.
+source scripts/qa/lib/wait-sync.sh
+
+# 유지보수 RPC 호출 + ack 검증 SQL 본문. operation 은 allowlist 검증 후 리터럴
+# 삽입한다(psql 변수 불필요 — holder 는 fifo 명령 스트림이라 -v 를 쓸 수 없음).
+maintenance_session_sql() {
+  local operation="$1"
+  local statement_timeout="$2"
 
   case "$operation" in
     telemetry | telemetry_prune | rollup | prune) ;;
@@ -147,25 +140,24 @@ run_maintenance_session() {
       return 2
       ;;
   esac
+  case "$statement_timeout" in
+    30s) ;;
+    *)
+      echo "unsupported statement_timeout: $statement_timeout" >&2
+      return 2
+      ;;
+  esac
 
-  docker exec -e PGAPPNAME="$app_name" -i "$db_container" \
-    psql -X -v ON_ERROR_STOP=1 -Atq \
-      -U "$db_user" \
-      -d "$db_name" \
-      -v operation="$operation" \
-      -v is_holder="$is_holder" \
-      -v statement_timeout="$statement_timeout" <<'SQL'
+  cat <<SQL
 begin;
-select pg_catalog.set_config(
-  'statement_timeout',
-  :'statement_timeout',
-  true
-);
+select pg_catalog.set_config('statement_timeout', '$statement_timeout', true);
 select pg_catalog.set_config(
   'boss_paegi.qa_analytics_maintenance_operation',
-  :'operation',
+  '$operation',
   true
 );
+SQL
+  cat <<'SQL'
 
 do $qa$
 declare
@@ -260,54 +252,19 @@ begin
   end if;
 end;
 $qa$;
-
-\if :is_holder
-select pg_catalog.pg_sleep(60);
-\else
-\echo analytics_maintenance_lock_waiter_done
-\endif
-rollback;
 SQL
 }
 
-wait_for_holder_sleep() {
-  local holder_app="$1"
-  local output_file="$2"
-  local holder_state="f|f"
+# waiter — 단방향: RPC(holder 의 advisory lock 에 블록) → 완료 마커 → rollback.
+run_waiter_session() {
+  local app_name="$1"
+  local operation="$2"
 
-  for _ in {1..300}; do
-    holder_state="$(
-      db_psql -v holder_app="$holder_app" -Atq <<'SQL'
-select pg_catalog.concat_ws(
-  '|',
-  exists (
-    select 1
-      from pg_catalog.pg_stat_activity activity
-     where activity.application_name = :'holder_app'
-       and activity.wait_event = 'PgSleep'
-  )::text,
-  exists (
-    select 1
-      from pg_catalog.pg_stat_activity activity
-     where activity.application_name = :'holder_app'
-  )::text
-);
-SQL
-    )"
-    if [[ "$holder_state" == "true|true" ]]; then
-      return 0
-    fi
-    if [[ "$holder_state" == "false|false" ]] \
-      && [[ -s "$output_file" ]]; then
-      fail "holder exited before retaining its transaction lock ($holder_app)"
-    fi
-    sleep 0.05
-  done
-
-  if [[ -s "$output_file" ]]; then
-    tail -n 40 "$output_file" >&2
-  fi
-  fail "holder did not reach its bounded sleep ($holder_app)"
+  {
+    maintenance_session_sql "$operation" 30s
+    printf '%s\n' '\echo analytics_maintenance_lock_waiter_done'
+    printf 'rollback;\n'
+  } | docker exec -e PGAPPNAME="$app_name" -i "$db_container"     psql -X -v ON_ERROR_STOP=1 -Atq -U "$db_user" -d "$db_name"
 }
 
 wait_for_advisory_block() {
@@ -315,7 +272,7 @@ wait_for_advisory_block() {
   local waiter_output="$2"
   local waiter_state="f|f|f"
 
-  for _ in {1..200}; do
+  for _ in $(seq 1 "$WAIT_SYNC_ATTEMPTS"); do
     waiter_state="$(
       db_psql -v waiter_app="$waiter_app" -Atq <<'SQL'
 select pg_catalog.concat_ws(
@@ -361,29 +318,9 @@ SQL
 wait_for_waiter_completion() {
   local waiter_app="$1"
   local waiter_output="$2"
-  local finished=0
-  local waiter_exists="t"
 
-  for _ in {1..400}; do
-    waiter_exists="$(
-      db_psql -v waiter_app="$waiter_app" -Atq <<'SQL'
-select exists (
-  select 1
-    from pg_catalog.pg_stat_activity activity
-   where activity.application_name = :'waiter_app'
-);
-SQL
-    )"
-    if [[ "$waiter_exists" == "f" ]]; then
-      finished=1
-      break
-    fi
-    sleep 0.05
-  done
-  if (( finished == 0 )); then
-    terminate_app "$waiter_app"
-    fail "waiter did not complete after the holder released its lock ($waiter_app)"
-  fi
+  # holder 가 락을 놓은 뒤라 waiter 는 유한 시간 안에 끝난다(statement_timeout
+  # 30s 백스톱). 프로세스 join 은 폴링과 달리 결정론적이다.
   if ! wait "$waiter_pid"; then
     waiter_pid=""
     fail "waiter failed after the holder released its lock ($waiter_app)"
@@ -405,25 +342,39 @@ run_phase() {
   local waiter_app="${run_prefix}_${phase}_waiter"
   local holder_output="$qa_tmp_dir/${phase}-holder.out"
   local waiter_output="$qa_tmp_dir/${phase}-waiter.out"
+  local holder_fifo="$qa_tmp_dir/${phase}-holder.fifo"
 
-  run_maintenance_session \
-    "$holder_app" \
-    "$holder_operation" \
-    true \
-    75s >"$holder_output" 2>&1 &
+  # holder — fifo 명령 스트림: RPC 로 advisory lock 을 잡은 "사실"을 자기 출력의
+  # 준비 마커로 알리고, 검증이 끝나면 rollback 신호를 받아 스스로 락을 놓는다.
+  # (구 방식은 pg_sleep(60)+pg_terminate — holder 준비를 pg_stat_activity 의
+  # PgSleep 순간 상태로 폴링해 two-core 러너에서 확률적으로 오판했다.)
+  mkfifo "$holder_fifo"
+  docker exec -e PGAPPNAME="$holder_app" -i "$db_container" \
+    psql -X -v ON_ERROR_STOP=1 -Atq -U "$db_user" -d "$db_name" \
+    <"$holder_fifo" >"$holder_output" 2>&1 &
   holder_pid=$!
-  wait_for_holder_sleep "$holder_app" "$holder_output"
+  exec 3>"$holder_fifo"
+  maintenance_session_sql "$holder_operation" 30s >&3
+  printf '%s\n' '\echo analytics_maintenance_lock_holder_ready' >&3
+  wait_for_output_marker \
+    "$holder_pid" \
+    "$holder_output" \
+    "analytics_maintenance_lock_holder_ready" \
+    "holder to acquire the maintenance advisory lock ($holder_app)"
 
-  run_maintenance_session \
+  run_waiter_session \
     "$waiter_app" \
-    "$waiter_operation" \
-    false \
-    30s >"$waiter_output" 2>&1 &
+    "$waiter_operation" >"$waiter_output" 2>&1 &
   waiter_pid=$!
   wait_for_advisory_block "$waiter_app" "$waiter_output"
 
-  terminate_app "$holder_app"
-  wait "$holder_pid" >/dev/null 2>&1 || true
+  printf 'rollback;\n\\q\n' >&3
+  exec 3>&-
+  rm -f "$holder_fifo"
+  if ! wait "$holder_pid"; then
+    holder_pid=""
+    fail "holder session failed ($holder_app)"
+  fi
   holder_pid=""
 
   wait_for_waiter_completion "$waiter_app" "$waiter_output"

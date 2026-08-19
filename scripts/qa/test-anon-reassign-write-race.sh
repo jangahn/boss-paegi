@@ -253,7 +253,7 @@ wait_for_activity() {
   expected="$2"
   predicate="$3"
   description="$4"
-  for _ in $(seq 1 160); do
+  for _ in $(seq 1 2400); do
     count="$(
       db_value "
         select count(*)
