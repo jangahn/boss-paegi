@@ -917,6 +917,10 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
+v0.95 (2026-08-20, 이전받은 doll 의 storage 정리 poison-job 수정; 마이그레이션 없음):
+- **원인 확정(v0.94 의 원문 로깅이 즉시 회수)**: `storage_cleanup.claim_fail` = `invalid storage cleanup target correlation`(objectCleanup) — 익명 계정에서 생성 후 가입 이전(flow-scoped migration)된 doll 은 소유권만 바뀌고 storage 폴더는 원 uuid 로 불변인데, claim 검증이 "폴더=현재 user_id" 를 강제해 **이전받은 doll 을 삭제하면 정리 job 이 영구 거부**(매시 cron 마다 claim_fail — "배포 경계 일시" 초기 판정은 오판: cron 이 60분 주기라 17:00/18:00 정각 재발이 그 증거).
+- 수정: doll 경로 상관을 `<uuid 폴더>/<subject_id>.png` 로 — 폴더는 임의 uuid 허용, **파일명=subject 상관 유지**(어떤 job 도 자기 대상 파일만 삭제 — 안전성 불변). 기존 poison 3행은 배포 후 다음 사이클에 자연 정리.
+
 v0.94 (2026-08-20, storage cleanup claim 로깅·플레이 진입 실패 사유 정확화; 마이그레이션 없음):
 - **storage cleanup drain 의 claim 예외 원문 로깅**: drain 이 claim 실패를 카운터로만 집계해 원인이 소실되던 관측성 공백(2026-08-19 17:00 `content_maintain.objectCleanup_claim_fail` 1건 — v0.92 배포 직후 첫 cron 사이클 1회 발생, 이후 무재발 = 배포 경계 일시로 판정했으나 원문 부재로 사후 판독 불가였음) — `storage_cleanup.claim_fail`(drain 이름 포함) 로그 추가로 다음 발생 시 즉시 판독.
 - **`/play?doll=` 결정적 실패의 정확한 사유 노출**: 남의 캐릭터 URL(소유자가 자기 플레이 주소를 밖에서 공유)·삭제된 캐릭터로 진입하면 본인-전용 설계(RLS·서명)가 로드를 거절하는데, 문구가 "연결을 확인한 뒤 다시 시도"라 헛된 재시도를 유도(2026-08-19 실관측: 두 사용자가 같은 남의 캐릭터 주소로 총 4회, 그중 3회는 한 사용자의 연속 재시도). `doll_unavailable` 을 구분해 "삭제됐거나 다른 사용자의 캐릭터 주소예요 — 내 갤러리에서 선택" 으로 정확 안내. 남의 캐릭터 플레이는 **비허용 확정**(2026-08-20 제품 결정) — 본인 전용 + 정확한 사유 안내가 최종 정책.
