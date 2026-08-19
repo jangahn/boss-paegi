@@ -169,6 +169,13 @@ export async function POST(req: NextRequest) {
     !checkoutPayModeMatches(mode, body.expectedMode) ||
     !checkoutProductSnapshotMatches(product, body.expectedProduct)
   ) {
+    // 어드민 성장레버(상품 추가/삭제/가격) 변경 직후의 구 탭이 여기로 온다 —
+    // 무로그면 사고 조사에서 이 fence 발동 여부를 서버에서 볼 수 없다.
+    log.warn("pay.checkout_state_changed", {
+      userId: user.id,
+      fence: "product_snapshot",
+      productId: product.productId,
+    });
     return NextResponse.json(
       { error: "checkout_state_changed" },
       { status: 409 },
@@ -236,6 +243,11 @@ export async function POST(req: NextRequest) {
       snapshot: expectedOfferSnapshot,
     })
   ) {
+    log.warn("pay.checkout_state_changed", {
+      userId: user.id,
+      fence: "offer_evidence",
+      productId: product.productId,
+    });
     return NextResponse.json(
       { error: "checkout_state_changed" },
       { status: 409 },

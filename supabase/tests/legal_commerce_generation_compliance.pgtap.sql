@@ -634,7 +634,7 @@ select public.record_commerce_display_evidence(
   'credits_offer',
   pg_catalog.jsonb_build_object(
     'schemaVersion', 1,
-    'copyVersion', 'credits-offer-2026-07-30-v1',
+    'copyVersion', 'credits-offer-2026-08-19-v3',
     'surface', 'credits_offer',
     'payMode', 'live',
     'products', pg_catalog.jsonb_build_array(
@@ -652,19 +652,16 @@ select public.record_commerce_display_evidence(
       )
     ),
     'displayCopy', pg_catalog.jsonb_build_object(
-      'summary',
-        '캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.',
       'supply',
         '생성권은 결제 완료 즉시 지급되어 바로 사용할 수 있어요.',
       'validity',
         '구매일(지급일)로부터 1년이에요. 무료로 지급된 생성권도 동일해요.',
       'refund',
-        '미사용 생성권은 환불받을 수 있어요(무료로 지급받은 생성권은 제외). 일부만 사용했더라도 남은 수량만큼 환불돼요. 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한돼요.',
+        '미사용 생성권은 환불받을 수 있어요(무료 지급분 제외, 일부 사용 시 남은 수량만큼).',
       'refundReferencePrefix',
-        '정확한 산정 기준·차감 순서·절차는',
+        '기준·차감 순서·절차는',
       'termsLinkLabel', '이용약관 제10조',
-      'refundReferenceSuffix', '를 확인해주세요.',
-      'price', '표시 가격은 부가세 포함 최종 결제 금액이에요.'
+      'refundReferenceSuffix', '를 확인해주세요.'
     )
   )
 ) as result;
@@ -693,8 +690,8 @@ select public.create_or_reuse_pending_order(
     select result->>'snapshot_sha256'
       from qa_checkout_offer
   ),
-  'checkout-withdrawal-limit-2026-07-30-v1',
-  '구매할 생성권 중 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한된다는 점을 확인합니다.',
+  'checkout-withdrawal-limit-2026-08-19-v2',
+  '이미 사용한 생성권은 디지털콘텐츠 제공이 개시되어 청약철회가 제한돼요.',
   true
 ) as result;
 select ok(
@@ -742,8 +739,8 @@ select is(
         select result->>'snapshot_sha256'
           from qa_checkout_offer
       ),
-      'checkout-withdrawal-limit-2026-07-30-v1',
-      '구매할 생성권 중 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한된다는 점을 확인합니다.',
+      'checkout-withdrawal-limit-2026-08-19-v2',
+      '이미 사용한 생성권은 디지털콘텐츠 제공이 개시되어 청약철회가 제한돼요.',
       true
     )->>'withdrawal_evidence_id'
   ),
@@ -778,8 +775,8 @@ select throws_ok(
         select result->>'snapshot_sha256'
           from qa_checkout_offer
       ),
-      'checkout-withdrawal-limit-2026-07-30-v1',
-      '구매할 생성권 중 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한된다는 점을 확인합니다.',
+      'checkout-withdrawal-limit-2026-08-19-v2',
+      '이미 사용한 생성권은 디지털콘텐츠 제공이 개시되어 청약철회가 제한돼요.',
       false
     )
   $$,

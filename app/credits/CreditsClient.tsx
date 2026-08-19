@@ -173,6 +173,13 @@ const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
             "결제 환경이 변경됐어요. 페이지를 새로고침한 뒤 다시 시도해주세요.",
           );
         }
+        if (code === "checkout_prior_intent_unresolved") {
+          // 직전 결제창을 닫고 **다른 상품/수단**으로 갈아탄 경우 — 서버는 미해결
+          // 결제 요청을 하나만 허용하고, 같은 상품·수단 재시도만 이어서 연다.
+          throw new Error(
+            "진행하던 결제 요청이 남아 있어요. 직전에 시도한 상품과 결제수단으로 다시 시도하면 이어서 결제할 수 있어요.",
+          );
+        }
         if (code && STALE_CHECKOUT_CODES.has(code)) {
           // 배포로 고지 문구/표시 증거 버전이 바뀐 **구 탭** — 1회 자동 새로고침으로
           // 자가 치유(마커로 루프 방지). 재발이면 명시 안내로 강등.

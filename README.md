@@ -917,8 +917,11 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
-v0.89 (2026-08-19, checkout 오류 분류·구 탭 자가치유 — 가짜 fatal 제거; 마이그레이션 없음):
-- **가짜 fatal 제거**: refund RPC 오류 매퍼가 미등록 P0001 을 전부 `invariant_violation`(fatal) 으로 승격 — checkout 계열 정상 거절(`withdrawal_limit_confirmation_required`·`checkout_prior_intent_unresolved` 등)이 Sentry fatal 로 보고되던 결함. 008899/008905 raise 코드 전수를 409/400/404 로 정식 분류.
+v0.89 (2026-08-19, /credits 고지 문구의 DB 계약 정합(0104)·checkout 오류 분류·구 탭 자가치유; **Migration 0104**):
+- **고지 문구 DB 계약 사고 근본수정(0104)**: 결제 고지 문구/copyVersion 은 코드 상수만이 아니라 **DB 도 byte-exact 계약**이다 — 008905 가 `create_or_reuse_pending_order` 함수 리터럴과 evidence 테이블 CHECK 에 v1 문구를 고정하고 있어, v0.86/v0.88 의 코드-only 문구 변경이 **전 사용자 checkout 을 `withdrawal_limit_confirmation_required` 로 전면 차단**(2026-08-19 13:2x~13:5x 실사고, 본인 외 실사용자 2명 피해 실측). 0104 가 CHECK 를 (v1|v2) allowlist 로 완화(기존 증거 행 보존)하고 함수 검증 리터럴을 v2(청약철회)·v3(offer displayCopy 6키, summary/price 제거) 로 재정의 — prod 선적용·검증 완료. **교훈: 고지 문구를 바꾸면 마이그레이션이 반드시 동행한다.**
+- **가짜 fatal 제거**: refund RPC 오류 매퍼가 미등록 P0001 을 전부 `invariant_violation`(fatal·500) 으로 승격 — checkout 계열 정상 거절(`withdrawal_limit_confirmation_required`·`checkout_prior_intent_unresolved` 등)이 Sentry fatal + 클라 generic 문구로 뭉개지던 결함. 008899/008905 raise 코드 전수를 409/400/404 로 정식 분류.
+- **prior-intent 잠금 안내**: 결제창을 닫고 **다른 상품/수단**으로 갈아타면 서버가 `checkout_prior_intent_unresolved`(미해결 intent 1개 원칙, 같은 상품·수단만 reuse) 로 거절하는데 구 배포에선 500 → "결제 주문 결과를 확인하지 못했어요" 로 보였다(2026-08-19 14:08 실사고). 전용 안내 문구 추가("직전에 시도한 상품과 결제수단으로 다시 시도하면 이어서 결제") + 당시 잠긴 미해결 intent 5건(payment_id 없는 failed 2·PortOne FAILED 1·stale READY 2, 전건 PortOne 단건 조회로 미과금 확인)은 `mark_order_canceled_unpaid` 로 운영 해소.
+- **fence 관측성**: `checkout_state_changed` 409(성장레버 상품/가격 변경 직후 구 탭 fence) 가 무로그로 반환되어 사고 조사에서 발동 여부를 볼 수 없던 공백 — `pay.checkout_state_changed` warn 로그(fence 종류 포함) 추가.
 - **구 탭 자가치유**: v0.86 문구 배포 경계에서 열려 있던 구 /credits 탭의 stale 문구/증거 거절(2026-08-19 실관측)을 클라가 감지해 **1회 자동 새로고침**(sessionStorage 마커로 루프 방지, 재발 시 명시 안내) — 결제 확정 시 마커 해제.
 
 v0.78 (2026-07-29, 긴급 Storage·공급망 보안 하드닝; **Migration 0071**):
