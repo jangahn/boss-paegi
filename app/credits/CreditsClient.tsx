@@ -11,6 +11,7 @@ import { setSentryLastAction } from "@/lib/sentry-context";
 import { parseCheckoutHttpResponse } from "@/lib/pay/http-contract";
 import { CREDITS_OFFER_COPY } from "@/lib/pay/display-evidence";
 import { CHECKOUT_WITHDRAWAL_CONFIRMATION } from "@/lib/pay/withdrawal-evidence";
+import { payErrorAction, payErrorMessage } from "@/lib/pay/error-catalog";
 import { waitForPortOnePayment } from "@/lib/pay/client-portone-payment";
 
 import {
@@ -18,18 +19,8 @@ import {
   runReplayedJsonMutation,
 } from "@/lib/client-mutation";
 
-// 화면이 들고 있는 상품/문구/증거가 서버 최신과 어긋나 거절된 코드들 — 배포 경계의
-// 구 탭, 어드민 성장레버(상품 추가/삭제/가격) 변경 직후의 열린 탭 공통. 자동
-// 새로고침 1회로 자가 치유하고, 갱신 후 안내 배너로 상황을 설명한다.
-const STALE_CHECKOUT_CODES = new Set([
-  "withdrawal_limit_confirmation_required",
-  "checkout_offer_evidence_mismatch",
-  "checkout_product_name_changed",
-  "checkout_state_changed",
-  "client_refresh_required",
-  "legacy_checkout_refresh_required",
-  "checkout_upgrade_required",
-]);
+// stale 자가치유(action === "stale_reload" — 어떤 코드가 해당하는지는 오류
+// 카탈로그가 결정): 1회 자동 새로고침 루프 방지 마커 + 갱신 후 안내 배너 마커.
 const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
 const STALE_RELOAD_NOTICE = "boss-paegi:checkout-stale-notice";
 
@@ -151,6 +142,11 @@ export function CreditsClient({
             typeof (body as { error?: unknown }).error === "string"
               ? (body as { error: string }).error
               : null;
+          // 서버가 오류 코드를 명시한 응답은 상태코드 불문 **확정 거절** — 코드가
+          // 곧 이유이고, 서버는 이미 rollback 을 마쳤다. (구버전은 429/503/5xx 를
+          // 일괄 미확정 처리해 rate-limit 에 자동 재전송 + 코드 문구가 죽는
+          // 사각이 있었다.) 재전송이 정당한 미확정은 코드 없는 5xx/transport 뿐.
+          if (apiError) return { kind: "rejected", error: apiError };
           if (
             clientMutationResponseNeedsReconciliation(
               response.status,
@@ -160,47 +156,32 @@ export function CreditsClient({
             return {
               kind: "unconfirmed",
               reason: "checkout_response_unconfirmed",
-              error: apiError,
+              error: null,
             };
           }
           return {
             kind: "rejected",
-            error: apiError ?? `checkout_http_${response.status}`,
+            error: `checkout_http_${response.status}`,
           };
         },
       });
       if (delivery.kind === "aborted") return;
       if (delivery.kind === "rejected") {
+        // 코드→문구/동작은 서버와 공유하는 단일 카탈로그(lib/pay/error-catalog)가
+        // 결정한다. 사전에 없는 코드도 숨기지 않는다 — 문의/조사 시 이 코드가
+        // 서버 로그와 1:1 로 이어지는 유일한 단서다.
         const code =
           typeof delivery.error === "string" ? delivery.error : null;
-        if (code === "payment_unavailable") {
-          throw new Error("결제 기능이 잠시 비활성화돼 있어요. 잠시 후 다시 시도해주세요.");
-        }
-        if (code === "rate_limited") {
-          throw new Error("결제 요청이 너무 잦아요. 잠시 후 다시 시도해주세요.");
-        }
-        if (code === "unauthorized" || code === "member_only") {
+        const action = code ? payErrorAction(code) : null;
+        if (action === "login") {
           window.location.assign("/login?next=/credits");
           return;
         }
-        if (code === "consent_required") {
-          // 동의 미완(in-between/레거시/구버전) — 통합 동의 화면으로.
+        if (action === "consent") {
           window.location.assign("/consent?next=/credits");
           return;
         }
-        if (code === "checkout_prior_intent_unresolved") {
-          // 서버의 자동 정리(포트원 비-PAID 실측 후 종단·재시도)까지 실패한
-          // 잔여 케이스 — 포트원 불달 등 일시 장애.
-          throw new Error(
-            "직전 결제 요청을 정리하지 못했어요. 잠시 후 다시 시도해주세요.",
-          );
-        }
-        if (code === "checkout_prior_intent_paid") {
-          throw new Error(
-            "직전 결제가 완료된 것으로 확인됐어요. 잠시 후 크레딧 지급 내역을 확인해주세요.",
-          );
-        }
-        if (code && STALE_CHECKOUT_CODES.has(code)) {
+        if (action === "stale_reload") {
           // 상품/문구/증거가 서버 최신과 어긋난 탭 — 1회 자동 새로고침으로 자가
           // 치유(마커로 루프 방지)하고, 갱신된 화면에서 안내 배너를 띄운다.
           // 재발이면 명시 안내로 강등.
@@ -210,15 +191,10 @@ export function CreditsClient({
             window.location.reload();
             return;
           }
-          throw new Error(
-            "결제 화면 정보가 갱신됐어요. 페이지를 새로고침한 뒤 다시 시도해주세요.",
-          );
         }
-        // 미매핑 거절 코드도 정확한 사유를 숨기지 않는다 — 문의/조사 시 이 코드가
-        // 서버 로그와 1:1 로 이어지는 유일한 단서다.
         throw new Error(
           code
-            ? `결제 요청이 거절됐어요(사유 코드: ${code}). 잠시 후 다시 시도해주세요.`
+            ? payErrorMessage(code)
             : "결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.",
         );
       }
@@ -226,12 +202,8 @@ export function CreditsClient({
         try { sessionStorage.removeItem(STALE_RELOAD_MARKER); } catch { /* noop */ }
       }
       if (delivery.kind !== "confirmed") {
-        const unconfirmedCode =
-          typeof delivery.error === "string" && delivery.error.length > 0
-            ? `(사유 코드: ${delivery.error}) `
-            : "";
         throw new Error(
-          `결제 주문 결과를 확인하지 못했어요. ${unconfirmedCode}결제창은 열지 않았습니다. 잠시 후 다시 시도해주세요.`,
+          "결제 주문 결과를 확인하지 못했어요. 결제창은 열지 않았습니다. 잠시 후 다시 시도해주세요.",
         );
       }
       const {

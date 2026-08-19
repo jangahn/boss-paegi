@@ -20,8 +20,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// §38 오류코드 → HTTP manifest. PG RPC 는 전부 errcode='P0001' 로 raise 하며 message 가 의미 토큰이다.
-// (0062 RPC 본문에서 실제로 raise 되는 토큰을 망라. 삭제된 옛 alias 는 포함하지 않음.)
+// §38 오류코드 → HTTP manifest — **시뮬레이션 모델 전용 사본**. 실코드의 분류 정본은
+// lib/pay/error-catalog.ts(+db-raise-codes.gen.ts) 이며 아래 "실코드 §38 정합" 테스트가
+// 대표 코드들로 모델↔실코드 판정 일치를 대조한다.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 type Sentry = "fatal" | null;
 interface HttpMapping {
@@ -359,3 +360,6 @@ test("§7 PG request body 3필드 계약: 정확히 {amount, reason, currentCanc
   // 잘못된 currentCancellableAmount → 실패.
   assert.throws(() => validatePgCancelBody({ ...body, currentCancellableAmount: 1 }, attempt, 3000));
 });
+
+// 실코드 §38 정합(3분류: cataloged/invariant/uncataloged)은 위임 픽스처
+// __tests__/payments/refund-read-fault-injection.mts 의 mapRefundRpcError 어서션이 검증한다.

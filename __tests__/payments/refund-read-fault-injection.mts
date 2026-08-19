@@ -357,24 +357,47 @@ try {
     http: 409,
     sentryFatal: false,
   });
+  // `cancellation_ingest_failed` 는 RPC raise 가 아니라 saga outcome 에러 값 —
+  // 매퍼로 들어올 실경로가 없고, 방어적으로 들어오면 계약 밖 토큰(등록 누락
+  // 신호)으로 분류되는 것이 새 카탈로그 계약이다(과거엔 503 방어 등재였음).
   assert.deepEqual(mapRefundRpcError("cancellation_ingest_failed"), {
-    code: "cancellation_ingest_failed",
-    http: 503,
+    code: "uncataloged_reject",
+    http: 500,
     sentryFatal: false,
   });
 assert.deepEqual(mapRefundRpcError("legacy_checkout_refresh_required"), {
+  // v0.90 재분류: 구코드↔신DB 경계의 정상 거절 — 새로고침 자가치유 대상(409).
   code: "legacy_checkout_refresh_required",
-  http: 503,
+  http: 409,
   sentryFatal: false,
 });
 assert.deepEqual(mapRefundRpcError("checkout_reuse_ambiguous"), {
+  // v0.90 재분류: 미해결 intent 2건+ 도 prior-intent 계열 정상 거절(409).
   code: "checkout_reuse_ambiguous",
-  http: 503,
+  http: 409,
   sentryFatal: false,
 });
 assert.deepEqual(mapRefundRpcError("checkout_prior_intent_unresolved"), {
   code: "checkout_prior_intent_unresolved",
   http: 409,
+  sentryFatal: false,
+});
+// 'code: detail' 형태도 첫 토큰으로 분류된다.
+assert.deepEqual(mapRefundRpcError("checkout_prior_intent_unresolved: extra"), {
+  code: "checkout_prior_intent_unresolved",
+  http: 409,
+  sentryFatal: false,
+});
+// DB raise 전수 스냅샷에는 있으나 카탈로그 밖 = 불변식 위반(도달=버그) → 500 fatal.
+assert.deepEqual(mapRefundRpcError("orders_financial_immutable"), {
+  code: "invariant_violation",
+  http: 500,
+  sentryFatal: true,
+});
+// 어디에도 없는 미지 토큰 = 카탈로그/스냅샷 등록 누락 결함 신호(비-fatal 500).
+assert.deepEqual(mapRefundRpcError("totally_unknown_token"), {
+  code: "uncataloged_reject",
+  http: 500,
   sentryFatal: false,
 });
 
