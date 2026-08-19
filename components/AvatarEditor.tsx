@@ -126,20 +126,25 @@ export function AvatarEditor({
             if (f) pickFile(f);
           }}
         />
+        {/* busy 토글마다 re-key + transform-gpu — iOS WebKit 이 opacity 전환/내용 이동이 있는
+            텍스트 레이어를 잘못 갱신해 옛 글자 잔상이 겹치는 문제의 검증된 처방
+            (궁극기 게이지 선례: components/ScoreBoard.tsx 주석 참조). */}
         <button
+          key={busy ? "pick-busy" : "pick-idle"}
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={busy}
-          className="rounded-full border border-foreground/15 ui-surface px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5 disabled:opacity-50"
+          className="transform-gpu rounded-full border border-foreground/15 ui-surface px-5 py-2.5 text-sm font-medium transition hover:bg-foreground/5 disabled:opacity-50"
         >
           사진 선택
         </button>
         {hasCustomAvatar && (
           <button
+            key={busy ? "reset-busy" : "reset-idle"}
             type="button"
             onClick={() => void onRemove()}
             disabled={busy}
-            className="flex items-center gap-1.5 text-sm text-red-400 transition hover:text-red-500 disabled:opacity-50"
+            className="flex transform-gpu items-center gap-1.5 text-sm text-red-400 transition hover:text-red-500 disabled:opacity-50"
           >
             {busy && <Spinner className="h-3.5 w-3.5" />}
             기본 사진으로 되돌리기
