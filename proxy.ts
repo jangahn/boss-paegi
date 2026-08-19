@@ -16,6 +16,7 @@ import {
   fingerprintSupabaseAuthCookiePairs,
   readRawSupabaseAuthCookieNames,
   readRawSupabaseReconcileCookiePairs,
+  readSupabaseAccessTokenExpiresAt,
   readSupabaseSessionCookieHeader,
 } from "@/lib/supabase/session-cookie";
 import {
@@ -254,13 +255,35 @@ export async function proxy(request: NextRequest) {
       user.id !== rawAuthSession.session.userId
     )
   ) {
-    return reconcileRedirect(request, {
-      reason: "auth_session_check_required",
-      next: safeNext(path + request.nextUrl.search),
-      expectedUserId: rawAuthSession.session.userId,
-      expectedSessionId:
-        rawAuthSession.session.sessionId,
-    });
+    // 서명·구조가 유효한 쿠키의 **만료**는 손상이 아니다(v0.85): 만료만이 원인인
+    // 공개(비회원전용) GET/HEAD 문서 요청은 격리 복구 인터스티셜 없이 익명 취급으로
+    // 통과시키고, refresh 는 소유권자인 브라우저 싱글톤이 백그라운드로 수행한다 —
+    // access token(1h) 만료 후 첫 재방문 전원이 /auth/reconcile 전체 사이클(문서
+    // cold 2.5s + 잠금/프로브 + 전면 재로드)을 타던 지연의 근본 원인 제거.
+    // 미만료인데 검증이 실패한 세션(폐기·대체·ledger non-live)·회원 전용 경로·
+    // 비-GET/HEAD·identity 불일치는 종전대로 격리 복구로 보낸다. 만료-통과 중의
+    // 동의 게이트는 판정 유예(익명과 동일 노출) — refresh 완료 후 다음 내비/RSC
+    // 부터 종전과 동일하게 강제된다.
+    const expiresAt = readSupabaseAccessTokenExpiresAt(
+      rawAuthSession.session.accessToken,
+    );
+    const expiredOnly =
+      !user &&
+      expiresAt !== null &&
+      expiresAt * 1000 <= Date.now();
+    if (
+      !expiredOnly ||
+      isMemberOnlyPath(path) ||
+      (request.method !== "GET" && request.method !== "HEAD")
+    ) {
+      return reconcileRedirect(request, {
+        reason: "auth_session_check_required",
+        next: safeNext(path + request.nextUrl.search),
+        expectedUserId: rawAuthSession.session.userId,
+        expectedSessionId:
+          rawAuthSession.session.sessionId,
+      });
+    }
   }
   const method = request.method;
 
