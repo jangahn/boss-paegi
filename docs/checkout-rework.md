@@ -175,10 +175,14 @@ database job:
   expectedProduct/expectedMode 제거(구 탭 브릿지: 구 본문 감지 시 stale 코드로 자가치유).
 - 컷오버: creditsEnabled OFF → 0105 적용 → 배포 → 소액 실결제+환불 검증 → ON.
 
-## 상태
+## 상태 — 완료 (2026-08-20)
 
 - [x] 현행 전수 인벤토리 (코드·DB·CI)
 - [x] 상세 설계 확정
-- [ ] PR-A 오류 카탈로그
-- [ ] PR-B CI 재설계
-- [ ] PR-C registry·단층화·컷오버
+- [x] PR-A 오류 카탈로그 (#223, v0.90)
+- [x] PR-B CI 재설계 (#224, v0.91)
+- [x] PR-C registry·단층화 (#225, v0.92) — **컷오버 완료**: creditsEnabled OFF →
+  0105 prod 적용(postflight 통과) → 함수/registry 실측 → 롤백 스모크 4검증
+  (ready·needs→원자 종단+생성·prior canceled·비활성 문구 거절) → 배포(f3f00f3
+  READY) → ON. 후속 여지: config publish↔checkout 직렬화 race 커버(구 convergence
+  D/E 축)의 최신판 별도 추가.
