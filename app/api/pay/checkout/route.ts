@@ -33,6 +33,7 @@ import {
   parseCheckoutRequestBody,
 } from "@/lib/pay/withdrawal-evidence";
 import { waitForCheckoutDependency } from "@/lib/pay/checkout-dependency-deadline";
+import { resolveUnsettledCheckoutIntents } from "@/lib/pay/prior-intent";
 
 export const runtime = "nodejs";
 export const maxDuration = 25;
@@ -169,6 +170,13 @@ export async function POST(req: NextRequest) {
     !checkoutPayModeMatches(mode, body.expectedMode) ||
     !checkoutProductSnapshotMatches(product, body.expectedProduct)
   ) {
+    // 어드민 성장레버(상품 추가/삭제/가격) 변경 직후의 구 탭이 여기로 온다 —
+    // 무로그면 사고 조사에서 이 fence 발동 여부를 서버에서 볼 수 없다.
+    log.warn("pay.checkout_state_changed", {
+      userId: user.id,
+      fence: "product_snapshot",
+      productId: product.productId,
+    });
     return NextResponse.json(
       { error: "checkout_state_changed" },
       { status: 409 },
@@ -236,6 +244,11 @@ export async function POST(req: NextRequest) {
       snapshot: expectedOfferSnapshot,
     })
   ) {
+    log.warn("pay.checkout_state_changed", {
+      userId: user.id,
+      fence: "offer_evidence",
+      productId: product.productId,
+    });
     return NextResponse.json(
       { error: "checkout_state_changed" },
       { status: 409 },
@@ -247,30 +260,58 @@ export async function POST(req: NextRequest) {
   // receipt를 하나의 user-serialized DB mutation으로 수렴시킨다.
   const candidateOrderUuid = randomUUID();
   const candidatePaymentId = paymentIdForOrder(candidateOrderUuid);
-  const { data: mutationResult, error: insErr } = await admin
-    .rpc("create_or_reuse_pending_order", {
-      p_user: user.id,
-      p_order_uuid: candidateOrderUuid,
-      p_product_id: product.productId,
-      p_amount: product.price,
-      p_credits: product.credits,
-      p_payment_id: candidatePaymentId,
-      p_provider: "portone",
-      p_pay_channel: channel.method,
-      p_is_test: isTest,
-      p_expected_store_id: PUBLIC_ENV.PORTONE_STORE_ID,
-      p_expected_currency: "KRW",
-      p_expected_channel_key: channel.channelKey,
-      p_checkout_request_id: body.checkoutRequestId,
-      p_product_name: product.goodname,
-      p_offer_evidence_id: body.offerEvidenceId,
-      p_offer_snapshot_sha256: body.offerSnapshotSha256,
-      p_withdrawal_copy_version:
-        CHECKOUT_WITHDRAWAL_CONFIRMATION.copyVersion,
-      p_withdrawal_copy: CHECKOUT_WITHDRAWAL_CONFIRMATION.statement,
-      p_withdrawal_confirmed: true,
-    })
-    .abortSignal(checkoutSignal);
+  const runCheckoutMutation = () =>
+    admin
+      .rpc("create_or_reuse_pending_order", {
+        p_user: user.id,
+        p_order_uuid: candidateOrderUuid,
+        p_product_id: product.productId,
+        p_amount: product.price,
+        p_credits: product.credits,
+        p_payment_id: candidatePaymentId,
+        p_provider: "portone",
+        p_pay_channel: channel.method,
+        p_is_test: isTest,
+        p_expected_store_id: PUBLIC_ENV.PORTONE_STORE_ID,
+        p_expected_currency: "KRW",
+        p_expected_channel_key: channel.channelKey,
+        p_checkout_request_id: body.checkoutRequestId,
+        p_product_name: product.goodname,
+        p_offer_evidence_id: body.offerEvidenceId,
+        p_offer_snapshot_sha256: body.offerSnapshotSha256,
+        p_withdrawal_copy_version:
+          CHECKOUT_WITHDRAWAL_CONFIRMATION.copyVersion,
+        p_withdrawal_copy: CHECKOUT_WITHDRAWAL_CONFIRMATION.statement,
+        p_withdrawal_confirmed: true,
+      })
+      .abortSignal(checkoutSignal);
+  let { data: mutationResult, error: insErr } = await runCheckoutMutation();
+  if (insErr?.message === "checkout_prior_intent_unresolved") {
+    // 결제창을 닫고 다른 상품/수단으로 갈아탄 정상 사용자 — 미해결 intent 를
+    // 건별 포트원 비-PAID 실측 후 그 자리에서 종단하고 1회 재시도한다.
+    const resolution = await resolveUnsettledCheckoutIntents(
+      admin,
+      user.id,
+      checkoutSignal,
+    );
+    if (resolution.kind === "resolved") {
+      log.info("pay.prior_intent_auto_resolved", {
+        userId: user.id,
+        canceled: resolution.canceled,
+      });
+      ({ data: mutationResult, error: insErr } = await runCheckoutMutation());
+    } else if (resolution.kind === "prior_paid") {
+      // 직전 결제가 실제 완료된 미지급 주문 — 종단 대신 웹훅/reconcile 지급 대기.
+      log.warn("pay.prior_intent_paid_unsettled", {
+        userId: user.id,
+        orderUuid: resolution.orderUuid,
+      });
+      return NextResponse.json(
+        { error: "checkout_prior_intent_paid" },
+        { status: 409 },
+      );
+    }
+  }
   if (insErr) {
     // invalid_product 는 §38 매핑으로 기존 400 {error:'invalid_product'} 그대로(서버 config↔RPC allowlist 드리프트 신호).
     log.error("pay.order_insert_fail", { userId: user.id, ...errInfo(insErr) });

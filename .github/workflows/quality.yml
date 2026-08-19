@@ -151,6 +151,9 @@ jobs:
       - name: Preserve member profile customization (0103)
         run: npm run qa:db:apply:profile-customization-preserve
 
+      - name: Align credits copy DB contract to v2/v3 (0104)
+        run: npm run qa:db:apply:credits-copy-contract
+
       - name: Run pgTAP integration suites
         run: npm run test:db
 
