@@ -237,7 +237,7 @@ declare
     pg_catalog.date_trunc('milliseconds', pg_catalog.clock_timestamp());
 begin
   v_pay := replace(v_order::text, '-', '');
-  perform public.bp_008905_create_or_reuse_pending_order_impl(
+  perform public.bp_0105_create_or_reuse_pending_order_impl(
     p_user, v_order, p_product, p_amount, p_credits,
     v_pay, 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'
@@ -586,7 +586,7 @@ select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('dorder', gen_random_uuid())
 $$, 'B.9b0 탈퇴자 주문 uuid 준비');
 select lives_ok($$
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'deleted'),
     (select o from pg_temp_ctx where k = 'dorder'), 'credits_3', 1000, 3,
     replace((select o from pg_temp_ctx where k = 'dorder')::text, '-', ''),
@@ -767,7 +767,7 @@ select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('late_order', gen_random_uuid())
 $$, 'B.18b late-PAID 주문 uuid 준비');
 select lives_ok($$
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'late_user'),
     (select o from pg_temp_ctx where k = 'late_order'), 'credits_3', 1000, 3,
     replace((select o from pg_temp_ctx where k = 'late_order')::text, '-', ''),
@@ -783,7 +783,7 @@ select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('expired_order', gen_random_uuid())
 $$, 'B.18d2-준비 expired intent 주문 uuid');
 select lives_ok($$
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'late_user'),
     (select o from pg_temp_ctx where k = 'expired_order'), 'credits_3', 1000, 3,
     replace((select o from pg_temp_ctx where k = 'expired_order')::text, '-', ''),
@@ -1014,7 +1014,7 @@ select lives_ok($$
   insert into pg_temp_ctx (k, o) values ('fail_order', gen_random_uuid())
 $$, 'B.20a failed 전이 대상 주문 uuid 준비');
 select lives_ok($$
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     (select u from pg_temp_ctx where k = 'customer'),
     (select o from pg_temp_ctx where k = 'fail_order'), 'credits_3', 1000, 3,
     replace((select o from pg_temp_ctx where k = 'fail_order')::text, '-', ''),

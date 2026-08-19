@@ -509,7 +509,7 @@ catalog_ok="$(
         'public.admin_adjust_credits(uuid,uuid,integer,text,uuid)'
       ) is not null
       and to_regprocedure(
-        'public.bp_008905_create_or_reuse_pending_order_impl(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text)'
+        'public.bp_0105_create_or_reuse_pending_order_impl(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text)'
       ) is not null
       and strpos(
         pg_get_functiondef(
@@ -652,7 +652,7 @@ db_psql -q -c "
       '2000-01-01 00:00:00+00', '2000-01-02 00:00:00+00'
     );
 
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     '$po_paid_user', '$po_paid_order', 'qa_lock_3', 1000, 3,
     replace('$po_paid_order', '-', ''), 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'
@@ -660,7 +660,7 @@ db_psql -q -c "
   select public.mark_order_failed(
     '$po_paid_order', 'FAILED', 'QA paid-first stale', '{}'::jsonb
   );
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     '$po_delete_user', '$po_delete_order', 'qa_lock_3', 1000, 3,
     replace('$po_delete_order', '-', ''), 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'
@@ -669,7 +669,7 @@ db_psql -q -c "
     '$po_delete_order', 'FAILED', 'QA delete-first stale', '{}'::jsonb
   );
 
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     '$oa_commit_user', '$oa_commit_order', 'qa_lock_3', 1000, 3,
     replace('$oa_commit_order', '-', ''), 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'
@@ -689,7 +689,7 @@ db_psql -q -c "
       )
     ), pg_catalog.transaction_timestamp(), null
   );
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     '$oa_delete_user', '$oa_delete_order', 'qa_lock_3', 1000, 3,
     replace('$oa_delete_order', '-', ''), 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'
@@ -710,7 +710,7 @@ db_psql -q -c "
     ), pg_catalog.transaction_timestamp(), null
   );
 
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     '$oe_single_user', '$oe_single_order', 'qa_lock_3', 1000, 3,
     replace('$oe_single_order', '-', ''), 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'
@@ -738,7 +738,7 @@ db_psql -q -c "
     1000, now(), now(), '{}'::jsonb
   );
 
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     '$oe_auto_user', '$oe_auto_order', 'qa_lock_3', 1000, 3,
     replace('$oe_auto_order', '-', ''), 'portone', 'card', false,
     'store-qa', 'KRW', 'channel-card-live'

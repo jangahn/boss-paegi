@@ -1,7 +1,9 @@
 -- 008905: immutable commerce display evidence and fal age/flow-down evidence.
+-- 0105: notice copy is validated against active commerce_copy_registry rows
+-- (jsonb equality) instead of pinned function literals and evidence CHECKs.
 
 begin;
-select plan(41);
+select plan(45);
 
 select ok(
   to_regclass('public.commerce_display_evidence') is not null
@@ -42,7 +44,7 @@ select ok(
   )
   and has_function_privilege(
     'service_role',
-    'public.create_or_reuse_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text,uuid,text,uuid,text,text,text,boolean)',
+    'public.create_or_reuse_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text,uuid,text,uuid,text,text,text,boolean,jsonb)',
     'EXECUTE'
   ),
   'service role can use only the bounded compliance RPCs'
@@ -79,6 +81,57 @@ select ok(
     'INSERT,UPDATE,DELETE'
   ),
   'service role cannot bypass immutable evidence RPCs with direct DML'
+);
+
+-- 0105: the copy contract lives in commerce_copy_registry, one active row per
+-- surface, replacing the retired evidence-table copy CHECK constraints.
+select ok(
+  exists (
+    select 1
+      from public.commerce_copy_registry r
+     where r.surface = 'credits_offer'
+       and r.copy_version = 'credits-offer-2026-08-19-v3'
+       and r.active
+  )
+  and exists (
+    select 1
+      from public.commerce_copy_registry r
+     where r.surface = 'checkout_withdrawal_limit'
+       and r.copy_version = 'checkout-withdrawal-limit-2026-08-19-v2'
+       and r.active
+  )
+  and (
+    select pg_catalog.count(*)
+      from public.commerce_copy_registry r
+     where r.active
+  ) = 2,
+  'copy registry pins exactly the active v3 offer and v2 withdrawal rows'
+);
+select ok(
+  exists (
+    select 1
+      from pg_catalog.pg_indexes i
+     where i.schemaname = 'public'
+       and i.tablename = 'commerce_copy_registry'
+       and i.indexname = 'commerce_copy_registry_one_active_per_surface'
+       and pg_catalog.lower(i.indexdef) like '%unique index%'
+       and pg_catalog.lower(i.indexdef) like '%(surface)%'
+       and pg_catalog.lower(i.indexdef) like '%where active%'
+  ),
+  'one active copy row per surface is enforced by a unique partial index'
+);
+select ok(
+  not exists (
+    select 1
+      from pg_catalog.pg_constraint c
+     where c.conrelid =
+             'public.checkout_withdrawal_acceptance_evidence'::regclass
+       and c.conname in (
+         'checkout_withdrawal_acceptance_evidence_copy_version_check',
+         'checkout_withdrawal_acceptance_evidence_confirmation_copy_check'
+       )
+  ),
+  'evidence copy CHECK pinning is fully retired in favor of the registry'
 );
 
 select is(
@@ -792,6 +845,42 @@ select is(
   ),
   '1',
   'rejected confirmation leaves no second durable order'
+);
+-- 0105 old-tab scenario: a registered but inactive copy version (v1) must be
+-- rejected even when the submitted copy matches that version byte for byte.
+select throws_ok(
+  $$
+    select public.create_or_reuse_pending_order(
+      '95000000-0000-4000-8000-000000000201',
+      '95000000-0000-4000-8000-000000000206',
+      'qa_withdrawal_checkout',
+      1700,
+      7,
+      '95000000000040008000000000000206',
+      'portone',
+      'card',
+      false,
+      'store-qa',
+      'KRW',
+      'channel-card-live',
+      '95000000-0000-4000-8000-000000000207',
+      'QA withdrawal checkout',
+      (
+        select (result->>'evidence_id')::uuid
+          from qa_checkout_offer
+      ),
+      (
+        select result->>'snapshot_sha256'
+          from qa_checkout_offer
+      ),
+      'checkout-withdrawal-limit-2026-07-30-v1',
+      '구매할 생성권 중 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한된다는 점을 확인합니다.',
+      true
+    )
+  $$,
+  'P0001',
+  'withdrawal_limit_confirmation_required',
+  'a stale inactive withdrawal copy version cannot open a checkout'
 );
 select throws_ok(
   $$

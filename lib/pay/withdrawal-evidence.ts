@@ -31,37 +31,22 @@ function hasExactKeys(
   );
 }
 
-function isCreditProduct(value: unknown): value is CreditProduct {
-  if (!isRecord(value)) return false;
-  return (
-    hasExactKeys(value, ["credits", "goodname", "price", "productId"]) &&
-    typeof value.productId === "string" &&
-    value.productId.length >= 1 &&
-    value.productId.length <= 100 &&
-    value.productId === value.productId.trim() &&
-    typeof value.goodname === "string" &&
-    value.goodname.length >= 1 &&
-    value.goodname.length <= 200 &&
-    value.goodname === value.goodname.trim() &&
-    Number.isSafeInteger(value.price) &&
-    (value.price as number) > 0 &&
-    Number.isSafeInteger(value.credits) &&
-    (value.credits as number) > 0
-  );
-}
-
 export type CheckoutRequestBody = Readonly<{
   checkoutRequestId: string;
   productId: string;
   method: PayChannelMethod;
-  expectedMode: PayMode;
-  expectedProduct: CreditProduct;
+  /**
+   * 심사·테스트 계정 전용 실결제 opt-in(`?live=1` 화면의 서버 판정값 전달) —
+   * 일반 계정은 서버가 항상 live 로 판정하므로 효력이 없다. 대조 fence 가 아니라
+   * reviewer 입력이다.
+   */
+  reviewerLive: boolean;
   offerEvidenceId: string;
   offerSnapshotSha256: string;
   withdrawalConfirmation: Readonly<{
     confirmed: true;
-    copyVersion: typeof CHECKOUT_WITHDRAWAL_CONFIRMATION.copyVersion;
-    statement: typeof CHECKOUT_WITHDRAWAL_CONFIRMATION.statement;
+    copyVersion: string;
+    statement: string;
   }>;
 }>;
 
@@ -77,14 +62,14 @@ export function parseCheckoutRequestBody(
     !isRecord(value) ||
     !hasExactKeys(value, [
       "checkoutRequestId",
-      "expectedMode",
-      "expectedProduct",
       "method",
       "offerEvidenceId",
       "offerSnapshotSha256",
       "productId",
+      "reviewerLive",
       "withdrawalConfirmation",
     ]) ||
+    typeof value.reviewerLive !== "boolean" ||
     typeof value.checkoutRequestId !== "string" ||
     !UUID_RE.test(value.checkoutRequestId) ||
     typeof value.productId !== "string" ||
@@ -94,8 +79,6 @@ export function parseCheckoutRequestBody(
     (value.method !== "card" &&
       value.method !== "tosspay" &&
       value.method !== "kakaopay") ||
-    (value.expectedMode !== "test" && value.expectedMode !== "live") ||
-    !isCreditProduct(value.expectedProduct) ||
     typeof value.offerEvidenceId !== "string" ||
     !UUID_RE.test(value.offerEvidenceId) ||
     typeof value.offerSnapshotSha256 !== "string" ||
@@ -107,10 +90,13 @@ export function parseCheckoutRequestBody(
       "statement",
     ]) ||
     value.withdrawalConfirmation.confirmed !== true ||
-    value.withdrawalConfirmation.copyVersion !==
-      CHECKOUT_WITHDRAWAL_CONFIRMATION.copyVersion ||
-    value.withdrawalConfirmation.statement !==
-      CHECKOUT_WITHDRAWAL_CONFIRMATION.statement
+    // 문구·버전의 정합은 registry(0105)가 단일 검증 — 여기는 형식만 본다.
+    typeof value.withdrawalConfirmation.copyVersion !== "string" ||
+    value.withdrawalConfirmation.copyVersion.length < 1 ||
+    value.withdrawalConfirmation.copyVersion.length > 100 ||
+    typeof value.withdrawalConfirmation.statement !== "string" ||
+    value.withdrawalConfirmation.statement.length < 1 ||
+    value.withdrawalConfirmation.statement.length > 1000
   ) {
     return null;
   }

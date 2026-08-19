@@ -79,6 +79,7 @@ export const DB_RAISE_CODES: ReadonlySet<string> = new Set([
   "checkout_product_name_changed",
   "checkout_receipt_invalid",
   "checkout_request_conflict",
+  "checkout_resolution_invalid",
   "checkout_reuse_ambiguous",
   "checkout_reuse_required",
   "checkout_upgrade_required",

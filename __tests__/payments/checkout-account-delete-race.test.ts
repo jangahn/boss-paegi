@@ -405,7 +405,10 @@ test("checkout route는 분리 SELECT 없이 DB 원자 get-or-create만 호출�
   );
 });
 
-test("checkout route는 주문 RPC ack와 durable snapshot을 증명한 뒤에만 PG 파라미터를 반환한다", () => {
+test("checkout route는 RPC receipt(사후조건 통과분)를 단일 권위로 PG 파라미터를 반환한다", () => {
+  // v0.92: impl 이 18항 사후조건을 통과시킨 receipt 가 유일한 근거 — route 의
+  // 별도 재SELECT(구 matchesCheckoutOrderPostcondition 경로)는 이중 검증층이라
+  // 철거됐고 되살아나선 안 된다.
   const createRpc = checkoutRoute.indexOf(
     '"create_or_reuse_pending_order"',
   );
@@ -413,17 +416,17 @@ test("checkout route는 주문 RPC ack와 durable snapshot을 증명한 뒤에�
     "parseAtomicCheckoutReceipt(mutationResult",
     createRpc,
   );
-  const proof = checkoutRoute.indexOf(
-    "matchesCheckoutOrderPostcondition(persisted",
-    ack,
-  );
   const response = checkoutRoute.lastIndexOf(
-    "return NextResponse.json({",
+    "return NextResponse.json(response)",
   );
   assert.ok(createRpc >= 0);
   assert.ok(ack > createRpc);
-  assert.ok(proof > ack);
-  assert.ok(response > proof);
+  assert.ok(response > ack);
+  assert.doesNotMatch(checkoutRoute, /matchesCheckoutOrderPostcondition/);
+  assert.doesNotMatch(
+    checkoutRoute,
+    /from\("checkout_withdrawal_acceptance_evidence"\)/,
+  );
 });
 
 test("0087 원자 checkout은 검증·잠금·완전한 INSERT를 한 함수에서 수행하고 replay/reuse를 구분한다", () => {

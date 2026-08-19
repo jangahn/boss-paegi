@@ -106,13 +106,12 @@ export function CreditsClient({
     try {
       const checkoutRequestId = crypto.randomUUID();
       const requestBody = JSON.stringify({
-        // expected* 는 권위 입력이 아니라 이 화면이 사용자에게 표시한
-        // TEST/LIVE 및 상품 스냅샷의 fence다. 서버 최신 판정과 다르면
-        // 가격을 포함한 어떤 값도 바꿔 결제창을 열지 않는다.
+        // 화면-결제 정합(상품명·가격·문구)은 서버 RPC 가 offer evidence 스냅샷
+        // + registry 로 단일 검증한다(0105). 여기서 보내는 것은 선택 입력뿐.
         productId: product.productId,
         method: channel.method,
-        expectedMode: payMode,
-        expectedProduct: product,
+        // 심사 계정의 실결제 opt-in — 일반 계정엔 효력 없음(서버 항상 live).
+        reviewerLive: payMode === "live",
         checkoutRequestId,
         offerEvidenceId,
         offerSnapshotSha256,
