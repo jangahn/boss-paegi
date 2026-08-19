@@ -1,6 +1,8 @@
 import "server-only";
 import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolvePayError } from "@/lib/pay/error-catalog";
+import { DB_RAISE_CODES } from "@/lib/pay/db-raise-codes.gen";
 import {
   getPortonePaymentSnapshot,
   cancelPortonePaymentPartial,
@@ -46,78 +48,27 @@ import {
 /** 최초 POST 후 동일 key·동일 body 재시도 허용 창(§7.4 — PortOne 보장이 아닌 내부 보수적 cutoff). */
 export const PG_RETRY_CUTOFF_MS = 3 * 60 * 60 * 1000;
 
-// ── §38 오류코드 → HTTP 매핑 (saga.test.ts 계약과 동일 멤버십) ─────────────────────────────
-// checkout 계열 P0001(008899/008905 raise)의 정상 분류 — 미등록 코드는 아래 매퍼가 전부
-// fatal `invariant_violation` 으로 승격하므로, 배포 경계의 구 탭(stale 문구/증거)이나 잔존
-// intent 같은 **정상 거절**이 가짜 fatal 로 보고되던 결함의 수정(2026-08-19 실관측:
-// withdrawal_limit_confirmation_required·checkout_prior_intent_unresolved).
-const CHECKOUT_CONFLICT_409 = [
-  "checkout_prior_intent_unresolved",
-  "checkout_reuse_required",
-  "checkout_upgrade_required",
-  "checkout_request_conflict",
-  "request_conflict",
-  "checkout_evidence_conflict",
-  "payment_evidence_snapshot_conflict",
-  "checkout_withdrawal_evidence_immutable",
-  "commerce_display_evidence_immutable",
-] as const;
-const CHECKOUT_VALIDATION_400 = [
-  "withdrawal_limit_confirmation_required",
-  "checkout_offer_evidence_mismatch",
-  "checkout_product_name_changed",
-  "client_refresh_required",
-  "checkout_receipt_invalid",
-  "cancel_intent_receipt_invalid",
-  "user_id_required",
-] as const;
-
-const CONFLICT_409 = new Set([
-  ...CHECKOUT_CONFLICT_409,
-  "request_conflict", "invalid_state", "version_conflict", "order_has_open_refund", "payout_ref_duplicate",
-  "refund_preflight_mismatch", "cancellation_amount_mismatch", "cancellation_status_mismatch",
-  "cancellation_event_conflict", "payment_evidence_mismatch", "checkout_prior_intent_unresolved",
-]);
-const TRANSIENT_503 = new Set([
-  "cancellation_ingest_failed",
-  "checkout_reuse_ambiguous",
-  "legacy_checkout_refresh_required",
-  "payment_evidence_incomplete",
-]);
-const NOT_FOUND_404 = new Set([
-  "order_not_found", "attempt_not_found", "generation_not_found", "purchase_lot_not_found",
-  "event_not_found", "issue_not_found", "member_not_found", "account_not_found",
-]);
-const VALIDATION_400 = new Set([
-  ...CHECKOUT_VALIDATION_400,
-  "reason_invalid", "qty_invalid", "rail_invalid", "cra_future", "amount_nonpositive", "payout_ref_invalid",
-  "order_not_paid", "qty_exceeds_available", "qty_exceeds_order_remaining", "nothing_to_refund",
-  "insufficient_credits", "rail_not_pg", "rail_not_manual", "malformed", "note_invalid",
-  "resolution_invalid", "issue_not_open", "evidence_invalid", "verification_source_invalid",
-  "cancel_id_required", "result_invalid", "economic_exceeds_remaining", "no_cancel_intent",
-  "event_requires_resolution", "event_still_unmatched", "economic_resolution_required",
-  "delta_invalid", "not_cancelable",
-  "already_canceled", "use_refund_saga", "cancellation_id_invalid", "amount_invalid",
-  "open_refund_blocks_delete", "open_issue_blocks_delete", "paid_at_required", "paid_at_future",
-  "account_deleted", "invalid_product", "product_amount_mismatch", "invalid_provider",
-  "invalid_channel", "payment_id_format", "not_settleable", "status_changed", "invalid_job",
-  "invalid_phase",
-]);
-
 export type RefundRpcErrorInfo = { code: string; http: number; sentryFatal: boolean };
 
 /**
- * P0001 raise 메시지 → {안전 코드, HTTP}(§38). 미매핑/불변식 위반은 500 fatal —
- * `invariant_violation` 은 issue 큐가 아니라 Sentry `pay.refund_invariant_violation` 로만 보고(§8 ③).
+ * P0001 raise 메시지 → {안전 코드, HTTP}(§38). 분류의 단일 소스는
+ * lib/pay/error-catalog.ts — 여기서는 카탈로그에 위임만 한다.
+ *  - cataloged: 정상 거절(4xx/503, fatal 아님)
+ *  - invariant: DB raise 전수 스냅샷에는 있으나 카탈로그에 없는 코드 = 불변식
+ *    위반(도달 자체가 버그) — 500 + Sentry fatal(§8 ③, rollback 은 DB 가 수행)
+ *  - uncataloged: DB raise 계약 밖 미지 토큰 = 카탈로그/스냅샷 등록 누락 결함 —
+ *    500 이지만 fatal 이 아닌 별도 신호(pay.uncataloged_reject)로 보고
  */
 export function mapRefundRpcError(message: string | undefined): RefundRpcErrorInfo {
   const token = (message ?? "").split(":")[0].trim();
-  if (CONFLICT_409.has(token)) return { code: token, http: 409, sentryFatal: false };
-  if (TRANSIENT_503.has(token)) return { code: token, http: 503, sentryFatal: false };
-  if (NOT_FOUND_404.has(token)) return { code: token, http: 404, sentryFatal: false };
-  if (VALIDATION_400.has(token)) return { code: token, http: 400, sentryFatal: false };
-  // 사후 불변식 위반(§8 ③) — 전체 rollback 은 DB 가 이미 수행, 여기선 fatal 보고만.
-  return { code: "invariant_violation", http: 500, sentryFatal: true };
+  const resolved = resolvePayError(token, DB_RAISE_CODES);
+  if (resolved.kind === "cataloged") {
+    return { code: resolved.code, http: resolved.entry.status, sentryFatal: false };
+  }
+  if (resolved.kind === "invariant") {
+    return { code: "invariant_violation", http: 500, sentryFatal: true };
+  }
+  return { code: "uncataloged_reject", http: 500, sentryFatal: false };
 }
 
 /** RPC P0001 을 라우트 응답으로 변환 + fatal 이면 Sentry 보고. */
@@ -132,6 +83,10 @@ export function refundRpcErrorResponsePayload(
       level: "fatal",
       extra: { ...ctx, message: error?.message },
     });
+  } else if (info.code === "uncataloged_reject") {
+    // DB raise 계약 밖 토큰 — 카탈로그/스냅샷 등록을 잊은 개발 결함 신호.
+    // 불변식 위반이 아니므로 fatal 로 승격하지 않되, 조사 가능하게 남긴다.
+    log.error("pay.uncataloged_reject", { ...ctx, ...errInfo(error) });
   }
   return { body: { error: info.code }, status: info.http };
 }

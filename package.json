@@ -42,6 +42,7 @@
     "qa:db:apply:cleanup-backoff": "bash scripts/qa/apply-local-migrations.sh --only 0102",
     "qa:db:apply:profile-customization-preserve": "bash scripts/qa/apply-local-migrations.sh --only 0103",
     "qa:db:apply:credits-copy-contract": "bash scripts/qa/apply-local-migrations.sh --only 0104",
+    "gen:db-raise-codes": "node scripts/gen/db-raise-codes.mjs",
     "test:db:analytics-maintenance-bounds": "bash scripts/qa/run-local-pgtap.sh --only analytics_maintenance_bounds.pgtap.sql",
     "test:db:dead-service-rpc-acl-cleanup": "bash scripts/qa/run-local-pgtap.sh --only dead_service_rpc_acl_cleanup.pgtap.sql",
     "qa:db:analytics-maintenance-acl-upgrade": "bash scripts/qa/test-analytics-maintenance-acl-upgrade.sh",
