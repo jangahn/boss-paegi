@@ -130,27 +130,8 @@ fail() {
   exit 1
 }
 
-wait_for_activity() {
-  app_name="$1"
-  predicate="$2"
-  description="$3"
-  for _ in $(seq 1 160); do
-    count="$(
-      db_value "
-        select count(*)
-          from pg_catalog.pg_stat_activity
-         where application_name = '$app_name'
-           and backend_type = 'client backend'
-           and ($predicate);
-      "
-    )"
-    if [[ "$count" == "1" ]]; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  fail "timed out waiting for $description"
-}
+# 세션 동기화는 공용 lib — 상한 120s(러너 속도 무관)·타임아웃 시 세션 스냅샷 덤프.
+source scripts/qa/lib/wait-sync.sh
 
 new_uuid() {
   db_value "select gen_random_uuid();"

@@ -359,28 +359,8 @@ fail() {
   exit 1
 }
 
-wait_for_activity() {
-  app_name="$1"
-  predicate="$2"
-  description="$3"
-  for _ in $(seq 1 240); do
-    count="$(
-      db_value "
-        select pg_catalog.count(*)
-          from pg_catalog.pg_stat_activity
-         where datname = '$db_name'
-           and application_name = '$app_name'
-           and backend_type = 'client backend'
-           and ($predicate);
-      "
-    )"
-    if [[ "$count" == "1" ]]; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  fail "timed out waiting for $description"
-}
+# 세션 동기화는 공용 lib — 상한 120s(러너 속도 무관)·타임아웃 시 세션 스냅샷 덤프.
+source scripts/qa/lib/wait-sync.sh
 
 # Run a two-session interleaving. The owner executes the mutation and remains
 # idle in its transaction while the waiter is proven blocked. Only then is the

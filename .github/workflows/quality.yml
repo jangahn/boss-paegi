@@ -57,29 +57,20 @@ jobs:
       - name: Start disposable Supabase
         run: supabase start -x logflare,studio,imgproxy,realtime,edge-runtime,vector
 
-      - name: Apply expand migrations through 008907
-        run: npm run qa:db:apply:expand
+      # 최신 스키마 단일 검증(v0.91 재설계): 전체 마이그레이션을 한 번에 적용하고
+      # 그 위에서 pgTAP 전량·영구 표면 계약·race 스위트를 돌린다. 배포 순서 계약
+      # (additive 마이그레이션 → 코드 배포)은 docs/checkout-rework.md 참조.
+      - name: Apply all migrations
+        run: npm run qa:db:apply
 
-      - name: Verify old and new app compatibility at expand stage
-        run: npm run qa:db:rollout-expand
+      - name: Run pgTAP integration suites
+        run: npm run test:db
 
-      - name: Run atomic checkout convergence and mixed-version races
-        run: npm run qa:db:checkout-convergence-race
+      - name: Verify permanent app surfaces on the latest schema
+        run: npm run qa:db:permanent-surface
 
-      - name: Prove the payment evidence contract drain gate rolls back safely
-        run: bash scripts/qa/test-payment-evidence-contract-gate.sh
-
-      - name: Apply the 0090-0092 rollout contract
-        run: npm run qa:db:apply:contract
-
-      - name: Verify legacy closure and permanent app surfaces
-        run: npm run qa:db:rollout-contract
-
-      - name: Apply only the 0093 OAuth expand migration
-        run: npm run qa:db:apply:oauth-expand
-
-      - name: Verify the OAuth expand compatibility window
-        run: npm run qa:db:oauth-expand
+      - name: Verify OAuth target-generation fences
+        run: npm run qa:db:oauth-target-fence
 
       - name: Prove OAuth relation fingerprints reject catalog tampering
         run: npm run qa:db:oauth-relation-fingerprint-tamper
@@ -87,75 +78,21 @@ jobs:
       - name: Prove OAuth rollout catalog mutations are transaction-fenced
         run: npm run qa:db:oauth-catalog-mutation-locks
 
-      - name: Prove the legacy reassignment caller remains available during 0093
-        run: npm run test:db:oauth-expand-compat
-
       - name: Prove a locked terminal OAuth row remains non-green
         run: npm run qa:db:oauth-prune-lock-race
 
       - name: Prove OAuth migration and member creation serialize to no-transfer
         run: npm run qa:db:oauth-migration-member-race
 
-      - name: Prove raw 0094 fails closed without provider qualification
-        run: npm run qa:db:oauth-contract-raw-guard
-
-      - name: Apply only the 0094 OAuth contract migration
-        run: npm run qa:db:apply:oauth-contract
-
-      - name: Verify raw reassignment closure after 0094
-        run: npm run qa:db:oauth-contract
-
-      - name: Prove raw 0095 cannot bypass the staged post-contract runner
-        run: npm run qa:db:analytics-maintenance-raw-guard
-
-      - name: Apply only the 0095 analytics maintenance hardening
-        run: npm run qa:db:apply:oauth-post-contract
-
-      - name: Verify every analytics maintenance argument boundary
-        run: npm run test:db:analytics-maintenance-bounds
-
-      - name: Verify superseded service RPCs are owner-only
-        run: npm run test:db:dead-service-rpc-acl-cleanup
-
       - name: Prove superseded RPC closure reconverges over later ACL drift
         run: npm run qa:db:analytics-maintenance-acl-upgrade
 
       - name: Prove analytics maintenance rebuilds and pruning serialize
-        # The two-core runner occasionally loses the holder-session timing
-        # race; one retry keeps the gate strict without the flake.
-        run: >-
-          npm run qa:db:analytics-maintenance-lock-race ||
-          npm run qa:db:analytics-maintenance-lock-race
+        run: npm run qa:db:analytics-maintenance-lock-race
 
-      - name: Relax generation quotas to the product policy
-        run: npm run qa:db:apply:generation-quota-relax
+      - name: Run atomic checkout concurrency races
+        run: npm run qa:db:checkout-concurrency-race
 
-      - name: Relax public write quotas to the product policy
-        run: npm run qa:db:apply:public-write-quota-relax
-
-      - name: Accept the provider's PNG output in the evidence contract (0098)
-        run: npm run qa:db:apply:provider-output-png
-
-      - name: Install the news exposure lifecycle list (0099)
-        run: npm run qa:db:apply:news-exposure-lifecycle
-
-      - name: Install the stale preflight release (0100)
-        run: npm run qa:db:apply:preflight-stale-release
-
-      - name: Anchor empty-manifest cleanup to the intent horizon (0101)
-        run: npm run qa:db:apply:empty-manifest-sweep
-
-      - name: Reset cleanup backoff to consecutive failures (0102)
-        run: npm run qa:db:apply:cleanup-backoff
-
-      - name: Preserve member profile customization (0103)
-        run: npm run qa:db:apply:profile-customization-preserve
-
-      - name: Align credits copy DB contract to v2/v3 (0104)
-        run: npm run qa:db:apply:credits-copy-contract
-
-      - name: Run pgTAP integration suites
-        run: npm run test:db
 
       - name: Run checkout-account deletion lock race
         run: npm run qa:db:race
