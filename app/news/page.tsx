@@ -7,20 +7,26 @@ import { EVENT_TYPE_LABEL, isEventType, type EventType } from "@/lib/events/type
 import { parsePageParam } from "@/lib/pagination";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SITE_URL } from "@/lib/site";
+import { resolveOgImages } from "@/lib/site-assets";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "소식 · 공지·이벤트",
-  description: "부장님패기의 공지와 이벤트 소식.",
-  alternates: { canonical: "/news" },
-  openGraph: {
-    title: `소식 · 공지·이벤트 · ${SERVICE_NAME}`,
+// openGraph 는 layout 과 deep-merge 되지 않아 images 를 항상 명시(누락 시 기본 OG 이미지 소실).
+export async function generateMetadata(): Promise<Metadata> {
+  const ogImages = await resolveOgImages();
+  return {
+    title: "소식 · 공지·이벤트",
     description: "부장님패기의 공지와 이벤트 소식.",
-    url: `${SITE_URL}/news`,
-    type: "website",
-  },
-};
+    alternates: { canonical: "/news" },
+    openGraph: {
+      title: `소식 · 공지·이벤트 · ${SERVICE_NAME}`,
+      description: "부장님패기의 공지와 이벤트 소식.",
+      url: `${SITE_URL}/news`,
+      type: "website",
+      images: ogImages,
+    },
+  };
+}
 
 function fmtKstDate(iso: string | null): string {
   if (!iso) return "";

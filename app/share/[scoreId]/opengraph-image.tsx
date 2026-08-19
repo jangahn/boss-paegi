@@ -30,7 +30,7 @@ export const contentType = "image/png";
 async function dollDataUri(dollUrl: string | null): Promise<string> {
   if (dollUrl) {
     const downloaded = await fetchMediaBlob(dollUrl, {
-      kind: "image",
+      kind: "ogImage",
       maxBytes: OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
       signal: AbortSignal.timeout(5000),
       redirect: "error",

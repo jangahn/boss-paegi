@@ -888,6 +888,11 @@ v0.81 (2026-08-19, 회원 프로필 커스터마이징 보존 — OAuth 재로�
 v0.82 (2026-08-19, iOS 모달 텍스트 고스팅(겹침) 수정; 마이그레이션 없음):
 - **iOS WebKit backdrop-filter 자손 재도색 버그 회피**: `backdrop-blur` 오버레이의 자손 내용이 바뀔 때(예: '기본 사진으로 되돌리기' busy 스피너 삽입으로 텍스트 밀림) 이전 래스터가 고스트로 남아 글자가 겹쳐 보이던 문제. `ModalShell`·`GameOverModal`의 블러 백드롭을 다이얼로그와 분리된 형제 레이어로 재구성(시각 결과·클릭 닫기·스크롤-센터 동작 동일). 크로미움에선 재현되지 않는 iOS 전용 증상이라 실기기 확인은 배포 후 iPhone 검증 항목.
 
+v0.83 (2026-08-19, 공유 OG 이미지 전면 복구 + iOS 아바타 버튼 잔상 재수정; 마이그레이션 없음):
+- **공유/캐릭터 OG 이미지 3주 500 회귀 수정**: v0.78 하드닝(d1d6c91, 7/30)이 도입한 `fetchMediaBlob` 의 `accept: …image/webp` 협상 헤더에 Supabase 이미지 변환 엔드포인트가 **webp 로 응답** → satori(next/og)는 webp data URI 미지원(`u2 is not iterable`)이라 `/share/[scoreId]`·`/doll/[id]` opengraph-image 가 전부 500(카톡/트위터 공유 카드 이미지 소실, Sentry "failed to pipe response" 25건의 정체). media-download 에 `ogImage` kind(png/jpeg 만 협상) 추가로 원본 PNG 유지 — 로컬 재현·수정 후 1200×630 PNG 실렌더 검증.
+- **문서 페이지 og:image 소실 복구**: Next metadata 의 openGraph 는 layout 과 deep-merge 되지 않아, images 없이 openGraph 를 재정의한 `/news`(목록)·`/terms`·`/privacy`·`/faq` 가 기본 OG 이미지를 잃고 있었음(news/[id] 주석의 알려진 함정) — `resolveOgImages()` 명시로 통일.
+- **iOS 아바타 버튼 잔상(재수정)**: v0.82 백드롭 분리로 부족 — 궁극기 게이지 선례(ScoreBoard 주석: iOS WebKit 이 opacity 전환/내용 이동이 있는 텍스트 레이어를 잘못 갱신)의 검증된 처방대로 '사진 선택'·'기본 사진으로 되돌리기' 버튼에 **busy 토글 re-key + transform-gpu** 적용.
+
 v0.78 (2026-07-29, 긴급 Storage·공급망 보안 하드닝; **Migration 0071**):
 - **private Storage RLS 폐쇄(0071)**: Dashboard 에 남아 있던 `storage.objects`의 public-role SELECT/INSERT 정책을 제거했다. `dolls`·`highlights`는 client policy 0개를 불변식으로 두고, 서버 발급 signed URL·signed upload token 및 service-role 경로만 사용한다. 프로덕션에는 선적용했고 anon list=빈 배열, cache-busting object GET=차단, synthetic signed upload=성공·정리까지 확인했다. 기존 공개 캐시 응답은 당시 `max-age=3600`이어서 최장 1시간 잔존 가능했으며 만료 후 재검증 대상으로 기록했다.
 - **권위 조회 false-empty/false-default 제거**: 어드민·법무·이벤트·설정감사·결제/환불·캐릭터/생성 상태의 서버 조회는 resolved `{error}`, `data:null`, 손상된 행·count·timestamp·부분 enrichment를 빈 배열·0·기본 이미지로 축소하지 않는다. 목록은 안정 정렬 전페이지 조회 또는 exact count를 쓰고, window-count의 범위 밖 빈 페이지는 offset 0 probe로 실제 total을 복원한다. 갤러리는 `(created_at,id)` keyset+중복 제거, 플레이는 캐릭터 조회/서명/텍스처 실패와 배경 hot-swap 실패를 재시도/롤백으로 노출한다. 탈퇴는 환불가능 수량 권위 조회가 성공하기 전에는 확정할 수 없고, 진행 중 생성 조회 실패도 갤러리에서 별도 재시도한다. 공통 runtime 계약과 fault-injection/source inventory 테스트가 이 경계를 강제한다.

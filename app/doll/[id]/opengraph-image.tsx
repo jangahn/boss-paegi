@@ -26,7 +26,7 @@ export const contentType = "image/png";
 /** Satori 는 외부 URL <img> 가 조용히 실패할 수 있어 data URI 로 embed */
 async function dollDataUri(url: string): Promise<string> {
   const downloaded = await fetchMediaBlob(url, {
-    kind: "image",
+    kind: "ogImage",
     maxBytes: OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
     signal: AbortSignal.timeout(5000),
     redirect: "error",
