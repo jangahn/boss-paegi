@@ -914,6 +914,9 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 - **환불 고지 한 줄 압축**: "미사용 생성권은 환불받을 수 있어요(무료 지급분 제외, 일부 사용 시 남은 수량만큼). 기준·차감 순서·절차는 이용약관 제10조를 확인해주세요." — 사용분 청약철회 문장은 확인 박스가 전담(중복 제거). 완전 삭제는 전상법 §13(청약철회 조건 표시)·토스 재신청 대비로 비채택. `credits-offer-2026-08-19-v2`.
 - 문구는 display/withdrawal evidence 계약의 copyVersion bump 로 반영 — 과거 주문 증거에는 v1 스냅샷 잔존(설계 지원).
 
+v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
+- "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
+
 v0.78 (2026-07-29, 긴급 Storage·공급망 보안 하드닝; **Migration 0071**):
 - **private Storage RLS 폐쇄(0071)**: Dashboard 에 남아 있던 `storage.objects`의 public-role SELECT/INSERT 정책을 제거했다. `dolls`·`highlights`는 client policy 0개를 불변식으로 두고, 서버 발급 signed URL·signed upload token 및 service-role 경로만 사용한다. 프로덕션에는 선적용했고 anon list=빈 배열, cache-busting object GET=차단, synthetic signed upload=성공·정리까지 확인했다. 기존 공개 캐시 응답은 당시 `max-age=3600`이어서 최장 1시간 잔존 가능했으며 만료 후 재검증 대상으로 기록했다.
 - **권위 조회 false-empty/false-default 제거**: 어드민·법무·이벤트·설정감사·결제/환불·캐릭터/생성 상태의 서버 조회는 resolved `{error}`, `data:null`, 손상된 행·count·timestamp·부분 enrichment를 빈 배열·0·기본 이미지로 축소하지 않는다. 목록은 안정 정렬 전페이지 조회 또는 exact count를 쓰고, window-count의 범위 밖 빈 페이지는 offset 0 probe로 실제 total을 복원한다. 갤러리는 `(created_at,id)` keyset+중복 제거, 플레이는 캐릭터 조회/서명/텍스처 실패와 배경 hot-swap 실패를 재시도/롤백으로 노출한다. 탈퇴는 환불가능 수량 권위 조회가 성공하기 전에는 확정할 수 없고, 진행 중 생성 조회 실패도 갤러리에서 별도 재시도한다. 공통 runtime 계약과 fault-injection/source inventory 테스트가 이 경계를 강제한다.
