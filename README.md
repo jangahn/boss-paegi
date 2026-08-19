@@ -885,6 +885,9 @@ v0.81 (2026-08-19, 회원 프로필 커스터마이징 보존 — OAuth 재로�
 - **postcondition 재정의**: `matchesOAuthProfileSyncPostcondition` 은 요청값 equality 대신 sync 불변식(비어있지 않은 닉네임·OAuth 이름 존재 시 플레이스홀더 잔존 금지·email equality)을 검증 — 구/신 RPC 어느 배포 순서에서도 성립해 **앱 선배포 → 0103 적용** 순서로 무중단 전환. pgTAP account_consent_lifecycle 에 커스텀 보존(닉/프사/기본프사 null)·재동의 보존·플레이스홀더 재시드(sync/재동의 양 경로) 8 assertion 추가(plan 38).
 - **audit 신규 advisory 4건 해소**(동승 — 전부 transitive high): brace-expansion override `5.0.9`(구 5.0.8 pin 이 재취약화), fast-uri `3.1.5`·js-yaml `4.3.1`·nanoid `3.3.18` lockfile 범위 내 bump. `npm run audit` 0건 복귀.
 
+v0.82 (2026-08-19, iOS 모달 텍스트 고스팅(겹침) 수정; 마이그레이션 없음):
+- **iOS WebKit backdrop-filter 자손 재도색 버그 회피**: `backdrop-blur` 오버레이의 자손 내용이 바뀔 때(예: '기본 사진으로 되돌리기' busy 스피너 삽입으로 텍스트 밀림) 이전 래스터가 고스트로 남아 글자가 겹쳐 보이던 문제. `ModalShell`·`GameOverModal`의 블러 백드롭을 다이얼로그와 분리된 형제 레이어로 재구성(시각 결과·클릭 닫기·스크롤-센터 동작 동일). 크로미움에선 재현되지 않는 iOS 전용 증상이라 실기기 확인은 배포 후 iPhone 검증 항목.
+
 v0.78 (2026-07-29, 긴급 Storage·공급망 보안 하드닝; **Migration 0071**):
 - **private Storage RLS 폐쇄(0071)**: Dashboard 에 남아 있던 `storage.objects`의 public-role SELECT/INSERT 정책을 제거했다. `dolls`·`highlights`는 client policy 0개를 불변식으로 두고, 서버 발급 signed URL·signed upload token 및 service-role 경로만 사용한다. 프로덕션에는 선적용했고 anon list=빈 배열, cache-busting object GET=차단, synthetic signed upload=성공·정리까지 확인했다. 기존 공개 캐시 응답은 당시 `max-age=3600`이어서 최장 1시간 잔존 가능했으며 만료 후 재검증 대상으로 기록했다.
 - **권위 조회 false-empty/false-default 제거**: 어드민·법무·이벤트·설정감사·결제/환불·캐릭터/생성 상태의 서버 조회는 resolved `{error}`, `data:null`, 손상된 행·count·timestamp·부분 enrichment를 빈 배열·0·기본 이미지로 축소하지 않는다. 목록은 안정 정렬 전페이지 조회 또는 exact count를 쓰고, window-count의 범위 밖 빈 페이지는 offset 0 probe로 실제 total을 복원한다. 갤러리는 `(created_at,id)` keyset+중복 제거, 플레이는 캐릭터 조회/서명/텍스처 실패와 배경 hot-swap 실패를 재시도/롤백으로 노출한다. 탈퇴는 환불가능 수량 권위 조회가 성공하기 전에는 확정할 수 없고, 진행 중 생성 조회 실패도 갤러리에서 별도 재시도한다. 공통 runtime 계약과 fault-injection/source inventory 테스트가 이 경계를 강제한다.

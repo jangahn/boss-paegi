@@ -379,14 +379,21 @@ export function GameOverModal({
 
   return (
     // 스크롤-센터: 짧으면 가운데, 길면(클립 프리뷰로 키 큼) 위→아래 전체 스크롤 도달(상단 안 잘림).
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label="게임 결과"
-      tabIndex={-1}
-      className="absolute inset-0 z-20 overflow-y-auto bg-black/70 backdrop-blur-sm"
-    >
+    // 블러 백드롭은 형제 레이어로 분리 — iOS WebKit 의 backdrop-filter 자손 재도색 버그
+    // (내용 변경 시 이전 래스터 고스트) 회피. ModalShell 과 동일 구조.
+    <div className="absolute inset-0 z-20">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="게임 결과"
+        tabIndex={-1}
+        className="absolute inset-0 overflow-y-auto"
+      >
       <div className="flex min-h-full items-center justify-center px-4 py-6">
         <div className="w-full max-w-sm">
         {/* ── 보고서 (종이) ───────────────────────────────── */}
@@ -486,6 +493,7 @@ export function GameOverModal({
           )}
         </div>
         </div>
+      </div>
       </div>
     </div>
   );

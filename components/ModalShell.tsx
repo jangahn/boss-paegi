@@ -33,22 +33,31 @@ export function ModalShell({
   // body 로 포털하면 어드민 .theme-admin 래퍼 밖이라 라이트로 새므로, 어드민 경로에선 다크 테마를 직접 부착.
   const themed = pathname?.startsWith("/admin") ? "theme-admin text-foreground" : "";
 
+  // iOS WebKit 은 backdrop-filter 요소의 **자손** 내용이 바뀔 때(예: 버튼 busy 스피너 삽입으로
+  // 텍스트가 밀림) 이전 래스터를 남겨 글자가 겹쳐 보이는 재도색 버그가 있어, 블러 백드롭을
+  // 다이얼로그와 분리된 형제 레이어로 둔다(시각 결과 동일 — 블러는 원래 뒤 페이지에만 적용).
   return createPortal(
     <div
-      className={`${themed} fixed inset-0 z-[100] overflow-y-auto bg-black/60 backdrop-blur-sm`}
+      className={`${themed} fixed inset-0 z-[100]`}
       onClick={onClose}
     >
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={ariaLabel}
-          tabIndex={-1}
-          className={`w-full ${wide ? "max-w-md" : "max-w-sm"} rounded-3xl ui-surface p-6 shadow-2xl`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {children}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <div className="absolute inset-0 overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center p-4">
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={ariaLabel}
+            tabIndex={-1}
+            className={`w-full ${wide ? "max-w-md" : "max-w-sm"} rounded-3xl ui-surface p-6 shadow-2xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>,
