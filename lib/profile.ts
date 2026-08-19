@@ -42,6 +42,16 @@ export function notifyCreditsChanged(): void {
   }
 }
 
+/** 닉네임/프사 등 프로필 표시 정보 변경 시 헤더 계정 정보가 즉시 재조회하도록 알리는 이벤트. */
+export const PROFILE_CHANGED_EVENT = "boss-paegi:profile-changed";
+
+/** 프로필 표시 정보 변경 후 호출 — AccountMenu(헤더 닉/프사)가 이 이벤트를 듣고 재조회한다. 클라 전용(SSR no-op). */
+export function notifyProfileChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(PROFILE_CHANGED_EVENT));
+  }
+}
+
 /**
  * 내 프로필 조회 — 세션 없으면 익명 세션 생성 후 조회.
  * **동의 여부는 서버 proxy 가 게이트**(클라 계산 불필요) → 비익명이면 isLoggedIn=true.
@@ -158,7 +168,10 @@ export async function updateNickname(
     reconcile: deliver,
     signal,
   });
-  if (outcome.kind === "confirmed") return outcome.value;
+  if (outcome.kind === "confirmed") {
+    notifyProfileChanged(); // 헤더 계정 정보 즉시 반영(새로고침 불필요)
+    return outcome.value;
+  }
   if (outcome.kind === "aborted") {
     throw new Error("닉네임 저장이 취소됐어요");
   }

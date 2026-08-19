@@ -67,6 +67,48 @@ export function readSupabaseAccessTokenIdentity(
   }
 }
 
+/**
+ * access token 의 exp 클레임(unix 초) — 서명 검증 없이 **'만료'를 '손상'과 구분**하는
+ * 분류에만 쓴다(세션의 권위 판정은 여전히 서버 getUser). JWT 구조가 아니거나 exp 가
+ * 안전한 양의 정수가 아니면 null(=분류 불가 → 호출부는 보수적으로 손상 취급).
+ */
+export function readSupabaseAccessTokenExpiresAt(
+  accessToken: string,
+): number | null {
+  if (
+    accessToken.length === 0 ||
+    accessToken.length > ACCESS_TOKEN_MAX_CHARS ||
+    /[\s\u0000-\u001f\u007f]/.test(accessToken)
+  ) {
+    return null;
+  }
+  try {
+    const jwt = accessToken.split(".");
+    if (jwt.length !== 3) return null;
+    const claims: unknown = JSON.parse(
+      stringFromBase64URL(jwt[1]),
+    );
+    if (
+      claims === null ||
+      typeof claims !== "object" ||
+      Array.isArray(claims)
+    ) {
+      return null;
+    }
+    const exp = (claims as Record<string, unknown>).exp;
+    if (
+      typeof exp !== "number" ||
+      !Number.isSafeInteger(exp) ||
+      exp <= 0
+    ) {
+      return null;
+    }
+    return exp;
+  } catch {
+    return null;
+  }
+}
+
 export function supabaseAuthCookieName(
   supabaseUrl: string,
 ): string {

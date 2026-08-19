@@ -10,6 +10,7 @@ import {
   writeCachedProfile,
   NICKNAME_MAX,
   CREDITS_CHANGED_EVENT,
+  PROFILE_CHANGED_EVENT,
   type MyProfile,
 } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/client";
@@ -137,9 +138,12 @@ export function AccountMenu() {
       if (document.visibilityState === "visible") refreshProfile();
     };
     window.addEventListener(CREDITS_CHANGED_EVENT, refreshProfile);
+    // 닉네임/프사 저장 직후에도 새로고침 없이 즉시 반영(마이페이지 → 헤더).
+    window.addEventListener(PROFILE_CHANGED_EVENT, refreshProfile);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.removeEventListener(CREDITS_CHANGED_EVENT, refreshProfile);
+      window.removeEventListener(PROFILE_CHANGED_EVENT, refreshProfile);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refreshProfile]);

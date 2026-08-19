@@ -17,6 +17,7 @@ import {
   readRawSupabaseAuthCookieNames,
   readRawSupabaseAuthCookiePairs,
   readRawSupabaseReconcileCookiePairs,
+  readSupabaseAccessTokenExpiresAt,
 } from "../../lib/supabase/session-cookie.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -560,6 +561,22 @@ test("proxy routes exact raw-cookie identity to isolated reconciliation before g
   assert.ok(update > invalid);
   assert.ok(refresh > update);
   assert.ok(deleted > refresh);
+  // v0.85: 서명 유효 + 만료만이 원인인 공개 GET/HEAD 요청은 격리 복구 대신 익명
+  // 통과 — 만료 분류(exp 리더)는 updateSession 뒤·격리 복구 앞에 있어야 하고,
+  // 회원 전용 경로·비-GET/HEAD 는 종전대로 격리 복구를 유지해야 한다.
+  const expiredRead = source.indexOf(
+    "readSupabaseAccessTokenExpiresAt(",
+  );
+  assert.ok(expiredRead > update);
+  assert.ok(expiredRead < refresh);
+  assert.match(
+    source,
+    /const expiredOnly =[\s\S]*?!user &&[\s\S]*?expiresAt \* 1000 <= Date\.now\(\)/u,
+  );
+  assert.match(
+    source,
+    /!expiredOnly \|\|[\s\S]*?isMemberOnlyPath\(path\) \|\|[\s\S]*?request\.method !== "GET" && request\.method !== "HEAD"/u,
+  );
   assert.match(
     source,
     /expectedUserId: rawAuthSession\.session\.userId,[\s\S]*expectedSessionId:\s*rawAuthSession\.session\.sessionId/u,
@@ -833,4 +850,38 @@ test("hostile direct navigation has no cleanup authority and scoped-cookie repai
     proxy,
     /request\.method === "GET" \|\| request\.method === "HEAD"[\s\S]*\? 307[\s\S]*: 303/u,
   );
+});
+
+
+function unsignedJwt(payload: unknown): string {
+  const b64 = (value: string) =>
+    Buffer.from(value, "utf8")
+      .toString("base64")
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/u, "");
+  return `${b64('{"alg":"HS256"}')}.${b64(JSON.stringify(payload))}.sig`;
+}
+
+test("access token exp reader classifies expiry without trusting shape drift", () => {
+  assert.equal(
+    readSupabaseAccessTokenExpiresAt(
+      unsignedJwt({ exp: 1_700_000_000, sub: USER_ID }),
+    ),
+    1_700_000_000,
+  );
+  for (const bad of [
+    "",
+    "not-a-jwt",
+    "a.b",
+    unsignedJwt({}),
+    unsignedJwt({ exp: "1700000000" }),
+    unsignedJwt({ exp: 1.5 }),
+    unsignedJwt({ exp: 0 }),
+    unsignedJwt({ exp: -10 }),
+    unsignedJwt([1, 2]),
+    `${"x".repeat(70 * 1024)}.y.z`,
+  ]) {
+    assert.equal(readSupabaseAccessTokenExpiresAt(bad), null, bad.slice(0, 24));
+  }
 });
