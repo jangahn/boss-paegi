@@ -327,7 +327,7 @@ test("credits offer evidence pins every rendered economic field and disclosure",
   });
   assert.deepEqual(snapshot, {
     schemaVersion: 1,
-    copyVersion: "credits-offer-2026-07-30-v1",
+    copyVersion: "credits-offer-2026-08-19-v2",
     surface: "credits_offer",
     payMode: "test",
     products: [
@@ -347,7 +347,6 @@ test("credits offer evidence pins every rendered economic field and disclosure",
       refundReferencePrefix: CREDITS_OFFER_COPY.refundReferencePrefix,
       termsLinkLabel: CREDITS_OFFER_COPY.termsLinkLabel,
       refundReferenceSuffix: CREDITS_OFFER_COPY.refundReferenceSuffix,
-      price: CREDITS_OFFER_COPY.price,
     },
   });
   let captured: unknown = null;
@@ -419,5 +418,5 @@ test("credits page hides every offer if durable display evidence fails", () => {
   assert.match(client, /CREDITS_OFFER_COPY\.supply/);
   assert.match(client, /CREDITS_OFFER_COPY\.validity/);
   assert.match(client, /CREDITS_OFFER_COPY\.refund/);
-  assert.match(client, /CREDITS_OFFER_COPY\.price/);
+  assert.doesNotMatch(client, /CREDITS_OFFER_COPY\.price/);
 });
