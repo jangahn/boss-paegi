@@ -166,9 +166,11 @@ export async function updateNickname(
 }
 
 // ── 프로필 즉시표시 캐시 (nav 스피너 제거) — user.id 별 키. **메뉴 표시용(isLoggedIn)만** 캐시. ──
-// genCredits/isAdmin 은 캐시 안 함(fresh getMyProfile). 동의 게이트는 서버 proxy. TTL 로 stale 방지.
+// genCredits/isAdmin 은 캐시 안 함(fresh getMyProfile). 동의 게이트는 서버 proxy.
+// TTL 은 장기(30일): 표시 전용이고 마운트 직후 fresh 재조회가 항상 교정하므로, 짧은 TTL(구 120s)은
+// 장기 미접속 재방문에서 헤더 스피너만 되살렸다. 계정 전환은 uid 키 분리·clearProfileCache 로 안전.
 const PROFILE_CACHE_PREFIX = "boss-paegi:profile:";
-const PROFILE_CACHE_TTL_MS = 120_000;
+const PROFILE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type CachedProfile = {
   display_name: string;
