@@ -899,6 +899,10 @@ v0.84 (2026-08-19, 인증/헤더 체감 성능 Phase 1 — discovery skip·프�
 - **프로필 캐시 TTL 120s→30일**: 표시 전용(닉/프사/isLoggedIn) + 마운트 직후 fresh 재조회가 항상 교정하므로 장기 캐시 무해 — 재방문 헤더 스피너 제거의 실효 조건.
 - **`/api/ops/warm`(9번째 ops route)**: cron-job.org 가 5분 주기로 호출해 로그인 콜백 체인·`/auth/reconcile`·events/leaderboard 함수를 웜 유지(Hobby 에서 유일한 웜 수단). 공통 ops 계약(25s ceiling·20s deadline·429 time_budget·cronSecretMatches) 준수, 대상 실패와 무관하게 자신은 200(스케줄러 자동 비활성 방지).
 
+v0.85 (2026-08-19, 만료≠손상 — 재방문 reconcile 인터스티셜 소멸 + 헤더 계정정보 즉시 반영; 마이그레이션 없음):
+- **만료-통과(proxy)**: 서명·구조가 유효한 auth 쿠키의 **만료**(access token 1h)는 손상과 구분한다 — 만료만이 원인인 공개(비회원전용) GET/HEAD 문서 요청은 `/auth/reconcile` 격리 복구 인터스티셜(문서 cold 2.5s+잠금/프로브+전면 재로드) 없이 익명 취급으로 통과, refresh 는 소유권자인 브라우저 싱글톤이 백그라운드 수행. 미만료 검증실패(폐기·대체·ledger non-live)·identity 불일치·회원 전용 경로·비-GET/HEAD 는 종전대로 격리 복구. 만료-통과 중 동의 게이트는 판정 유예(익명 노출과 동일)로, refresh 후 다음 내비/RSC 부터 종전과 동일 강제. exp 분류는 `readSupabaseAccessTokenExpiresAt`(서명 미검증 — 권위는 여전히 서버 getUser), 소스핀·단위 테스트 고정.
+- **헤더 계정정보 즉시 반영**: 마이페이지에서 닉네임/프사 저장 후 헤더(AccountMenu)가 새로고침 전까지 구 값을 유지하던 문제 — `PROFILE_CHANGED_EVENT`(notifyProfileChanged) 신설, updateNickname·uploadAvatar·removeAvatar 성공 시 dispatch, AccountMenu 가 구독해 fresh 재조회(CREDITS_CHANGED_EVENT 와 동일 관례).
+
 v0.78 (2026-07-29, 긴급 Storage·공급망 보안 하드닝; **Migration 0071**):
 - **private Storage RLS 폐쇄(0071)**: Dashboard 에 남아 있던 `storage.objects`의 public-role SELECT/INSERT 정책을 제거했다. `dolls`·`highlights`는 client policy 0개를 불변식으로 두고, 서버 발급 signed URL·signed upload token 및 service-role 경로만 사용한다. 프로덕션에는 선적용했고 anon list=빈 배열, cache-busting object GET=차단, synthetic signed upload=성공·정리까지 확인했다. 기존 공개 캐시 응답은 당시 `max-age=3600`이어서 최장 1시간 잔존 가능했으며 만료 후 재검증 대상으로 기록했다.
 - **권위 조회 false-empty/false-default 제거**: 어드민·법무·이벤트·설정감사·결제/환불·캐릭터/생성 상태의 서버 조회는 resolved `{error}`, `data:null`, 손상된 행·count·timestamp·부분 enrichment를 빈 배열·0·기본 이미지로 축소하지 않는다. 목록은 안정 정렬 전페이지 조회 또는 exact count를 쓰고, window-count의 범위 밖 빈 페이지는 offset 0 probe로 실제 total을 복원한다. 갤러리는 `(created_at,id)` keyset+중복 제거, 플레이는 캐릭터 조회/서명/텍스처 실패와 배경 hot-swap 실패를 재시도/롤백으로 노출한다. 탈퇴는 환불가능 수량 권위 조회가 성공하기 전에는 확정할 수 없고, 진행 중 생성 조회 실패도 갤러리에서 별도 재시도한다. 공통 runtime 계약과 fault-injection/source inventory 테스트가 이 경계를 강제한다.

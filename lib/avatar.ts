@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { notifyProfileChanged } from "@/lib/profile";
 import { PUBLIC_ENV } from "@/lib/env";
 import {
   parseAvatarClearHttpAck,
@@ -195,6 +196,7 @@ export async function uploadAvatar(
   }
   const acknowledgement = confirmOutcome.value;
   clearClientUploadOperation("avatar", operation.requestId);
+  notifyProfileChanged(); // 헤더 계정 정보 즉시 반영(새로고침 불필요)
   return acknowledgement.avatarUrl;
 }
 
@@ -233,4 +235,5 @@ export async function removeAvatar(
   if (outcome.kind !== "confirmed") {
     throw new Error("프로필 삭제 응답을 확인하지 못했어요");
   }
+  notifyProfileChanged(); // 헤더 계정 정보 즉시 반영(새로고침 불필요)
 }
