@@ -12,10 +12,26 @@ import { parseCheckoutHttpResponse } from "@/lib/pay/http-contract";
 import { CREDITS_OFFER_COPY } from "@/lib/pay/display-evidence";
 import { CHECKOUT_WITHDRAWAL_CONFIRMATION } from "@/lib/pay/withdrawal-evidence";
 import { waitForPortOnePayment } from "@/lib/pay/client-portone-payment";
+
 import {
   clientMutationResponseNeedsReconciliation,
   runReplayedJsonMutation,
 } from "@/lib/client-mutation";
+
+// 화면이 들고 있는 상품/문구/증거가 서버 최신과 어긋나 거절된 코드들 — 배포 경계의
+// 구 탭, 어드민 성장레버(상품 추가/삭제/가격) 변경 직후의 열린 탭 공통. 자동
+// 새로고침 1회로 자가 치유하고, 갱신 후 안내 배너로 상황을 설명한다.
+const STALE_CHECKOUT_CODES = new Set([
+  "withdrawal_limit_confirmation_required",
+  "checkout_offer_evidence_mismatch",
+  "checkout_product_name_changed",
+  "checkout_state_changed",
+  "client_refresh_required",
+  "legacy_checkout_refresh_required",
+  "checkout_upgrade_required",
+]);
+const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
+const STALE_RELOAD_NOTICE = "boss-paegi:checkout-stale-notice";
 
 /**
  * 생성권 충전 — 상품 4종(개당 단가 표시) + 결제수단 선택(카드/토스페이/카카오페이).
@@ -65,16 +81,20 @@ export function CreditsClient({
     setPending(null);
   });
 
-// 배포 경계의 구 탭이 보내는 stale 문구/증거 거절 코드 — 자동 새로고침 1회로 자가 치유.
-const STALE_CHECKOUT_CODES = new Set([
-  "withdrawal_limit_confirmation_required",
-  "checkout_offer_evidence_mismatch",
-  "checkout_product_name_changed",
-  "client_refresh_required",
-  "legacy_checkout_refresh_required",
-  "checkout_upgrade_required",
-]);
-const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
+  // stale 자가치유 새로고침 직후 — 왜 화면이 갱신됐고 뭘 하면 되는지 1회 안내.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(STALE_RELOAD_NOTICE)) {
+        sessionStorage.removeItem(STALE_RELOAD_NOTICE);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setError(
+          "상품 정보가 갱신되어 화면을 새로고침했어요. 원하시는 상품으로 다시 시도해주세요.",
+        );
+      }
+    } catch {
+      /* sessionStorage 접근 불가(프라이빗 모드 등) — 안내 생략 */
+    }
+  }, []);
 
   const buy = async (product: CreditProduct) => {
     if (pendingRef.current) return; // 중복 클릭 가드
@@ -168,23 +188,25 @@ const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
           window.location.assign("/consent?next=/credits");
           return;
         }
-        if (code === "checkout_state_changed") {
+        if (code === "checkout_prior_intent_unresolved") {
+          // 서버의 자동 정리(포트원 비-PAID 실측 후 종단·재시도)까지 실패한
+          // 잔여 케이스 — 포트원 불달 등 일시 장애.
           throw new Error(
-            "결제 환경이 변경됐어요. 페이지를 새로고침한 뒤 다시 시도해주세요.",
+            "직전 결제 요청을 정리하지 못했어요. 잠시 후 다시 시도해주세요.",
           );
         }
-        if (code === "checkout_prior_intent_unresolved") {
-          // 직전 결제창을 닫고 **다른 상품/수단**으로 갈아탄 경우 — 서버는 미해결
-          // 결제 요청을 하나만 허용하고, 같은 상품·수단 재시도만 이어서 연다.
+        if (code === "checkout_prior_intent_paid") {
           throw new Error(
-            "진행하던 결제 요청이 남아 있어요. 직전에 시도한 상품과 결제수단으로 다시 시도하면 이어서 결제할 수 있어요.",
+            "직전 결제가 완료된 것으로 확인됐어요. 잠시 후 크레딧 지급 내역을 확인해주세요.",
           );
         }
         if (code && STALE_CHECKOUT_CODES.has(code)) {
-          // 배포로 고지 문구/표시 증거 버전이 바뀐 **구 탭** — 1회 자동 새로고침으로
-          // 자가 치유(마커로 루프 방지). 재발이면 명시 안내로 강등.
+          // 상품/문구/증거가 서버 최신과 어긋난 탭 — 1회 자동 새로고침으로 자가
+          // 치유(마커로 루프 방지)하고, 갱신된 화면에서 안내 배너를 띄운다.
+          // 재발이면 명시 안내로 강등.
           if (!sessionStorage.getItem(STALE_RELOAD_MARKER)) {
             sessionStorage.setItem(STALE_RELOAD_MARKER, "1");
+            sessionStorage.setItem(STALE_RELOAD_NOTICE, "1");
             window.location.reload();
             return;
           }
@@ -192,14 +214,24 @@ const STALE_RELOAD_MARKER = "boss-paegi:checkout-stale-reload";
             "결제 화면 정보가 갱신됐어요. 페이지를 새로고침한 뒤 다시 시도해주세요.",
           );
         }
-        throw new Error("결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.");
+        // 미매핑 거절 코드도 정확한 사유를 숨기지 않는다 — 문의/조사 시 이 코드가
+        // 서버 로그와 1:1 로 이어지는 유일한 단서다.
+        throw new Error(
+          code
+            ? `결제 요청이 거절됐어요(사유 코드: ${code}). 잠시 후 다시 시도해주세요.`
+            : "결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.",
+        );
       }
       if (delivery.kind === "confirmed") {
         try { sessionStorage.removeItem(STALE_RELOAD_MARKER); } catch { /* noop */ }
       }
       if (delivery.kind !== "confirmed") {
+        const unconfirmedCode =
+          typeof delivery.error === "string" && delivery.error.length > 0
+            ? `(사유 코드: ${delivery.error}) `
+            : "";
         throw new Error(
-          "결제 주문 결과를 확인하지 못했어요. 결제창은 열지 않았습니다. 잠시 후 다시 시도해주세요.",
+          `결제 주문 결과를 확인하지 못했어요. ${unconfirmedCode}결제창은 열지 않았습니다. 잠시 후 다시 시도해주세요.`,
         );
       }
       const {
