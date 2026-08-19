@@ -5,6 +5,7 @@ import { requireAdmin, memberGateResponse } from "@/lib/auth-server";
 import { readAdminJsonRequest } from "@/lib/http/admin-json-request";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  PAYMENT_INTENT_EXPIRE_MS,
   getPortonePaymentSnapshot,
   portoneCancelConfigured,
   type PortonePaymentSnapshot,
@@ -18,6 +19,7 @@ import {
   parseCancelIntentResolveResult,
   parseMarkPaidAndGrantResult,
   parsePaidOrderPostcondition,
+  parseMarkOrderCanceledUnpaidResult,
 } from "@/lib/pay/order-mutation-result";
 import { handleObservedCancellation, refundRpcErrorResponsePayload } from "@/lib/refund-saga";
 import {
@@ -53,6 +55,7 @@ type OrderRow = {
   payment_id: string | null;
   provider: string | null;
   paid_at: string | null;
+  created_at: string;
   credits: number;
   refunded_credits: number;
   amount: number;
@@ -121,7 +124,7 @@ export async function POST(req: NextRequest) {
         admin
           .from("orders")
           .select(
-            "order_uuid, status, payment_id, provider, paid_at, credits, refunded_credits, amount, is_test, expected_store_id, expected_currency, expected_channel_key, cancel_requested_at, cancel_intent_created_at, cancel_intent_reason",
+            "order_uuid, status, payment_id, provider, paid_at, created_at, credits, refunded_credits, amount, is_test, expected_store_id, expected_currency, expected_channel_key, cancel_requested_at, cancel_intent_created_at, cancel_intent_reason",
           )
           .eq("order_uuid", orderUuid)
           .maybeSingle(),
@@ -140,6 +143,7 @@ export async function POST(req: NextRequest) {
       payment_id: "nullableString",
       provider: "nullableString",
       paid_at: "nullableTimestamp",
+      created_at: "timestamp",
       credits: "nonnegativeInteger",
       refunded_credits: "nonnegativeInteger",
       amount: "nonnegativeInteger",
@@ -360,7 +364,44 @@ export async function POST(req: NextRequest) {
       case "PENDING":
       case "FAILED": {
         // PortOne permits a browser-held paymentId to remain/re-become
-        // charge-capable. Only exact CANCELLED observation is terminal.
+        // charge-capable, so a fresh intent is never terminalized locally.
+        // 단 시효(PAYMENT_INTENT_EXPIRE_MS)가 지난 미지급 intent 는 결제창 세션이
+        // 소멸한 지 한참이라 재청구 실가능성이 없고, 방치하면 사용자 전역 1-intent
+        // 잠금이 영구화된다(2026-08-19 실사고) — 방금 단건조회로 비-PAID 를 재확인한
+        // 상태에서만 canceled 시효 종단을 허용한다.
+        if (
+          !order.paid_at &&
+          Date.now() - new Date(order.created_at).getTime() >
+            PAYMENT_INTENT_EXPIRE_MS
+        ) {
+          const { data: eData, error: eErr } = await admin.rpc(
+            "mark_order_canceled_unpaid",
+            {
+              p_order_uuid: order.order_uuid,
+              p_pg_status: snapshot.status,
+              p_pg_tx_id: null,
+              p_raw: snapshot.raw,
+            },
+          );
+          if (eErr) {
+            const p = refundRpcErrorResponsePayload(eErr, {
+              route: "admin/cancel",
+              stage: "expire",
+              orderUuid,
+            });
+            return NextResponse.json(p.body, { status: p.status });
+          }
+          const eResult = parseMarkOrderCanceledUnpaidResult(eData);
+          if (!eResult || eResult.outcome === "skipped") {
+            return mutationUnconfirmed("expire_receipt", orderUuid);
+          }
+          log.info("admin.cancel_expired_intent", {
+            orderUuid,
+            adminId: gate.user.id,
+            pgStatus: snapshot.status,
+          });
+          return NextResponse.json({ ok: true, outcome: "expired" });
+        }
         return order.paid_at
           ? NextResponse.json(
               { error: "pg_state_mismatch" },

@@ -41,6 +41,16 @@ async function readPortoneJson(
 }
 
 /** 포트원 연동값 설정 여부 — 미설정이면 결제 라우트 비활성(503). 채널은 live/test 어느 한쪽이면 충분. */
+/**
+ * 미해결 결제 intent(pending/failed·미지급·미취소)의 시효(ms) — 이 시간이 지나면
+ * 포트원 단건조회로 비-PAID 를 재확인한 뒤 canceled 로 종단한다(사용자 전역 1-intent
+ * 잠금 해제). 'failed=준종단(늦은 PAID 부활 지급)' 창을 이 값으로 한정하는 결정:
+ * 포트원 결제창 세션은 이보다 훨씬 짧아 실부활 가능성이 소멸한 뒤다. reconcile 크론
+ * (자동)과 어드민 취소(수동)가 공유한다. 배경: 2026-08-19 — 7월 결제창 이탈 잔재
+ * failed 가 영구 잠금이 되어 실계정 결제가 전면 거절된 실사고.
+ */
+export const PAYMENT_INTENT_EXPIRE_MS = 24 * 60 * 60 * 1000;
+
 export function portoneConfigured(): boolean {
   return (
     !!SERVER_ENV.PORTONE_V2_API_SECRET &&

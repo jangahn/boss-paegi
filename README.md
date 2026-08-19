@@ -903,6 +903,11 @@ v0.85 (2026-08-19, 만료≠손상 — 재방문 reconcile 인터스티셜 소�
 - **만료-통과(proxy)**: 서명·구조가 유효한 auth 쿠키의 **만료**(access token 1h)는 손상과 구분한다 — 만료만이 원인인 공개(비회원전용) GET/HEAD 문서 요청은 `/auth/reconcile` 격리 복구 인터스티셜(문서 cold 2.5s+잠금/프로브+전면 재로드) 없이 익명 취급으로 통과, refresh 는 소유권자인 브라우저 싱글톤이 백그라운드 수행. 미만료 검증실패(폐기·대체·ledger non-live)·identity 불일치·회원 전용 경로·비-GET/HEAD 는 종전대로 격리 복구. 만료-통과 중 동의 게이트는 판정 유예(익명 노출과 동일)로, refresh 후 다음 내비/RSC 부터 종전과 동일 강제. exp 분류는 `readSupabaseAccessTokenExpiresAt`(서명 미검증 — 권위는 여전히 서버 getUser), 소스핀·단위 테스트 고정.
 - **헤더 계정정보 즉시 반영**: 마이페이지에서 닉네임/프사 저장 후 헤더(AccountMenu)가 새로고침 전까지 구 값을 유지하던 문제 — `PROFILE_CHANGED_EVENT`(notifyProfileChanged) 신설, updateNickname·uploadAvatar·removeAvatar 성공 시 dispatch, AccountMenu 가 구독해 fresh 재조회(CREDITS_CHANGED_EVENT 와 동일 관례).
 
+v0.87 (2026-08-19, 미해결 결제 intent 24h 시효 종단 — 결제 영구잠금 실사고 근본수정; 마이그레이션 없음):
+- **실사고**: 7월 결제창 이탈로 남은 `failed`(준종단) intent 가 v0.78 "사용자 전역 1-intent" 가드와 결합해 **새 결제를 영구 거절**(`checkout_prior_intent_unresolved`) — reconcile 은 pending 만 스캔, 어드민 취소는 PG READY/FAILED 관측이면 409, 구 RPC 는 portone 봉인이라 **어떤 공식 경로로도 해소 불가**였다. 2026-08-19 실계정 7건(테스트 잔재 5·당일 이탈 pending 2) 수동 종단으로 즉시 언블록 후 본 수정.
+- **수정**: 시효 상수 `PAYMENT_INTENT_EXPIRE_MS`(24h) 신설 — ①reconcile 스캔을 `pending+failed`(미지급·미취소)로 확장, 24h 내에는 매 사이클 단건조회가 늦은 PAID 를 부활 지급(준종단 계약 유지), **24h+ 비-PAID(READY 등 진행형·FAILED 공통)는 `mark_order_canceled_unpaid` 로 canceled 시효 종단**(1-intent 잠금 해제, 신규 `expired` 카운터) ②어드민 취소 라우트의 READY/PENDING/FAILED 409 분기에 동일 시효 예외(단건조회 비-PAID 재확인 직후에만) 추가. 기존 RPC 재사용이라 DB 마이그레이션 없음.
+- pgTAP refund_saga 에 failed→canceled 시효 종단 회귀 케이스 추가(plan 181).
+
 v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마이그레이션 없음):
 - **청약철회 확인 박스 축약**: statement 를 "이미 사용한 생성권은 디지털콘텐츠 제공이 개시되어 청약철회가 제한돼요."로 압축(§17⑥ 사전 고지+클릭 확인 요건 유지, `checkout-withdrawal-limit-2026-08-19-v2`).
 - **결제수단/부가세 안내 줄 삭제**: 법정 의무 아님(가격 표기 자체가 부가세 포함 최종가) — 사용자 결정.

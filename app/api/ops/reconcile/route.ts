@@ -2,7 +2,11 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVER_ENV } from "@/lib/env.server";
-import { portoneConfigured, getPortonePaymentSnapshot } from "@/lib/portone";
+import {
+  PAYMENT_INTENT_EXPIRE_MS,
+  portoneConfigured,
+  getPortonePaymentSnapshot,
+} from "@/lib/portone";
 import {
   handleObservedCancellation,
   sweepOpenPgAttempts,
@@ -13,6 +17,7 @@ import { requireSupabaseExactCount } from "@/lib/supabase-operation";
 import { cronSecretMatches } from "@/lib/ops-auth";
 import {
   parseMarkOrderFailedResult,
+  parseMarkOrderCanceledUnpaidResult,
   parseMarkPaidAndGrantResult,
   parsePaidOrderPostcondition,
 } from "@/lib/pay/order-mutation-result";
@@ -40,16 +45,18 @@ export const maxDuration = 25;
  * 결제 시도 후 2시간+ pending 을 포트원 단건 조회로 **실제 대사**한다(페이앱 시절 '탐지+경고만'에서 승격):
  *  - PAID + immutable evidence exact → 멱등 지급(mark_paid_and_grant — 웹훅과 동일 RPC, 중복 안전)
  *  - CANCELLED/PARTIAL_CANCELLED → 이벤트 영속 + 대사 RPC(handleObservedCancellation — 직접 종단 금지 §13)
- *  - FAILED → mark_order_failed(pending 한정 전이는 RPC 소관)
- *  - READY 등 진행형이 24h+ 경과(결제창 이탈 좀비) → failed 시효 종단 — oldest-first 배치가 불멸
- *    row 에 점유돼 뒤의 PAID 건이 굶는 기아를 차단(리뷰 확정 결함). failed 는 준종단(0058)이라
- *    이후 같은 paymentId 로 결제가 성공해도 웹훅/폴링의 PAID 재검증이 부활 지급한다.
+ *  - FAILED 관측 → mark_order_failed(pending→failed 준종단; 24h+ 경과면 아래 시효 종단)
+ *  - **24h+ 미해결 intent(READY 등 진행형·FAILED 공통) → mark_order_canceled_unpaid 로 canceled
+ *    시효 종단**(PAYMENT_INTENT_EXPIRE_MS). 준종단(failed)의 '늦은 PAID 부활 지급' 창은 24h 로
+ *    한정 — 그 안에서는 매 사이클 단건조회가 PAID 를 회수한다. 24h 뒤 canceled 종단은 사용자
+ *    전역 1-intent 잠금을 해제한다(2026-08-19 실사고: 7월 결제창 이탈 failed 가 영구 잠금이
+ *    되어 새 결제 전면 거절 — failed 는 어떤 경로로도 안 풀리던 갭의 근본 수정). oldest-first
+ *    배치의 불멸 row 기아 차단도 유지.
  *  - 그 외/조회 실패 → 미해결로 남기고 경고(운영 확인)
  * 지급 대사 후 refund-sweep 확장(B.8.6): open PG attempt 순회(항목별 독립·완전 멱등).
  * 처리량은 호출당 20건(오래된 순) — Vercel 함수 타임아웃 안에서 외부 API 직렬 호출을 감당하는 상한.
  */
 const STALE_MS = 2 * 60 * 60 * 1000;
-const EXPIRE_MS = 24 * 60 * 60 * 1000; // 진행형(READY 등) pending 의 시효 종단 기준
 const BATCH = 20;
 const MAX_IDS = 10;
 
@@ -117,7 +124,9 @@ export async function POST(req: NextRequest) {
           .select(
             "order_uuid, payment_id, amount, user_id, created_at, status, paid_at, error_message, is_test, expected_store_id, expected_currency, expected_channel_key",
           )
-          .eq("status", "pending")
+          .in("status", ["pending", "failed"])
+          .is("canceled_at", null)
+          .is("paid_at", null)
           .eq("provider", "portone")
           .not("payment_id", "is", null)
           .lt("created_at", cutoff)
@@ -184,6 +193,7 @@ export async function POST(req: NextRequest) {
         let manualReview = 0;
         let canceled = 0;
         let failed = 0;
+      let expired = 0;
         let terminalRaces = 0;
         let systemErrors = 0;
         const unresolved: string[] = [];
@@ -456,6 +466,32 @@ export async function POST(req: NextRequest) {
               }
               unresolved.push(row.order_uuid);
             }
+          } else if (
+            Date.now() - new Date(row.created_at).getTime() >
+            PAYMENT_INTENT_EXPIRE_MS
+          ) {
+            // 24h+ 미해결 intent(READY 등 진행형·FAILED 공통) — 비-PAID 를 방금 단건조회로
+            // 재확인했으므로 canceled 시효 종단. 부활(늦은 PAID) 창은 위 24h 내 사이클이
+            // 이미 소진했고, 이 종단이 사용자 전역 1-intent 잠금을 해제한다.
+            const { data: eData, error: eErr } = await admin
+              .rpc("mark_order_canceled_unpaid", {
+                p_order_uuid: row.order_uuid,
+                p_pg_status: snapshot.status,
+                p_pg_tx_id: null,
+                p_raw: snapshot.raw,
+              })
+              .abortSignal(deadline.signal);
+            if (opsMaintenanceDeadlineReached(deadline)) {
+              return maintenanceTimeBudgetResponse();
+            }
+            const eResult = eErr
+              ? null
+              : parseMarkOrderCanceledUnpaidResult(eData);
+            if (!eResult) {
+              systemErrors += 1;
+              unresolved.push(row.order_uuid);
+            } else if (eResult.outcome === "skipped") terminalRaces += 1;
+            else expired += 1;
           } else if (snapshot.status === "FAILED") {
             const { data: fData, error: fErr } = await admin
               .rpc("mark_order_failed", {
@@ -473,27 +509,6 @@ export async function POST(req: NextRequest) {
               systemErrors += 1;
               unresolved.push(row.order_uuid);
             } else if (fResult.outcome === "skipped") terminalRaces += 1;
-            else failed += 1;
-          } else if (
-            Date.now() - new Date(row.created_at).getTime() >
-            EXPIRE_MS
-          ) {
-            // READY 등 진행형이 24h+ — 결제창 이탈 좀비. failed 시효 종단(준종단 — 늦은 성공은 부활 지급).
-            const { data: eData, error: eErr } = await admin
-              .rpc("mark_order_failed", {
-                p_order_uuid: row.order_uuid,
-                p_pg_status: snapshot.status,
-                p_error_message: "reconcile_expired",
-              })
-              .abortSignal(deadline.signal);
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            const eResult = eErr ? null : parseMarkOrderFailedResult(eData);
-            if (!eResult) {
-              systemErrors += 1;
-              unresolved.push(row.order_uuid);
-            } else if (eResult.outcome === "skipped") terminalRaces += 1;
             else failed += 1;
           } else {
             // READY/PENDING 등 24h 미만 — 아직 진행 중일 수 있어 보존, 미해결로 보고.
@@ -584,6 +599,7 @@ export async function POST(req: NextRequest) {
             openIssues,
             canceled,
             failed,
+          expired,
             terminalRaces,
             unresolved: unresolved.length,
             attemptsChecked: sweep.attemptsChecked,

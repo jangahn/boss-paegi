@@ -19,7 +19,7 @@
 --     트리거로 profiles 를 자동 생성한다(0001). 픽스처는 owner/definer RPC 만으로 금융 상태를 만든다(§8·§34).
 
 begin;
-select plan(176);
+select plan(181);
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 -- Part A — 스키마·카탈로그·ACL·불변식 (픽스처 불필요)
@@ -777,6 +777,35 @@ select lives_ok($$
   select public.mark_order_canceled_unpaid(
     (select o from pg_temp_ctx where k = 'late_order'), 'CANCELLED', null, null)
 $$, 'B.18d 무결제 취소 관측 종단(mark_order_canceled_unpaid)');
+-- B.18d2 (v0.87): failed(준종단) intent 도 동일 RPC 로 canceled 시효 종단 가능해야 한다 —
+-- 2026-08-19 실사고(결제창 이탈 failed 가 사용자 전역 1-intent 잠금을 영구화) 회귀 방지.
+select lives_ok($$
+  insert into pg_temp_ctx (k, o) values ('expired_order', gen_random_uuid())
+$$, 'B.18d2-준비 expired intent 주문 uuid');
+select lives_ok($$
+  select public.bp_008905_create_or_reuse_pending_order_impl(
+    (select u from pg_temp_ctx where k = 'late_user'),
+    (select o from pg_temp_ctx where k = 'expired_order'), 'credits_3', 1000, 3,
+    replace((select o from pg_temp_ctx where k = 'expired_order')::text, '-', ''),
+    'portone', 'card', false, 'store-qa', 'KRW', 'channel-card-live')
+$$, 'B.18d2-준비 pending 생성');
+select lives_ok($$
+  select public.mark_order_failed(
+    (select o from pg_temp_ctx where k = 'expired_order'), 'READY', 'qa_failed', null)
+$$, 'B.18d2-준비 failed 준종단 마킹');
+select is(
+  (select public.mark_order_canceled_unpaid(
+     (select o from pg_temp_ctx where k = 'expired_order'), 'READY', null, null))->>'outcome',
+  'canceled',
+  'B.18d2 failed(준종단) intent 가 canceled 로 시효 종단된다(1-intent 잠금 해제)'
+);
+select is(
+  (select o2.status || '|' || (o2.canceled_at is not null)::text
+     from public.orders o2
+     join pg_temp_ctx c on c.o = o2.order_uuid and c.k = 'expired_order'),
+  'canceled|true',
+  'B.18d2-확인 orders 행이 canceled+canceled_at 로 종단됨'
+);
 select lives_ok($$
   select public.mark_paid_and_grant(
     (select o from pg_temp_ctx where k = 'late_order'), 'pgtx_late', 1000,
