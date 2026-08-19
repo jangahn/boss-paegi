@@ -30,8 +30,7 @@ function validRequest() {
     checkoutRequestId: requestId,
     productId: product.productId,
     method: "card",
-    expectedMode: "live",
-    expectedProduct: product,
+    reviewerLive: false,
     offerEvidenceId,
     offerSnapshotSha256,
     withdrawalConfirmation: {
@@ -55,7 +54,7 @@ test("checkout request requires an exact separate affirmative confirmation", () 
     { ...validRequest(), offerSnapshotSha256: "A".repeat(64) },
     {
       ...validRequest(),
-      expectedProduct: { ...product, extra: true },
+      reviewerLive: "yes",
     },
     {
       ...validRequest(),
@@ -64,18 +63,19 @@ test("checkout request requires an exact separate affirmative confirmation", () 
         confirmed: false,
       },
     },
+    // 버전/문구의 *정합*은 registry(0105) 단일 검증 — 파서는 형식만 거른다.
     {
       ...validRequest(),
       withdrawalConfirmation: {
         ...validRequest().withdrawalConfirmation,
-        copyVersion: "old-copy",
+        copyVersion: "",
       },
     },
     {
       ...validRequest(),
       withdrawalConfirmation: {
         ...validRequest().withdrawalConfirmation,
-        statement: `${CHECKOUT_WITHDRAWAL_CONFIRMATION.statement} `,
+        statement: "x".repeat(1001),
       },
     },
     {
@@ -238,27 +238,26 @@ test("UI, route, expand RPC and contract cleanup form one fail-closed boundary",
     /결제 버튼을 누르면 위 내용을 확인한 것으로 봅니다\./,
   );
 
+  // v0.92 단일 검증 계층: route 는 파싱→RPC→응답뿐이다. 표시-결제 정합(offer
+  // evidence·문구)은 RPC 가 registry 로 검증하고, receipt(사후조건 18항 통과분)가
+  // 단일 권위 — 사전 evidence 조회도, RPC 후 재SELECT 도 존재해선 안 된다.
   const parse = route.indexOf("parseCheckoutRequestBody(");
-  const offerRead = route.indexOf('.from("commerce_display_evidence")');
   const mutation = route.indexOf('"create_or_reuse_pending_order"');
-  const evidenceRead = route.indexOf(
-    '.from("checkout_withdrawal_acceptance_evidence")',
-  );
   const paymentResponse = route.indexOf("return NextResponse.json(response)");
-  assert.ok(
-    parse >= 0 &&
-      parse < offerRead &&
-      offerRead < mutation &&
-      mutation < evidenceRead &&
-      evidenceRead < paymentResponse,
+  assert.ok(parse >= 0 && parse < mutation && mutation < paymentResponse);
+  assert.doesNotMatch(route, /from\("commerce_display_evidence"\)/);
+  assert.doesNotMatch(
+    route,
+    /from\("checkout_withdrawal_acceptance_evidence"\)/,
   );
+  assert.doesNotMatch(route, /matchesCheckoutOrderPostcondition/);
   assert.match(route, /export const maxDuration = 25/);
   assert.match(route, /AbortSignal\.timeout\(\s*CHECKOUT_DEPENDENCY_TIMEOUT_MS/);
   assert.equal(
     (
       route.match(/\.abortSignal\(checkoutSignal\)/g) ?? []
     ).length,
-    4,
+    1,
   );
 
   assert.match(
@@ -286,5 +285,22 @@ test("UI, route, expand RPC and contract cleanup form one fail-closed boundary",
   assert.match(
     contract,
     /create_or_reuse_pending_order\(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text,uuid,text,uuid,text,text,text,boolean\)'[\s\S]*'EXECUTE'/,
+  );
+
+  const registryLayer = readFileSync(
+    new URL(
+      "supabase/migrations/0105_copy_registry_single_validation_layer.sql",
+      root,
+    ),
+    "utf8",
+  );
+  // 0105: 문구 검증은 registry 등가 단일층 — 함수 본문에 고지 문구 리터럴 금지,
+  // 20-arg(p_prior_resolutions) 재정의 + 구 19-arg/구 impl drop.
+  assert.match(registryLayer, /create table public\.commerce_copy_registry/);
+  assert.match(registryLayer, /p_prior_resolutions jsonb default null/);
+  assert.match(registryLayer, /needs_provider_resolution/);
+  assert.match(
+    registryLayer,
+    /drop function public\.bp_008905_create_or_reuse_pending_order_impl/,
   );
 });

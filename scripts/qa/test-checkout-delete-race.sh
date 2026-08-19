@@ -146,7 +146,7 @@ catalog_ok="$(
   db_value "
     select (
       to_regprocedure(
-        'public.create_or_reuse_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text,uuid,text,uuid,text,text,text,boolean)'
+        'public.create_or_reuse_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text,uuid,text,uuid,text,text,text,boolean,jsonb)'
       ) is not null
       and exists (
         select 1

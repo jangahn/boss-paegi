@@ -25,6 +25,7 @@
     "qa:db:oauth-prune-lock-race": "bash scripts/qa/test-oauth-prune-lock-backlog.sh",
     "qa:db:oauth-migration-member-race": "bash scripts/qa/test-oauth-migration-member-races.sh",
     "gen:db-raise-codes": "node scripts/gen/db-raise-codes.mjs",
+    "gen:copy-registry-migration": "node scripts/gen/copy-registry-migration.mjs",
     "qa:db:analytics-maintenance-acl-upgrade": "bash scripts/qa/test-analytics-maintenance-acl-upgrade.sh",
     "qa:db:analytics-maintenance-lock-race": "bash scripts/qa/test-analytics-maintenance-lock-races.sh",
     "qa:db:race": "bash scripts/qa/test-checkout-delete-race.sh",

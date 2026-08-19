@@ -11,29 +11,21 @@ import { getReviewerStatus } from "@/lib/reviewer";
 import { paymentChannels, type PayChannelMethod } from "@/lib/pay-channels";
 import { portoneConfigured, paymentIdForOrder } from "@/lib/portone";
 import { refundRpcErrorResponsePayload } from "@/lib/refund-saga";
-import {
-  matchesCheckoutOrderPostcondition,
-  parseAtomicCheckoutReceipt,
-} from "@/lib/pay/checkout-reuse";
-import {
-  checkoutProductSnapshotMatches,
-  checkoutPayModeMatches,
-} from "@/lib/pay/checkout-rollout";
+import { parseAtomicCheckoutReceipt } from "@/lib/pay/checkout-reuse";
 import { parseCheckoutHttpResponse } from "@/lib/pay/http-contract";
 import { rateLimit } from "@/lib/rate-limit";
 import { log, errInfo } from "@/lib/log";
 import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
 import {
-  creditsOfferEvidenceRecordMatches,
-  creditsOfferEvidenceSnapshot,
-} from "@/lib/pay/display-evidence";
-import {
   CHECKOUT_WITHDRAWAL_CONFIRMATION,
-  matchesCheckoutWithdrawalEvidence,
   parseCheckoutRequestBody,
 } from "@/lib/pay/withdrawal-evidence";
 import { waitForCheckoutDependency } from "@/lib/pay/checkout-dependency-deadline";
-import { resolveUnsettledCheckoutIntents } from "@/lib/pay/prior-intent";
+import {
+  measureUnsettledIntents,
+  parseNeedsProviderResolution,
+  type PriorIntentResolutionInput,
+} from "@/lib/pay/prior-intent";
 
 export const runtime = "nodejs";
 export const maxDuration = 25;
@@ -100,7 +92,16 @@ export async function POST(req: NextRequest) {
   }
   const body = parseCheckoutRequestBody(requestBody.value);
   if (!body) {
-    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+    // v0.92 이전 클라 본문(expectedProduct/expectedMode 포함 8키)은 구 탭 —
+    // 자가치유(자동 새로고침) 코드로 안내한다.
+    const legacyShape =
+      requestBody.value !== null &&
+      typeof requestBody.value === "object" &&
+      "expectedProduct" in (requestBody.value as Record<string, unknown>);
+    return NextResponse.json(
+      { error: legacyShape ? "client_refresh_required" : "invalid_request" },
+      { status: 400 },
+    );
   }
   // 가격/개수/상품명은 서버 config 의 **active 상품**으로만 결정(클라 조작·비활성 상품 차단).
   let growth: Awaited<ReturnType<typeof getGrowthLeversStrict>>;
@@ -161,27 +162,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_product" }, { status: 400 });
   }
 
-  // 채널 모드·상품·채널키는 **서버 판정**한다. expected* 는 권위 입력이 아니라
-  // 사용자가 방금 본 UI와 최신 서버 판정의 exact fence다. 심사자 해제/추가,
-  // 가격·지급량·주문명 변경이 render→click 사이에 일어나면 결제창을 열지
-  // 않고 새로고침을 요구한다.
-  const mode = payModeFor(isReviewer, body.expectedMode === "live");
-  if (
-    !checkoutPayModeMatches(mode, body.expectedMode) ||
-    !checkoutProductSnapshotMatches(product, body.expectedProduct)
-  ) {
-    // 어드민 성장레버(상품 추가/삭제/가격) 변경 직후의 구 탭이 여기로 온다 —
-    // 무로그면 사고 조사에서 이 fence 발동 여부를 서버에서 볼 수 없다.
-    log.warn("pay.checkout_state_changed", {
-      userId: user.id,
-      fence: "product_snapshot",
-      productId: product.productId,
-    });
-    return NextResponse.json(
-      { error: "checkout_state_changed" },
-      { status: 409 },
-    );
-  }
+  // 결제 파라미터는 전부 서버 판정 — 화면과의 정합(상품명·가격·문구)은 RPC 가
+  // offer evidence(사용자가 본 스냅샷) + registry 로 단일 검증한다(0105).
+  const mode = payModeFor(isReviewer, body.reviewerLive);
   const availableChannels = paymentChannels(mode);
   const channel =
     availableChannels.find(
@@ -209,60 +192,18 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const expectedOfferSnapshot = creditsOfferEvidenceSnapshot({
-    products,
-    payMode: mode,
-    channels: availableChannels.map(({ method, label }) => ({
-      method,
-      label,
-    })),
-  });
-  let offerEvidence: unknown;
-  try {
-    const proof = await admin
-      .from("commerce_display_evidence")
-      .select("id, surface, snapshot, snapshot_sha256")
-      .eq("id", body.offerEvidenceId)
-      .abortSignal(checkoutSignal)
-      .maybeSingle();
-    if (proof.error) throw proof.error;
-    offerEvidence = proof.data;
-  } catch (proofError) {
-    log.error("pay.offer_evidence_read_fail", {
-      userId: user.id,
-      ...errInfo(proofError),
-    });
-    return NextResponse.json(
-      { error: "payment_unavailable" },
-      { status: 503 },
-    );
-  }
-  if (
-    !creditsOfferEvidenceRecordMatches(offerEvidence, {
-      evidenceId: body.offerEvidenceId,
-      snapshotSha256: body.offerSnapshotSha256,
-      snapshot: expectedOfferSnapshot,
-    })
-  ) {
-    log.warn("pay.checkout_state_changed", {
-      userId: user.id,
-      fence: "offer_evidence",
-      productId: product.productId,
-    });
-    return NextResponse.json(
-      { error: "checkout_state_changed" },
-      { status: 409 },
-    );
-  }
 
   // 조회→생성 분리는 두 탭이 동시에 "없음"을 보고 서로 다른 결제창을 여는
   // TOCTOU가 된다. 후보 ID 생성, 최근 pending 재사용, insert와 전체 snapshot
   // receipt를 하나의 user-serialized DB mutation으로 수렴시킨다.
   const candidateOrderUuid = randomUUID();
   const candidatePaymentId = paymentIdForOrder(candidateOrderUuid);
-  const runCheckoutMutation = () =>
+  const runCheckoutMutation = (
+    priorResolutions: PriorIntentResolutionInput[] | null,
+  ) =>
     admin
       .rpc("create_or_reuse_pending_order", {
+        p_prior_resolutions: priorResolutions,
         p_user: user.id,
         p_order_uuid: candidateOrderUuid,
         p_product_id: product.productId,
@@ -285,31 +226,49 @@ export async function POST(req: NextRequest) {
         p_withdrawal_confirmed: true,
       })
       .abortSignal(checkoutSignal);
-  let { data: mutationResult, error: insErr } = await runCheckoutMutation();
-  if (insErr?.message === "checkout_prior_intent_unresolved") {
-    // 결제창을 닫고 다른 상품/수단으로 갈아탄 정상 사용자 — 미해결 intent 를
-    // 건별 포트원 비-PAID 실측 후 그 자리에서 종단하고 1회 재시도한다.
-    const resolution = await resolveUnsettledCheckoutIntents(
-      admin,
-      user.id,
-      checkoutSignal,
-    );
-    if (resolution.kind === "resolved") {
+  let { data: mutationResult, error: insErr } = await runCheckoutMutation(null);
+  {
+    // 미해결 intent(다른 상품/수단·legacy·다건)는 예외가 아니라 정상 반환 —
+    // 건별 포트원 비-PAID 실측 후 resolutions 로 1회 재호출하면 RPC 가 같은
+    // 트랜잭션에서 종단+생성한다(0105 계약).
+    const intents = insErr ? null : parseNeedsProviderResolution(mutationResult);
+    if (intents) {
+      const measurement = await measureUnsettledIntents(
+        intents,
+        user.id,
+        checkoutSignal,
+      );
+      if (measurement.kind === "prior_paid") {
+        // 직전 결제가 실제 완료된 미지급 주문 — 종단 금지, 웹훅/reconcile 지급 대기.
+        log.warn("pay.prior_intent_paid_unsettled", {
+          userId: user.id,
+          orderUuid: measurement.orderUuid,
+        });
+        return NextResponse.json(
+          { error: "checkout_prior_intent_paid" },
+          { status: 409 },
+        );
+      }
+      if (measurement.kind === "unmeasurable") {
+        return NextResponse.json(
+          { error: "checkout_prior_intent_unresolved" },
+          { status: 409 },
+        );
+      }
       log.info("pay.prior_intent_auto_resolved", {
         userId: user.id,
-        canceled: resolution.canceled,
+        canceled: measurement.resolutions.length,
       });
-      ({ data: mutationResult, error: insErr } = await runCheckoutMutation());
-    } else if (resolution.kind === "prior_paid") {
-      // 직전 결제가 실제 완료된 미지급 주문 — 종단 대신 웹훅/reconcile 지급 대기.
-      log.warn("pay.prior_intent_paid_unsettled", {
-        userId: user.id,
-        orderUuid: resolution.orderUuid,
-      });
-      return NextResponse.json(
-        { error: "checkout_prior_intent_paid" },
-        { status: 409 },
-      );
+      ({ data: mutationResult, error: insErr } = await runCheckoutMutation(
+        measurement.resolutions,
+      ));
+      if (!insErr && parseNeedsProviderResolution(mutationResult)) {
+        // 재호출 사이에 새 미해결이 또 생긴 경합 — 한 번 더 돌지 않고 정직하게 알린다.
+        return NextResponse.json(
+          { error: "checkout_prior_intent_unresolved" },
+          { status: 409 },
+        );
+      }
     }
   }
   if (insErr) {
@@ -361,76 +320,6 @@ export async function POST(req: NextRequest) {
     expectedChannelKey,
     withdrawalEvidenceId,
   } = receipt;
-
-  // RPC response alone is not sufficient authority to expose real payment
-  // parameters. Re-read the exact pending snapshot so a malformed/lost DB
-  // acknowledgement can never open a charge that the webhook cannot resolve.
-  let persisted: unknown;
-  let persistedWithdrawalEvidence: unknown;
-  try {
-    const [orderProof, withdrawalProof] = await Promise.all([
-      admin
-        .from("orders")
-        .select(
-          "order_uuid, user_id, product_id, amount, credits, status, provider, payment_id, is_test, pay_channel, expected_store_id, expected_currency, expected_channel_key, paid_at, canceled_at",
-        )
-        .eq("order_uuid", orderUuid)
-        .abortSignal(checkoutSignal)
-        .maybeSingle(),
-      admin
-        .from("checkout_withdrawal_acceptance_evidence")
-        .select(
-          "id, request_id, order_uuid, user_id, product_id, product_name, amount, credits, pay_mode, pay_channel, offer_evidence_id, offer_snapshot_sha256, copy_version, confirmation_copy, confirmed, accepted_at",
-        )
-        .eq("request_id", body.checkoutRequestId)
-        .abortSignal(checkoutSignal)
-        .maybeSingle(),
-    ]);
-    if (orderProof.error) throw orderProof.error;
-    if (withdrawalProof.error) throw withdrawalProof.error;
-    persisted = orderProof.data;
-    persistedWithdrawalEvidence = withdrawalProof.data;
-  } catch (proofError) {
-    log.error("pay.order_insert_postcondition_read_fail", {
-      userId: user.id,
-      orderUuid,
-      ...errInfo(proofError),
-    });
-    return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
-  }
-  if (
-    !matchesCheckoutOrderPostcondition(persisted, {
-      orderUuid,
-      userId: user.id,
-      productId: product.productId,
-      amount,
-      credits,
-      paymentId,
-      isTest,
-      payChannel: channel.method,
-      expectedStoreId,
-      expectedCurrency,
-      expectedChannelKey,
-      status,
-    }) ||
-    !matchesCheckoutWithdrawalEvidence(persistedWithdrawalEvidence, {
-      evidenceId: withdrawalEvidenceId,
-      requestId: body.checkoutRequestId,
-      orderUuid,
-      userId: user.id,
-      product,
-      payMode: mode,
-      payChannel: channel.method,
-      offerEvidenceId: body.offerEvidenceId,
-      offerSnapshotSha256: body.offerSnapshotSha256,
-    })
-  ) {
-    log.error("pay.order_insert_postcondition_invalid", {
-      userId: user.id,
-      orderUuid,
-    });
-    return NextResponse.json({ error: "payment_unavailable" }, { status: 503 });
-  }
 
   Sentry.setTag("pay.product", product.productId);
   log.info("pay.checkout_ok", {

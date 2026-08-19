@@ -917,6 +917,12 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
+v0.92 (2026-08-20, copy registry 전문 등록제·checkout 단일 검증 계층·prior-intent 정상 흐름화 — 재설계 3/3; **Migration 0105**, creditsEnabled OFF 컷오버):
+- **문구 계약 = registry 전문 등록제(0105)**: `commerce_copy_registry(surface, copy_version, copy 원문 jsonb, active)` — RPC 는 제출 문구가 active 행과 **jsonb 등가**인지로만 검증(해시가 아닌 원문 비교라 TS↔PG 정규화 함정 자체가 없음). 함수 리터럴·증거 테이블 CHECK 의 문구 박제 전부 철거. **문구 변경 = 상수 수정 + `npm run gen:copy-registry-migration -- <버전>` 1개** — 함수는 불변. 계약 테스트가 "마이그 seed 누적 상태(공용 파서 replay) = 코드 상수"를 강제해 상수만 바꾼 머지를 차단. surface 당 active 1행은 partial unique index 가 보장.
+- **checkout 단일 검증 계층**: route 의 사전 fence(expectedMode/expectedProduct 대조·offer evidence 사전 조회 대조— 완전 중복 검증 6쌍의 route 측)와 RPC 후 재SELECT(사후조건 이중화)를 철거 — impl 의 18항 사후조건을 통과한 receipt 가 단일 권위. 요청 본문에서 expected\* 제거(구 탭은 `client_refresh_required` 자가치유 브릿지), 심사자 실결제 opt-in 은 `reviewerLive` 로 의미 명확화(대조 fence 아님·일반 계정 효력 0). `checkout_state_changed`/checkout-rollout 모듈 소멸.
+- **prior-intent 정상 흐름화**: 미해결 intent(다른 상품/수단·legacy·다건 — `checkout_reuse_ambiguous` 포함)를 예외 대신 **`needs_provider_resolution` + intents 목록 정상 반환**으로 알리고, route 가 건별 포트원 비-PAID 실측(`measureUnsettledIntents` — 측정 전용) 후 `p_prior_resolutions` 로 재호출하면 RPC 가 **같은 트랜잭션에서 종단+생성**. v0.89 의 예외 기반 자동 해소 레이어(route 덧댐) 철거. PAID 실측 시 지급 경로 보전(`checkout_prior_intent_paid`). 20-arg 재정의·구 19-arg 및 008905 impl drop.
+- 신규 raise `checkout_resolution_invalid` 카탈로그 등록(스냅샷 501종 재생성) — PR-A 계약이 강제한 절차 그대로.
+
 v0.91 (2026-08-20, CI 최신 스키마 단일 검증·race 하네스 결정론화 — checkout 구조 재설계 2/3; 마이그레이션 없음):
 - **시대별 rollout 시뮬레이션 폐지**: database CI 가 마이그레이션을 14개 경계로 단계 적용하며 각 시점의 신구 호환을 검증하던 구조(픽스처가 시대별 문구를 벌여야 했던 0104 사고 표면·CI 장시간의 원천)를 "전체 마이그레이션 1회 적용(`qa:db:apply`) → pgTAP 전량 → 영구 표면 계약 → race 스위트"로 재작성. 배포 순서 계약(additive 마이그 → 코드 배포)은 docs/checkout-rework.md 에 문서화.
 - **시대 전용 검증 10종 폐기**: verify-rollout-stage(2287줄)·verify-oauth-rollout-stage(925줄)·checkout-convergence(1102줄)·payment-evidence-contract-gate·raw-guard 2종·래퍼 4종 + `qa:db:apply:*` 사다리 스크립트 14개. 시대 판정 전수조사로 KEEP 6종(oauth fingerprint-tamper/catalog-locks/prune-backlog/member-race·analytics acl-upgrade/lock-race)은 최신 구간 이동만.

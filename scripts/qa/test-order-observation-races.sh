@@ -257,7 +257,7 @@ function_ready="$(
         'public.mark_paid_and_grant(uuid,text,integer,jsonb,timestamptz,text)'
       ) is not null
       and pg_catalog.to_regprocedure(
-        'public.bp_008905_create_or_reuse_pending_order_impl(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text)'
+        'public.bp_0105_create_or_reuse_pending_order_impl(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text)'
       ) is not null
     )::text;
   "
@@ -338,7 +338,7 @@ values (
   0,
   'observation-race-stale-$stale_user@test.local'
 );
-select public.bp_008905_create_or_reuse_pending_order_impl(
+select public.bp_0105_create_or_reuse_pending_order_impl(
   '$stale_user'::uuid,
   '$stale_order'::uuid,
   'qa_observation_3',
@@ -494,7 +494,7 @@ values (
   0,
   'observation-race-record-$record_user@test.local'
 );
-select public.bp_008905_create_or_reuse_pending_order_impl(
+select public.bp_0105_create_or_reuse_pending_order_impl(
   '$record_user'::uuid,
   '$record_order'::uuid,
   'qa_observation_3',

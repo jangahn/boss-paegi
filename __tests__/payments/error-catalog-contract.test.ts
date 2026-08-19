@@ -119,7 +119,7 @@ test("클라 문구: 사전에 없는 코드도 사유 코드를 숨기지 않�
     "결제 요청이 너무 잦아요. 잠시 후 다시 시도해주세요.",
   );
   assert.match(payErrorMessage("some_unknown_code"), /사유 코드: some_unknown_code/);
-  assert.equal(payErrorAction("checkout_state_changed"), "stale_reload");
+  assert.equal(payErrorAction("client_refresh_required"), "stale_reload");
   assert.equal(payErrorAction("unauthorized"), "login");
   assert.equal(payErrorAction("rate_limited"), null);
 });

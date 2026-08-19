@@ -50,10 +50,9 @@ test("checkout route starts one 20s budget before auth and fences every pre-RPC 
   const reviewer = route.indexOf(
     "waitForCheckoutDependency(\n      getReviewerStatus(growth, user)",
   );
-  const offer = route.indexOf(".abortSignal(checkoutSignal)", reviewer);
   const rpc = route.indexOf(
     '.rpc("create_or_reuse_pending_order"',
-    offer,
+    reviewer,
   );
   assert.match(
     route,
@@ -65,10 +64,9 @@ test("checkout route starts one 20s budget before auth and fences every pre-RPC 
       body > auth &&
       config > body &&
       reviewer > config &&
-      offer > reviewer &&
-      rpc > offer,
+      rpc > reviewer,
   );
-  assert.ok(
-    route.indexOf(".abortSignal(checkoutSignal)", rpc) > rpc,
-  );
+  // v0.92: RPC 가 route 의 마지막 DB 접점(사전 evidence 조회·사후 재SELECT 없음)
+  // — checkoutSignal 은 그 RPC 호출에 걸린다.
+  assert.ok(route.indexOf(".abortSignal(checkoutSignal)", reviewer) > reviewer);
 });

@@ -101,7 +101,7 @@ select lives_ok($$
 $$, 'fixture users and memberships are created');
 
 select lives_ok($$
-  select public.bp_008905_create_or_reuse_pending_order_impl(
+  select public.bp_0105_create_or_reuse_pending_order_impl(
     customer,
     order_uuid,
     'credits_10',

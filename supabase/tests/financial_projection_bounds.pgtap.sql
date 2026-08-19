@@ -101,7 +101,7 @@ begin
    where c.key = p_key;
   v_payment_id := pg_catalog.replace(v_order_uuid::text, '-', '');
 
-  perform public.bp_008905_create_or_reuse_pending_order_impl(
+  perform public.bp_0105_create_or_reuse_pending_order_impl(
     v_user_id,
     v_order_uuid,
     'credits_3',

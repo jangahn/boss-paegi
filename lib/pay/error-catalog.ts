@@ -76,12 +76,6 @@ export const PAY_ERROR_CATALOG = {
     action: "stale_reload",
     origin: "db",
   },
-  checkout_state_changed: {
-    status: 409,
-    message: STALE_RELOAD_MESSAGE,
-    action: "stale_reload",
-    origin: "route",
-  },
   invalid_product: {
     status: 400,
     message: STALE_RELOAD_MESSAGE,
@@ -140,6 +134,11 @@ export const PAY_ERROR_CATALOG = {
     origin: "db",
   },
   invalid_payment_evidence_snapshot: {
+    status: 400,
+    message: "결제 요청 정보가 올바르지 않아요. 새로고침 후 다시 시도해주세요.",
+    origin: "db",
+  },
+  checkout_resolution_invalid: {
     status: 400,
     message: "결제 요청 정보가 올바르지 않아요. 새로고침 후 다시 시도해주세요.",
     origin: "db",

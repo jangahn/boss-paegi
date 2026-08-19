@@ -604,7 +604,7 @@ select lives_ok(
   (
     select format(
       $sql$
-        select public.bp_008905_create_or_reuse_pending_order_impl(
+        select public.bp_0105_create_or_reuse_pending_order_impl(
           %L::uuid, %L::uuid, 'qa_lock_3', 1000, 3,
           replace(%L, '-', ''), 'portone', 'card', false,
           'store-qa', 'KRW', 'channel-card-live'
