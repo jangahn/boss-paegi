@@ -6,17 +6,19 @@ import type {
 
 export const CREDITS_OFFER_COPY = Object.freeze({
   schemaVersion: 1,
-  copyVersion: "credits-offer-2026-07-30-v1",
+  // v2(2026-08-19): 환불 문구 한 줄 압축(사용분 청약철회 제한은 결제 직전 확인 박스가
+  // §17⑥ 고지를 전담하므로 중복 제거) + 결제수단/부가세 안내 줄 삭제(법정 의무 아님 —
+  // 가격 표기 자체가 부가세 포함 최종가). 과거 주문 증거에는 v1 스냅샷이 그대로 남는다.
+  copyVersion: "credits-offer-2026-08-19-v2",
   summary:
     "캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.",
   supply: "생성권은 결제 완료 즉시 지급되어 바로 사용할 수 있어요.",
   validity: "구매일(지급일)로부터 1년이에요. 무료로 지급된 생성권도 동일해요.",
   refund:
-    "미사용 생성권은 환불받을 수 있어요(무료로 지급받은 생성권은 제외). 일부만 사용했더라도 남은 수량만큼 환불돼요. 이미 사용한 생성권은 디지털콘텐츠 제공이 개시된 것으로 청약철회가 제한돼요.",
-  refundReferencePrefix: "정확한 산정 기준·차감 순서·절차는",
+    "미사용 생성권은 환불받을 수 있어요(무료 지급분 제외, 일부 사용 시 남은 수량만큼).",
+  refundReferencePrefix: "기준·차감 순서·절차는",
   termsLinkLabel: "이용약관 제10조",
   refundReferenceSuffix: "를 확인해주세요.",
-  price: "표시 가격은 부가세 포함 최종 결제 금액이에요.",
 });
 
 const UUID_RE =
@@ -92,7 +94,6 @@ export function creditsOfferEvidenceSnapshot({
       refundReferencePrefix: CREDITS_OFFER_COPY.refundReferencePrefix,
       termsLinkLabel: CREDITS_OFFER_COPY.termsLinkLabel,
       refundReferenceSuffix: CREDITS_OFFER_COPY.refundReferenceSuffix,
-      price: CREDITS_OFFER_COPY.price,
     },
   } as const;
 }
