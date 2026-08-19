@@ -327,7 +327,7 @@ test("credits offer evidence pins every rendered economic field and disclosure",
   });
   assert.deepEqual(snapshot, {
     schemaVersion: 1,
-    copyVersion: "credits-offer-2026-08-19-v2",
+    copyVersion: "credits-offer-2026-08-19-v3",
     surface: "credits_offer",
     payMode: "test",
     products: [
@@ -340,7 +340,6 @@ test("credits offer evidence pins every rendered economic field and disclosure",
     ],
     channels: [{ method: "card", label: "카드" }],
     displayCopy: {
-      summary: CREDITS_OFFER_COPY.summary,
       supply: CREDITS_OFFER_COPY.supply,
       validity: CREDITS_OFFER_COPY.validity,
       refund: CREDITS_OFFER_COPY.refund,
@@ -414,7 +413,7 @@ test("credits page hides every offer if durable display evidence fails", () => {
     new URL("../../app/credits/CreditsClient.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(client, /CREDITS_OFFER_COPY\.summary/);
+  assert.doesNotMatch(client, /CREDITS_OFFER_COPY\.summary/);
   assert.match(client, /CREDITS_OFFER_COPY\.supply/);
   assert.match(client, /CREDITS_OFFER_COPY\.validity/);
   assert.match(client, /CREDITS_OFFER_COPY\.refund/);

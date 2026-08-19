@@ -8,10 +8,10 @@ export const CREDITS_OFFER_COPY = Object.freeze({
   schemaVersion: 1,
   // v2(2026-08-19): 환불 문구 한 줄 압축(사용분 청약철회 제한은 결제 직전 확인 박스가
   // §17⑥ 고지를 전담하므로 중복 제거) + 결제수단/부가세 안내 줄 삭제(법정 의무 아님 —
-  // 가격 표기 자체가 부가세 포함 최종가). 과거 주문 증거에는 v1 스냅샷이 그대로 남는다.
-  copyVersion: "credits-offer-2026-08-19-v2",
-  summary:
-    "캐릭터 1명을 만들 때 생성권 1개가 쓰여요. 많이 담을수록 개당 가격이 내려가요.",
+  // 가격 표기 자체가 부가세 포함 최종가).
+  // v3(2026-08-19): 상단 summary("캐릭터 1명=생성권 1개…") 삭제 — 상품명·가격표에서
+  // 자명한 안내라 공간만 차지(사용자 결정). 과거 주문 증거에는 당시 버전 스냅샷이 남는다.
+  copyVersion: "credits-offer-2026-08-19-v3",
   supply: "생성권은 결제 완료 즉시 지급되어 바로 사용할 수 있어요.",
   validity: "구매일(지급일)로부터 1년이에요. 무료로 지급된 생성권도 동일해요.",
   refund:
@@ -87,7 +87,6 @@ export function creditsOfferEvidenceSnapshot({
     products: normalizedProducts,
     channels: channels.map(({ method, label }) => ({ method, label })),
     displayCopy: {
-      summary: CREDITS_OFFER_COPY.summary,
       supply: CREDITS_OFFER_COPY.supply,
       validity: CREDITS_OFFER_COPY.validity,
       refund: CREDITS_OFFER_COPY.refund,

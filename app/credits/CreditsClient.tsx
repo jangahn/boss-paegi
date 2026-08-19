@@ -274,9 +274,6 @@ export function CreditsClient({
                 </span>
               )}
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              {CREDITS_OFFER_COPY.summary}
-            </p>
             {payMode === "test" && (
               <p className="mt-1 text-xs text-zinc-400">
                 심사·테스트용 결제 환경이에요. 실제 요금이 청구되지 않아요.
