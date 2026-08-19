@@ -40,6 +40,7 @@
     "qa:db:apply:preflight-stale-release": "bash scripts/qa/apply-local-migrations.sh --only 0100",
     "qa:db:apply:empty-manifest-sweep": "bash scripts/qa/apply-local-migrations.sh --only 0101",
     "qa:db:apply:cleanup-backoff": "bash scripts/qa/apply-local-migrations.sh --only 0102",
+    "qa:db:apply:profile-customization-preserve": "bash scripts/qa/apply-local-migrations.sh --only 0103",
     "test:db:analytics-maintenance-bounds": "bash scripts/qa/run-local-pgtap.sh --only analytics_maintenance_bounds.pgtap.sql",
     "test:db:dead-service-rpc-acl-cleanup": "bash scripts/qa/run-local-pgtap.sh --only dead_service_rpc_acl_cleanup.pgtap.sql",
     "qa:db:analytics-maintenance-acl-upgrade": "bash scripts/qa/test-analytics-maintenance-acl-upgrade.sh",
@@ -115,7 +116,7 @@
     "typescript": "^5"
   },
   "overrides": {
-    "brace-expansion": "5.0.8",
+    "brace-expansion": "5.0.9",
     "minimatch": "10.2.6",
     "postcss": "8.5.24",
     "sharp": "$sharp"

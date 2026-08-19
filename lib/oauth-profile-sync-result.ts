@@ -1,3 +1,5 @@
+import { SCRUBBED_PROFILE_DISPLAY_NAME } from "./oauth-metadata.ts";
+
 export type OAuthProfileSyncExpectation = {
   userId: string;
   displayName: string | null;
@@ -60,13 +62,19 @@ export function matchesOAuthProfileSyncPostcondition(
   ) {
     return false;
   }
-  if (
-    expected.displayName !== null &&
-    profile.display_name !== expected.displayName
-  ) {
+  // 0103 이후 기존 회원 sync 는 닉네임·프사를 덮어쓰지 않는다(사용자 커스터마이징 보존,
+  // 탈퇴 스크럽 플레이스홀더 재시드만 예외). 그래서 display_name/avatar_url 은 요청값
+  // equality 대신 sync 불변식만 검증한다: display_name 은 비어있지 않아야 하고, OAuth
+  // 이름이 있으면 플레이스홀더가 남아 있을 수 없다(재시드 보장 — OAuth 이름 자체가
+  // 플레이스홀더 문자열인 병리 케이스만 예외). email 은 계속 하드 싱크라 equality 유지.
+  if (profile.display_name.trim().length === 0) {
     return false;
   }
-  if (expected.avatarUrl !== null && profile.avatar_url !== expected.avatarUrl) {
+  if (
+    expected.displayName !== null &&
+    expected.displayName !== SCRUBBED_PROFILE_DISPLAY_NAME &&
+    profile.display_name === SCRUBBED_PROFILE_DISPLAY_NAME
+  ) {
     return false;
   }
   if (expected.email !== null && member.email !== expected.email) {

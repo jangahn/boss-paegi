@@ -1,7 +1,7 @@
 -- account_consent_lifecycle.pgtap.sql — 0079 atomic consent/OAuth seed lifecycle.
 
 begin;
-select plan(30);
+select plan(38);
 
 select ok(
   has_function_privilege(
@@ -58,6 +58,11 @@ begin
     (v_sync, 'consent-sync-' || v_sync::text || '@test.local');
   insert into public.member_accounts(user_id, email)
   values (v_sync, 'old-sync@test.local');
+  -- 기존 회원의 마이페이지 커스터마이징 시뮬레이션(0103 보존 규칙 대상).
+  update public.profiles
+     set display_name = '커스텀닉',
+         avatar_url = 'https://avatar.test/custom.png'
+   where id = v_sync;
 
   -- This suite tests consent lifecycle, not future legal publication. Bootstrap
   -- the notice-exempt initial version and then derive the same authoritative
@@ -294,13 +299,139 @@ select is(
 );
 select is(
   (
-    select m.email || '|' || p.display_name
+    select m.email || '|' || p.display_name || '|' || p.avatar_url
       from public.member_accounts m
       join public.profiles p on p.id = m.user_id
       join consent_ctx c on c.sync_user_id = m.user_id
   ),
-  'new-sync@test.local|Synced',
-  'fenced OAuth sync updates profile and member together'
+  'new-sync@test.local|커스텀닉|https://avatar.test/custom.png',
+  'fenced OAuth sync updates member email without clobbering the customized profile'
+);
+
+-- 0103: 기본 프사로 되돌린 상태(avatar_url null)도 사용자 선택 — sync 가 되살리지 않는다.
+update public.profiles p
+   set avatar_url = null
+  from consent_ctx c
+ where p.id = c.sync_user_id;
+select is(
+  (
+    select public.sync_active_member_oauth_profile(
+             sync_user_id,
+             'Synced',
+             'https://avatar.test/synced.png',
+             'new-sync2@test.local'
+           )->>'ok'
+      from consent_ctx
+  ),
+  'true',
+  'OAuth sync succeeds against a default-avatar profile'
+);
+select is(
+  (
+    select m.email || '|' || p.display_name || '|'
+             || coalesce(p.avatar_url, '<null>')
+      from public.member_accounts m
+      join public.profiles p on p.id = m.user_id
+      join consent_ctx c on c.sync_user_id = m.user_id
+  ),
+  'new-sync2@test.local|커스텀닉|<null>',
+  'OAuth sync does not resurrect a removed avatar'
+);
+
+-- 0103: 재동의(update 경로)도 프로필 불가침 — email/동의 스탬프만 갱신한다.
+select is(
+  (
+    select public.create_or_update_member_consent_with_profile(
+             sync_user_id,
+             0,
+             true,
+             true,
+             terms_version,
+             true,
+             privacy_version,
+             'OAuth Name',
+             'https://avatar.test/oauth.png',
+             'sync-reconsent@test.local'
+           )
+      from consent_ctx
+  ),
+  false,
+  'reconsent takes the member update path'
+);
+select is(
+  (
+    select m.email || '|' || p.display_name || '|'
+             || coalesce(p.avatar_url, '<null>')
+      from public.member_accounts m
+      join public.profiles p on p.id = m.user_id
+      join consent_ctx c on c.sync_user_id = m.user_id
+  ),
+  'sync-reconsent@test.local|커스텀닉|<null>',
+  'reconsent preserves the customized profile while syncing email'
+);
+
+-- 0103: 탈퇴 스크럽 플레이스홀더만은 OAuth 로 재시드된다(재활성 복원) — sync 경로.
+update public.profiles p
+   set display_name = '탈퇴한 사용자',
+       avatar_url = null
+  from consent_ctx c
+ where p.id = c.sync_user_id;
+select is(
+  (
+    select public.sync_active_member_oauth_profile(
+             sync_user_id,
+             'Reborn',
+             'https://avatar.test/reborn.png',
+             'reborn@test.local'
+           )->>'ok'
+      from consent_ctx
+  ),
+  'true',
+  'OAuth sync succeeds against a scrub-placeholder profile'
+);
+select is(
+  (
+    select p.display_name || '|' || p.avatar_url
+      from public.profiles p
+      join consent_ctx c on c.sync_user_id = p.id
+  ),
+  'Reborn|https://avatar.test/reborn.png',
+  'scrub placeholder is reseeded from OAuth by the sync path'
+);
+
+-- 0103: consent update 경로의 플레이스홀더 재시드도 동일 규칙.
+update public.profiles p
+   set display_name = '탈퇴한 사용자',
+       avatar_url = null
+  from consent_ctx c
+ where p.id = c.sync_user_id;
+select is(
+  (
+    select public.create_or_update_member_consent_with_profile(
+             sync_user_id,
+             0,
+             true,
+             true,
+             terms_version,
+             true,
+             privacy_version,
+             'Reborn2',
+             'https://avatar.test/reborn2.png',
+             'reborn2@test.local'
+           )
+      from consent_ctx
+  ),
+  false,
+  'placeholder reconsent still takes the member update path'
+);
+select is(
+  (
+    select p.display_name || '|' || p.avatar_url
+      from public.profiles p
+      join consent_ctx c on c.sync_user_id = p.id
+  ),
+  'Reborn2|https://avatar.test/reborn2.png',
+  'scrub placeholder is reseeded from OAuth by the reconsent path'
 );
 
 select lives_ok(
