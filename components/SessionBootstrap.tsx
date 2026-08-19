@@ -98,6 +98,19 @@ async function discoverOAuthFlowBeforeBootstrap(
 ): Promise<string | null> {
   return runAuthCrossContextExclusive(signal, () =>
     startSupabaseUnlockedSessionWriter(signal, async () => {
+      // 로컬 플로우 마커(콜백 쿠키·durable barrier)가 둘 다 없으면 이 브라우저에
+      // 진행 중 플로우가 없는 것으로 확정하고 서버 discovery 왕복을 생략한다 —
+      // 방문의 절대다수가 여기 해당하며, 페이지 로드마다 hydration 을 막던
+      // serverless 왕복(웜 ~0.3s·콜드 ~2s)이 사라진다. 마커가 유실된 서버측
+      // 고아 플로우는 discovery 가 있어도 복구가 아니라 flow-pending 안내였고,
+      // 서버 수명주기(프루닝)가 정리하므로 기능 손실이 없다. 플로우 권위는
+      // 여전히 서버 DB — 마커는 스킵 판정에만 쓰는 로컬 힌트다.
+      if (
+        readExactVisibleOAuthCallbackFlow() === null &&
+        readOAuthFlowBrowserBarrier() === null
+      ) {
+        return null;
+      }
       const response = await fetch(
         "/api/auth/oauth-flow/status",
         {

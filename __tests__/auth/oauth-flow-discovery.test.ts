@@ -1117,6 +1117,19 @@ test("SessionBootstrap confirms discovery before ordinary Auth and redirects act
     markerFence,
   );
 
+  // v0.84: 로컬 플로우 마커(콜백 쿠키·durable barrier)가 둘 다 없으면 서버 discovery
+  // 왕복을 생략한다 — 스킵 판정이 POST 이전에 와야 하며, 두 마커 리더를 모두 본다.
+  const localSkip = helper.indexOf(
+    "readExactVisibleOAuthCallbackFlow() === null",
+  );
+  const localSkipBarrier = helper.indexOf(
+    "readOAuthFlowBrowserBarrier() === null",
+    localSkip,
+  );
+  assert.ok(localSkip >= 0);
+  assert.ok(localSkipBarrier > localSkip);
+  assert.ok(localSkip < post);
+
   assert.ok(post >= 0);
   assert.ok(nullBody > post);
   assert.ok(absentParse > nullBody);
