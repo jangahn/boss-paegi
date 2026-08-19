@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { log, errInfo } from "@/lib/log";
 import type { RoleId } from "@/lib/roles";
 import {
+  PlayDollInitError,
   parsePlayDollLookup,
   parsePlayDollSignedUrl,
 } from "@/lib/play-doll-init";
@@ -172,8 +173,13 @@ export function useGameInit(opts: {
       log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
       if (!cancelled) {
         setGameReady(false);
+        // doll_unavailable 은 결정적 상태(다른 사용자의 캐릭터 링크·삭제된 캐릭터)
+        // — "연결 확인 후 재시도"로 안내하면 헛된 재시도만 유도한다(2026-08-19
+        // 실관측: 같은 사용자가 남의 캐릭터 URL 로 3회 연속 재시도).
         setGameInitError(
-          "게임을 불러오지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.",
+          e instanceof PlayDollInitError && e.message === "doll_unavailable"
+            ? "이 캐릭터는 내 계정에서 플레이할 수 없어요. 삭제됐거나 다른 사용자의 캐릭터 주소예요. 내 갤러리에서 캐릭터를 선택해주세요."
+            : "게임을 불러오지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.",
         );
       }
     });
