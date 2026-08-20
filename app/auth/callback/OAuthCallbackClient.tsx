@@ -920,7 +920,7 @@ export function OAuthCallbackClient() {
   }, [attempt, run]);
 
   return (
-    <main className="mx-auto flex min-h-[80vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-3.5 px-6 text-center">
       {!failed && (
         <span
           aria-hidden="true"
