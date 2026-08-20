@@ -42,7 +42,7 @@ begin
   end if;
 
   -- 버전 무관 동의(0106): 리뷰어 계정도 timestamp 스탬프만 남긴다.
-  perform public.bp_create_or_update_member_consent_locked(
+  perform public.bp_0084_create_or_update_member_consent_with_profile_impl(
     v_job.user_id,
     0,
     true,
@@ -99,6 +99,9 @@ drop function if exists public.bp_0084_create_or_update_member_consent_impl(
   uuid, integer, boolean, boolean, integer, boolean, integer);
 drop function if exists public.bp_create_or_update_member_consent_locked(
   uuid, integer, boolean, boolean, integer, boolean, integer, text, text, text);
+-- 0106 초판이 prod 에 만들었던 과도기 명칭(파일 개정판에는 없음) 정리.
+drop function if exists public.bp_create_or_update_member_consent_locked(
+  uuid, integer, boolean, boolean, boolean, text, text, text);
 
 create or replace function public.bp_scrub_member_consent_on_delete()
 returns trigger

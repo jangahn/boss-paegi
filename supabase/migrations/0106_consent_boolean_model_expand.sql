@@ -7,7 +7,7 @@
 -- ④ 기존 탈퇴 계정 백필 초기화.
 -- ⑤ 미배선 생성 자격 동의 부품 폐기(서비스 전체 만 19세 상향, 증거 0건 확인 후 drop).
 
-CREATE OR REPLACE FUNCTION public.bp_create_or_update_member_consent_locked(p_user_id uuid, p_bonus integer, p_set_age boolean, p_set_terms boolean, p_set_privacy boolean, p_display_name text, p_avatar_url text, p_email text)
+CREATE OR REPLACE FUNCTION public.bp_0084_create_or_update_member_consent_with_profile_impl(p_user_id uuid, p_bonus integer, p_set_age boolean, p_set_terms boolean, p_set_privacy boolean, p_display_name text, p_avatar_url text, p_email text)
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -142,7 +142,7 @@ begin
   if p_user_id is not null then
     perform public.bp_user_mutation_lock(p_user_id);
   end if;
-  return public.bp_create_or_update_member_consent_locked(
+  return public.bp_0084_create_or_update_member_consent_with_profile_impl(
     p_user_id, p_bonus, p_set_age, p_set_terms, p_set_privacy,
     p_display_name, p_avatar_url, p_email
   );
@@ -156,7 +156,7 @@ grant execute on function public.create_or_update_member_consent_with_profile(
   uuid, integer, boolean, boolean, boolean, text, text, text
 ) to service_role;
 
-revoke all on function public.bp_create_or_update_member_consent_locked(
+revoke all on function public.bp_0084_create_or_update_member_consent_with_profile_impl(
   uuid, integer, boolean, boolean, boolean, text, text, text
 ) from public, anon, authenticated, service_role;
 
