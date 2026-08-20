@@ -29,6 +29,7 @@ export function SiteFooter({ info }: { info: BusinessInfo | undefined }) {
         <p>
           {info.address} · 전화 {info.phone} · 이메일 {info.email}
         </p>
+        <p>© 2026 {info.companyName}. All rights reserved.</p>
         <p className="flex gap-3">
           <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
             이용약관

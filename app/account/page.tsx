@@ -481,20 +481,18 @@ function WithdrawSection() {
               </button>
             </div>
           )}
-          {refundableStatus === "ready" && refundable !== null && (
+          {refundableStatus === "ready" && refundable !== null && refundable > 0 && (
             <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-500">
               <p>
                 지금 환불 가능한 유료 생성권: <b className="text-foreground">{refundable}개</b>
               </p>
-              {refundable > 0 && (
-                <p className="mt-1">
+              <p className="mt-1">
                   탈퇴 전에 환불을 요청할 수 있어요(이용약관 참조). 주문·환불 상태는{" "}
                   <Link href="/account/payments" className="underline underline-offset-2">
                     결제내역
                   </Link>
                   에서 확인해주세요.
-                </p>
-              )}
+              </p>
             </div>
           )}
           <label className="mt-3 flex items-start gap-2 text-xs">
