@@ -153,10 +153,6 @@ test("account, report, login, and consent actions occupy synchronously and fence
 
   assert.match(account, /savingNickRef\.current/);
   assert.match(account, /busyRef\.current \|\| !ready/);
-  assert.match(
-    account,
-    /runBoundedClientJsonFetch\(\{[\s\S]*input: "\/api\/account\/refundable-credits",[\s\S]*signal: controller\.signal/,
-  );
   assert.match(account, /mountedRef\.current/);
 
   assert.match(report, /if \(busyRef\.current \|\| !reason\) return/);

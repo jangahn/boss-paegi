@@ -316,11 +316,6 @@ test("public OG readers distinguish authoritative absence from dependency failur
 
 test("remaining server authority lists never collapse null or partial reads to empty/zero", () => {
   const inventory = {
-    "app/api/account/refundable-credits/route.ts": [
-      "readSupabaseRowsPaginated",
-      "requireExactAdminIdCoverage",
-      "validateAdminRows",
-    ],
     "app/api/doll/route.ts": ["requireSupabaseRows", "validateAdminRows"],
     "app/api/doll/signed-urls/route.ts": [
       "requireSupabaseRows",

@@ -13,12 +13,10 @@ import {
   NICKNAME_MAX,
   type MyProfile,
 } from "@/lib/profile";
-import { parseRefundableCreditsResponse } from "@/lib/refundable-credits-response";
 import { parseAccountDeletionHttpAck } from "@/lib/account-http-contract";
 import {
   clientMutationResponseNeedsReconciliation,
   readBoundedClientJsonResponse,
-  runBoundedClientJsonFetch,
   runClientMutation,
   type ClientMutationEvidence,
 } from "@/lib/client-mutation";
@@ -267,57 +265,10 @@ function WithdrawSection() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // 실측 환불가능 수량(§11.6 /api/account/refundable-credits — 표시 전용, null=미조회/실패).
-  const [refundable, setRefundable] = useState<number | null>(null);
-  const [refundableStatus, setRefundableStatus] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [refundableRetry, setRefundableRetry] = useState(0);
   const mountedRef = useRef(false);
   const busyRef = useRef(false);
   const mutationLifecycleRef = useRef<AbortController | null>(null);
-  const ready =
-    ack &&
-    confirm.trim() === "회원탈퇴" &&
-    refundableStatus === "ready";
-
-  // 탈퇴 결정 전에 환불 가능 수량을 반드시 권위 조회한다. 실패를 0/미표시로
-  // 축소한 채 탈퇴를 허용하면 사용자가 환불 기회를 모른 채 파괴 작업을 확정할 수 있다.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    void runBoundedClientJsonFetch({
-      input: "/api/account/refundable-credits",
-      signal: controller.signal,
-      deadlineMs: 12_000,
-      attemptMs: 8_000,
-    })
-      .then((delivery) => {
-        if (delivery.kind !== "confirmed") {
-          throw new Error("refundable_response_unconfirmed");
-        }
-        const { response: res, body } = delivery.value;
-        if (!res.ok) throw new Error(`refundable_http_${res.status}`);
-        return parseRefundableCreditsResponse(body);
-      })
-      .then((result) => {
-        if (!cancelled) {
-          setRefundable(result.refundable);
-          setRefundableStatus("ready");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRefundable(null);
-          setRefundableStatus("error");
-        }
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [open, refundableRetry]);
+  const ready = ack && confirm.trim() === "회원탈퇴";
 
   useEffect(() => {
     mountedRef.current = true;
@@ -433,10 +384,7 @@ function WithdrawSection() {
       {!open ? (
         <button
           type="button"
-          onClick={() => {
-            setRefundableStatus("loading");
-            setOpen(true);
-          }}
+          onClick={() => setOpen(true)}
           className="text-xs text-zinc-400 underline-offset-4 hover:text-red-500 hover:underline"
         >
           회원탈퇴
@@ -456,45 +404,6 @@ function WithdrawSection() {
             <p>· (결제 이용 시) 결제 기록은 관련 법령에 따라 일정 기간 보존될 수 있습니다.</p>
             <p>· 탈퇴 후 재이용은 제한되며, 재이용을 원하면 고객센터로 문의해 주세요(계정만 복구되고 위 데이터는 복구되지 않습니다).</p>
           </div>
-          {/* 동적 환불 안내 — 위 법률 고지 블록(byte-for-byte 보존, §11.5)과 분리된 별도 노드. */}
-          {refundableStatus === "loading" && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-foreground/10 p-3 text-xs text-zinc-500">
-              <Spinner className="h-3.5 w-3.5" />
-              환불 가능한 생성권을 확인하고 있어요.
-            </div>
-          )}
-          {refundableStatus === "error" && (
-            <div
-              role="alert"
-              className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-500"
-            >
-              <p>환불 가능 수량을 확인하지 못했어요. 확인 후 탈퇴할 수 있습니다.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setRefundableStatus("loading");
-                  setRefundableRetry((value) => value + 1);
-                }}
-                className="mt-2 font-semibold underline underline-offset-2"
-              >
-                다시 확인
-              </button>
-            </div>
-          )}
-          {refundableStatus === "ready" && refundable !== null && refundable > 0 && (
-            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-500">
-              <p>
-                지금 환불 가능한 유료 생성권: <b className="text-foreground">{refundable}개</b>
-              </p>
-              <p className="mt-1">
-                  탈퇴 전에 환불을 요청할 수 있어요(이용약관 참조). 주문·환불 상태는{" "}
-                  <Link href="/account/payments" className="underline underline-offset-2">
-                    결제내역
-                  </Link>
-                  에서 확인해주세요.
-              </p>
-            </div>
-          )}
           <label className="mt-3 flex items-start gap-2 text-xs">
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
             <span>위 내용을 이해했으며 삭제된 데이터는 되돌릴 수 없음에 동의합니다.</span>
