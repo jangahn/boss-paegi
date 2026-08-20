@@ -197,6 +197,10 @@ export async function POST(req: NextRequest) {
         let terminalRaces = 0;
         let systemErrors = 0;
         const unresolved: string[] = [];
+        // 24h 시효 내 non-terminal(READY 등) — 재호출이 진전시키지 못하는 **감시 상태**.
+        // retryPending 에 넣으면 스케줄러 응답이 최대 22시간 연속 429 가 되어
+        // cron-job.org 가 잡을 자동 비활성화한다(2026-08-19 실사고·과거 7/31 사망 동일 기전).
+        const watching: string[] = [];
 
         if (rows.length > 0 && !portoneConfigured()) {
           log.warn("pay.reconcile_unconfigured", { count: rows.length });
@@ -511,21 +515,24 @@ export async function POST(req: NextRequest) {
             } else if (fResult.outcome === "skipped") terminalRaces += 1;
             else failed += 1;
           } else {
-            // READY/PENDING 등 24h 미만 — 아직 진행 중일 수 있어 보존, 미해결로 보고.
-            unresolved.push(row.order_uuid);
+            // READY/PENDING 등 24h 미만 — 아직 진행 중일 수 있어 보존.
+            // 감시 상태(시간이 해소)이므로 응답 코드에는 반영하지 않는다.
+            watching.push(row.order_uuid);
           }
         }
 
         if (opsMaintenanceDeadlineReached(deadline)) {
           return maintenanceTimeBudgetResponse();
         }
-        if (unresolved.length > 0) {
+        if (unresolved.length + watching.length > 0) {
           // 확인 필요 경고(미지급 단정 아님). orderIds 는 최대 10개만 동봉.
+          // 감시 상태(watching)도 관측에는 포함 — 응답 코드와 분리된 신호다.
           log.warn("pay.stale_payment_request", {
             message:
               "오래된 결제요청 — 자동 대사로 해소되지 않아 운영 확인 필요",
-            count: unresolved.length,
-            orderIds: unresolved.slice(0, MAX_IDS),
+            count: unresolved.length + watching.length,
+            watching: watching.length,
+            orderIds: [...unresolved, ...watching].slice(0, MAX_IDS),
           });
         }
 
@@ -602,6 +609,7 @@ export async function POST(req: NextRequest) {
           expired,
             terminalRaces,
             unresolved: unresolved.length,
+            watching: watching.length,
             attemptsChecked: sweep.attemptsChecked,
             transitions: sweep.transitions,
             issuesOpened: sweep.issuesOpened,
