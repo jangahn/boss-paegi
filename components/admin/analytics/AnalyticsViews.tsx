@@ -113,11 +113,9 @@ function mLabel(k: string): string {
   return k === "unknown" ? "알 수 없음" : MAP_LABEL[k] ?? k;
 }
 
-/** 표본수 임계: n<5 숨김, 5≤n<20 '표본 적음', n≥20 정상 */
-function sampleTag(n: number): { hide: boolean; badge: string | null } {
-  if (n < 5) return { hide: true, badge: null };
-  if (n < 20) return { hide: false, badge: "표본 적음" };
-  return { hide: false, badge: null };
+/** 표본수 임계: n≤9 '표본 적음', n≥10 정상 — 표본수로 항목을 숨기지 않는다(전 표면 공통 단일 등급). */
+function sampleBadge(n: number): string | null {
+  return n <= 9 ? "표본 적음" : null;
 }
 
 function MetaNote({ size, truncated, limit, suffix }: { size: number; truncated: boolean; limit: number; suffix?: string }) {
@@ -138,7 +136,7 @@ function DistBars({ dist, label }: { dist: Record<string, number>; label: (k: st
   return (
     <div className="flex flex-col gap-1">
       {entries.map(([k, v]) => {
-        const tag = sampleTag(v);
+        const badge = sampleBadge(v);
         return (
           <div key={k} className="flex items-center gap-2 text-xs">
             <span className="w-24 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{label(k)}</span>
@@ -146,7 +144,7 @@ function DistBars({ dist, label }: { dist: Record<string, number>; label: (k: st
               <div className="h-full rounded bg-sky-400/70" style={{ width: `${Math.max(2, (v / max) * 100)}%` }} />
             </div>
             <span className="w-16 shrink-0 text-right tabular-nums font-medium">{v.toLocaleString()} ({pct(v, total)})</span>
-            {tag.badge && <span className="w-12 shrink-0 text-right text-[10px] text-amber-600">{tag.badge}</span>}
+            {badge && <span className="w-12 shrink-0 text-right text-[10px] text-amber-600">{badge}</span>}
           </div>
         );
       })}
@@ -199,11 +197,11 @@ export function WeaponConcentrationCard({ data }: { data: WeaponConcentration })
 /** 무기 효율·파워 — 메인무기 기준 점수/초 중앙값(근사). pure(단일무기) 우선. */
 export function WeaponThroughputBars({ data }: { data: WeaponThroughput }) {
   if (data.eligibleSessions === 0) return EMPTY;
-  // 표시 가능한 행(pure≥5 또는 all≥5)만, 큰 중앙값 순
+  // 표본수로 행을 숨기지 않는다 — 중앙값이 있으면 표시(단일무기 우선), 적은 표본은 배지로만 경고.
   const rows = data.rows
     .map((r) => {
-      const usePure = r.pureN >= 5 && r.medianPure != null;
-      const useAll = !usePure && r.allN >= 5 && r.medianAll != null;
+      const usePure = r.medianPure != null;
+      const useAll = !usePure && r.medianAll != null;
       const value = usePure ? r.medianPure! : useAll ? r.medianAll! : null;
       const n = usePure ? r.pureN : r.allN;
       return { r, value, n, usePure };
@@ -211,11 +209,11 @@ export function WeaponThroughputBars({ data }: { data: WeaponThroughput }) {
     .filter((x) => x.value != null)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const max = Math.max(1, ...rows.map((x) => x.value ?? 0));
-  if (!rows.length) return <p className="text-sm text-zinc-400">표본이 충분한 무기가 아직 없어요(무기별 5세션 이상 필요).</p>;
+  if (!rows.length) return <p className="text-sm text-zinc-400">무기 표본이 아직 없어요.</p>;
   return (
     <div className="flex flex-col gap-1.5">
       {rows.map(({ r, value, n, usePure }) => {
-        const tag = sampleTag(n);
+        const badge = sampleBadge(n);
         return (
           <div key={r.weapon} className="flex items-center gap-2 text-xs">
             <span className="w-24 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{wLabel(r.weapon)}</span>
@@ -224,8 +222,8 @@ export function WeaponThroughputBars({ data }: { data: WeaponThroughput }) {
             </div>
             <span className="w-16 shrink-0 text-right tabular-nums font-medium">{Math.round(value ?? 0).toLocaleString()}/초</span>
             <span className="w-28 shrink-0 text-right text-[10px] text-zinc-400">
-              {usePure ? `단일무기 ${n}판` : `메인무기 ${n}판·단일표본부족`}
-              {tag.badge ? ` · ${tag.badge}` : ""}
+              {usePure ? `단일무기 ${n}판` : `메인무기 ${n}판·단일무기 표본 없음`}
+              {badge ? ` · ${badge}` : ""}
             </span>
           </div>
         );
