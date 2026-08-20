@@ -5,7 +5,7 @@ const CALLBACK_SHELL = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>로그인 처리 중</title>
-<style>body{margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f7ebdb;color:#11233a;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif}main{text-align:center}.spin{margin:0 auto 14px;width:36px;height:36px;border-radius:50%;border:3px solid rgba(17,35,58,.15);border-top-color:#11233a;animation:s .8s linear infinite}h1{font-size:16px;font-weight:600;margin:0}p{font-size:12px;color:rgba(17,35,58,.55);margin:6px 0 0}@keyframes s{to{transform:rotate(360deg)}}</style>
+<style>html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f7ebdb;color:#11233a;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif}main{text-align:center}.spin{margin:0 auto 14px;width:36px;height:36px;border-radius:50%;border:3px solid rgba(17,35,58,.15);border-top-color:#11233a;animation:s .8s linear infinite}h1{font-size:20px;line-height:28px;font-weight:600;margin:0}p{font-size:14px;line-height:20px;color:rgba(17,35,58,.55);margin:6px 0 0}@keyframes s{to{transform:rotate(360deg)}}</style>
 </head>
 <body>
 <main>
@@ -33,7 +33,7 @@ export function GET(): Response {
       "Cache-Control": "private, no-store, max-age=0",
       "Content-Security-Policy":
         "default-src 'none'; script-src 'self'; " +
-        "style-src 'sha256-wF2X0KKT7pv4Vv4fgf6KXFlLhklmB12aQQzwE9t8OTY='; " +
+        "style-src 'sha256-Y2faja+NkYoG2O3NCNt+mrmMsAUbBnX1c9ujFu51us4='; " +
         "base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",

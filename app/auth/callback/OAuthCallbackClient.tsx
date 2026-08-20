@@ -920,28 +920,34 @@ export function OAuthCallbackClient() {
   }, [attempt, run]);
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-3.5 px-6 text-center">
+    <main
+      className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center"
+      style={{
+        fontFamily:
+          '-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif',
+      }}
+    >
       {!failed && (
         <span
           aria-hidden="true"
-          className="h-9 w-9 animate-spin rounded-full border-[3px] border-foreground/15 border-t-foreground"
+          className="mb-3.5 h-9 w-9 animate-spin rounded-full border-[3px] border-foreground/15 border-t-foreground [animation-duration:800ms]"
         />
       )}
-      <h1 className="text-base font-semibold">
+      <h1 className="text-xl leading-7 font-semibold">
         로그인 정보를 안전하게 확인하고 있어요
       </h1>
-      <p className="text-xs text-zinc-500">
+      <p className="mt-1.5 text-sm leading-5 text-foreground/55">
         잠시만 기다려주세요. 이 화면을 닫지 마세요.
       </p>
       {failed && (
         <>
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="mt-3.5 text-sm text-red-500">
             로그인을 마무리하지 못했어요. 상태를 보존했으니 다시
             확인할 수 있어요.
           </p>
           <button
             type="button"
-            className="rounded-md border px-4 py-2 text-sm"
+            className="mt-3.5 rounded-md border px-4 py-2 text-sm"
             onClick={() => {
               if (
                 flowId &&
