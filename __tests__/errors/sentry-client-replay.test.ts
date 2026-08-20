@@ -6,75 +6,7 @@ import {
   sentryReplayIntegrations,
 } from "../../lib/sentry-replay-policy.ts";
 
-test("production에서도 exact literal 1 외 모든 값은 Replay를 fail-closed한다", () => {
-  const nonOptIns = [
-    undefined,
-    "",
-    "0",
-    "true",
-    "TRUE",
-    "yes",
-    "on",
-    "01",
-    "2",
-    " 1",
-    "1 ",
-    "\t1",
-    "1\n",
-  ] as const;
-
-  for (const value of nonOptIns) {
-    assert.deepEqual(
-      resolveSentryReplayPolicy("production", value),
-      {
-        enabled: false,
-        replaysOnErrorSampleRate: 0,
-        replaysSessionSampleRate: 0,
-      },
-      `unexpected opt-in for ${JSON.stringify(value)}`,
-    );
-  }
-});
-
-test("opt-in parser는 변환 없는 strict equality여서 임의의 다른 문자열을 승인하지 않는다", () => {
-  const policySource = readFileSync(
-    new URL("../../lib/sentry-replay-policy.ts", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(policySource, /operationalOptIn === "1"/);
-  assert.doesNotMatch(
-    policySource,
-    /operationalOptIn\??\.(?:trim|toLowerCase|toUpperCase)|Boolean\(|parseInt\(|Number\(/,
-  );
-
-  // A finite grammar probes empty, numeric-looking, boolean-looking, and
-  // whitespace-padded values. The source assertion above fixes the universal
-  // string property: only the one exact string can pass.
-  const alphabet = ["0", "1", " ", "\t", "t", "r", "u", "e"] as const;
-  const values = new Set<string>([""]);
-  for (let length = 1; length <= 4; length += 1) {
-    const build = (prefix: string, remaining: number): void => {
-      if (remaining === 0) {
-        values.add(prefix);
-        return;
-      }
-      for (const token of alphabet) build(prefix + token, remaining - 1);
-    };
-    build("", length);
-  }
-  values.delete("1");
-
-  for (const value of values) {
-    assert.equal(
-      resolveSentryReplayPolicy("production", value).enabled,
-      false,
-      `unexpected opt-in for ${JSON.stringify(value)}`,
-    );
-  }
-});
-
-test("exact opt-in도 production이 아니면 Replay를 켜지 않는다", () => {
+test("production이 아니면 Replay를 켜지 않는다(exact match — 대소문자·유사값 불인정)", () => {
   for (const environment of [
     "",
     "development",
@@ -82,17 +14,38 @@ test("exact opt-in도 production이 아니면 Replay를 켜지 않는다", () =>
     "staging",
     "test",
     "Production",
+    " production",
+    "production ",
   ]) {
-    assert.deepEqual(resolveSentryReplayPolicy(environment, "1"), {
-      enabled: false,
-      replaysOnErrorSampleRate: 0,
-      replaysSessionSampleRate: 0,
-    });
+    assert.deepEqual(
+      resolveSentryReplayPolicy(environment),
+      {
+        enabled: false,
+        replaysOnErrorSampleRate: 0,
+        replaysSessionSampleRate: 0,
+      },
+      `unexpected enable for ${JSON.stringify(environment)}`,
+    );
   }
 });
 
-test("production + exact 1만 오류 100%·일반 10% Replay를 활성화한다", () => {
-  assert.deepEqual(resolveSentryReplayPolicy("production", "1"), {
+test("environment 판정은 변환 없는 strict equality다", () => {
+  const policySource = readFileSync(
+    new URL("../../lib/sentry-replay-policy.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(policySource, /environment === "production"/);
+  assert.doesNotMatch(
+    policySource,
+    /environment\??\.(?:trim|toLowerCase|toUpperCase)/,
+  );
+  // 운영 결정(2026-08-21): env opt-in 게이트는 존재하지 않는다.
+  assert.doesNotMatch(policySource, /operationalOptIn|OPT_IN|REPLAY_ENABLED/);
+});
+
+test("production은 상시 오류 100%·일반 10% Replay를 활성화한다", () => {
+  assert.deepEqual(resolveSentryReplayPolicy("production"), {
     enabled: true,
     replaysOnErrorSampleRate: 1,
     replaysSessionSampleRate: 0.1,
@@ -102,7 +55,7 @@ test("production + exact 1만 오류 100%·일반 10% Replay를 활성화한다"
 test("비활성 정책은 integration factory도 호출하지 않고 빈 목록을 반환한다", () => {
   let calls = 0;
   const integrations = sentryReplayIntegrations(
-    resolveSentryReplayPolicy("production", "0"),
+    resolveSentryReplayPolicy("preview"),
     () => {
       calls += 1;
       return { kind: "replay" };
@@ -117,7 +70,7 @@ test("활성 정책만 integration을 정확히 한 번 생성한다", () => {
   let calls = 0;
   const integration = { kind: "replay" };
   const integrations = sentryReplayIntegrations(
-    resolveSentryReplayPolicy("production", "1"),
+    resolveSentryReplayPolicy("production"),
     () => {
       calls += 1;
       return integration;
@@ -173,9 +126,14 @@ test("클라이언트 init은 일반 화면의 error·trace·feedback을 유지�
     /if \(dsn && callbackUrlScrubbed && !isOAuthCallbackPage\) \{\s*Sentry\.init\(/u,
   );
 
+  // Replay는 env opt-in 없이 environment 정책만 따른다(2026-08-21 운영 결정).
+  assert.doesNotMatch(
+    source,
+    /NEXT_PUBLIC_SENTRY_REPLAY_ENABLED/,
+  );
   assert.match(
     source,
-    /process\.env\.NEXT_PUBLIC_SENTRY_REPLAY_ENABLED/,
+    /const replay = resolveSentryReplayPolicy\(env\);/,
   );
   assert.match(
     source,

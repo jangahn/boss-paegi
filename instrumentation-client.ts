@@ -66,12 +66,9 @@ const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 const env =
   process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || "development";
 const isProd = env === "production";
-// Session Replay는 화면 상태를 처리하므로 별도 운영 opt-in을 요구한다.
-// production 이면서 exact literal "1"일 때만 통합 자체를 설치한다.
-const replay = resolveSentryReplayPolicy(
-  env,
-  process.env.NEXT_PUBLIC_SENTRY_REPLAY_ENABLED,
-);
+// Session Replay — production 상시(2026-08-21 운영 결정, env opt-in 게이트 제거).
+// dev/preview 는 무료 한도·environment 혼입 방지를 위해 계속 비활성.
+const replay = resolveSentryReplayPolicy(env);
 
 function containsOAuthCallback(value: unknown): boolean {
   try {
@@ -111,7 +108,7 @@ if (dsn && callbackUrlScrubbed && !isOAuthCallbackPage) {
     },
     // IP·헤더·쿠키 미수집(PIPA). 게임데이터·userKey·닉네임은 별도로 명시 부착(lib/sentry-context).
     sendDefaultPii: false,
-    // Session Replay (prod + exact opt-in 한정) — 에러 세션 100% + 일반 10%.
+    // Session Replay (prod 상시) — 에러 세션 100% + 일반 10%.
     // 비활성 상태에서는 두 sampling rate가 0이고 Replay 통합도 설치하지 않는다.
     replaysOnErrorSampleRate: isOAuthCallbackPage
       ? 0

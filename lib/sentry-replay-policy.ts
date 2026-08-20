@@ -17,19 +17,16 @@ const ENABLED_REPLAY_POLICY: SentryReplayPolicy = Object.freeze({
 });
 
 /**
- * Session Replay processes visible browser state, so it has a stricter gate
- * than ordinary error/performance monitoring. It is enabled only when both:
- * - the browser environment is exactly production; and
- * - the public operational opt-in is the exact literal "1".
- *
- * Values such as "true", "01", whitespace-padded "1", preview, and an
- * absent variable all fail closed.
+ * Session Replay는 production 상시 활성이다(2026-08-21 운영 결정으로
+ * env opt-in 게이트 제거). dev/preview는 무료 한도 소진과 environment
+ * 혼입을 막기 위해 계속 비활성이며, exact "production"만 활성으로 본다.
+ * 업로드 얼굴 영역은 instrumentation-client의 `.sentry-block-face`
+ * block/mask로 녹화에서 제외된다.
  */
 export function resolveSentryReplayPolicy(
   environment: string,
-  operationalOptIn: string | undefined,
 ): SentryReplayPolicy {
-  return environment === "production" && operationalOptIn === "1"
+  return environment === "production"
     ? ENABLED_REPLAY_POLICY
     : DISABLED_REPLAY_POLICY;
 }
