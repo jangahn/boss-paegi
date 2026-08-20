@@ -674,79 +674,19 @@ select is((select run_count > 0 from public.ops_cron_heartbeats where job_name =
   'B.13c heartbeat run_count 증가(§29)');
 
 -- B.17 consent 보너스 로트(§Q1·G-1) — 신규 회원 insert 의 가입 보너스가 signup_bonus 로트와 원자 동기.
-do $fixture$
-declare
-  v_terms int;
-  v_privacy int;
-  v_today date :=
-    (clock_timestamp() at time zone 'Asia/Seoul')::date;
-begin
-  -- Refund accounting only needs a currently effective consent authority.
-  -- Use the notice-exempt initial legal version rather than fabricating an
-  -- unannounced v2+ publication effective today.
-  insert into public.legal_documents(
-    doc_type,
-    status,
-    version,
-    effective_date,
-    title,
-    sections
-  )
-  values
-    (
-      'terms',
-      'published',
-      1,
-      v_today,
-      'Refund saga QA terms',
-      '[{"heading":"Terms","body":"Current terms"}]'::jsonb
-    ),
-    (
-      'privacy',
-      'published',
-      1,
-      v_today,
-      'Refund saga QA privacy',
-      '[{"heading":"Privacy","body":"Current privacy"}]'::jsonb
-    )
-  on conflict (doc_type, version) where status = 'published'
-  do update
-    set effective_date = excluded.effective_date,
-        title = excluded.title,
-        sections = excluded.sections,
-        updated_at = clock_timestamp();
-  select l.version
-    into strict v_terms
-    from public.legal_documents l
-   where l.doc_type = 'terms'
-     and l.status = 'published'
-     and l.effective_date <= v_today
-   order by l.effective_date desc, l.version desc, l.id desc
-   limit 1;
-  select l.version
-    into strict v_privacy
-    from public.legal_documents l
-   where l.doc_type = 'privacy'
-     and l.status = 'published'
-     and l.effective_date <= v_today
-   order by l.effective_date desc, l.version desc, l.id desc
-   limit 1;
-  insert into pg_temp_ctx(k, i)
-  values ('terms_version', v_terms), ('privacy_version', v_privacy);
-end;
-$fixture$;
 select lives_ok($$
   with ins as (insert into auth.users (id, email) values (gen_random_uuid(), 'newbie@test.local') returning id)
   insert into pg_temp_ctx (k, u) select 'newbie', id from ins
 $$, 'B.17a 신규(멤버 행 없는) 유저 생성');
-select is((select public.create_or_update_member_consent(
+select is((select public.create_or_update_member_consent_with_profile(
              (select u from pg_temp_ctx where k = 'newbie'),
              5,
              true,
              true,
-             (select i from pg_temp_ctx where k = 'terms_version'),
              true,
-             (select i from pg_temp_ctx where k = 'privacy_version')
+             null,
+             null,
+             'newbie@test.local'
            )), true,
   'B.17b consent 신규 insert → true(보너스 지급 경로)');
 select is((select gen_credits from public.member_accounts

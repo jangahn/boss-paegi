@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentLegalVersionsStrict } from "@/lib/legal/strict-versions";
 import { missingConsentItems } from "@/lib/consent";
 import {
   resolveDbRead,
@@ -22,9 +21,9 @@ export type MemberRow = {
   member_since: string;
   /** 만 19세 이상 1회 확인 시각(2026-08-21 연령 상향 전엔 만 14세 기준). null=미확인. */
   age_confirmed_at: string | null;
-  /** 동의 시점 약관/방침 발행본 버전(0031). null=미동의 또는 발행본 없을 때 동의. */
-  terms_version: number | null;
-  privacy_version: number | null;
+  /** 동의 시각(버전 무관 불리언 모델, 2026-08-21). null=미동의. */
+  terms_agreed_at: string | null;
+  privacy_agreed_at: string | null;
 };
 
 export type MemberGateError =
@@ -90,7 +89,7 @@ async function requireCurrentAuthUser(): Promise<AuthGateResult> {
  * - member_accounts row 없음(in-between) **또는** 동의 미충족(레거시·구버전·재활성) → 403 `consent_required`
  * 성공 시 user + member(잔여 크레딧 포함) 반환.
  *
- * 동의 판정은 `lib/consent.missingConsentItems` 단일 규칙 + strict legal version 캐시.
+ * 동의 판정은 `lib/consent.missingConsentItems` 단일 규칙(버전 무관·timestamp 유무).
  * profiles/member/legal 조회 실패는 상태 없음과 구분해 503 fail-closed한다. `/consent`·
  * `/api/account/consent` 는 이 게이트가 아니라 `requireAuthedNonDeleted` 경량 가드를 써서
  * self-block 을 구조적으로 방지한다(I6).
@@ -124,7 +123,7 @@ export async function requireMember(): Promise<RequireMemberResult> {
     memberResult = await admin
       .from("member_accounts")
       .select(
-        "user_id, gen_credits, member_since, age_confirmed_at, terms_version, privacy_version"
+        "user_id, gen_credits, member_since, age_confirmed_at, terms_agreed_at, privacy_agreed_at"
       )
       .eq("user_id", user.id)
       .maybeSingle();
@@ -137,13 +136,7 @@ export async function requireMember(): Promise<RequireMemberResult> {
   if (!member.data) return { ok: false, status: 403, error: "consent_required" };
   const m = member.data as MemberRow;
 
-  let curr;
-  try {
-    curr = await getCurrentLegalVersionsStrict();
-  } catch (error) {
-    return unavailable(user.id, "legal", error);
-  }
-  if (missingConsentItems(m, curr).length > 0) {
+  if (missingConsentItems(m).length > 0) {
     return { ok: false, status: 403, error: "consent_required" };
   }
   return { ok: true, user, member: m };

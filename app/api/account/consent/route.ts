@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedNonDeleted, memberGateResponse } from "@/lib/auth-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getGrowthLeversStrict } from "@/lib/config/getters";
-import { getCurrentLegalVersionsStrict } from "@/lib/legal/strict-versions";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { loadOAuthProfile, migrateAnonData } from "@/lib/account-onboard";
 import { resolveSignupBonusStrict } from "@/lib/signup-bonus";
@@ -17,15 +16,10 @@ import {
 } from "@/lib/supabase/session-cookie";
 import { PUBLIC_ENV } from "@/lib/env";
 import {
-  displayedLegalVersionsMatch,
   prepareAnonMigration,
+  resolveConsentMutation,
   resolveDbRead,
-  resolveRequiredDbRead,
 } from "@/lib/auth-read-policy";
-import {
-  runConsentOnboardMutation,
-  syncLegacyOAuthProfileStrict,
-} from "@/lib/consent-onboard-mutation";
 import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
 import type { RawSource } from "@/lib/analytics/core";
 import { publicWriteActorKey } from "@/lib/public-write-quota";
@@ -84,7 +78,7 @@ export async function POST(req: NextRequest) {
   try {
     memberResult = await admin
       .from("member_accounts")
-      .select("age_confirmed_at, terms_version, privacy_version")
+      .select("age_confirmed_at, terms_agreed_at, privacy_agreed_at")
       .eq("user_id", user.id)
       .maybeSingle();
   } catch (error) {
@@ -106,23 +100,10 @@ export async function POST(req: NextRequest) {
   }
   const member = (memberRead.data as ConsentMember) ?? null;
 
-  let curr;
-  try {
-    curr = await getCurrentLegalVersionsStrict();
-  } catch (error) {
-    log.error("account.consent_read_fail", {
-      userId: user.id,
-      source: "legal",
-      ...errInfo(error),
-    });
-    return NextResponse.json({ error: "service_unavailable" }, { status: 503 });
-  }
-  const required = missingConsentItems(member, curr);
+  const required = missingConsentItems(member);
 
-  // Legacy rollout fallback can commit consent before its strict profile sync.
-  // Parse the body and run the sync even when a retry now observes no missing
-  // consent items; an early success here would permanently hide that partial
-  // commit and clear MIGRATE_COOKIE.
+  // 재시도에서 required 가 비어도 body(migrationFlow)를 계속 파싱한다 —
+  // 미완료 익명 이전을 idempotent 폼 재제출로 수렴시키는 경로(I4).
   const requestBody = await readApiJsonObjectRequest(req);
   if (!requestBody.ok) {
     return NextResponse.json(
@@ -134,8 +115,6 @@ export async function POST(req: NextRequest) {
     age?: boolean;
     terms?: boolean;
     privacy?: boolean;
-    termsVersion?: unknown;
-    privacyVersion?: unknown;
     migrationFlow?: unknown;
     /** 방문→가입 전환 분석 — first-touch source(있을 때만 적재). */
     acqSource?: unknown;
@@ -160,17 +139,6 @@ export async function POST(req: NextRequest) {
     !required.every((item) => body[item] === true)
   ) {
     return NextResponse.json({ error: "consent_required" }, { status: 400 });
-  }
-  if (
-    !displayedLegalVersionsMatch(required, curr, {
-      terms: body.termsVersion,
-      privacy: body.privacyVersion,
-    })
-  ) {
-    return NextResponse.json(
-      { error: "legal_version_changed" },
-      { status: 409 },
-    );
   }
 
   // Resolve every value needed by the atomic member transaction before moving
@@ -353,187 +321,20 @@ export async function POST(req: NextRequest) {
     p_bonus: bonus,
     p_set_age: required.includes("age"),
     p_set_terms: required.includes("terms"),
-    p_terms_ver: curr.terms,
     p_set_privacy: required.includes("privacy"),
-    p_privacy_ver: curr.privacy,
     p_display_name: profile.displayName,
     p_avatar_url: profile.avatarUrl,
     p_email: profile.email,
   };
-  const legacyArgs = {
-    p_user_id: atomicArgs.p_user_id,
-    p_bonus: atomicArgs.p_bonus,
-    p_set_age: atomicArgs.p_set_age,
-    p_set_terms: atomicArgs.p_set_terms,
-    p_terms_ver: atomicArgs.p_terms_ver,
-    p_set_privacy: atomicArgs.p_set_privacy,
-    p_privacy_ver: atomicArgs.p_privacy_ver,
-  };
-  const profileSelect = "id, deleted_at, display_name, avatar_url";
-  const memberEmailSelect = "user_id, email";
-  const expectedProfile = {
-    displayName: profile.displayName,
-    avatarUrl: profile.avatarUrl,
-    email: profile.email,
-  };
 
-  // I7: use the atomic consent+OAuth seed RPC whenever available. During an
-  // app-first rollout, only its exact PGRST202 missing-function error may use
-  // the legacy consent RPC. Legacy success remains non-terminal until guarded
-  // profile/email writes and fresh consent/lifecycle postconditions pass.
-  const mutation = await runConsentOnboardMutation({
-    atomic: () =>
-      admin.rpc("create_or_update_member_consent_with_profile", atomicArgs),
-    legacy: () =>
-      admin.rpc("create_or_update_member_consent", legacyArgs),
-    syncLegacyProfile: () => {
-      const profilePatch: Record<string, string> = {};
-      if (profile.displayName !== null) {
-        profilePatch.display_name = profile.displayName;
-      }
-      if (profile.avatarUrl !== null) {
-        profilePatch.avatar_url = profile.avatarUrl;
-      }
-      return syncLegacyOAuthProfileStrict(
-        {
-          writeActiveProfile: () =>
-            Object.keys(profilePatch).length > 0
-              ? admin
-                  .from("profiles")
-                  .update(profilePatch)
-                  .eq("id", user.id)
-                  .is("deleted_at", null)
-                  .select(profileSelect)
-                  .maybeSingle()
-              : admin
-                  .from("profiles")
-                  .select(profileSelect)
-                  .eq("id", user.id)
-                  .is("deleted_at", null)
-                  .maybeSingle(),
-          writeMemberEmail: () =>
-            admin
-              .from("member_accounts")
-              .update({ email: profile.email })
-              .eq("user_id", user.id)
-              .select(memberEmailSelect)
-              .maybeSingle(),
-          readProfile: () =>
-            admin
-              .from("profiles")
-              .select(profileSelect)
-              .eq("id", user.id)
-              .maybeSingle(),
-          readMemberEmail: () =>
-            admin
-              .from("member_accounts")
-              .select(memberEmailSelect)
-              .eq("user_id", user.id)
-              .maybeSingle(),
-          scrubMemberEmail: () =>
-            admin
-              .from("member_accounts")
-              .update({ email: null })
-              .eq("user_id", user.id)
-              .select(memberEmailSelect)
-              .maybeSingle(),
-        },
-        user.id,
-        expectedProfile,
-      );
-    },
-    verifyLegacyCommit: async () => {
-      // Profile first, member second: if deletion commits before either read it
-      // is observed; if it commits after the successful linearization point,
-      // the deletion transaction scrubs the already-written OAuth values.
-      let profileResult;
-      try {
-        profileResult = await admin
-          .from("profiles")
-          .select(profileSelect)
-          .eq("id", user.id)
-          .maybeSingle();
-      } catch (error) {
-        throw error;
-      }
-      const profileRead = resolveRequiredDbRead("profile", profileResult);
-      if (!profileRead.ok) throw profileRead.error;
-      const profileAfter = profileRead.data as {
-        id: string;
-        deleted_at: string | null;
-        display_name: string | null;
-        avatar_url: string | null;
-      };
-      if (
-        profileAfter.id !== user.id ||
-        profileAfter.deleted_at !== null
-      ) {
-        throw new Error("invalid_account");
-      }
-      if (
-        profile.displayName !== null &&
-        profileAfter.display_name !== profile.displayName
-      ) {
-        throw new Error("legacy_profile_display_name_mismatch");
-      }
-      if (
-        profile.avatarUrl !== null &&
-        profileAfter.avatar_url !== profile.avatarUrl
-      ) {
-        throw new Error("legacy_profile_avatar_url_mismatch");
-      }
-
-      let memberAfterResult;
-      try {
-        memberAfterResult = await admin
-          .from("member_accounts")
-          .select(
-            "user_id, email, age_confirmed_at, terms_version, privacy_version",
-          )
-          .eq("user_id", user.id)
-          .maybeSingle();
-      } catch (error) {
-        throw error;
-      }
-      const memberAfterRead = resolveRequiredDbRead(
-        "member",
-        memberAfterResult,
-      );
-      if (!memberAfterRead.ok) throw memberAfterRead.error;
-      const memberAfter = memberAfterRead.data as {
-        user_id: string;
-        email: string | null;
-        age_confirmed_at: string | null;
-        terms_version: number | null;
-        privacy_version: number | null;
-      };
-      if (
-        memberAfter.user_id !== user.id ||
-        memberAfter.email !== profile.email
-      ) {
-        throw new Error("legacy_member_email_mismatch");
-      }
-
-      const currAfter = await getCurrentLegalVersionsStrict();
-      const stillMissing = missingConsentItems(memberAfter, currAfter);
-      if (stillMissing.length > 0) {
-        const legalChanged =
-          currAfter.terms !== curr.terms ||
-          currAfter.privacy !== curr.privacy;
-        throw new Error(
-          legalChanged
-            ? "legal_version_changed"
-            : "legacy_consent_postcondition_failed",
-        );
-      }
-    },
-  });
+  // 버전 무관 원자 동의+OAuth 시드 RPC(0106). expand-first 적용이라 legacy
+  // fallback 없이 단일 경로다. 실패 시 MIGRATE_COOKIE 유지(다음 재시도에 익명이전 보존, I4).
+  const mutation = await resolveConsentMutation(() =>
+    admin.rpc("create_or_update_member_consent_with_profile", atomicArgs),
+  );
   if (!mutation.ok) {
-    // INSERT/UPDATE 실패(미생성) — MIGRATE_COOKIE **유지**(다음 재시도에 익명이전 보존, I4).
     log.error("account.consent_rpc_fail", {
       userId: user.id,
-      phase: mutation.phase,
-      legacyCommitted: mutation.legacyCommitted,
       ...errInfo(mutation.error),
     });
     const message =
@@ -544,23 +345,16 @@ export async function POST(req: NextRequest) {
         ? mutation.error.message
         : "";
     const deleted = message.includes("invalid_account");
-    const versionChanged =
-      message.includes("legal_version_changed");
     return NextResponse.json(
-      {
-        error: deleted
-          ? "account_deleted"
-          : versionChanged
-            ? "legal_version_changed"
-            : "consent_failed",
-      },
-      { status: deleted ? 403 : versionChanged ? 409 : 500 },
+      { error: deleted ? "account_deleted" : "consent_failed" },
+      { status: deleted ? 403 : 500 },
     );
   }
+  const isNew = mutation.isNew;
 
   // OAuth profile/email seed is inside the same RPC transaction. Only the
   // nonessential conversion observation remains post-commit.
-  if (mutation.isNew) {
+  if (isNew) {
     // 방문→가입 전환(분석, best-effort) — 신규 회원 1회. acqSource 있을 때만(분석 off 면 미적재).
     if (body.acqSource) {
       const actorKey = publicWriteActorKey(req.headers, user.id, true);
@@ -577,8 +371,7 @@ export async function POST(req: NextRequest) {
 
   log.info("account.consent_success", {
     userId: user.id,
-    isNew: mutation.isNew,
-    mutationMode: mutation.mode,
+    isNew,
     anonMigration: migration.result,
   });
   return clearCookie(

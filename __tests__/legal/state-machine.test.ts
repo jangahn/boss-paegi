@@ -14,7 +14,6 @@ function source(relative: string): string {
   return readFileSync(new URL(`../../${relative}`, import.meta.url), "utf8");
 }
 
-const strictVersions = source("lib/legal/strict-versions.ts");
 const legalRoute = source("app/api/admin/legal/route.ts");
 const legalEditor = source("components/admin/content/LegalDocEditor.tsx");
 const migration = source(
@@ -26,16 +25,6 @@ test("KST legal effective date flips at the exact UTC 15:00 boundary", () => {
   assert.equal(kstDateAt("2026-07-28T15:00:00.000Z"), "2026-07-29");
   assert.equal(kstDateAt("2026-07-28T23:59:59.999Z"), "2026-07-29");
   assert.throws(() => kstDateAt("not-an-instant"), /invalid_instant/);
-});
-
-test("strict legal auth reads are uncached across an automatic KST-midnight activation", () => {
-  assert.doesNotMatch(strictVersions, /unstable_cache/);
-  assert.doesNotMatch(strictVersions, /revalidate\s*:/);
-  assert.match(strictVersions, /const today = kstDateAt\(\)/);
-  assert.match(strictVersions, /\.lte\("effective_date", today\)/);
-  assert.match(strictVersions, /\.limit\(1\)[\s\S]*\.maybeSingle\(\)/);
-  assert.doesNotMatch(strictVersions, /\.in\("doc_type"/);
-  assert.match(strictVersions, /의도적으로 캐시하지 않는다/);
 });
 
 test("legal RPC result parsers require complete committed identities", () => {
@@ -216,23 +205,13 @@ test("legal two-session race harness is syntactically valid and wired into CI", 
   assert.match(source(".github/workflows/quality.yml"), /qa:db:legal-race/);
 });
 
-test("legal QA fixtures preserve the full-notice and current-authority boundary", () => {
-  const currentAuthorityFixtures = [
-    source("supabase/tests/account_consent_lifecycle.pgtap.sql"),
-    source("supabase/tests/refund_saga.pgtap.sql"),
-    source("scripts/qa/test-consent-delete-races.sh"),
-  ];
-  for (const fixture of currentAuthorityFixtures) {
-    assert.doesNotMatch(
-      fixture,
-      /coalesce\(max\(version\),\s*0\)\s*\+\s*100/,
-    );
-    assert.match(fixture, /'published',[\s\S]*?\b1\b/);
-    assert.match(
-      fixture,
-      /order by l\.effective_date desc, l\.version desc, l\.id desc/,
-    );
-  }
+test("legal QA fixtures preserve the full-notice boundary", () => {
+  // 2026-08-21 버전 무관 동의 모델: consent/refund/races 픽스처는 더 이상
+  // legal_documents 를 시드·조회하지 않는다(현재-권위 픽스처 목록 폐지).
+  const consentFixture = source(
+    "supabase/tests/account_consent_lifecycle.pgtap.sql",
+  );
+  assert.doesNotMatch(consentFixture, /legal_documents/);
 
   const stateMachineFixture = source(
     "supabase/tests/legal_state_machine_idempotency.pgtap.sql",
@@ -242,18 +221,6 @@ test("legal QA fixtures preserve the full-notice and current-authority boundary"
     stateMachineFixture,
     /set future_publish[\s\S]*?date \+ 10/,
   );
-
-  const complianceFixture = source(
-    "supabase/tests/legal_commerce_generation_compliance.pgtap.sql",
-  );
-  const materializeAt = complianceFixture.indexOf(
-    "create temporary table qa_generation_reacceptance as",
-  );
-  const verifyAt = complianceFixture.indexOf(
-    "from qa_generation_reacceptance q",
-  );
-  assert.ok(materializeAt >= 0);
-  assert.ok(verifyAt > materializeAt);
 });
 
 test("legal HTTP error lookup cannot read Object.prototype as a known DB error", () => {

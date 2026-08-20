@@ -110,22 +110,6 @@ test("payment and badge pages render explicit retry UI instead of false-empty st
   assert.doesNotMatch(badges, /setOwned\(new Set\(\)\)/);
 });
 
-test("public legal-version API fails visibly instead of converting an outage to null versions", () => {
-  const route = readFileSync(
-    new URL("../../app/api/legal/versions/route.ts", import.meta.url),
-    "utf8",
-  );
-  const legalIndex = readFileSync(
-    new URL("../../lib/legal/index.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(route, /getCurrentLegalVersionsStrict/);
-  assert.match(route, /legal_versions_unavailable/);
-  assert.match(route, /status: 503/);
-  assert.doesNotMatch(legalIndex, /\.catch\(\(\) => null\)/);
-  assert.doesNotMatch(legalIndex, /getCurrentLegalVersions\s*=/);
-});
-
 test("profile rows reject no-row, identity drift, and truthy type confusion", () => {
   const userId = "11111111-1111-4111-8111-111111111111";
   assert.deepEqual(

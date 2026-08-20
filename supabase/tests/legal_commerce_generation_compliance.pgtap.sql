@@ -1,15 +1,12 @@
--- 008905: immutable commerce display evidence and fal age/flow-down evidence.
+-- 008905: immutable commerce display evidence (생성 자격 동의 스킴은 0106에서 폐기).
 -- 0105: notice copy is validated against active commerce_copy_registry rows
 -- (jsonb equality) instead of pinned function literals and evidence CHECKs.
 
 begin;
-select plan(45);
+select plan(29);
 
 select ok(
   to_regclass('public.commerce_display_evidence') is not null
-  and to_regclass(
-    'public.generation_provider_acceptance_evidence'
-  ) is not null
   and to_regclass(
     'public.checkout_withdrawal_acceptance_evidence'
   ) is not null,
@@ -29,21 +26,6 @@ select ok(
   )
   and has_function_privilege(
     'service_role',
-    'public.record_generation_provider_acceptance(uuid,uuid,text,boolean,boolean,boolean)',
-    'EXECUTE'
-  )
-  and has_function_privilege(
-    'service_role',
-    'public.generation_provider_acceptance_status(uuid)',
-    'EXECUTE'
-  )
-  and has_function_privilege(
-    'service_role',
-    'public.prune_generation_provider_acceptance_evidence(integer)',
-    'EXECUTE'
-  )
-  and has_function_privilege(
-    'service_role',
     'public.create_or_reuse_pending_order(uuid,uuid,text,integer,integer,text,text,text,boolean,text,text,text,uuid,text,uuid,text,text,text,boolean,jsonb)',
     'EXECUTE'
   ),
@@ -58,7 +40,7 @@ select ok(
   )
   and not has_function_privilege(
     'authenticated',
-    'public.record_generation_provider_acceptance(uuid,uuid,text,boolean,boolean,boolean)',
+    'public.record_commerce_display_evidence(text,jsonb)',
     'EXECUTE'
   ),
   'client roles cannot call compliance evidence RPCs'
@@ -68,11 +50,6 @@ select ok(
   not has_table_privilege(
     'service_role',
     'public.commerce_display_evidence',
-    'INSERT,UPDATE,DELETE'
-  )
-  and not has_table_privilege(
-    'service_role',
-    'public.generation_provider_acceptance_evidence',
     'INSERT,UPDATE,DELETE'
   )
   and not has_table_privilege(
@@ -181,335 +158,6 @@ select ok(
        and not tgisinternal
   ),
   'legal documents have an authoritative version >= 2 notice trigger'
-);
-
-select throws_ok(
-  $$
-    select public.record_generation_provider_acceptance(
-      '95000000-0000-4000-8000-000000000001',
-      '95000000-0000-4000-8000-000000000002',
-      'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-      true,
-      false,
-      true
-    )
-  $$,
-  'P0001',
-  'generation_provider_acceptance_required',
-  'all three affirmative facts are mandatory'
-);
-
--- Generation eligibility must be checked against real current legal
--- authority. Bootstrap the notice-exempt initial publications on a fresh DB;
--- any existing later currently-effective version remains authoritative.
-insert into public.legal_documents(
-  doc_type,
-  status,
-  version,
-  effective_date,
-  title,
-  sections
-)
-values
-  (
-    'terms',
-    'published',
-    1,
-    (clock_timestamp() at time zone 'Asia/Seoul')::date,
-    'Generation compliance QA terms',
-    '[{"heading":"Terms","body":"Current terms"}]'::jsonb
-  ),
-  (
-    'privacy',
-    'published',
-    1,
-    (clock_timestamp() at time zone 'Asia/Seoul')::date,
-    'Generation compliance QA privacy',
-    '[{"heading":"Privacy","body":"Current privacy"}]'::jsonb
-  )
-on conflict (doc_type, version) where status = 'published'
-do update
-  set effective_date = excluded.effective_date,
-      title = excluded.title,
-      sections = excluded.sections,
-      updated_at = clock_timestamp();
-
-insert into auth.users(id, email)
-values (
-  '95000000-0000-4000-8000-000000000001',
-  'generation-compliance@test.local'
-);
-insert into public.member_accounts(
-  user_id,
-  email,
-  age_confirmed_at,
-  terms_version,
-  privacy_version
-)
-values (
-  '95000000-0000-4000-8000-000000000001',
-  'generation-compliance@test.local',
-  clock_timestamp(),
-  (
-    select l.version
-      from public.legal_documents l
-     where l.doc_type = 'terms'
-       and l.status = 'published'
-       and l.effective_date <=
-             (clock_timestamp() at time zone 'Asia/Seoul')::date
-     order by l.effective_date desc, l.version desc, l.id desc
-     limit 1
-  ),
-  (
-    select l.version
-      from public.legal_documents l
-     where l.doc_type = 'privacy'
-       and l.status = 'published'
-       and l.effective_date <=
-             (clock_timestamp() at time zone 'Asia/Seoul')::date
-     order by l.effective_date desc, l.version desc, l.id desc
-     limit 1
-  )
-);
-
-create temporary table qa_generation_acceptance as
-select public.record_generation_provider_acceptance(
-  '95000000-0000-4000-8000-000000000001',
-  '95000000-0000-4000-8000-000000000002',
-  'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-  true,
-  true,
-  true
-) as result;
-
-select is(
-  (select result->>'eligible' from qa_generation_acceptance),
-  'true',
-  'eligible acceptance is durably recorded'
-);
-select is(
-  (select result->>'idempotent' from qa_generation_acceptance),
-  'false',
-  'first acceptance reports a new immutable record'
-);
-select is(
-  (
-    select public.record_generation_provider_acceptance(
-      '95000000-0000-4000-8000-000000000001',
-      '95000000-0000-4000-8000-000000000002',
-      'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-      true,
-      true,
-      true
-    )->>'idempotent'
-  ),
-  'true',
-  'response-loss retry converges on the same evidence'
-);
-select is(
-  (
-    select public.generation_provider_acceptance_status(
-      '95000000-0000-4000-8000-000000000001'
-    )->>'eligible'
-  ),
-  'true',
-  'status RPC observes the immutable acceptance'
-);
-select ok(
-  (
-    select e.withdrawal_generation = p.withdrawal_generation
-       and e.service_terms_version = m.terms_version
-       and e.service_privacy_version = m.privacy_version
-      from public.generation_provider_acceptance_evidence e
-      join public.profiles p on p.id = e.user_id
-      join public.member_accounts m on m.user_id = e.user_id
-     where e.user_id = '95000000-0000-4000-8000-000000000001'
-  ),
-  'acceptance pins the current profile lifecycle and legal versions'
-);
-update public.member_accounts
-   set terms_version = null
- where user_id = '95000000-0000-4000-8000-000000000001';
-select is(
-  (
-    select public.generation_provider_acceptance_status(
-      '95000000-0000-4000-8000-000000000001'
-    )->>'eligible'
-  ),
-  'false',
-  'missing or stale current legal consent invalidates provider eligibility'
-);
-update public.member_accounts
-   set terms_version = (
-         select l.version
-           from public.legal_documents l
-          where l.doc_type = 'terms'
-            and l.status = 'published'
-            and l.effective_date <=
-                  (clock_timestamp() at time zone 'Asia/Seoul')::date
-          order by l.effective_date desc, l.version desc, l.id desc
-          limit 1
-       ),
-       privacy_version = (
-         select l.version
-           from public.legal_documents l
-          where l.doc_type = 'privacy'
-            and l.status = 'published'
-            and l.effective_date <=
-                  (clock_timestamp() at time zone 'Asia/Seoul')::date
-          order by l.effective_date desc, l.version desc, l.id desc
-          limit 1
-       )
- where user_id = '95000000-0000-4000-8000-000000000001';
-set local session_replication_role = replica;
-update public.profiles
-   set withdrawal_generation = withdrawal_generation + 1
- where id = '95000000-0000-4000-8000-000000000001';
-set local session_replication_role = origin;
-select is(
-  (
-    select public.generation_provider_acceptance_status(
-      '95000000-0000-4000-8000-000000000001'
-    )->>'eligible'
-  ),
-  'false',
-  'an older withdrawal lifecycle never revives after reactivation'
-);
-create temporary table qa_generation_reacceptance as
-select public.record_generation_provider_acceptance(
-  '95000000-0000-4000-8000-000000000001',
-  '95000000-0000-4000-8000-000000000003',
-  'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-  true,
-  true,
-  true
-) as result;
-select ok(
-  (
-    select q.result->>'idempotent' = 'false'
-       and e.withdrawal_generation = p.withdrawal_generation
-      from qa_generation_reacceptance q
-      join public.generation_provider_acceptance_evidence e
-        on e.id = (q.result->>'evidence_id')::uuid
-      join public.profiles p on p.id = e.user_id
-  ),
-  'a new lifecycle requires and stores a fresh provider acceptance'
-);
-select throws_ok(
-  $$
-    select public.record_generation_provider_acceptance(
-      '95000000-0000-4000-8000-000000000001',
-      '95000000-0000-4000-8000-000000000002',
-      'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-      true,
-      true,
-      true
-    )
-  $$,
-  'P0001',
-  'request_conflict',
-  'an old request id cannot be replayed into a newer lifecycle'
-);
-select throws_ok(
-  $$
-    update public.generation_provider_acceptance_evidence
-       set accepted_at = accepted_at + interval '1 second'
-     where user_id = '95000000-0000-4000-8000-000000000001'
-  $$,
-  'P0001',
-  'generation_provider_acceptance_immutable',
-  'generation acceptance cannot be rewritten'
-);
-select throws_ok(
-  $$
-    delete from public.generation_provider_acceptance_evidence
-     where user_id = '95000000-0000-4000-8000-000000000001'
-  $$,
-  'P0001',
-  'generation_provider_acceptance_immutable',
-  'generation acceptance cannot be deleted'
-);
-select throws_ok(
-  $$select public.prune_generation_provider_acceptance_evidence(101)$$,
-  'P0001',
-  'invalid_limit',
-  'provider acceptance retention worker is bounded'
-);
-
-insert into auth.users(id, email)
-values (
-  '95000000-0000-4000-8000-000000000010',
-  'generation-retention@test.local'
-);
-insert into public.member_accounts(user_id, email)
-values (
-  '95000000-0000-4000-8000-000000000010',
-  'generation-retention@test.local'
-);
-insert into public.generation_provider_acceptance_evidence(
-  id,
-  request_id,
-  user_id,
-  withdrawal_generation,
-  service_terms_version,
-  service_privacy_version,
-  bundle_version,
-  adult_self_attested,
-  fal_terms_accepted,
-  fal_aup_accepted,
-  accepted_at
-)
-values
-  (
-    '95000000-0000-4000-8000-000000000011',
-    '95000000-0000-4000-8000-000000000012',
-    '95000000-0000-4000-8000-000000000010',
-    0,
-    1,
-    1,
-    'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-    true,
-    true,
-    true,
-    clock_timestamp() - interval '5 years 1 minute'
-  ),
-  (
-    '95000000-0000-4000-8000-000000000013',
-    '95000000-0000-4000-8000-000000000014',
-    '95000000-0000-4000-8000-000000000010',
-    1,
-    1,
-    1,
-    'fal-tos-2026-03-03-aup-captured-2026-07-30-v1',
-    true,
-    true,
-    true,
-    clock_timestamp() - interval '5 years' + interval '1 minute'
-  );
-create temporary table qa_provider_prune as
-select public.prune_generation_provider_acceptance_evidence(100) as result;
-select is(
-  (select result->>'processed' from qa_provider_prune),
-  '1',
-  'only provider evidence strictly older than five years is pruned'
-);
-select is(
-  (
-    select count(*)::text
-      from public.generation_provider_acceptance_evidence
-     where id = '95000000-0000-4000-8000-000000000011'
-  ),
-  '0',
-  'expired provider acceptance evidence is removed'
-);
-select is(
-  (
-    select count(*)::text
-      from public.generation_provider_acceptance_evidence
-     where id = '95000000-0000-4000-8000-000000000013'
-  ),
-  '1',
-  'provider evidence inside the five-year minimum remains'
 );
 
 create temporary table qa_commerce_record as

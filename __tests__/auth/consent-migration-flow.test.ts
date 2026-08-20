@@ -129,7 +129,7 @@ test("query stripping discovers an unconsumed flow while an explicit flow bypass
     exact,
   );
   const mutation = consent.indexOf(
-    "const mutation = await runConsentOnboardMutation",
+    "const mutation = await resolveConsentMutation",
     migrate,
   );
 

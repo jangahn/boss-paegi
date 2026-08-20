@@ -581,7 +581,7 @@ activation_state="$(
        and p.display_name = 'Activate QA'
        and p.avatar_url = 'https://example.test/activate.png'
        and m.email = '$activate_real_email'
-       and m.reconsent_required
+       and m.age_confirmed_at is null
        and m.terms_agreed_at is null
        and m.privacy_agreed_at is null
        and u.email = '$activate_real_email'

@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { isMemberOnlyPath, isConsentExempt, isWebhookPath } from "@/lib/routes";
-import { readCurrentLegalVersionsEdge } from "@/lib/legal/edge-versions";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { safeNext } from "@/lib/oauth-metadata";
 import {
@@ -310,7 +309,7 @@ export async function proxy(request: NextRequest) {
     supabase.from("profiles").select("deleted_at").eq("id", user.id).maybeSingle(),
     supabase
       .from("member_accounts")
-      .select("age_confirmed_at, terms_version, privacy_version")
+      .select("age_confirmed_at, terms_agreed_at, privacy_agreed_at")
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
@@ -343,14 +342,7 @@ export async function proxy(request: NextRequest) {
 
   // no-row=정상(신규 OAuth 직후, 아직 member 없음) → member=null → age 필요 → /consent.
   const member = (memRes.data as ConsentMember) ?? null;
-  let curr: { terms: number | null; privacy: number | null };
-  try {
-    curr = await readCurrentLegalVersionsEdge();
-  } catch {
-    curr = { terms: null, privacy: null }; // 버전 조회 실패 → fail-open(stamp 회원 통째 잠금 방지)
-  }
-
-  if (missingConsentItems(member, curr).length > 0) {
+  if (missingConsentItems(member).length > 0) {
     return redirectNoCookie(request, `/consent?next=${encodeURIComponent(consentNext(request))}`);
   }
 
