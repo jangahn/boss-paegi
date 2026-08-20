@@ -68,7 +68,7 @@ select has_function('public', 'derive_refund_request_state', 'derive_refund_requ
 select has_function('public', 'record_payment_cancellation_observation', 'record_payment_cancellation_observation 존재(관측 ingest)');
 select has_function('public', 'mark_order_failed', 'mark_order_failed 존재(pending→failed RPC)');
 select has_function('public', 'mark_order_canceled_unpaid', 'mark_order_canceled_unpaid 존재(무결제 취소 RPC)');
-select has_function('public', 'create_or_update_member_consent', 'create_or_update_member_consent 존재(v2 — signup_bonus 로트)');
+select has_function('public', 'create_or_update_member_consent_with_profile', 'create_or_update_member_consent_with_profile 존재(signup_bonus 로트)');
 select has_function('public', 'create_generation_row', 'create_generation_row 존재(ops 무소비 생성행 RPC)');
 
 -- A.4 ACL / 역할 테스트(§16) — external=service_role EXECUTE 有·anon/authenticated 無 / internal core·helper·trigger=service_role 실행 불가.

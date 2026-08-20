@@ -2,6 +2,93 @@
 -- 동의 모델 단순화(2026-08-21 운영 결정) 2/2 — contract.
 -- 새 앱(8-arg 체인) 배포 완료 후 적용: 구 버전-동의 체인과 버전·재동의 컬럼 제거.
 
+-- 리뷰어 프로비저닝 impl 을 먼저 버전리스 체인으로 옮긴다(구 impl 유일한 내부 호출자).
+CREATE OR REPLACE FUNCTION public.bp_0084_finalize_reviewer_provision_impl(p_job_id uuid, p_lease_token uuid, p_lease_version integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_job public.reviewer_account_jobs%rowtype;
+  v_auth_email text;
+  v_auth_meta jsonb;
+begin
+  select *
+    into v_job
+    from public.reviewer_account_jobs
+   where id = p_job_id
+   for update;
+  if not found
+     or v_job.status <> 'leased'
+     or v_job.action <> 'provision'
+     or v_job.lease_token is distinct from p_lease_token
+     or v_job.lease_version <> p_lease_version then
+    raise exception 'stale_lease' using errcode = 'P0001';
+  end if;
+  if v_job.user_id is null then
+    raise exception 'auth_identity_missing' using errcode = 'P0001';
+  end if;
+
+  select pg_catalog.lower(u.email), u.raw_app_meta_data
+    into v_auth_email, v_auth_meta
+    from auth.users u
+   where u.id = v_job.user_id;
+  if not found
+     or v_auth_email is distinct from v_job.email
+     or coalesce(v_auth_meta->>'reviewer', '') <> 'true'
+     or coalesce(v_auth_meta->>'reviewer_job_id', '') <> v_job.id::text then
+    raise exception 'auth_identity_invalid' using errcode = 'P0001';
+  end if;
+
+  -- 버전 무관 동의(0106): 리뷰어 계정도 timestamp 스탬프만 남긴다.
+  perform public.bp_create_or_update_member_consent_locked(
+    v_job.user_id,
+    0,
+    true,
+    true,
+    true,
+    null,
+    null,
+    null
+  );
+
+  insert into public.reviewer_accounts(
+    user_id,
+    email,
+    active,
+    auth_sync_pending,
+    note,
+    created_by
+  )
+  values (
+    v_job.user_id,
+    v_job.email,
+    true,
+    false,
+    v_job.note,
+    v_job.created_by
+  );
+
+  update public.reviewer_account_jobs
+     set status = 'completed',
+         lease_token = null,
+         leased_until = null,
+         last_error = null,
+         completed_at = pg_catalog.clock_timestamp(),
+         updated_at = pg_catalog.clock_timestamp()
+   where id = v_job.id;
+
+  return pg_catalog.jsonb_build_object(
+    'ok', true,
+    'job_id', v_job.id,
+    'status', 'completed',
+    'user_id', v_job.user_id,
+    'email', v_job.email
+  );
+end;
+$function$;
+
 drop function if exists public.create_or_update_member_consent_with_profile(
   uuid, integer, boolean, boolean, integer, boolean, integer, text, text, text);
 drop function if exists public.create_or_update_member_consent(

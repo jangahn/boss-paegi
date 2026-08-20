@@ -40,8 +40,7 @@ insert into lock_rpc_manifest(signature, lock_mode) values
   ('public.admin_cancel_order(uuid,uuid,boolean,text)', 'object_user'),
   ('public.sweep_expired(integer)', 'many'),
   ('public.admin_soft_delete_account(uuid)', 'user'),
-  ('public.create_or_update_member_consent(uuid,integer,boolean,boolean,integer,boolean,integer)', 'object_user'),
-  ('public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,integer,boolean,integer,text,text,text)', 'object_user'),
+  ('public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,boolean,text,text,text)', 'object_user'),
   ('public.sync_active_member_oauth_profile(uuid,text,text,text)', 'user'),
   ('public.admin_reactivate_account(uuid,uuid,text,text)', 'object_user'),
   ('public.admin_ban_member(uuid,uuid,text)', 'user'),
@@ -70,8 +69,8 @@ select is(
       from lock_rpc_manifest m
      where pg_catalog.to_regprocedure(m.signature) is not null
   ),
-  42,
-  'all 42 external mutation signatures remain present'
+  41,
+  'all 41 external mutation signatures remain present'
 );
 select ok(
   not exists (
@@ -388,8 +387,8 @@ select is(
          'public.' || callee.proname || '('
        ) > 0
   ),
-  3,
-  'isolated implementation call graph has exactly three reviewed edges'
+  2,
+  'isolated implementation call graph has exactly two reviewed edges'
 );
 select ok(
   not exists (
