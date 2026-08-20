@@ -930,7 +930,7 @@ export function OAuthCallbackClient() {
       {!failed && (
         <span
           aria-hidden="true"
-          className="mb-3.5 h-[42px] w-[42px] animate-spin rounded-full border-[3px] border-foreground/15 border-t-foreground [animation-duration:800ms]"
+          className="mb-3.5 h-9 w-9 animate-spin rounded-full border-[3px] border-foreground/15 border-t-foreground [animation-duration:800ms]"
         />
       )}
       <h1 className="text-xl leading-7 font-semibold">
