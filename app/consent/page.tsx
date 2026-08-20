@@ -2,11 +2,8 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  getCurrentLegalDocumentStrict,
-  getCurrentLegalVersionsStrict,
-  type ConsentLegalDocument,
-} from "@/lib/legal/strict-versions";
+import { getCurrentLegal } from "@/lib/legal";
+import type { LegalDocRow } from "@/lib/legal/types";
 import { missingConsentItems, type ConsentMember } from "@/lib/consent";
 import { safeNext } from "@/lib/oauth-metadata";
 import { isOAuthFlowId } from "@/lib/oauth-flow-lease";
@@ -189,13 +186,12 @@ export default async function ConsentPage({
     redirect("/login?error=account_deleted");
   }
 
-  const [memberSettled, legalSettled] = await Promise.allSettled([
+  const [memberSettled] = await Promise.allSettled([
     admin
       .from("member_accounts")
-      .select("age_confirmed_at, terms_version, privacy_version")
+      .select("age_confirmed_at, terms_agreed_at, privacy_agreed_at")
       .eq("user_id", user.id)
       .maybeSingle(),
-    getCurrentLegalVersionsStrict(),
   ]);
   if (memberSettled.status === "rejected") {
     return unavailable("member", memberSettled.reason, user.id);
@@ -211,27 +207,19 @@ export default async function ConsentPage({
       user.id,
     );
   }
-  if (legalSettled.status === "rejected") {
-    return unavailable(
-      "legal_versions",
-      legalSettled.reason,
-      user.id,
-    );
-  }
   const member = (memberRead.data as ConsentMember) ?? null;
-  const curr = legalSettled.value;
-  const items = missingConsentItems(member, curr);
+  const items = missingConsentItems(member);
   if (items.length === 0 && migrationFlow === null) {
     redirect(dest); // 이미 동의 완료(member), 이전 복구도 불필요
   }
 
   // 표시 항목의 약관/방침 전문(sections)을 함께 내려 "보기"를 인라인 모달로(네비게이션 없음).
   const [termsSettled, privacySettled] = await Promise.allSettled([
-    items.includes("terms") && curr.terms !== null
-      ? getCurrentLegalDocumentStrict("terms", curr.terms)
+    items.includes("terms")
+      ? getCurrentLegal("terms")
       : Promise.resolve(null),
-    items.includes("privacy") && curr.privacy !== null
-      ? getCurrentLegalDocumentStrict("privacy", curr.privacy)
+    items.includes("privacy")
+      ? getCurrentLegal("privacy")
       : Promise.resolve(null),
   ]);
   if (termsSettled.status === "rejected") {
@@ -260,7 +248,7 @@ export default async function ConsentPage({
   }
   const termsDoc = termsSettled.value;
   const privacyDoc = privacySettled.value;
-  const toLite = (d: ConsentLegalDocument | null): LegalDocLite | null =>
+  const toLite = (d: LegalDocRow | null): LegalDocLite | null =>
     d
       ? {
           title: d.title,

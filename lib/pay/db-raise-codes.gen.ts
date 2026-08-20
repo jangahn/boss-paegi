@@ -140,6 +140,7 @@ export const DB_RAISE_CODES: ReadonlySet<string> = new Set([
   "generation_not_found",
   "generation_plan_snapshot_conflict",
   "generation_privacy_scrubbed",
+  "generation_provider_acceptance_evidence_not_empty",
   "generation_provider_acceptance_immutable",
   "generation_provider_acceptance_required",
   "generation_provider_member_ineligible",

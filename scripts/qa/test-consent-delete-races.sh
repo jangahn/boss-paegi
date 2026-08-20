@@ -199,7 +199,7 @@ catalog_ok="$(
   db_value "
     select (
       to_regprocedure(
-        'public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,integer,boolean,integer,text,text,text)'
+        'public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,boolean,text,text,text)'
       ) is not null
       and to_regprocedure(
         'public.sync_active_member_oauth_profile(uuid,text,text,text)'
@@ -273,33 +273,6 @@ db_psql -q -c "
              (clock_timestamp() at time zone 'Asia/Seoul')::date
   );
 " >/dev/null
-
-terms_version="$(
-  db_value "
-    select l.version
-      from public.legal_documents l
-     where l.doc_type = 'terms'
-       and l.status = 'published'
-       and l.effective_date <=
-             (clock_timestamp() at time zone 'Asia/Seoul')::date
-     order by l.effective_date desc, l.version desc, l.id desc
-     limit 1;
-  "
-)"
-privacy_version="$(
-  db_value "
-    select l.version
-      from public.legal_documents l
-     where l.doc_type = 'privacy'
-       and l.status = 'published'
-       and l.effective_date <=
-             (clock_timestamp() at time zone 'Asia/Seoul')::date
-     order by l.effective_date desc, l.version desc, l.id desc
-     limit 1;
-  "
-)"
-[[ "$terms_version" =~ ^[1-9][0-9]*$ ]] || fail "invalid terms version"
-[[ "$privacy_version" =~ ^[1-9][0-9]*$ ]] || fail "invalid privacy version"
 
 db_psql -q -c "
   insert into auth.users(id, email) values
@@ -396,9 +369,7 @@ run_owner_then_waiter \
      0,
      true,
      true,
-     $terms_version,
      true,
-     $privacy_version,
      'ConsentFirst',
      'https://avatar.test/consent-first.png',
      'consent-first@test.local'
@@ -414,9 +385,9 @@ consent_first_state="$(
   db_value "
     select (p.deleted_at is not null)::text || '|'
            || (m.email is null)::text || '|'
-           || (m.terms_version is null)::text || '|'
-           || (m.privacy_version is null)::text || '|'
-           || m.reconsent_required::text
+           || (m.terms_agreed_at is null)::text || '|'
+           || (m.privacy_agreed_at is null)::text || '|'
+           || (m.age_confirmed_at is null)::text
       from public.profiles p
       join public.member_accounts m on m.user_id = p.id
      where p.id = '$consent_first_user'::uuid;
@@ -437,9 +408,7 @@ run_owner_then_waiter \
      0,
      true,
      true,
-     $terms_version,
      true,
-     $privacy_version,
      'DeleteFirst',
      'https://avatar.test/delete-first.png',
      'delete-first@test.local'

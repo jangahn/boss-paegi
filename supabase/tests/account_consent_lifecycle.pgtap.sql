@@ -1,12 +1,12 @@
 -- account_consent_lifecycle.pgtap.sql — 0079 atomic consent/OAuth seed lifecycle.
 
 begin;
-select plan(38);
+select plan(35);
 
 select ok(
   has_function_privilege(
     'service_role',
-    'public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,integer,boolean,integer,text,text,text)',
+    'public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,boolean,text,text,text)',
     'EXECUTE'
   ),
   'service role can call atomic consent/profile RPC'
@@ -14,7 +14,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'authenticated',
-    'public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,integer,boolean,integer,text,text,text)',
+    'public.create_or_update_member_consent_with_profile(uuid,integer,boolean,boolean,boolean,text,text,text)',
     'EXECUTE'
   ),
   'browser cannot forge consent/profile RPC'
@@ -37,9 +37,7 @@ select has_trigger(
 create temporary table consent_ctx (
   user_id uuid not null,
   invalid_seed_user_id uuid not null,
-  sync_user_id uuid not null,
-  terms_version int not null,
-  privacy_version int not null
+  sync_user_id uuid not null
 ) on commit drop;
 
 do $fixture$
@@ -47,11 +45,8 @@ declare
   v_user uuid := gen_random_uuid();
   v_invalid uuid := gen_random_uuid();
   v_sync uuid := gen_random_uuid();
-  v_terms int;
-  v_privacy int;
-  v_today date :=
-    (clock_timestamp() at time zone 'Asia/Seoul')::date;
 begin
+  insert into consent_ctx values (v_user, v_invalid, v_sync);
   insert into auth.users(id, email) values
     (v_user, 'consent-new-' || v_user::text || '@test.local'),
     (v_invalid, 'consent-invalid-' || v_invalid::text || '@test.local'),
@@ -64,58 +59,6 @@ begin
          avatar_url = 'https://avatar.test/custom.png'
    where id = v_sync;
 
-  -- This suite tests consent lifecycle, not future legal publication. Bootstrap
-  -- the notice-exempt initial version and then derive the same authoritative
-  -- currently-effective versions that the consent RPC will recheck.
-  insert into public.legal_documents(
-    doc_type,
-    status,
-    version,
-    effective_date,
-    title,
-    sections
-  )
-  values
-    (
-      'terms',
-      'published',
-      1,
-      v_today,
-      'QA terms',
-      '[{"heading":"Terms","body":"Current terms"}]'::jsonb
-    ),
-    (
-      'privacy',
-      'published',
-      1,
-      v_today,
-      'QA privacy',
-      '[{"heading":"Privacy","body":"Current privacy"}]'::jsonb
-    )
-  on conflict (doc_type, version) where status = 'published'
-  do update
-    set effective_date = excluded.effective_date,
-        title = excluded.title,
-        sections = excluded.sections,
-        updated_at = clock_timestamp();
-  select l.version
-    into strict v_terms
-    from public.legal_documents l
-   where l.doc_type = 'terms'
-     and l.status = 'published'
-     and l.effective_date <= v_today
-   order by l.effective_date desc, l.version desc, l.id desc
-   limit 1;
-  select l.version
-    into strict v_privacy
-    from public.legal_documents l
-   where l.doc_type = 'privacy'
-     and l.status = 'published'
-     and l.effective_date <= v_today
-   order by l.effective_date desc, l.version desc, l.id desc
-   limit 1;
-  insert into consent_ctx
-  values (v_user, v_invalid, v_sync, v_terms, v_privacy);
 end;
 $fixture$;
 
@@ -126,9 +69,7 @@ select is(
              7,
              true,
              true,
-             terms_version,
              true,
-             privacy_version,
              'QA User',
              'https://avatar.test/qa.png',
              'verified@test.local'
@@ -170,18 +111,6 @@ select ok(
 );
 select is(
   (
-    select m.terms_version::text || '|' || m.privacy_version::text
-      from public.member_accounts m
-      join consent_ctx c on c.user_id = m.user_id
-  ),
-  (
-    select c.terms_version::text || '|' || c.privacy_version::text
-      from consent_ctx c
-  ),
-  'persisted consent versions equal the currently effective versions'
-);
-select is(
-  (
     select m.email
       from public.member_accounts m
       join consent_ctx c on c.user_id = m.user_id
@@ -205,9 +134,7 @@ select is(
              99,
              true,
              true,
-             terms_version,
              true,
-             privacy_version,
              'QA User',
              'https://avatar.test/qa.png',
              'verified@test.local'
@@ -229,34 +156,8 @@ select is(
 );
 select throws_ok(
   format(
-    'select public.create_or_update_member_consent_with_profile(%L::uuid,0,true,true,%s,true,%s,%L,%L,%L)',
-    (select user_id from consent_ctx),
-    (select terms_version + 1 from consent_ctx),
-    (select privacy_version from consent_ctx),
-    'QA User',
-    'https://avatar.test/qa.png',
-    'verified@test.local'
-  ),
-  'P0001',
-  'legal_version_changed',
-  'server rechecks the exact effective legal version inside the transaction'
-);
-select is(
-  (
-    select m.terms_version
-      from public.member_accounts m
-      join consent_ctx c on c.user_id = m.user_id
-  ),
-  (select terms_version from consent_ctx),
-  'failed stale-version consent leaves the prior stamp unchanged'
-);
-
-select throws_ok(
-  format(
-    'select public.create_or_update_member_consent_with_profile(%L::uuid,11,true,true,%s,true,%s,%L,%L,%L)',
+    'select public.create_or_update_member_consent_with_profile(%L::uuid,11,true,true,true,%L,%L,%L)',
     (select invalid_seed_user_id from consent_ctx),
-    (select terms_version from consent_ctx),
-    (select privacy_version from consent_ctx),
     'name-is-far-too-long',
     'https://avatar.test/qa.png',
     'invalid-seed@test.local'
@@ -346,9 +247,7 @@ select is(
              0,
              true,
              true,
-             terms_version,
              true,
-             privacy_version,
              'OAuth Name',
              'https://avatar.test/oauth.png',
              'sync-reconsent@test.local'
@@ -412,9 +311,7 @@ select is(
              0,
              true,
              true,
-             terms_version,
              true,
-             privacy_version,
              'Reborn2',
              'https://avatar.test/reborn2.png',
              'reborn2@test.local'
@@ -460,30 +357,30 @@ select is(
 );
 select is(
   (
-    select m.terms_version
+    select m.terms_agreed_at
       from public.member_accounts m
       join consent_ctx c on c.user_id = m.user_id
   ),
-  null::int,
+  null::timestamptz,
   'account deletion scrubs terms consent evidence'
 );
 select is(
   (
-    select m.privacy_version
+    select m.privacy_agreed_at
       from public.member_accounts m
       join consent_ctx c on c.user_id = m.user_id
   ),
-  null::int,
+  null::timestamptz,
   'account deletion scrubs privacy consent evidence'
 );
 select is(
   (
-    select m.reconsent_required
+    select m.age_confirmed_at
       from public.member_accounts m
       join consent_ctx c on c.user_id = m.user_id
   ),
-  true,
-  'deleted member is marked for reconsent if later reactivated'
+  null::timestamptz,
+  'account deletion scrubs the age confirmation so re-signup repeats the full flow'
 );
 select throws_ok(
   format(
@@ -499,10 +396,8 @@ select throws_ok(
 );
 select throws_ok(
   format(
-    'select public.create_or_update_member_consent_with_profile(%L::uuid,0,true,true,%s,true,%s,%L,%L,%L)',
+    'select public.create_or_update_member_consent_with_profile(%L::uuid,0,true,true,true,%L,%L,%L)',
     (select user_id from consent_ctx),
-    (select terms_version from consent_ctx),
-    (select privacy_version from consent_ctx),
     'Late Consent',
     'https://avatar.test/late.png',
     'late@test.local'

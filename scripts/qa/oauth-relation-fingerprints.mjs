@@ -32,7 +32,7 @@ export const OAUTH_EXPECTED_RELATION_FINGERPRINTS = Object.freeze({
   "public.legacy_signup_migration_receipts":
     "79de2351f74efa082562bd89b5946cbe97a746274480478d903afe2cc5602f97",
   "public.member_accounts":
-    "127ce552a42de5f5e4bed5ace8d8a3a5d7938e2fa2f871de1aab0c52635df4ab",
+    "4ffacc6a771833371e0a8300b2ffd496e0f7718b610dabb0cd686f76c248d57a",
   "public.oauth_anon_auth_cleanup_jobs":
     "7a0a07264752acdc2745e5465c9f10b3785318345f97b9b19a6873163afbf1d0",
   "public.oauth_auth_session_id_tombstones":

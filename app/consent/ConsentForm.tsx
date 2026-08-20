@@ -100,12 +100,6 @@ export function ConsentForm({
         boolean | number | string
       > = {};
       items.forEach((i) => (payload[i] = true));
-      if (items.includes("terms") && docs.terms) {
-        payload.termsVersion = docs.terms.version;
-      }
-      if (items.includes("privacy") && docs.privacy) {
-        payload.privacyVersion = docs.privacy.version;
-      }
       if (migrationFlow !== null) {
         payload.migrationFlow = migrationFlow;
       }
@@ -182,11 +176,6 @@ export function ConsentForm({
           : null;
       if (error === "account_deleted") {
         window.location.assign("/login?error=account_deleted");
-        navigating = true;
-        return;
-      }
-      if (error === "legal_version_changed") {
-        window.location.reload();
         navigating = true;
         return;
       }

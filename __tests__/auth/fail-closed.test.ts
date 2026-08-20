@@ -5,15 +5,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  displayedLegalVersionsMatch,
   isInvalidSessionReadError,
   prepareAnonMigration,
   resolveAdminAuthorityRead,
   resolveAuthUserRead,
   resolveConsentMutation,
-  resolveCurrentLegalDocumentRead,
   resolveDbRead,
-  resolveLegalVersionsRead,
   resolveRequiredDbRead,
 } from "../../lib/auth-read-policy.ts";
 import { resolveSignupBonusStrict } from "../../lib/signup-bonus.ts";
@@ -21,8 +18,8 @@ import type { ConsentMember } from "../../lib/consent.ts";
 
 const CONSENTED_MEMBER: Exclude<ConsentMember, null> = {
   age_confirmed_at: "2026-07-29T00:00:00.000Z",
-  terms_version: 3,
-  privacy_version: 4,
+  terms_agreed_at: "2026-07-29T00:00:00.000Z",
+  privacy_agreed_at: "2026-07-29T00:00:00.000Z",
 };
 
 test("auth.getUser missing/invalid session만 unauthorized이고 dependency 오류는 unavailable이다", () => {
@@ -126,41 +123,6 @@ test("signup bonus config throw는 회원 INSERT 전에 fail-closed한다", asyn
   );
 });
 
-test("표시 약관 버전은 publish/rollback 어느 방향의 TOCTOU도 exact-match로 차단한다", () => {
-  assert.equal(
-    displayedLegalVersionsMatch(
-      ["age", "terms", "privacy"],
-      { terms: 8, privacy: 4 },
-      { terms: 8, privacy: 4 },
-    ),
-    true,
-  );
-  assert.equal(
-    displayedLegalVersionsMatch(
-      ["terms"],
-      { terms: 9, privacy: 4 },
-      { terms: 8 },
-    ),
-    false,
-  );
-  assert.equal(
-    displayedLegalVersionsMatch(
-      ["privacy"],
-      { terms: 8, privacy: 3 },
-      { privacy: 4 },
-    ),
-    false,
-  );
-  assert.equal(
-    displayedLegalVersionsMatch(
-      ["terms"],
-      { terms: 8, privacy: 4 },
-      {},
-    ),
-    false,
-  );
-});
-
 test("successful no-row와 resolved { error }를 구분한다", () => {
   const noRow = resolveDbRead("profile", { data: null, error: null });
   assert.deepEqual(noRow, { ok: true, data: null });
@@ -226,143 +188,6 @@ test("admin authority는 exact boolean false만 비관리자이고 오류·no-ro
     assert.equal(resolved.ok, false);
     if (!resolved.ok) assert.equal(resolved.source, "member");
   }
-});
-
-test("legal read { error }를 발행본 없음(null versions)으로 강등하지 않는다", () => {
-  const injected = new Error("injected legal read failure");
-  const failed = resolveLegalVersionsRead({
-    data: null,
-    error: injected,
-  });
-  assert.equal(failed.ok, false);
-  if (!failed.ok) {
-    assert.equal(failed.source, "legal");
-    assert.equal(failed.error, injected);
-  }
-});
-
-test("legal read 성공+빈 결과만 발행본 없음으로 취급한다", () => {
-  assert.deepEqual(
-    resolveLegalVersionsRead({ data: [], error: null }),
-    { ok: true, data: { terms: null, privacy: null } },
-  );
-});
-
-test("legal read 성공 응답의 null data는 빈 목록이 아니라 손상 응답이다", () => {
-  const malformed = resolveLegalVersionsRead({ data: null, error: null });
-  assert.equal(malformed.ok, false);
-  if (!malformed.ok) {
-    assert.match(
-      String((malformed.error as Error).message),
-      /invalid_legal_versions_response/,
-    );
-  }
-});
-
-test("edge legal gate reads each document independently and validates shape", () => {
-  const edge = readFileSync(
-    new URL("../../lib/legal/edge-versions.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(edge, /\(\["terms", "privacy"\] as const\)\.map/);
-  assert.match(edge, /\.eq\("doc_type", docType\)/);
-  assert.match(edge, /\.limit\(1\)/);
-  assert.match(edge, /\.maybeSingle\(\)/);
-  assert.match(edge, /Number\.isSafeInteger/);
-  assert.doesNotMatch(edge, /\(data as[\s\S]*?\?\? \[\]/);
-});
-
-test("정렬된 legal rows에서 문서별 첫 버전을 선택하고 손상 버전은 차단한다", () => {
-  assert.deepEqual(
-    resolveLegalVersionsRead({
-      data: [
-        { doc_type: "terms", version: 7 },
-        { doc_type: "privacy", version: 5 },
-        { doc_type: "terms", version: 6 },
-      ],
-      error: null,
-    }),
-    { ok: true, data: { terms: 7, privacy: 5 } },
-  );
-
-  const corrupt = resolveLegalVersionsRead({
-    data: [{ doc_type: "terms", version: Number.NaN }],
-    error: null,
-  });
-  assert.equal(corrupt.ok, false);
-  if (!corrupt.ok) {
-    assert.match(String((corrupt.error as Error).message), /invalid_legal_version/);
-  }
-
-  const wrongDocument = resolveLegalVersionsRead({
-    data: [{ doc_type: "other", version: 1 }],
-    error: null,
-  });
-  assert.equal(wrongDocument.ok, false);
-  if (!wrongDocument.ok) {
-    assert.match(
-      String((wrongDocument.error as Error).message),
-      /invalid_legal_version_document_type/,
-    );
-  }
-});
-
-const VALID_TERMS_DOCUMENT = {
-  doc_type: "terms",
-  status: "published",
-  version: 7,
-  effective_date: "2026-07-29",
-  title: "이용약관",
-  sections: [{ heading: "목적", body: "서비스 이용 조건입니다." }],
-};
-
-test("동의 표시 전문의 resolved { error }는 유효한 data가 함께 있어도 fail-closed다", () => {
-  const injected = new Error("injected legal document read failure");
-  const failed = resolveCurrentLegalDocumentRead("terms", 7, {
-    data: VALID_TERMS_DOCUMENT,
-    error: injected,
-  });
-  assert.equal(failed.ok, false);
-  if (!failed.ok) {
-    assert.equal(failed.source, "legal");
-    assert.equal(failed.error, injected);
-  }
-});
-
-test("동의 표시 전문의 no-row·버전 경합·손상 sections를 재시도 대상으로 차단한다", () => {
-  const missing = resolveCurrentLegalDocumentRead("terms", 7, {
-    data: null,
-    error: null,
-  });
-  assert.equal(missing.ok, false);
-
-  const changed = resolveCurrentLegalDocumentRead("terms", 6, {
-    data: VALID_TERMS_DOCUMENT,
-    error: null,
-  });
-  assert.equal(changed.ok, false);
-  if (!changed.ok) {
-    assert.match(
-      String((changed.error as Error).message),
-      /legal_document_missing_changed_or_invalid/,
-    );
-  }
-
-  const corrupt = resolveCurrentLegalDocumentRead("terms", 7, {
-    data: { ...VALID_TERMS_DOCUMENT, sections: [] },
-    error: null,
-  });
-  assert.equal(corrupt.ok, false);
-});
-
-test("현재 버전과 일치하는 유효한 동의 표시 전문만 통과한다", () => {
-  assert.deepEqual(
-    resolveCurrentLegalDocumentRead("terms", 7, {
-      data: VALID_TERMS_DOCUMENT,
-      error: null,
-    }),
-    { ok: true, data: VALID_TERMS_DOCUMENT },
-  );
 });
 
 test("신규 후보 migration 실패는 member INSERT 진행을 막고 다음 POST에서 재시도된다", async () => {
@@ -480,7 +305,7 @@ test("consent route는 mutation 검증 실패에서 MIGRATE cookie를 지우지 
     new URL("../../app/api/account/consent/route.ts", import.meta.url),
     "utf8",
   );
-  const resolution = source.indexOf("await runConsentOnboardMutation");
+  const resolution = source.indexOf("await resolveConsentMutation");
   const failureGuard = source.indexOf("if (!mutation.ok)", resolution);
   const finalClear = source.lastIndexOf(
     "return clearCookie(",

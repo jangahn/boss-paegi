@@ -2024,7 +2024,8 @@ select ok(
     select p.deleted_at is null
        and m.email =
          'restore-' || c.reactivate_id::text || '@test.local'
-       and m.reconsent_required
+       and m.terms_agreed_at is null
+       and m.age_confirmed_at is null
        and not coalesce(u.raw_app_meta_data, '{}'::jsonb)
                  ? 'bp_reactivation_fence'
       from admin_mutation_ctx c
@@ -2214,7 +2215,8 @@ select ok(
     select p.deleted_at is null
        and p.withdrawal_generation = x.expected_generation
        and m.email = x.resolved_email
-       and m.reconsent_required
+       and m.terms_agreed_at is null
+       and m.age_confirmed_at is null
        and u.email = x.resolved_email
        and u.raw_app_meta_data->>'keep' = 'preserved'
        and not coalesce(u.raw_app_meta_data, '{}'::jsonb)

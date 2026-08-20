@@ -1,8 +1,4 @@
-import type {
-  ConsentItem,
-  ConsentMember,
-  LegalVersions,
-} from "@/lib/consent";
+import type { ConsentMember } from "@/lib/consent";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 
 /**
@@ -143,122 +139,7 @@ export function resolveAdminAuthorityRead(
   return { ok: true, isAdmin: read.data.is_admin };
 }
 
-export type LegalVersionRow = {
-  doc_type: string;
-  version: number;
-};
 
-export type StrictLegalVersions =
-  | { ok: true; data: LegalVersions }
-  | { ok: false; source: "legal"; error: unknown };
-
-/**
- * effective_date/version 내림차순으로 읽은 발행본에서 문서별 첫 행을 현재 버전으로 투영한다.
- * 성공+빈 결과는 "발행본 없음"이라 null 버전이고, `{ error }`/손상 버전은 fail-closed다.
- */
-export function resolveLegalVersionsRead(
-  result: DbReadResult<LegalVersionRow[]>,
-): StrictLegalVersions {
-  const read = resolveDbRead("legal", result);
-  if (!read.ok) {
-    return { ok: false, source: "legal", error: read.error };
-  }
-  if (!Array.isArray(read.data)) {
-    return {
-      ok: false,
-      source: "legal",
-      error: new Error("invalid_legal_versions_response"),
-    };
-  }
-
-  let terms: number | null = null;
-  let privacy: number | null = null;
-  for (const row of read.data) {
-    if (
-      typeof row !== "object" ||
-      row === null ||
-      (row.doc_type !== "terms" && row.doc_type !== "privacy")
-    ) {
-      return {
-        ok: false,
-        source: "legal",
-        error: new Error("invalid_legal_version_document_type"),
-      };
-    }
-    if (!Number.isSafeInteger(row.version) || row.version <= 0) {
-      return {
-        ok: false,
-        source: "legal",
-        error: new Error("invalid_legal_version"),
-      };
-    }
-    if (row.doc_type === "terms" && terms === null) terms = row.version;
-    if (row.doc_type === "privacy" && privacy === null) privacy = row.version;
-  }
-  return { ok: true, data: { terms, privacy } };
-}
-
-export type ConsentLegalDocumentShape = {
-  doc_type: string;
-  status: string;
-  version: number;
-  effective_date: string | null;
-  title: string;
-  sections: unknown;
-};
-
-function validLegalSections(value: unknown): boolean {
-  return (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    value.length <= 50 &&
-    value.every(
-      (section) =>
-        typeof section === "object" &&
-        section !== null &&
-        typeof (section as { heading?: unknown }).heading === "string" &&
-        (section as { heading: string }).heading.trim().length > 0 &&
-        typeof (section as { body?: unknown }).body === "string" &&
-        (section as { body: string }).body.trim().length > 0,
-    )
-  );
-}
-
-/**
- * 동의 UI에 표시할 전문은 현재 버전 조회와 같은 doc/version이어야 한다.
- * 성공한 no-row, publish 경합으로 인한 버전 불일치, 손상된 표시 데이터도 읽지 않은 채 동의하는
- * 상태가 되지 않도록 모두 legal read 실패로 승격한다.
- */
-export function resolveCurrentLegalDocumentRead<
-  T extends ConsentLegalDocumentShape,
->(
-  docType: "terms" | "privacy",
-  expectedVersion: number,
-  result: DbReadResult<T>,
-): StrictRequiredRead<T> {
-  const read = resolveRequiredDbRead("legal", result);
-  if (!read.ok) return read;
-  const doc = read.data;
-  if (
-    !Number.isSafeInteger(expectedVersion) ||
-    expectedVersion <= 0 ||
-    doc.doc_type !== docType ||
-    doc.status !== "published" ||
-    doc.version !== expectedVersion ||
-    typeof doc.effective_date !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(doc.effective_date) ||
-    typeof doc.title !== "string" ||
-    doc.title.trim().length === 0 ||
-    !validLegalSections(doc.sections)
-  ) {
-    return {
-      ok: false,
-      source: "legal",
-      error: new Error("legal_document_missing_changed_or_invalid"),
-    };
-  }
-  return { ok: true, data: doc };
-}
 
 export type AnonMigrationResult = "migrated" | "skipped" | "failed";
 
@@ -322,20 +203,3 @@ export async function resolveConsentMutation(
   }
 }
 
-/** Required legal stamps must be exactly the documents rendered to the user. */
-export function displayedLegalVersionsMatch(
-  required: readonly ConsentItem[],
-  current: LegalVersions,
-  displayed: { terms?: unknown; privacy?: unknown },
-): boolean {
-  for (const item of ["terms", "privacy"] as const) {
-    if (
-      required.includes(item) &&
-      (!Number.isSafeInteger(displayed[item]) ||
-        displayed[item] !== current[item])
-    ) {
-      return false;
-    }
-  }
-  return true;
-}

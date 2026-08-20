@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractOAuthProfile, safeNext } from "@/lib/oauth-metadata";
 import { syncOAuthProfile } from "@/lib/account-onboard";
-import { getCurrentLegalVersionsStrict } from "@/lib/legal/strict-versions";
 import {
   missingConsentItems,
   type ConsentMember,
@@ -403,15 +402,12 @@ export async function POST(request: NextRequest) {
         admin
           .from("member_accounts")
           .select(
-            "age_confirmed_at, terms_version, privacy_version, email",
+            "age_confirmed_at, terms_agreed_at, privacy_agreed_at, email",
           )
           .eq("user_id", user.id)
           .abortSignal(routeDeadline)
           .maybeSingle(),
       ),
-    );
-    const legalPending = settleRead(
-      getCurrentLegalVersionsStrict(routeDeadline),
     );
 
     let profileResult;
@@ -466,22 +462,13 @@ export async function POST(request: NextRequest) {
         if (!memberRead.ok) {
           readRetry(memberRead.source, memberRead.error);
         } else {
-          let currentLegal = null;
-          {
-            const settled = await legalPending;
-            if (settled.ok) {
-              currentLegal = settled.value;
-            } else {
-              readRetry("legal", settled.error);
-            }
-          }
           const memberRow = memberRead.data as {
             age_confirmed_at: string | null;
-            terms_version: number | null;
-            privacy_version: number | null;
+            terms_agreed_at: string | null;
+            privacy_agreed_at: string | null;
             email: string | null;
           } | null;
-          if (currentLegal) {
+          if (!dependencyFailed) {
             if (memberRow && profile.email) {
               try {
                 await syncOAuthProfile(
@@ -498,13 +485,13 @@ export async function POST(request: NextRequest) {
               ? {
                   age_confirmed_at:
                     memberRow.age_confirmed_at,
-                  terms_version: memberRow.terms_version,
-                  privacy_version: memberRow.privacy_version,
+                  terms_agreed_at: memberRow.terms_agreed_at,
+                  privacy_agreed_at: memberRow.privacy_agreed_at,
                 }
               : null;
             if (
               !dependencyFailed &&
-              missingConsentItems(member, currentLegal).length > 0
+              missingConsentItems(member).length > 0
             ) {
               const consentDestination =
                 `/consent?next=${encodeURIComponent(input.next)}`;
