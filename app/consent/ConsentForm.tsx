@@ -27,7 +27,7 @@ export type LegalDocLite = {
 };
 
 const ITEM_LABEL: Record<ConsentItem, string> = {
-  age: "본인은 만 14세 이상입니다. (만 14세 미만은 이용할 수 없습니다.)",
+  age: "본인은 만 19세 이상입니다. (만 19세 미만은 이용할 수 없습니다.)",
   terms: "이용약관에 동의합니다.",
   privacy:
     "개인정보처리방침 및 국외 이전(미국·싱가포르 등 클라우드/AI 사업자)에 동의합니다.",

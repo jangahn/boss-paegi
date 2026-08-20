@@ -20,7 +20,7 @@ export type MemberRow = {
   user_id: string;
   gen_credits: number;
   member_since: string;
-  /** 만14세 이상 1회 확인 시각(0030). null=미확인. */
+  /** 만 19세 이상 1회 확인 시각(2026-08-21 연령 상향 전엔 만 14세 기준). null=미확인. */
   age_confirmed_at: string | null;
   /** 동의 시점 약관/방침 발행본 버전(0031). null=미동의 또는 발행본 없을 때 동의. */
   terms_version: number | null;

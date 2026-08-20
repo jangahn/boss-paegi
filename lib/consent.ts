@@ -1,4 +1,4 @@
-// 계정 동의(14세+약관+방침) 상태 판정의 **단일 소스**(server·client 공용 — server-only 아님).
+// 계정 동의(만 19세+약관+방침) 상태 판정의 **단일 소스**(server·client 공용 — server-only 아님).
 // requireMember(서버 게이트)·OAuth 콜백·getMyProfile(클라)·/consent 페이지·/api/account/consent 가
 // 전부 이 함수만 사용한다(중복 구현 금지). 이미지사용 동의(ConsentDialog)는 별개 트랙으로 여기 없음.
 

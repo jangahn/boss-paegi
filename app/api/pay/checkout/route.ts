@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   }
   if (!gate.ok) return memberGateResponse(gate);
   const { user } = gate;
-  // 14세/약관/방침 동의는 로그인 직후 통합 게이트(requireMember 의 consent_required)에서 보장 — 여기 backstop 없음.
+  // 연령(만 19세)/약관/방침 동의는 로그인 직후 통합 게이트(requireMember 의 consent_required)에서 보장 — 여기 backstop 없음.
 
   // 인메모리 고정창 rate-limit — 결제 요청 난사 완화(per-instance 한계는 lib/rate-limit.ts 주석).
   if (!rateLimit(`pay-checkout:${user.id}`, 10, 60_000)) {
