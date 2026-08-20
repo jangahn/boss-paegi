@@ -427,6 +427,16 @@ test("reconcile exposes unresolved work, refund retry states, faults, and full b
     source,
     /const retryPending = unresolved\.length \+ sweep\.retryPending/,
   );
+  // 24h 시효 내 non-terminal 감시 상태는 retryPending 과 분리 — 합쳐지면
+  // 스케줄러 응답이 장시간 연속 429 가 되어 cron-job.org 가 잡을 자동
+  // 비활성화한다(2026-08-19 실사고). 관측(stale 경고)에는 포함, 제어(코드)에는 불포함.
+  assert.match(source, /const watching: string\[\] = \[\]/);
+  assert.match(source, /watching\.push\(row\.order_uuid\)/);
+  assert.match(source, /watching: watching\.length,/);
+  assert.doesNotMatch(
+    source,
+    /retryPending = unresolved\.length \+ watching/,
+  );
   assert.match(
     source,
     /boundedBatchMayHaveMore\(rows\.length, BATCH\)[\s\S]*?sweep\.boundedBacklogs/,

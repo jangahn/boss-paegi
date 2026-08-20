@@ -917,6 +917,11 @@ v0.86 (2026-08-19, /credits 고지 문구 정비 — 사용자 결정 3건; 마�
 v0.88 (2026-08-19, /credits 상단 안내문 삭제; 마이그레이션 없음):
 - "캐릭터 1명을 만들 때 생성권 1개가 쓰여요…" summary 문구 삭제(사용자 결정 — 상품명·가격표에서 자명, 공간만 차지). display evidence `credits-offer-2026-08-19-v3` bump, 소스핀은 summary 렌더 금지로 반전.
 
+v0.96 (2026-08-20, reconcile 감시 상태와 스케줄러 응답 코드 분리 — cron 자동 비활성 자멸 구조 수정; 마이그레이션 없음):
+- **사고**: 실사용자의 결제창 이탈 pending 1건(2h 경과·24h 시효 내·포트원 READY)이 존재하는 동안 reconcile 이 매 사이클 429(`retryPending>0` ops 계약)를 반환 → cron-job.org 가 26연속 실패로 **잡 자동 비활성화**(감시·24h 시효 종단까지 전부 정지). 재호출이 진전시키지 못하는 "시간이 해소하는 감시 상태"를 재시도 큐로 취급한 구조 충돌 — 과거 7/31 reconcile 3주 사망도 동일 기전이었을 개연성(당시 stale 646건 시절 = 상시 429).
+- **수정**: 24h 미만 non-terminal 보존 건을 `watching`(신규 카운터)으로 분리 — **관측(`pay.stale_payment_request` 경고·Sentry 알림)에는 포함, 응답 코드에는 불포함**(감시만 있으면 200). 진짜 재시도 가치(조회 실패=503·환불 sweep 재시도=429)와 시효 종단은 불변. ops 계약 테스트에 분리 회귀 방지 핀 추가.
+- 운영: cron-job.org 잡 재활성(API) + 수동 200 실측.
+
 v0.95 (2026-08-20, 이전받은 doll 의 storage 정리 poison-job 수정; 마이그레이션 없음):
 - **원인 확정(v0.94 의 원문 로깅이 즉시 회수)**: `storage_cleanup.claim_fail` = `invalid storage cleanup target correlation`(objectCleanup) — 익명 계정에서 생성 후 가입 이전(flow-scoped migration)된 doll 은 소유권만 바뀌고 storage 폴더는 원 uuid 로 불변인데, claim 검증이 "폴더=현재 user_id" 를 강제해 **이전받은 doll 을 삭제하면 정리 job 이 영구 거부**(매시 cron 마다 claim_fail — "배포 경계 일시" 초기 판정은 오판: cron 이 60분 주기라 17:00/18:00 정각 재발이 그 증거).
 - 수정: doll 경로 상관을 `<uuid 폴더>/<subject_id>.png` 로 — 폴더는 임의 uuid 허용, **파일명=subject 상관 유지**(어떤 job 도 자기 대상 파일만 삭제 — 안전성 불변). 기존 poison 3행은 배포 후 다음 사이클에 자연 정리.
