@@ -6043,10 +6043,10 @@ begin
     );
   end if;
 
+  -- 익명 소스 프로필은 서비스 생성 랜덤 닉네임뿐(PII 없음) — 재사용 차단(deleted_at)만
+  -- 하고 표기·아바타는 보존한다(2026-08-21 — 랭킹 '탈퇴한 사용자' 오표기 방지).
   update public.profiles
-     set deleted_at = v_now,
-         display_name = '탈퇴한 사용자',
-         avatar_url = null
+     set deleted_at = v_now
    where id = v_flow.source_user_id
      and deleted_at is null;
   if not exists (
@@ -6054,8 +6054,6 @@ begin
       from public.profiles as source_profile
      where source_profile.id = v_flow.source_user_id
        and source_profile.deleted_at is not null
-       and source_profile.display_name = '탈퇴한 사용자'
-       and source_profile.avatar_url is null
   ) then
     raise exception 'oauth_flow_quarantine_profile_failed'
       using errcode = 'P0001';
@@ -6323,10 +6321,10 @@ begin
     );
   end if;
 
+  -- 익명 소스 프로필은 서비스 생성 랜덤 닉네임뿐(PII 없음) — 재사용 차단(deleted_at)만
+  -- 하고 표기·아바타는 보존한다(2026-08-21 — 랭킹 '탈퇴한 사용자' 오표기 방지).
   update public.profiles
-     set deleted_at = v_now,
-         display_name = '탈퇴한 사용자',
-         avatar_url = null
+     set deleted_at = v_now
    where id = v_flow.source_user_id
      and deleted_at is null;
   if not exists (
@@ -6334,8 +6332,6 @@ begin
       from public.profiles as source_profile
      where source_profile.id = v_flow.source_user_id
        and source_profile.deleted_at is not null
-       and source_profile.display_name = '탈퇴한 사용자'
-       and source_profile.avatar_url is null
   ) then
     update public.oauth_anon_auth_cleanup_jobs
        set status = 'blocked',
@@ -6580,10 +6576,7 @@ begin
    where id = p_new
    for update;
   if v_source_profile.id is null
-     or v_source_profile.deleted_at is null
-     or v_source_profile.display_name <>
-       '탈퇴한 사용자'
-     or v_source_profile.avatar_url is not null then
+     or v_source_profile.deleted_at is null then
     raise exception 'quarantined_anon_reassignment_source_profile_invalid'
       using errcode = 'P0001';
   end if;
@@ -7062,13 +7055,12 @@ begin
     'target_already_member',
     'target_already_claimed'
   ) then
-    -- Transfer is terminally inapplicable, but the anonymous source still
-    -- contains retained personal data. Hide it now and keep the correlation
-    -- through the same recovery/scrub deadline instead of pretending cleanup.
+    -- Transfer is terminally inapplicable. Hide the anonymous source now and
+    -- keep the correlation through the same recovery/scrub deadline. The
+    -- profile only carries a service-generated random nickname (no PII), so
+    -- keep the display fields (2026-08-21 — 랭킹 '탈퇴한 사용자' 오표기 방지).
     update public.profiles
-       set deleted_at = v_now,
-           display_name = '탈퇴한 사용자',
-           avatar_url = null
+       set deleted_at = v_now
      where id = v_row.source_user_id
        and deleted_at is null;
     if not exists (
@@ -7076,8 +7068,6 @@ begin
         from public.profiles as source_profile
        where source_profile.id = v_row.source_user_id
          and source_profile.deleted_at is not null
-         and source_profile.display_name = '탈퇴한 사용자'
-         and source_profile.avatar_url is null
     ) then
       raise exception 'oauth_flow_quarantine_profile_failed'
         using errcode = 'P0001';
