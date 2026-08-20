@@ -4,10 +4,8 @@ import test from "node:test";
 import {
   EXTERNAL_COMPLAINT_MANUAL_BOUNDARY,
   COMMERCE_DISPLAY_RETENTION_LIMIT,
-  GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
   PRIVACY_RETENTION_LIMIT,
   parseCommerceDisplayRetentionResult,
-  parseGenerationProviderAcceptanceRetentionResult,
   parseOAuthAnonPrivacyStatus,
   parsePrivacyRetentionResult,
   oauthAnonPrivacyHasFailure,
@@ -170,35 +168,6 @@ test("commerce display evidence prune result is exact and bounded", () => {
   }
 });
 
-test("generation provider acceptance prune result is exact and bounded", () => {
-  assert.deepEqual(
-    parseGenerationProviderAcceptanceRetentionResult({
-      ok: true,
-      processed: 100,
-      has_more: true,
-    }),
-    { processed: 100, hasMore: true },
-  );
-  for (const malformed of [
-    null,
-    [],
-    { ok: true, processed: 0, has_more: false, extra: true },
-    { ok: false, processed: 0, has_more: false },
-    {
-      ok: true,
-      processed:
-        GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT + 1,
-      has_more: false,
-    },
-    { ok: true, processed: 0, has_more: 0 },
-  ]) {
-    assert.equal(
-      parseGenerationProviderAcceptanceRetentionResult(malformed),
-      null,
-    );
-  }
-});
-
 test("OAuth anonymous privacy status is exact and never hides terminal cleanup exhaustion", () => {
   const zero = {
     openFuture: 0,
@@ -256,12 +225,6 @@ test("ops route authenticates before RPC and never turns backlog into 2xx", () =
     route.indexOf('.rpc("maintain_privacy_retention"') <
       route.indexOf('.rpc("prune_commerce_display_evidence"'),
   );
-  assert.ok(
-    route.indexOf('.rpc("maintain_privacy_retention"') <
-      route.indexOf(
-        '.rpc("prune_generation_provider_acceptance_evidence"',
-      ),
-  );
   assert.match(
     route,
     /oauthAnonPrivacyHasFailure\(oauthAnonPrivacy\)[\s\S]*?\? 503[\s\S]*?: retryPending[\s\S]*?\? 429[\s\S]*?: 200/u,
@@ -270,7 +233,6 @@ test("ops route authenticates before RPC and never turns backlog into 2xx", () =
   assert.match(route, /policyReady: result\.legalBlockers\.length === 0/);
   assert.match(route, /maintenance_time_budget/);
   assert.match(route, /commerceDisplayEvidence\.hasMore/);
-  assert.match(route, /generationProviderAcceptanceEvidence\.hasMore/);
   assert.match(route, /\.rpc\("oauth_anon_privacy_status"\)/);
 });
 

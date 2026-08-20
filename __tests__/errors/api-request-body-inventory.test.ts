@@ -48,9 +48,8 @@ function routeFiles(directory: string): string[] {
 
 test("every API route consumes request bodies through an explicit bounded reader", () => {
   const files = routeFiles(apiRoot);
-  assert.equal(files.length, 73, "the complete API route inventory changed");
+  assert.equal(files.length, 72, "the complete API route inventory changed");
   for (const addedWebhook of [
-    "/account/generation-provider-acceptance/route.ts",
     "/fal/face-webhook/route.ts",
     "/fal/pick-webhook/route.ts",
     "/ops/privacy-maintain/route.ts",

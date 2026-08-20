@@ -84,7 +84,6 @@ const EXPECTED_NON_API_ROUTE_HANDLERS = [
 const EXPECTED_APIS = [
   "/api/account/consent",
   "/api/account/delete",
-  "/api/account/generation-provider-acceptance",
   "/api/account/onboard",
   "/api/account/reconsent",
   "/api/account/refundable-credits",
@@ -236,7 +235,7 @@ test("every page and API route is enrolled in the exact app surface manifest", (
     .sort();
 
   assert.equal(pages.length, 59, "page count changed; update the exact manifest");
-  assert.equal(apis.length, 73, "API count changed; update the exact manifest");
+  assert.equal(apis.length, 72, "API count changed; update the exact manifest");
   assert.equal(
     nonApiRouteHandlers.length,
     3,

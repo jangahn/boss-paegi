@@ -10,9 +10,7 @@ import {
 import {
   PRIVACY_RETENTION_LIMIT,
   COMMERCE_DISPLAY_RETENTION_LIMIT,
-  GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
   parseCommerceDisplayRetentionResult,
-  parseGenerationProviderAcceptanceRetentionResult,
   parseOAuthAnonPrivacyStatus,
   oauthAnonPrivacyHasFailure,
   oauthAnonPrivacyNeedsRetry,
@@ -66,24 +64,14 @@ export async function POST(req: NextRequest) {
           PRIVACY_RETENTION_LIMIT,
         );
         if (!result) throw new Error("privacy_retention_invalid_result");
-        const [commercePrune, providerAcceptancePrune] =
-          await Promise.all([
-            admin
-              .rpc("prune_commerce_display_evidence", {
-                p_limit: COMMERCE_DISPLAY_RETENTION_LIMIT,
-              })
-              .abortSignal(deadline.signal),
-            admin
-              .rpc("prune_generation_provider_acceptance_evidence", {
-                p_limit:
-                  GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
-              })
-              .abortSignal(deadline.signal),
-          ]);
         const {
           data: commerceData,
           error: commerceError,
-        } = commercePrune;
+        } = await admin
+          .rpc("prune_commerce_display_evidence", {
+            p_limit: COMMERCE_DISPLAY_RETENTION_LIMIT,
+          })
+          .abortSignal(deadline.signal);
         if (commerceError) throw commerceError;
         const commerceDisplayEvidence =
           parseCommerceDisplayRetentionResult(
@@ -92,19 +80,6 @@ export async function POST(req: NextRequest) {
           );
         if (!commerceDisplayEvidence) {
           throw new Error("commerce_display_retention_invalid_result");
-        }
-        if (providerAcceptancePrune.error) {
-          throw providerAcceptancePrune.error;
-        }
-        const generationProviderAcceptanceEvidence =
-          parseGenerationProviderAcceptanceRetentionResult(
-            providerAcceptancePrune.data,
-            GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
-          );
-        if (!generationProviderAcceptanceEvidence) {
-          throw new Error(
-            "generation_provider_acceptance_retention_invalid_result",
-          );
         }
 
         const {
@@ -132,7 +107,6 @@ export async function POST(req: NextRequest) {
             PRIVACY_RETENTION_LIMIT,
           ) ||
           commerceDisplayEvidence.hasMore ||
-          generationProviderAcceptanceEvidence.hasMore ||
           oauthAnonPrivacyNeedsRetry(oauthAnonPrivacy);
         const status =
           !result.ok ||
@@ -148,7 +122,6 @@ export async function POST(req: NextRequest) {
             policyReady: result.legalBlockers.length === 0,
             retryPending,
             commerceDisplayEvidence,
-            generationProviderAcceptanceEvidence,
             oauthAnonPrivacy,
           },
           opsMaintenanceResponseInit(status),

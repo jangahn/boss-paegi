@@ -30,7 +30,6 @@ const CLIENT_MUTATION_SURFACES: readonly Surface[] = [
   { method: "POST", endpoint: "/api/auth/signout", source: "lib/auth-oauth.ts", helper: "runClientMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/account/consent", source: "app/consent/ConsentForm.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/account/delete", source: "app/account/page.tsx", helper: "runClientMutation", strategy: "exact_replay" },
-  { method: "POST", endpoint: "/api/account/generation-provider-acceptance", source: "components/generate/GenerationProviderAcceptanceGate.tsx", helper: "runClientMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/report", source: "components/ReportDialog.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/pay/checkout", source: "app/credits/CreditsClient.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "GET", endpoint: "/api/pay/order-status", source: "lib/pay/client-order-status-poll.ts", helper: "readBoundedClientJsonResponse", strategy: "poll_recovery" },
@@ -117,10 +116,10 @@ function key(surface: Pick<Surface, "method" | "endpoint">): string {
   return `${surface.method} ${surface.endpoint}`;
 }
 
-test("all 47 current first-party client-triggered domain mutations are explicit", () => {
+test("all 46 current first-party client-triggered domain mutations are explicit", () => {
   assert.equal(
     CLIENT_MUTATION_SURFACES.length,
-    47,
+    46,
     "mutation count changed; classify the new/removed edge explicitly",
   );
   const unique = new Set(CLIENT_MUTATION_SURFACES.map(key));
