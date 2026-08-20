@@ -159,7 +159,6 @@ boss-paegi/
 | `NEXT_PUBLIC_PORTONE_STORE_ID` / `NEXT_PUBLIC_PORTONE_CHANNEL_KEY_{CARD,TOSSPAY,KAKAOPAY}[_TEST]` | 클라 결제창 호출용 공개 식별자(승인·취소 권한 없음 — 서버 시크릿과 구분). 채널키=콘솔 채널관리 발급. 무접미사=**실연동 채널**(일반 유저) · `_TEST`=**테스트 채널**(심사·테스트 계정 전용) — 두 세트 동시 운영, 계정 기반 스위칭(`payModeFor`). 미설정 수단/모드는 UI 숨김·체크아웃 차단 |
 | `CRON_SECRET` | ops cron(`/api/ops/reconcile`·`gen-recover`·`telemetry-maintain`·`content-maintain`·`analytics-maintain`·`integrity-scan`·`credit-expire`·`privacy-maintain`·`warm`) 보호 시크릿. cron-job.org 가 `x-cron-secret` 헤더로 전달. 미설정 시 해당 cron 비활성(503). **서버 전용** |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN. 미설정 시 Sentry 전부 no-op (앱 정상) |
-| `NEXT_PUBLIC_SENTRY_REPLAY_ENABLED` | Sentry Session Replay의 별도 공개 운영 opt-in. 기본값·미설정·`0` 및 `true` 등은 비활성이고, **production에서 exact literal `1`일 때만** Replay 통합과 sampling(오류 100%·일반 10%) 활성 |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | 빌드 시 소스맵 업로드용 (선택) |
 
 현재 9개 ops route는 한 호출 전체에 공통 20초 monotonic deadline과 25초 platform
@@ -248,17 +247,17 @@ KST 09:00 일 1회, `gen-recover`는 5분 주기로 이미 가동 중이다.
 
 ## 모니터링 (Sentry)
 
-에러/경고 알림 + **구조화 로그(Logs)** + **트레이싱(성능)** + **인앱 의견 위젯**을 기본 제공하고, **세션 리플레이는 별도 운영 opt-in**으로만 켠다. 리플레이를 활성화하는 경우 게임 데이터(캐릭터/플레이/랭킹/닉네임/userKey)는 화면에 보일 수 있고, **업로드 원본 얼굴 영역은 마스킹**한다(정책 #1/PIPA).
+에러/경고 알림 + **구조화 로그(Logs)** + **트레이싱(성능)** + **인앱 의견 위젯**을 기본 제공하고, **세션 리플레이는 production 상시**다(2026-08-21 운영 결정 — env opt-in 게이트 제거). 리플레이에는 게임 데이터(캐릭터/플레이/랭킹/닉네임/userKey)가 화면에 보일 수 있고, **업로드 원본 얼굴 영역은 마스킹**한다(정책 #1/PIPA).
 
 - **로그 브릿지**(`lib/sentry-bridge.ts`, `emit()` 한 곳): `log.error/warn` → `captureMessage`(event 명 fingerprint 그룹핑 → 이벤트당 1 이슈) **+ `Sentry.logger`(Explore→Logs 검색)**, `log.info` → `Sentry.logger.info`+breadcrumb. 초고빈도 `gen.recover_list` 는 Logs 제외(볼륨). `enableLogs: true`.
 - **게임 액션 로그**(`app/play/page.tsx`): `game.start`(dollId/weapon/bg)·`game.end`(score/maxCombo/hitCount/weaponCounts/mainWeapon/durationMs)·`game.weapon_switch`·`game.bg_switch`·`game.ultimate_fire` → Logs/Discover 에서 무기·점수대·플레이타임 분석. 고빈도 `hit` 은 per-hit 로그 안 함(`game.end` 요약으로 충분).
 - **전역 신원/컨텍스트**(`lib/sentry-context.ts`): `setSentryIdentity(userKey, 닉네임, email?)` → `Sentry.setUser`(모든 event/replay/log·**의견 위젯**에 자동 부착, `SessionBootstrap`; email 은 멤버만 — `session.user.email`, 익명 제외, 로그아웃 시 `clearSentryIdentity`로 clear); `setSentryGameContext({dollId,weapon,bg,gamePhase})` → `setTag`(weapon/bg/doll_type/game_phase)+`setContext("game_session")` → 태그로 끊어 보기. 55개 로그 site 안 건드리고 정보 극대화.
 - **트레이싱**(production 한정 — dev/preview 는 0 으로 게이트해 대시보드 오염·span 한도 소모 방지): server `tracesSampler` 라우트별 차등(`/api/fal`·`/api/doll`=1.0, `/api/score`=0.5, **`/api/generations`=0.05**(폴링), 기본 0.1), client 0.1(Web Vitals 자동). 생성 파이프라인 커스텀 스팬(`gen.prepare_input`/`face_upload`/`detect_glasses`/`fal_submit`, `gen.fal_status`/`fal_result`/`copy_candidates`, `doll.bg_removal`/`normalize`) + 점수 제출 스팬(`score.submit`, score/maxCombo/weapon/durationMs/dollId attr). fal/Supabase 는 fetch 자동계측 `http.client` 스팬(`tracePropagationTargets` 는 자기 도메인만). release health(crash-free)는 release(SHA)+autoSessionTracking 자동.
-- **세션 리플레이**(`instrumentation-client.ts`, **기본 비활성·exact opt-in**): `NEXT_PUBLIC_SENTRY_REPLAY_ENABLED=1`과 `production`이 동시에 성립할 때만 Replay 통합 자체를 설치한다. 미설정·`0`·`true`·공백 포함 값과 dev/preview는 sampling 0이며 통합도 생략한다. 활성화 시 에러 세션 100%(`replaysOnErrorSampleRate`) + 일반 10%(`replaysSessionSampleRate`). DOM-only(PixiJS 캔버스 녹화 미사용 = 모바일 perf). 일반 화면 텍스트·미디어·입력은 기본 언마스크이고, **`.sentry-block-face`(`/generate` 업로드 미리보기·`PhotoCropper` 크롭 컨테이너)만 `block`+`mask`** → 원본 얼굴 replay 미포함(크롭 컨테이너 차단이 내부 `<img>`까지 마스킹 — react-easy-crop 은 portal 미사용).
+- **세션 리플레이**(`instrumentation-client.ts`, **production 상시** — 2026-08-21 운영 결정으로 `NEXT_PUBLIC_SENTRY_REPLAY_ENABLED` opt-in 게이트 제거): `production`이면 Replay 통합을 설치하고, dev/preview는 sampling 0이며 통합도 생략한다(무료 한도·environment 혼입 방지). 에러 세션 100%(`replaysOnErrorSampleRate`) + 일반 10%(`replaysSessionSampleRate`). DOM-only(PixiJS 캔버스 녹화 미사용 = 모바일 perf). 일반 화면 텍스트·미디어·입력은 기본 언마스크이고, **`.sentry-block-face`(`/generate` 업로드 미리보기·`PhotoCropper` 크롭 컨테이너)만 `block`+`mask`** → 원본 얼굴 replay 미포함(크롭 컨테이너 차단이 내부 `<img>`까지 마스킹 — react-easy-crop 은 portal 미사용).
 - **인앱 의견 위젯**(`feedbackAsyncIntegration`, `#sentry-feedback`): 버그·건의 자유 제보. **async = 모달/스크린샷 코드는 클릭 시 CDN 지연로드**(초기 번들 경량 — 모바일 PWA). 스크린샷 OFF(얼굴/캔버스 캡처 방지). 이름/이메일 입력칸은 숨기되(`showName/showEmail:false`) **로그인 유저의 닉네임·이메일을 `useSentryUser` 로 숨김 컨텍스트 첨부** → 누가 보낸 피드백인지 식별(익명은 닉네임만, email 없음). 폼에 개인정보 안내 문구 고지. `/play` 몰입화면(`.game-surface`)에선 무기바와 겹쳐 `globals.css` `:has()` 로 숨김, 그 외(홈/갤러리/랭킹) 노출.
 - **자동 포착**: 서버/RSC/Route 미처리 에러(`instrumentation.ts` `onRequestError`), 클라 미처리 에러(`instrumentation-client.ts`), 루트 렌더 에러(`app/global-error.tsx`).
 - **PII**: `sendDefaultPii: false`(IP·헤더·쿠키 미수집) + `beforeSend` 로 URL 쿼리스트링(서명 토큰) 제거. ctx 는 이미 `scrubSecrets`/`urlHost` 적용. 식별자는 익명 UUID(`userId`)+게임 닉네임(실명 아님), **멤버는 피드백 식별·연락용 email 추가**(`setUser`; 로그아웃 시 `setUser(null)` clear, 클라 프로필/캐시엔 미노출). **업로드 원본 얼굴은 Replay 에서 마스킹**(`.sentry-block-face`) — AI 생성 후보·플레이 화면은 비민감이라 미마스킹.
-- **설정**: Sentry 프로젝트 생성 → `NEXT_PUBLIC_SENTRY_DSN`(+선택 `SENTRY_*`)을 `.env.local`/Vercel 에 추가. DSN 없으면 init 안 함 → no-op. Replay는 정책·고지 정합을 확인한 뒤에만 `NEXT_PUBLIC_SENTRY_REPLAY_ENABLED=1`로 별도 활성화한다. 광고차단 우회용 터널 `/monitoring`(proxy matcher 에서 제외).
+- **설정**: Sentry 프로젝트 생성 → `NEXT_PUBLIC_SENTRY_DSN`(+선택 `SENTRY_*`)을 `.env.local`/Vercel 에 추가. DSN 없으면 init 안 함 → no-op. 광고차단 우회용 터널 `/monitoring`(proxy matcher 에서 제외).
 - **구성된 모니터링**(Sentry org `ja-inc`, production 한정 — API 로 설정, UI 에서 조정 가능):
   - 이슈 알림: `새 에러/경고 발생·재발`, `에러 급증 1h 20+`, **`생성 실패 급증`**(`event:gen.submit_fail`/`gen.fal_timeout` 1h 5+).
   - 메트릭 알림(span dataset `events_analytics_platform`, Sentry 가 transaction→span 마이그레이션 중): **`생성 제출 지연 p95`**(`/api/fal` warn 8s·crit 12s), **`점수 제출 실패율`**(`/api/score` crit 20%).
@@ -794,7 +793,7 @@ v0.67 (2026-06-30, 무료 플랜 사용량 절감 — Vercel ISR write + Sentry 
 - **배경(실측)**: Vercel 무료 ISR Writes 200k 중 ~75% 도달(100%=프로젝트 자동정지). 원인 = per-id ISR 페이지(`/share`·`/history`·`/doll` + OG ≈ **1,178개**, `revalidate=60`)를 **robots 가 크롤 허용**(noindex·follow) → GSC·네이버 등록 후 크롤러가 반복 fetch → 60초마다 재생성. (Supabase DB 17MB/500MB·스토리지 106MB/1GB, Sentry error 182·span 93k 는 전부 여유.)
 - **`app/robots.ts`**: `/share`·`/doll`·`/history` **크롤 차단**(noindex·sitemap 미등재라 색인 손실 0 — 크롤러발 ISR write 제거가 핵심).
 - **`revalidate` 60→480s**(share/doll/history): 서명 URL TTL 600 안쪽(120s 마진). 남는 실유저/소셜 트래픽분 ~8배 감소. takedown 등 변경은 기존 명시 `revalidatePath` 유지.
-- **Sentry `replaysSessionSampleRate` 0.2→0.1**(`instrumentation-client.ts`): 세션 리플레이가 월 147건으로 무료 ~50 초과 → 절반으로(에러 리플레이는 100% 유지). 이후 privacy hardening에서 Replay는 production + exact 운영 opt-in일 때만 통합을 설치하도록 기본 비활성화했다.
+- **Sentry `replaysSessionSampleRate` 0.2→0.1**(`instrumentation-client.ts`): 세션 리플레이가 월 147건으로 무료 ~50 초과 → 절반으로(에러 리플레이는 100% 유지). 이후 privacy hardening에서 Replay는 production + exact 운영 opt-in일 때만 통합을 설치하도록 기본 비활성화했다가, 2026-08-21 운영 결정으로 opt-in 게이트를 제거하고 production 상시로 복귀했다.
 - 검증: typecheck 0·build 0.
 
 v0.68 (2026-06-30, 탈퇴→재활성→재가입 이메일 정상화 — marker 영구 오염 수정; **Migration 0048**):
