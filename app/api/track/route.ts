@@ -47,9 +47,6 @@ function originAllowed(req: NextRequest): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  // Public policy does not yet enumerate first-party UTM/referrer acquisition
-  // fields. Keep collection inert unless the build explicitly opts in.
-  if (!PUBLIC_ENV.ANALYTICS_ENABLED) return noContent();
   if (!originAllowed(req)) return noContent();
   const raw = await readTrackJsonRequest(req);
   if (raw === null) return noContent();

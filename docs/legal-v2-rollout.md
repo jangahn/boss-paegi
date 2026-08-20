@@ -11,7 +11,8 @@
 
 - Supabase 운영 리전은 싱가포르 `ap-southeast-1`이다.
 - Vercel 주 실행 리전은 `sin1`, Sentry ingest 리전은 미국이다.
-- 자체 유입 분석은 명시적 opt-in이며 현재 비활성이다.
+- 자체 유입 분석 수집은 상시 동작한다(2026-08-20 운영 결정 — 무식별·무PII
+  집계·90일 raw 보관은 v2 고지 내용과 동일).
 - Sentry 오류·로그·트레이스·피드백은 활성이고, Replay는 별도 명시적
   opt-in이 없으면 비활성이다. 향후 활성화하면 오류 세션 100%·일반 세션
   10%, 일반 텍스트·미디어·입력 unmasked 설정이 적용되므로 정책·고지를
@@ -320,8 +321,9 @@ curl --silent --show-error --fail \
 - 외부 이메일 민원 수동 대장의 월별 점검 여부와 파기 건수·상태 해시
 - 6개월 표시 증거의 snapshot hash·최초/최종 표시 시각·최소 보존시각과 cron
   drain 결과(사용자·원문 payload 제외)
-- Sentry Replay opt-in이 계속 꺼져 있는지, analytics·checkout runtime
+- Sentry Replay opt-in이 계속 꺼져 있는지, checkout runtime
   rollout gate·fal 생성 compile/runtime gate가 정책 문구와 같은지
+  (자체 유입 분석 수집은 2026-08-20부터 상시라 게이트 점검 대상이 아니다)
 
 비밀 토큰, admin UUID, 사용자 이메일 목록, 신고 원문과 결제 원문 payload는
 증적에 복사하지 않는다.

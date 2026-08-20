@@ -365,7 +365,6 @@ test("public track RPC is best-effort for quota, resolved error, throw, and malf
   };
   let received: Record<string, unknown> | null = null;
   const accepted = await recordTrackEvent(row, "anon", ACTOR, {
-    collectionEnabled: true,
     rpc: async (args) => {
       received = args;
       return { data: { accepted: true }, error: null };
@@ -379,7 +378,6 @@ test("public track RPC is best-effort for quota, resolved error, throw, and malf
   });
 
   const quota = await recordTrackEvent(row, "anon", ACTOR, {
-    collectionEnabled: true,
     rpc: async () => ({
       data: { accepted: false, reason: "global_request_quota" },
       error: null,
@@ -392,14 +390,12 @@ test("public track RPC is best-effort for quota, resolved error, throw, and malf
 
   assert.equal(
     await recordTrackEvent(row, "anon", ACTOR, {
-      collectionEnabled: true,
       rpc: async () => ({ data: null, error: new Error("resolved") }),
     }),
     null,
   );
   assert.equal(
     await recordTrackEvent(row, "anon", ACTOR, {
-      collectionEnabled: true,
       rpc: async () => {
         throw new Error("throw");
       },
@@ -408,7 +404,6 @@ test("public track RPC is best-effort for quota, resolved error, throw, and malf
   );
   assert.equal(
     await recordTrackEvent(row, "anon", ACTOR, {
-      collectionEnabled: true,
       rpc: async () => ({ data: { accepted: true, extra: 1 }, error: null }),
     }),
     null,
@@ -425,7 +420,6 @@ test("play/signup conversions use the same bounded RPC and never direct-insert a
     "anon",
     ACTOR,
     {
-      collectionEnabled: true,
       rpc: async (args) => {
         received = args;
         return { data: { accepted: true }, error: null };
