@@ -640,8 +640,7 @@ select exists (
      and cleanup.finished_at is null
      and cleanup.last_error is null
      and source_profile.deleted_at is not null
-     and source_profile.display_name = '탈퇴한 사용자'
-     and source_profile.avatar_url is null
+     and source_profile.display_name <> '탈퇴한 사용자'
      and source_user.is_anonymous
      and highlight.highlight_deleted_at is not null
      and marker.quarantined_at = cleanup.quarantined_at
@@ -732,8 +731,7 @@ select exists (
      and cleanup.finished_at is null
      and cleanup.last_error is null
      and source_profile.deleted_at is not null
-     and source_profile.display_name = '탈퇴한 사용자'
-     and source_profile.avatar_url is null
+     and source_profile.display_name <> '탈퇴한 사용자'
      and source_user.is_anonymous
      and highlight.highlight_deleted_at is not null
      and marker.quarantined_at = cleanup.quarantined_at

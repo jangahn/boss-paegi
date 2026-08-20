@@ -2884,8 +2884,7 @@ select ok(
          cleanup.quarantined_at
        and cleanup.last_error is null
        and profile.deleted_at is not null
-       and profile.display_name = '탈퇴한 사용자'
-       and profile.avatar_url is null
+       and profile.display_name <> '탈퇴한 사용자'
        and exists (
          select 1
            from public.user_badges as badge
