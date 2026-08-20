@@ -63,19 +63,11 @@ false-green으로 기록하지 않는다.
 응답은 `503`이고, 해당 단계가 비었음을 권위 있게 확인한 실행만 최종 `200`에
 도달할 수 있다.
 
-## 생성 공급자 연령·flow-down 증거 5년
+## 생성 공급자 연령·flow-down 증거 — 폐지(2026-08-21)
 
-`generation_provider_acceptance_evidence`는 기본 만 14세 동의와 별도로 받은
-만 19세 자기확인과 fal Terms/AUP 각각의 적극 동의를 `profiles.withdrawal_generation`
-에 결속한다. 같은 회원이라도 탈퇴 후 재활성화된 새 세대에는 과거 증거가
-적용되지 않는다. status와 record RPC는 단순 `version >= 1`이 아니라 KST 기준
-현재 효력 있는 terms/privacy 발행 버전을 권위 조회해 회원 동의가 뒤처지면
-fail-closed한다.
-
-증거는 5년 동안 update/delete 불가다. 정확히 5년인 행은 유지하고 5년을 초과한
-행만 `prune_generation_provider_acceptance_evidence(100)`이 삭제한다. 이 RPC도
-`privacy-maintain`의 공통 deadline에서 표시 증거 prune과 병렬로 실행되며,
-`has_more=true`이면 전체 route가 `429`, 오류·손상 응답이면 `503`이다.
+서비스 전체 연령 기준이 만 19세로 상향되면서 별도 생성 자격 동의 스킴
+(`generation_provider_acceptance_evidence`·record/status/prune RPC)은 증거 0건
+상태에서 제거했다. 연령 확인은 가입 동의(`age_confirmed_at`)가 단일 소스다.
 
 ## 소비자 불만·분쟁 3년
 
@@ -132,6 +124,5 @@ ops 응답은 이 코드 밖 경계를
 UTM/referrer 기반 first-party acquisition 수집은 클라이언트·서버 양쪽에서
 상시 동작한다(2026-08-20 운영 결정으로 `NEXT_PUBLIC_ANALYTICS_ENABLED`
 opt-in 게이트 제거 — 무식별·무PII 집계 원칙과 90일 raw 보관은 그대로다).
-수집 항목·목적·기간을 포함한 법무 v2 정본은 `legal/v2-documents.mjs`에
-준비되어 있고 어드민 법무 콘솔(`/admin/content/legal`)에 초안으로 스테이징돼
-있다. 공개 방침 반영은 이 초안의 발행으로 완결한다.
+수집 항목·보유기간 고지는 개인정보처리방침 v1(2026-08-21 in-place 개정)에
+반영되어 있다.

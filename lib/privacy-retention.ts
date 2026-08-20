@@ -1,7 +1,6 @@
 export const PRIVACY_RETENTION_LIMIT = 100;
 export const PRIVACY_RETENTION_COUNT_CAP = 1000;
 export const COMMERCE_DISPLAY_RETENTION_LIMIT = 100;
-export const GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT = 100;
 export const EXTERNAL_COMPLAINT_MANUAL_BOUNDARY =
   "external_consumer_complaint_manual_retention_runbook" as const;
 
@@ -299,13 +298,3 @@ export function parseCommerceDisplayRetentionResult(
   );
 }
 
-export function parseGenerationProviderAcceptanceRetentionResult(
-  value: unknown,
-  limit = GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
-): CommerceDisplayRetentionResult | null {
-  return parseBoundedEvidenceRetentionResult(
-    value,
-    limit,
-    GENERATION_PROVIDER_ACCEPTANCE_RETENTION_LIMIT,
-  );
-}
