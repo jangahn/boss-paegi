@@ -129,9 +129,9 @@ ops 응답은 이 코드 밖 경계를
 
 ## 공유·유입 분석
 
-UTM/referrer 기반 first-party acquisition 수집은
-`NEXT_PUBLIC_ANALYTICS_ENABLED=1`일 때만 클라이언트와 서버 양쪽에서 동작한다.
-production 환경이라는 이유만으로 자동 활성화되지 않는다. 공개 개인정보처리방침에
+UTM/referrer 기반 first-party acquisition 수집은 클라이언트·서버 양쪽에서
+상시 동작한다(2026-08-20 운영 결정으로 `NEXT_PUBLIC_ANALYTICS_ENABLED`
+opt-in 게이트 제거 — 무식별·무PII 집계 원칙과 90일 raw 보관은 그대로다).
 수집 항목·목적·기간을 포함한 법무 v2 정본은 `legal/v2-documents.mjs`에
-준비되어 있다. 30일 사전고지와 원자 발행·운영 검증이 끝나기 전에는 이 값을
-비워 둔다.
+준비되어 있고 어드민 법무 콘솔(`/admin/content/legal`)에 초안으로 스테이징돼
+있다. 공개 방침 반영은 이 초안의 발행으로 완결한다.

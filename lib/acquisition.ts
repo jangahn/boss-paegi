@@ -2,7 +2,7 @@
 
 // 공유·유입 분석 — 클라 캡처(DOM·localStorage·beacon). 순수 로직은 lib/analytics/core 재사용.
 // current source(현재 진입·매 탭세션)와 first-touch source(획득·90일 sticky)를 분리 추적.
-// 식별자/원본 URL/query 미저장 — 도메인·UTM·차원만. PUBLIC_ENV.ANALYTICS_ENABLED 로 게이트.
+// 식별자/원본 URL/query 미저장 — 도메인·UTM·차원만. 수집은 상시(별도 opt-in 게이트 없음).
 
 import { PUBLIC_ENV } from "@/lib/env";
 import {
@@ -28,7 +28,7 @@ type StoredFirstTouch = {
 };
 
 function enabled(): boolean {
-  return PUBLIC_ENV.ANALYTICS_ENABLED && typeof window !== "undefined";
+  return typeof window !== "undefined";
 }
 
 /** sendBeacon 우선(언로드 안전), 실패 시 fetch keepalive. queued 면 true. */
@@ -182,7 +182,7 @@ export function trackShare(opts: {
   });
 }
 
-/** 전환용 first-touch source(점수제출/가입 API body 에 동봉). 분석 off 면 null → 서버가 conversion 미적재. */
+/** 전환용 first-touch source(점수제출/가입 API body 에 동봉). 브라우저 밖(SSR)이면 null. */
 export function firstTouchSourceForConversion(): RawSource | null {
   if (!enabled()) return null;
   const s = ensureFirstTouch().source;

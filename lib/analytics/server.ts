@@ -4,7 +4,6 @@ import "server-only";
 // /api/track(visit|share) + 점수제출/가입(conversion) 에서 사용. member_state 는 서버에서 결정해 전달.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PUBLIC_ENV } from "@/lib/env";
 import { log, errInfo } from "@/lib/log";
 import {
   buildConversionRow,
@@ -32,7 +31,6 @@ export type PublicTrackAck =
 
 type PublicTrackRpcResult = { data: unknown; error: unknown | null };
 export type PublicTrackDependencies = {
-  collectionEnabled: boolean;
   rpc: (args: Record<string, unknown>) => Promise<PublicTrackRpcResult>;
 };
 
@@ -73,11 +71,6 @@ async function recordBoundedAnalyticsEvent(
   actorKey: string,
   dependencies?: PublicTrackDependencies,
 ): Promise<PublicTrackAck | null> {
-  const collectionEnabled = dependencies
-    ? dependencies.collectionEnabled
-    : PUBLIC_ENV.ANALYTICS_ENABLED;
-  if (!collectionEnabled) return null;
-
   const rpc =
     dependencies?.rpc ??
     (async (args: Record<string, unknown>): Promise<PublicTrackRpcResult> => {
