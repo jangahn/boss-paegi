@@ -48,7 +48,8 @@ function validateLegalRows(
       !isDocType(row.doc_type) ||
       (expectedDocType !== undefined && row.doc_type !== expectedDocType) ||
       (row.status !== "draft" && row.status !== "published") ||
-      row.version < 1 ||
+      // draft 는 version 0 이 정상(발행 시점에 max+1 부여) — 0029 check 제약과 동일 규칙.
+      (row.status === "published" ? row.version < 1 : row.version !== 0) ||
       row.title.length > 200 ||
       !legalSectionsSchema.safeParse(row.sections).success ||
       (row.status === "published" && row.effective_date === null)
