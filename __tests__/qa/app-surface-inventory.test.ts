@@ -144,7 +144,6 @@ const EXPECTED_APIS = [
   "/api/ops/privacy-maintain",
   "/api/ops/reconcile",
   "/api/ops/telemetry-maintain",
-  "/api/ops/warm",
   "/api/pay/checkout",
   "/api/pay/order-status",
   "/api/pay/webhook",
@@ -233,7 +232,7 @@ test("every page and API route is enrolled in the exact app surface manifest", (
     .sort();
 
   assert.equal(pages.length, 59, "page count changed; update the exact manifest");
-  assert.equal(apis.length, 70, "API count changed; update the exact manifest");
+  assert.equal(apis.length, 69, "API count changed; update the exact manifest");
   assert.equal(
     nonApiRouteHandlers.length,
     3,
@@ -254,7 +253,7 @@ test("every page and API route is enrolled in the exact app surface manifest", (
   );
   assert.equal(
     apis.filter((route) => route.startsWith("/api/ops/")).length,
-    9,
+    8,
     "ops route count changed; update cron contracts and scheduler inventory",
   );
 });
