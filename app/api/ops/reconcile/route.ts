@@ -45,9 +45,9 @@ export const maxDuration = 25;
  * 결제 시도 후 2시간+ pending 을 포트원 단건 조회로 **실제 대사**한다(페이앱 시절 '탐지+경고만'에서 승격):
  *  - PAID + immutable evidence exact → 멱등 지급(mark_paid_and_grant — 웹훅과 동일 RPC, 중복 안전)
  *  - CANCELLED/PARTIAL_CANCELLED → 이벤트 영속 + 대사 RPC(handleObservedCancellation — 직접 종단 금지 §13)
- *  - FAILED 관측 → mark_order_failed(pending→failed 준종단; 24h+ 경과면 아래 시효 종단)
- *  - **24h+ 미해결 intent(READY 등 진행형·FAILED 공통) → mark_order_canceled_unpaid 로 canceled
- *    시효 종단**(PAYMENT_INTENT_EXPIRE_MS). 준종단(failed)의 '늦은 PAID 부활 지급' 창은 24h 로
+ *  - FAILED 관측 → mark_order_failed(pending→failed 준종단; 시효(6h)+ 경과면 아래 시효 종단)
+ *  - **시효(6h)+ 미해결 intent(READY 등 진행형·FAILED 공통) → mark_order_canceled_unpaid 로 canceled
+ *    시효 종단**(PAYMENT_INTENT_EXPIRE_MS=6h). 준종단(failed)의 '늦은 PAID 부활 지급' 창은 이 시효로
  *    한정 — 그 안에서는 매 사이클 단건조회가 PAID 를 회수한다. 24h 뒤 canceled 종단은 사용자
  *    전역 1-intent 잠금을 해제한다(2026-08-19 실사고: 7월 결제창 이탈 failed 가 영구 잠금이
  *    되어 새 결제 전면 거절 — failed 는 어떤 경로로도 안 풀리던 갭의 근본 수정). oldest-first
@@ -197,8 +197,8 @@ export async function POST(req: NextRequest) {
         let terminalRaces = 0;
         let systemErrors = 0;
         const unresolved: string[] = [];
-        // 24h 시효 내 non-terminal(READY 등) — 재호출이 진전시키지 못하는 **감시 상태**.
-        // retryPending 에 넣으면 스케줄러 응답이 최대 22시간 연속 429 가 되어
+        // 시효(6h) 내 non-terminal(READY 등) — 재호출이 진전시키지 못하는 **감시 상태**.
+        // retryPending 에 넣으면 스케줄러 응답이 장시간 연속 429 가 되어
         // cron-job.org 가 잡을 자동 비활성화한다(2026-08-19 실사고·과거 7/31 사망 동일 기전).
         const watching: string[] = [];
 
@@ -474,8 +474,8 @@ export async function POST(req: NextRequest) {
             Date.now() - new Date(row.created_at).getTime() >
             PAYMENT_INTENT_EXPIRE_MS
           ) {
-            // 24h+ 미해결 intent(READY 등 진행형·FAILED 공통) — 비-PAID 를 방금 단건조회로
-            // 재확인했으므로 canceled 시효 종단. 부활(늦은 PAID) 창은 위 24h 내 사이클이
+            // 시효(6h)+ 미해결 intent(READY 등 진행형·FAILED 공통) — 비-PAID 를 방금 단건조회로
+            // 재확인했으므로 canceled 시효 종단. 부활(늦은 PAID) 창은 시효 내 사이클이
             // 이미 소진했고, 이 종단이 사용자 전역 1-intent 잠금을 해제한다.
             const { data: eData, error: eErr } = await admin
               .rpc("mark_order_canceled_unpaid", {
@@ -515,7 +515,7 @@ export async function POST(req: NextRequest) {
             } else if (fResult.outcome === "skipped") terminalRaces += 1;
             else failed += 1;
           } else {
-            // READY/PENDING 등 24h 미만 — 아직 진행 중일 수 있어 보존.
+            // READY/PENDING 등 시효(6h) 미만 — 아직 진행 중일 수 있어 보존.
             // 감시 상태(시간이 해소)이므로 응답 코드에는 반영하지 않는다.
             watching.push(row.order_uuid);
           }
@@ -524,15 +524,22 @@ export async function POST(req: NextRequest) {
         if (opsMaintenanceDeadlineReached(deadline)) {
           return maintenanceTimeBudgetResponse();
         }
-        if (unresolved.length + watching.length > 0) {
-          // 확인 필요 경고(미지급 단정 아님). orderIds 는 최대 10개만 동봉.
-          // 감시 상태(watching)도 관측에는 포함 — 응답 코드와 분리된 신호다.
+        if (unresolved.length > 0) {
+          // 확인 필요 경고(미지급 단정 아님) — 자동 대사가 해소하지 못한 건만 warn(Sentry 경보).
+          // orderIds 는 최대 10개만 동봉.
           log.warn("pay.stale_payment_request", {
             message:
               "오래된 결제요청 — 자동 대사로 해소되지 않아 운영 확인 필요",
-            count: unresolved.length + watching.length,
+            count: unresolved.length,
             watching: watching.length,
-            orderIds: [...unresolved, ...watching].slice(0, MAX_IDS),
+            orderIds: unresolved.slice(0, MAX_IDS),
+          });
+        } else if (watching.length > 0) {
+          // 시효 내 결제창 이탈 등 감시 상태뿐 — 시간이 해소하므로 info(브레드크럼)로만 남긴다.
+          // (2026-08-23 까지는 warn 에 합산돼 매 틱 Sentry 경보가 울리던 노이즈를 분리.)
+          log.info("pay.stale_payment_watching", {
+            count: watching.length,
+            orderIds: watching.slice(0, MAX_IDS),
           });
         }
 

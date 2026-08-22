@@ -206,7 +206,7 @@ KST 09:00 일 1회, `gen-recover`는 5분 주기로 이미 가동 중이다.
 - **설정**(사용자 작업): 포트원 콘솔 — ①채널관리에서 테스트 채널 3개 추가(채널키 확보) ②[식별코드·API Keys]>[V2 API] Secret 발급 ③[결제알림(Webhook) 관리]에서 `{SITE_URL}/api/pay/webhook` 등록(V2·테스트/실연동 각각)+시크릿 확보 → env 6종(.env.local+Vercel). 계약·카드사 심사 완료 후 실연동 채널로 교체.
 
 ### 운영 한계·모니터링
-- **웹훅 미도달**: 3중 자가치유 — ①`/credits/done` 폴링이 pending·failed 면 서버가 단건 조회→지급 ②대사 cron(`/api/ops/reconcile`)이 2h+ pending 을 단건 조회로 **실제 대사**(PAID→지급[웹훅 유실 경고]·FAILED/CANCELLED→종단·미결제 이탈→failed·READY 24h+ 좀비→failed 시효 종단[배치 기아 방지], 호출당 20건) ③잔여는 Sentry `pay.stale_payment_request` 경고. Sentry 경고 모니터: `pay.wh_grant_fail`·`pay.wh_amount_mismatch`·`pay.wh_paid_not_granted`·`pay.refund_invariant_violation`(fatal·임계 1·온콜 즉시)·`pay.refund_attempt_outstanding`·`pay.late_paid`(실결제라 임계 1 — **페이앱 시절 `payapp.*` 모니터는 `pay.*` 로 재설정 필요**, 환불 saga 상세 `docs/refund-runbook.md`).
+- **웹훅 미도달**: 3중 자가치유 — ①`/credits/done` 폴링이 pending·failed 면 서버가 단건 조회→지급 ②대사 cron(`/api/ops/reconcile`)이 2h+ pending 을 단건 조회로 **실제 대사**(PAID→지급[웹훅 유실 경고]·FAILED/CANCELLED→종단·미결제 이탈→failed·READY/FAILED 시효(6h)+ → canceled 시효 종단[배치 기아 방지], 호출당 20건) ③자동 대사가 해소 못한 건만 Sentry `pay.stale_payment_request` 경고(시효 내 감시 상태는 `pay.stale_payment_watching` info). Sentry 경고 모니터: `pay.wh_grant_fail`·`pay.wh_amount_mismatch`·`pay.wh_paid_not_granted`·`pay.refund_invariant_violation`(fatal·임계 1·온콜 즉시)·`pay.refund_attempt_outstanding`·`pay.late_paid`(실결제라 임계 1 — **페이앱 시절 `payapp.*` 모니터는 `pay.*` 로 재설정 필요**, 환불 saga 상세 `docs/refund-runbook.md`).
 - **환불 saga 미종결**: attempt 가 `manual_review`·또는 `pg_requested`(3h+) 로 남으면 `/admin/refunds` 큐 + 대시보드 경고. reconcile cron(5분)이 3h 내엔 동일 Idempotency-Key 재시도, 이후 GET 증빙 폴링으로 종단하고, 운영자 화해는 switch_to_manual/commit_manual/replan/release. 상세 대응은 `docs/refund-runbook.md`.
 - **동시/다중 결제**: PortOne `pending`과 `failed` 중 `paid_at`/`canceled_at`이 없는 전체가 시간과 무관한 사용자 전역 미해결 intent다. 같은 상품·mode·channel은 기존 frozen receipt를 replay/reuse하고, 다른 조합은 기존 intent를 명시적으로 해결할 때까지 `checkout_prior_intent_unresolved`로 차단한다. 버튼 disable과 user rate-limit(10/분)은 보조 방어이며 DB unique index가 최종 방어선이다.
 - **수동 지급(settle)**: 페이앱 시절 '콘솔 육안 확인' → **서버가 포트원 단건 조회로 PAID·금액 검증 후에만 지급**(휴먼에러 차단).
@@ -924,6 +924,10 @@ v0.96 (2026-08-20, reconcile 감시 상태와 스케줄러 응답 코드 분리 
 v0.97 (2026-08-23, `/api/ops/warm` 웜 유지 route·크론 제거 — Vercel Hobby Fluid Active CPU 한도 보호; 마이그레이션 없음):
 - **배경(실측)**: Vercel Hobby 팀 Fluid Active CPU 월 4h 중 75% 경보(2026-08-22). cron-job.org 실측 — `warm` 5분 주기 288회/일 × (자기 1 + 대상 fetch 8) = 2,592 invocation/일로 크론 invocation의 ~80%(`reconcile`·`gen-recover` 각 288회/일, 매시 2종 48회/일). 100% 도달 시 팀 프로젝트 자동 pause(사이트 다운).
 - **제거**: route·surface inventory 항목·cron-job.org 잡(#8289150) 삭제 — ops route 8개. 로그인 콜백 체인 콜드스타트는 클라이언트 선웜(`lib/auth-oauth.ts` `warmOAuthCallbackFunctions`, 로그인 시작 시 콜백 함수 5개 HEAD 핑)이 계속 담당. 잃는 것은 `/auth/reconcile` 문서·events·leaderboard·`oauth-flow/status`의 유휴 후 첫 호출 1~2.5s(2026-08-19 cold 실측).
+
+v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'에만 — 감시 노이즈 분리; 마이그레이션 없음):
+- **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
+- **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
 v0.95 (2026-08-20, 이전받은 doll 의 storage 정리 poison-job 수정; 마이그레이션 없음):
 - **원인 확정(v0.94 의 원문 로깅이 즉시 회수)**: `storage_cleanup.claim_fail` = `invalid storage cleanup target correlation`(objectCleanup) — 익명 계정에서 생성 후 가입 이전(flow-scoped migration)된 doll 은 소유권만 바뀌고 storage 폴더는 원 uuid 로 불변인데, claim 검증이 "폴더=현재 user_id" 를 강제해 **이전받은 doll 을 삭제하면 정리 job 이 영구 거부**(매시 cron 마다 claim_fail — "배포 경계 일시" 초기 판정은 오판: cron 이 60분 주기라 17:00/18:00 정각 재발이 그 증거).

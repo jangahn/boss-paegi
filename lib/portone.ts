@@ -48,8 +48,10 @@ async function readPortoneJson(
  * 포트원 결제창 세션은 이보다 훨씬 짧아 실부활 가능성이 소멸한 뒤다. reconcile 크론
  * (자동)과 어드민 취소(수동)가 공유한다. 배경: 2026-08-19 — 7월 결제창 이탈 잔재
  * failed 가 영구 잠금이 되어 실계정 결제가 전면 거절된 실사고.
+ * 24h → 6h(2026-08-23, 사용자 결정): 종단돼도 재시도 결제는 동일 경로·동일 결과이고,
+ * 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용해 손실이 없다.
  */
-export const PAYMENT_INTENT_EXPIRE_MS = 24 * 60 * 60 * 1000;
+export const PAYMENT_INTENT_EXPIRE_MS = 6 * 60 * 60 * 1000;
 
 export function portoneConfigured(): boolean {
   return (
