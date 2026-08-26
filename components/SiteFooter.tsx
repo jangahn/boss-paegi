@@ -24,25 +24,25 @@ export function SiteFooter({ info }: { info: BusinessInfo | undefined }) {
       <div className="mx-auto grid w-full max-w-3xl gap-x-8 gap-y-1 sm:grid-cols-2">
         {/* 라벨 칼럼: 모바일은 두 목록이 이어져 보이도록 5.5rem 공유 폭, sm+ 2단부터 칼럼별 자동 폭 */}
         <dl className="grid grid-cols-[5.5rem_1fr] gap-x-4 gap-y-1 sm:grid-cols-[max-content_1fr]">
-          <dt className="text-zinc-400">상호</dt>
+          <dt className="text-zinc-500">상호</dt>
           <dd>{info.companyName}</dd>
-          <dt className="text-zinc-400">대표</dt>
+          <dt className="text-zinc-500">대표</dt>
           <dd>{info.ownerName}</dd>
-          <dt className="text-zinc-400">사업자등록번호</dt>
+          <dt className="text-zinc-500">사업자등록번호</dt>
           <dd>{info.bizRegNo}</dd>
           {info.mailOrderNo && (
             <>
-              <dt className="text-zinc-400">통신판매업신고</dt>
+              <dt className="text-zinc-500">통신판매업신고</dt>
               <dd>{info.mailOrderNo}</dd>
             </>
           )}
-          <dt className="text-zinc-400">주소</dt>
+          <dt className="text-zinc-500">주소</dt>
           <dd>{info.address}</dd>
         </dl>
         <dl className="grid grid-cols-[5.5rem_1fr] gap-x-4 gap-y-1 self-start sm:grid-cols-[max-content_1fr]">
-          <dt className="text-zinc-400">전화</dt>
+          <dt className="text-zinc-500">전화</dt>
           <dd>{info.phone}</dd>
-          <dt className="text-zinc-400">이메일</dt>
+          <dt className="text-zinc-500">이메일</dt>
           <dd>{info.email}</dd>
         </dl>
         <div className="mt-3 flex flex-col items-center gap-1 sm:col-span-2">
