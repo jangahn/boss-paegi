@@ -43,14 +43,22 @@ test("footer and home small legal text meet WCAG AA normal-text contrast", () =>
   const footer = source("components/SiteFooter.tsx");
   const home = source("app/page.tsx");
   const paper = cssHex(css, "color-paper");
+  const zinc500 = cssHex(css, "color-zinc-500");
   const zinc600 = cssHex(css, "color-zinc-600");
 
   assert.match(footer, /text-\[11px\][^"]*text-zinc-600/);
   assert.doesNotMatch(footer, /text-\[11px\][^"]*text-zinc-(?:400|500)/);
+  // 라벨-값 목록의 dt 라벨은 11px를 상속하므로 AA 하한인 zinc-500까지만 허용(zinc-400=2.2:1 미달).
+  assert.match(footer, /<dt className="text-zinc-500">/);
+  assert.doesNotMatch(footer, /text-zinc-400/);
   assert.match(home, /text-xs[^"]*text-zinc-600/);
   assert.match(home, /text-\[11px\][^"]*text-zinc-600/);
   assert.ok(
     contrast(zinc600, paper) >= 4.5,
     `contrast=${contrast(zinc600, paper).toFixed(3)}`,
+  );
+  assert.ok(
+    contrast(zinc500, paper) >= 4.5,
+    `label contrast=${contrast(zinc500, paper).toFixed(3)}`,
   );
 });
