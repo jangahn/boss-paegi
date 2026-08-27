@@ -5,6 +5,7 @@ import {
   establishAnonymousAuthSession,
 } from "@/lib/supabase/client";
 import { log, errInfo } from "@/lib/log";
+import { isTransportFailure } from "@/lib/transport-failure";
 import { runClientMutation } from "@/lib/client-mutation";
 
 // 진행 중 익명 로그인 1건만 공유 — SessionBootstrap·AccountMenu·ConsentGuard 등이 첫 진입에
@@ -44,7 +45,13 @@ export async function ensureAuth(signal?: AbortSignal): Promise<Session> {
         outcome.kind === "rejected"
           ? outcome.error
           : new Error("auth_anon_sign_in_unconfirmed");
-      log.error("auth.anon_sign_in_fail", errInfo(error));
+      // transport 실패(무응답 — 크롤러 렌더러·이탈·전파 불량)는 warn → Logs 로만
+      // (sentry-bridge CAPTURE_SKIP). Supabase 가 응답으로 거절한 실패만 error 이슈.
+      if (isTransportFailure(error)) {
+        log.warn("auth.anon_sign_in_fail", errInfo(error));
+      } else {
+        log.error("auth.anon_sign_in_fail", errInfo(error));
+      }
       throw error;
     })().finally(() => {
       inflightAuth = null;

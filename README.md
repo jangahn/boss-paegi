@@ -929,6 +929,12 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v0.99 (2026-08-27, Sentry 노이즈 분류 — transport 실패·결정적 거절을 이슈 승격에서 분리; 마이그레이션 없음):
+- **배경(2026-08-27 Sentry 전수 트리아지)**: unresolved 35건 중 30건은 8/19 어드민 프로덕션 테스트 잔재·이미 수정 완료분으로 일괄 resolve. 남은 노이즈 유입원 실측 — `auth.anon_sign_in_fail` 30/30 이 `errStatus 0`(무응답: Googlebot InspectionTool 렌더러의 Supabase 요청 차단 6/10, iOS 이탈 "Load failed", 서버 거절 0건), `play.game_init_fail` 은 의도된 결정적 거절(`doll_unavailable`, v0.94)과 언마운트 정리 abort(`game_init_inactive`)가 error 로 유입.
+- **transport 실패 분류기**: `lib/log.ts isTransportFailure` — HTTP 응답 자체가 없는 실패(auth-js `AuthRetryableFetchError(status 0)`·엔진별 fetch 네트워크 워딩·PostgREST 문자열 프리픽스·Abort/Timeout·`SupabaseOperationError` 는 원인 재귀)만 true. status 가 있으면(retryable 502/503 포함) 서버 판정이므로 false — client-mutation.ts 의 "transport" phase 와 같은 개념.
+- **레벨 분기(이벤트명 불변)**: `auth.anon_sign_in_fail`·`auth.bootstrap_profile_fail` 은 transport→warn / 서버 거절→error, `play.game_init_fail` 은 `doll_unavailable`→warn / 진짜 실패(조회 장애·계약 위반·텍스처/게임 생성)→error, 정리 abort 는 무로깅. warn 변형 3종은 기존 `CAPTURE_SKIP` 관례(고볼륨 warn 은 Logs 전용, 크롤러성 노이즈)에 편입 — **Sentry Logs·브레드크럼 관찰은 유지**하되 이슈/에러쿼터는 서버 판정 실패만 소모. `auth.bootstrap_profile_fail` 의 비-transport 실패는 warn→error 승격(응답 있는 profile 조회 실패는 조사 대상 — 실패 사유 노출 원칙과 정합).
+- 소스핀·분류기 단위 테스트 `__tests__/errors/transport-failure.test.ts`. 대응 Sentry 이슈: BOSS-PAEGI-J·21·Q 는 배포 후 resolve(재발=서버 판정 실패만 regressed 복귀).
+
 v0.95 (2026-08-20, 이전받은 doll 의 storage 정리 poison-job 수정; 마이그레이션 없음):
 - **원인 확정(v0.94 의 원문 로깅이 즉시 회수)**: `storage_cleanup.claim_fail` = `invalid storage cleanup target correlation`(objectCleanup) — 익명 계정에서 생성 후 가입 이전(flow-scoped migration)된 doll 은 소유권만 바뀌고 storage 폴더는 원 uuid 로 불변인데, claim 검증이 "폴더=현재 user_id" 를 강제해 **이전받은 doll 을 삭제하면 정리 job 이 영구 거부**(매시 cron 마다 claim_fail — "배포 경계 일시" 초기 판정은 오판: cron 이 60분 주기라 17:00/18:00 정각 재발이 그 증거).
 - 수정: doll 경로 상관을 `<uuid 폴더>/<subject_id>.png` 로 — 폴더는 임의 uuid 허용, **파일명=subject 상관 유지**(어떤 job 도 자기 대상 파일만 삭제 — 안전성 불변). 기존 poison 3행은 배포 후 다음 사이클에 자연 정리.

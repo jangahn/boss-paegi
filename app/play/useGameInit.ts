@@ -170,18 +170,27 @@ export function useGameInit(opts: {
       // 성공-확정 hot-swap effect가 처리해 로드 실패 시 상태를 롤백한다.
       created.setWeapon(weaponRef.current);
     })().catch((e) => {
-      log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
-      if (!cancelled) {
-        setGameReady(false);
-        // doll_unavailable 은 결정적 상태(다른 사용자의 캐릭터 링크·삭제된 캐릭터)
-        // — "연결 확인 후 재시도"로 안내하면 헛된 재시도만 유도한다(2026-08-19
-        // 실관측: 같은 사용자가 남의 캐릭터 URL 로 3회 연속 재시도).
-        setGameInitError(
-          e instanceof PlayDollInitError && e.message === "doll_unavailable"
-            ? "이 캐릭터는 내 계정에서 플레이할 수 없어요. 삭제됐거나 다른 사용자의 캐릭터 주소예요. 내 갤러리에서 캐릭터를 선택해주세요."
-            : "게임을 불러오지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.",
-        );
+      // 언마운트/재마운트 정리가 던진 abort(reason=game_init_inactive)는 실패가
+      // 아니다 — 로깅하면 정상 lifecycle 이 error 로 쌓인다(2026-08-26 dev 실관측).
+      if (cancelled) return;
+      // doll_unavailable 은 결정적 상태(다른 사용자의 캐릭터 링크·삭제된 캐릭터)
+      // — "연결 확인 후 재시도"로 안내하면 헛된 재시도만 유도한다(2026-08-19
+      // 실관측: 같은 사용자가 남의 캐릭터 URL 로 3회 연속 재시도).
+      const deterministicUnavailable =
+        e instanceof PlayDollInitError && e.message === "doll_unavailable";
+      // 결정적 거절은 warn → Logs 로만(sentry-bridge CAPTURE_SKIP). 조회 장애·
+      // 계약 위반·텍스처/게임 생성 실패 등 진짜 실패만 error 이슈로 승격.
+      if (deterministicUnavailable) {
+        log.warn("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
+      } else {
+        log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
       }
+      setGameReady(false);
+      setGameInitError(
+        deterministicUnavailable
+          ? "이 캐릭터는 내 계정에서 플레이할 수 없어요. 삭제됐거나 다른 사용자의 캐릭터 주소예요. 내 갤러리에서 캐릭터를 선택해주세요."
+          : "게임을 불러오지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.",
+      );
     });
 
     return () => {
