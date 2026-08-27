@@ -12,6 +12,13 @@ const CAPTURE_SKIP = new Set<string>([
   "og.score_query_fail",
   "highlight.clip_play_unsupported",
   "score.out_of_range",
+  // 아래 3종은 warn=노이즈 변형만 여기로 온다(2026-08-27 Sentry 트리아지):
+  // transport 실패(isTransportFailure — 크롤러·이탈·전파 불량)와 결정적 거절
+  // (doll_unavailable)은 warn, 서버 거절·진짜 실패는 같은 이벤트명의 error 로
+  // 승격되어 이 스킵과 무관하게 이슈를 만든다.
+  "auth.anon_sign_in_fail",
+  "auth.bootstrap_profile_fail",
+  "play.game_init_fail",
 ]);
 
 /**

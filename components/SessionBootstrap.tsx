@@ -23,6 +23,7 @@ import {
 import { drainScoreSubmissionOutbox } from "@/lib/score-outbox";
 import { markPlayConversionSent } from "@/lib/acquisition";
 import { log, errInfo } from "@/lib/log";
+import { isTransportFailure } from "@/lib/transport-failure";
 import {
   acquireSessionReconciliation,
 } from "@/lib/session-reconciliation";
@@ -218,8 +219,8 @@ function SessionBootstrapEffects({
       | ReturnType<typeof acquireSessionReconciliation>
       | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
-    // ensureAuth() 가 실패 시 이미 log.error("auth.anon_sign_in_fail") 를 남기므로
-    // 여기서 또 로깅하면 같은 사건이 두 줄(레벨·포맷 불일치)로 갈린다 → 침묵.
+    // ensureAuth() 가 실패 시 이미 "auth.anon_sign_in_fail" 을 레벨 분류(transport→warn,
+    // 서버 거절→error)해 남기므로 여기서 또 로깅하면 같은 사건이 두 줄로 갈린다 → 침묵.
     (async () => {
       const discoveredFlow =
         await discoverOAuthFlowBeforeBootstrap(
@@ -287,10 +288,19 @@ function SessionBootstrapEffects({
         );
       } catch (error) {
         if (!controller.signal.aborted) {
-          log.warn(
-            "auth.bootstrap_profile_fail",
-            errInfo(error),
-          );
+          // transport 실패(무응답)는 warn → Logs 로만(sentry-bridge CAPTURE_SKIP).
+          // 서버가 응답으로 거절한 profile 조회 실패는 error 이슈로 승격.
+          if (isTransportFailure(error)) {
+            log.warn(
+              "auth.bootstrap_profile_fail",
+              errInfo(error),
+            );
+          } else {
+            log.error(
+              "auth.bootstrap_profile_fail",
+              errInfo(error),
+            );
+          }
         }
       }
     })().catch(() => {
