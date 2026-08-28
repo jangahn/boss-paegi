@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isTransportFailure } from "../../lib/transport-failure.ts";
-import { SupabaseOperationError } from "../../lib/supabase-operation.ts";
+import {
+  requireSupabaseSuccess,
+  SupabaseOperationError,
+} from "../../lib/supabase-operation.ts";
 
 function namedError(
   name: string,
@@ -146,4 +149,42 @@ test("noise-classified emit sites split warn(logs-only) vs error(issue)", () => 
       `${eventName} must stay in CAPTURE_SKIP`,
     );
   }
+});
+
+test("resolved-error HTTP status rides the wrapper for diagnosis, classification, and 401 retry", async () => {
+  // requireSupabaseSuccess 가 resolved `{ error, status }` 의 status 를 래퍼에 실어
+  // errInfo(errStatus)·transport 판별(status 존재=서버 판정)·profile 401 재시도가 공유한다.
+  // (2026-08-28 bootstrap_profile_fail 실측: PostgREST 401 인데 로그에 status 가 없어 판독 불가였음.)
+  const err = await requireSupabaseSuccess("t.op", async () => ({
+    data: null,
+    error: { message: "JWT expired" },
+    status: 401,
+  })).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  assert.ok(err instanceof SupabaseOperationError);
+  assert.equal(err.status, 401);
+  assert.equal(isTransportFailure(err), false);
+  // status 가 숫자가 아니면 싣지 않는다(형태 오염 방지).
+  const noStatus = await requireSupabaseSuccess("t.op", async () => ({
+    data: null,
+    error: { message: "boom" },
+    status: "401",
+  })).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  assert.ok(noStatus instanceof SupabaseOperationError);
+  assert.equal(noStatus.status, undefined);
+});
+
+test("profile.self retries exactly once after a 401 via session refresh before escalating", () => {
+  // 만료/스테일 JWT 첫 요청의 PostgREST 401(탭 복귀·부트스트랩 토큰 경합 — 직후 재요청은 성공)
+  // 은 세션 갱신 후 1회 재시도. 401 외 실패·재시도 실패는 그대로 승격(실실패 은폐 금지).
+  const profile = readFileSync("lib/profile.ts", "utf8");
+  assert.match(
+    profile,
+    /error\.status !== 401[\s\S]*?auth\.profile_401_retry[\s\S]*?refreshSession\(\)[\s\S]*?await read\(\)/,
+  );
 });

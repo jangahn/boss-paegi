@@ -94,6 +94,17 @@ if (dsn && callbackUrlScrubbed && !isOAuthCallbackPage) {
     environment: env,
     // 구조화 로그 → Explore→Logs. (로그/에러는 모든 환경에서 — environment 로 필터.)
     enableLogs: true,
+    // 인앱 웹뷰(사전/브릿지)가 페이지에 주입한 스크립트의 자체 오류가 window.onerror 로 유입되는
+    // 노이즈 차단 — 전부 `<anonymous>` 프레임의 전역 심볼이고 앱 번들에는 해당 전역이 없다
+    // (2026-08-28 Android 15/16 Chrome Mobile WebView 실측, KB known-non-issues #11).
+    // Chrome("X is not defined")·Safari("Can't find variable: X") 워딩 모두. appendChild 는
+    // 주입 스크립트 재선언(Identifier already declared)만 — 앱의 textarea appendChild(lib/share)는
+    // 이 문구를 낼 수 없다.
+    ignoreErrors: [
+      /^(?:onReady|onShow|onHide|selectwords|tapAt|removeHighlight) is not defined$/,
+      /^Can't find variable: (?:onReady|onShow|onHide|selectwords|tapAt|removeHighlight)$/,
+      /Failed to execute 'appendChild' on 'Node': Identifier/,
+    ],
     // 성능 트레이싱 10% (prod 한정). browserTracing 자동 = pageload/navigation/Web Vitals.
     tracesSampler: (ctx) => {
       if (!isProd || isOAuthCallbackPage) return 0;

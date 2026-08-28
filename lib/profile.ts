@@ -5,7 +5,9 @@ import { ensureAuth } from "@/lib/auth-client";
 import {
   requireSupabaseData,
   requireSupabaseOptionalData,
+  SupabaseOperationError,
 } from "@/lib/supabase-operation";
+import { log } from "@/lib/log";
 import {
   isExactNicknameMutationRow,
   parseProfileMember,
@@ -66,54 +68,72 @@ export async function getMyProfile(
       try {
         const session = await ensureAuth(requestSignal);
         const sb = createClient();
-        const profileRow = await requireSupabaseData(
-          "profile.self",
-          () =>
-            sb
-              .from("profiles")
-              .select("id, display_name, avatar_url")
-              .eq("id", session.user.id)
-              .abortSignal(requestSignal)
-              .maybeSingle(),
-        );
-        const base = parseProfileSelf(profileRow, session.user.id);
+        const read = async (): Promise<MyProfile> => {
+          const profileRow = await requireSupabaseData(
+            "profile.self",
+            () =>
+              sb
+                .from("profiles")
+                .select("id, display_name, avatar_url")
+                .eq("id", session.user.id)
+                .abortSignal(requestSignal)
+                .maybeSingle(),
+          );
+          const base = parseProfileSelf(profileRow, session.user.id);
 
-        if (session.user.is_anonymous === true) {
-          return {
-            kind: "confirmed",
-            value: {
+          if (session.user.is_anonymous === true) {
+            return {
               ...base,
               isLoggedIn: false,
               genCredits: null,
               isAdmin: false,
-            },
-          };
-        }
+            };
+          }
 
-        // 비익명 OAuth 직후 /consent 전에는 member row가 아직 없을 수 있다.
-        // 성공 no-row만 허용하고, non-null 손상 row/transport 오류는 실패시킨다.
-        const memberRow = await requireSupabaseOptionalData(
-          "profile.member",
-          () =>
-            sb
-              .from("member_accounts")
-              .select("gen_credits, is_admin")
-              .eq("user_id", session.user.id)
-              .abortSignal(requestSignal)
-              .maybeSingle(),
-        );
-        const member =
-          memberRow === null ? null : parseProfileMember(memberRow);
+          // 비익명 OAuth 직후 /consent 전에는 member row가 아직 없을 수 있다.
+          // 성공 no-row만 허용하고, non-null 손상 row/transport 오류는 실패시킨다.
+          const memberRow = await requireSupabaseOptionalData(
+            "profile.member",
+            () =>
+              sb
+                .from("member_accounts")
+                .select("gen_credits, is_admin")
+                .eq("user_id", session.user.id)
+                .abortSignal(requestSignal)
+                .maybeSingle(),
+          );
+          const member =
+            memberRow === null ? null : parseProfileMember(memberRow);
 
-        return {
-          kind: "confirmed",
-          value: {
+          return {
             ...base,
             isLoggedIn: true,
             genCredits: member?.gen_credits ?? null,
             isAdmin: member?.is_admin ?? false,
-          },
+          };
         };
+
+        let value: MyProfile;
+        try {
+          value = await read();
+        } catch (error) {
+          // 만료/스테일 JWT 의 첫 요청이 PostgREST 401 로 거절되는 경계(탭 복귀·부트스트랩
+          // 토큰 경합 — 전부 직후 재요청이 성공하는 일과성). 세션 갱신 후 딱 1회 재시도하고,
+          // 401 이 아니거나 재시도도 실패하면 그대로 승격한다(실실패 은폐 금지).
+          if (
+            !(error instanceof SupabaseOperationError) ||
+            error.status !== 401 ||
+            requestSignal.aborted
+          ) {
+            throw error;
+          }
+          log.info("auth.profile_401_retry", {
+            operation: error.operation,
+          });
+          await sb.auth.refreshSession().catch(() => undefined);
+          value = await read();
+        }
+        return { kind: "confirmed", value };
       } catch (error) {
         return { kind: "rejected", error };
       }

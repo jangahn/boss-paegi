@@ -8,6 +8,8 @@
  */
 export type SupabaseOperationResult = {
   error?: unknown;
+  /** PostgREST/Storage 응답의 HTTP status — resolved 오류 승격 시 진단용으로 함께 싣는다. */
+  status?: unknown;
 };
 
 export type SupabaseDataResult<T> = SupabaseOperationResult & {
@@ -48,12 +50,19 @@ export const STORAGE_REMOVE_BATCH_SIZE = 100;
 export class SupabaseOperationError extends Error {
   readonly operation: string;
   readonly operationError: unknown;
+  /**
+   * 서버가 응답으로 거절한 경우의 HTTP status — resolved `{ error, status }` 경로에서만 채워진다.
+   * errInfo 가 errStatus 로 집고(진단 공백 해소 — 2026-08-28 bootstrap_profile_fail 401 실측),
+   * transport 판별(status 존재=서버 판정)·profile 401 재시도 판단이 공유한다.
+   */
+  readonly status?: number;
 
-  constructor(operation: string, operationError: unknown) {
+  constructor(operation: string, operationError: unknown, status?: number) {
     super(`${operation} failed`);
     this.name = "SupabaseOperationError";
     this.operation = operation;
     this.operationError = operationError;
+    if (typeof status === "number") this.status = status;
   }
 }
 
@@ -64,7 +73,11 @@ export async function requireSupabaseSuccess<T extends SupabaseOperationResult>(
   try {
     const result = await call();
     if (result.error !== null && result.error !== undefined) {
-      throw new SupabaseOperationError(operation, result.error);
+      throw new SupabaseOperationError(
+        operation,
+        result.error,
+        typeof result.status === "number" ? result.status : undefined,
+      );
     }
     return result;
   } catch (error) {
