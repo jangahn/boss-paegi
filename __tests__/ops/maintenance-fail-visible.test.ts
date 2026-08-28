@@ -659,7 +659,19 @@ test("every ops route finishes before the scheduler timeout and never uses 207",
     route("credit-expire"),
     /opsMaintenanceDeadlineReached\(deadline, 2_000\)/,
   );
-  for (const name of ["credit-expire", "reconcile"]) {
+  // 심박 기록 구현은 공용 기록기(lib/ops-cron-heartbeat)로 위임됐다(v1.02) —
+  // "route 작업과 함께 취소된다" 불변식은 route 가 signal 을 위임하고 기록기가
+  // abortSignal 을 거는 두 조각으로 나뉘어 각각 핀한다.
+  const heartbeatLib = readFileSync(
+    join(HERE, "../../lib/ops-cron-heartbeat.ts"),
+    "utf8",
+  );
+  assert.match(
+    heartbeatLib,
+    /request\.abortSignal\(signal\)/,
+    "shared recorder: heartbeat must be cancelled with route work",
+  );
+  for (const name of ["credit-expire", "reconcile", "gen-recover"]) {
     const source = route(name);
     assert.match(source, /AbortSignal\.timeout\(1_000\)/, name);
     assert.match(
@@ -669,8 +681,8 @@ test("every ops route finishes before the scheduler timeout and never uses 207",
     );
     assert.match(
       source,
-      /request\.abortSignal\(signal\)/,
-      `${name}: success heartbeat must be cancelled with route work`,
+      /recordOpsCronHeartbeat\(admin, "[a-z-]+", phase, errorCode, signal\)/,
+      `${name}: heartbeat wrapper must forward the route signal to the shared recorder`,
     );
   }
 });
