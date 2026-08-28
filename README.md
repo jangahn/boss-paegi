@@ -929,6 +929,12 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.03 (2026-08-28, pre-ledger legacy 가입 마이그레이션 경로 소멸 + auth 삭제 계약 단일화; 마이그레이션 없음 — DB legacy 객체는 증거로 보존):
+- **소멸 판정 근거(실측)**: `legacy_signup_migration_receipts` **프로덕션 0행**(경로가 단 한 번도 실행된 적 없음) + legacy 쿠키 TTL 15분(v0.78 이후 구클라이언트 소멸로 드레인 완료) + 현행 클라이언트는 flow 쿠키(v2)만 발급·base 쿠키는 적극 clear. 코드 주석 스스로 expand/contract 드레인 창(0094)이라 명시.
+- **제거**: `migrateAnonData` 의 legacy 파라미터/branch·`runAnonDataMigration` 러너 전체·`parseLegacyMigrationReceipt`·`verifyLegacyMigrateValue`(+이미 사장이던 `verifyMigrateValue`)·legacy 전용 테스트 2본(총 ~1,300줄). consent 라우트는 flow 권위 3-인자 호출만. **DB 는 불변**: `legacy_signup_migration_receipts`·`consume_legacy_signup_migration` 은 증거·감사용으로 보존(rollout 계약 핀도 DB 레이어 유지).
+- **auth 삭제 계약 단일화(ⓓ①)**: `lib/anon-data-migration.deleteAuthUserAcceptingMissing` 이 정본 — 오류로만 판정(성공 응답은 user 미반환, v1.00), user_not_found=멱등 성공. 온보딩 flow 경로가 이를 사용하고 직접 `auth.admin.deleteUser` 호출은 소스핀으로 금지. 예외 1: oauth-anon-auth-cleanup-job 은 **의도적으로 더 강한** 삭제 후 재조회 saga 유지(핀으로 보호).
+- 잔여 후속 후보(판단 보류): `signMigrateValue`/flow migrate 쿠키는 발급·clear 만 되고 서버 판독처가 flow ledger 로 대체된 것으로 보임 — 회수 시맨틱 정밀 검증 후 제거 검토.
+
 v1.02 (2026-08-28, ops cron 상호 침묵 감시 — gen-recover 심박 신설 + 이웃 잡 stale 경보; **Migration 0109**):
 - **관측 공백**: cron-job.org 의 onFailure/onDisable 알림은 "실행됐지만 실패"만 덮는다 — 잡 삭제·계정 문제 등 **"아예 안 옴"은 어느 계층도 감지 못 했고**, gen-recover 는 DB 심박 자체가 없었다(ops_cron_heartbeats 는 reconcile·credit-expire 만).
 - **상호 감시**: 공용 `lib/ops-cron-heartbeat`(기록 `recordOpsCronHeartbeat` + 감시 `alertIfOpsCronSilent`) — reconcile 이 gen-recover(임계 20분)·credit-expire(26h)를, gen-recover 가 reconcile(20분)을 확인해 last_started_at 정지 시 `ops.cron_heartbeat_stale`(error → Sentry 이슈)로 승격. row 부재=부트스트랩(침묵 아님), 감시/기록 실패는 warn(`ops.cron_heartbeat_watch_fail`/`ops.cron_heartbeat_fail`)만 — 감시가 본 cron 을 죽이지 않는다. 한계: cron-job.org 전체 장애는 감시자도 함께 멈춰 미탐(그 경우는 결제 reconcile 부재로 즉시 체감 + cron-job.org 자체 상태 채널).
