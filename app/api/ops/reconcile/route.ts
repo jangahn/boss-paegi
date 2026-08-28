@@ -12,6 +12,10 @@ import {
   sweepOpenPgAttempts,
 } from "@/lib/refund-saga";
 import { log, errInfo } from "@/lib/log";
+import {
+  recordOpsCronHeartbeat,
+  alertIfOpsCronSilent,
+} from "@/lib/ops-cron-heartbeat";
 import { validateAdminRows } from "@/lib/admin-read-contract";
 import { requireSupabaseExactCount } from "@/lib/supabase-operation";
 import { cronSecretMatches } from "@/lib/ops-auth";
@@ -60,29 +64,14 @@ const STALE_MS = 2 * 60 * 60 * 1000;
 const BATCH = 20;
 const MAX_IDS = 10;
 
-/** cron 심박 기록(§29) — rpc 실패는 경고만(cron 자체를 죽이지 않음). */
+/** cron 심박 기록(§29) — 공용 기록기(lib/ops-cron-heartbeat) 위임, 실패는 경고만. */
 async function heartbeat(
   admin: ReturnType<typeof createAdminClient>,
   phase: "start" | "success" | "failure",
   errorCode?: string,
   signal?: AbortSignal,
 ) {
-  try {
-    const request = admin.rpc("ops_cron_heartbeat", {
-      p_job: "reconcile",
-      p_phase: phase,
-      p_error_code: errorCode ?? null,
-    });
-    const { error } = await (signal ? request.abortSignal(signal) : request);
-    if (error) {
-      log.warn("pay.reconcile_heartbeat_fail", { phase, ...errInfo(error) });
-    }
-  } catch (error) {
-    log.warn("pay.reconcile_heartbeat_fail", {
-      phase,
-      ...errInfo(error),
-    });
-  }
+  await recordOpsCronHeartbeat(admin, "reconcile", phase, errorCode, signal);
 }
 
 function maintenanceTimeBudgetResponse() {
@@ -113,6 +102,9 @@ export async function POST(req: NextRequest) {
     async () => {
       const admin = createAdminClient();
       await heartbeat(admin, "start", undefined, deadline.signal);
+      // 이웃 cron 침묵 감시(v1.02) — 잡 삭제·비활성은 스스로 알릴 수 없어 서로의 심박을 확인한다.
+      await alertIfOpsCronSilent(admin, "gen-recover", deadline.signal);
+      await alertIfOpsCronSilent(admin, "credit-expire", deadline.signal);
       if (opsMaintenanceDeadlineReached(deadline)) {
         return maintenanceTimeBudgetResponse();
       }

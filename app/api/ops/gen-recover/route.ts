@@ -35,6 +35,10 @@ import {
 } from "@/lib/ops-keyset-pagination";
 import { validateAdminRows } from "@/lib/admin-read-contract";
 import { log, errInfo } from "@/lib/log";
+import {
+  recordOpsCronHeartbeat,
+  alertIfOpsCronSilent,
+} from "@/lib/ops-cron-heartbeat";
 
 export const runtime = "nodejs";
 // 외부 scheduler의 90초 timeout보다 먼저 non-2xx로 끝나는 hard ceiling.
@@ -56,6 +60,16 @@ function maintenanceTimeBudgetResponse() {
     { ok: false, error: "maintenance_time_budget", retryPending: 1 },
     opsMaintenanceResponseInit(429),
   );
+}
+
+/** cron 심박 기록 — 공용 기록기(lib/ops-cron-heartbeat) 위임, 실패는 경고만(cron 자체를 죽이지 않음). */
+async function heartbeat(
+  admin: ReturnType<typeof createAdminClient>,
+  phase: "start" | "success" | "failure",
+  errorCode?: string,
+  signal?: AbortSignal,
+) {
+  await recordOpsCronHeartbeat(admin, "gen-recover", phase, errorCode, signal);
 }
 
 /**
@@ -89,6 +103,12 @@ export async function POST(req: NextRequest) {
     deadline,
     async () => {
       const admin = createAdminClient();
+      await heartbeat(admin, "start", undefined, deadline.signal);
+      // 이웃 cron 침묵 감시(v1.02) — 잡 삭제·비활성은 스스로 알릴 수 없어 서로의 심박을 확인한다.
+      await alertIfOpsCronSilent(admin, "reconcile", deadline.signal);
+      if (opsMaintenanceDeadlineReached(deadline)) {
+        return maintenanceTimeBudgetResponse();
+      }
       const cutoff = new Date(Date.now() - RECOVER_WINDOW_MS).toISOString();
 
       type Row = {
@@ -133,6 +153,7 @@ export async function POST(req: NextRequest) {
         }
         if (pageError) {
           log.error("gen.sweep_query_fail", errInfo(pageError));
+          await heartbeat(admin, "failure", "query_failed", deadline.signal);
           return NextResponse.json(
             { error: "query_failed" },
             opsMaintenanceResponseInit(503),
@@ -140,6 +161,7 @@ export async function POST(req: NextRequest) {
         }
         if (!Array.isArray(page)) {
           log.error("gen.sweep_query_invalid", { dataType: typeof page });
+          await heartbeat(admin, "failure", "query_failed", deadline.signal);
           return NextResponse.json(
             { error: "query_failed" },
             opsMaintenanceResponseInit(503),
@@ -160,6 +182,7 @@ export async function POST(req: NextRequest) {
           );
         } catch (error) {
           log.error("gen.sweep_query_invalid", errInfo(error));
+          await heartbeat(admin, "failure", "query_failed", deadline.signal);
           return NextResponse.json(
             { error: "query_failed" },
             opsMaintenanceResponseInit(503),
@@ -646,6 +669,19 @@ export async function POST(req: NextRequest) {
       if (opsMaintenanceDeadlineReached(deadline)) {
         return maintenanceTimeBudgetResponse();
       }
+      if (status === 200) {
+        await heartbeat(admin, "success", undefined, deadline.signal);
+      } else {
+        await heartbeat(
+          admin,
+          "failure",
+          status === 503 ? "system_error" : "incomplete",
+          deadline.signal,
+        );
+      }
+      if (opsMaintenanceDeadlineReached(deadline)) {
+        return maintenanceTimeBudgetResponse();
+      }
       if (status === 200) log.info("gen.sweep_done", result);
       else log.error("gen.sweep_incomplete", result);
       return NextResponse.json(
@@ -653,8 +689,14 @@ export async function POST(req: NextRequest) {
         opsMaintenanceResponseInit(status),
       );
     },
-    () => {
+    async () => {
       log.error("gen.maintenance_time_budget");
+      await heartbeat(
+        createAdminClient(),
+        "failure",
+        "time_budget",
+        AbortSignal.timeout(1_000),
+      );
       return maintenanceTimeBudgetResponse();
     },
   );

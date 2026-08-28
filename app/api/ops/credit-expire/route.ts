@@ -11,6 +11,7 @@ import {
   runOpsMaintenanceWithDeadline,
 } from "@/lib/ops-maintenance-status";
 import { log, errInfo } from "@/lib/log";
+import { recordOpsCronHeartbeat } from "@/lib/ops-cron-heartbeat";
 import { cronSecretMatches } from "@/lib/ops-auth";
 
 export const runtime = "nodejs";
@@ -28,32 +29,14 @@ const SWEEP_LIMIT = 500;
 
 type HeartbeatPhase = "start" | "success" | "failure";
 
-/** Best-effort heartbeat; timeout callback passes a fresh bounded signal. */
+/** Best-effort heartbeat — 공용 기록기(lib/ops-cron-heartbeat) 위임; timeout callback passes a fresh bounded signal. */
 async function heartbeat(
   admin: ReturnType<typeof createAdminClient>,
   phase: HeartbeatPhase,
   errorCode?: string,
   signal?: AbortSignal,
 ) {
-  try {
-    const request = admin.rpc("ops_cron_heartbeat", {
-      p_job: "credit-expire",
-      p_phase: phase,
-      p_error_code: errorCode ?? null,
-    });
-    const { error } = await (signal ? request.abortSignal(signal) : request);
-    if (error) {
-      log.warn("ops.credit_expire_heartbeat_fail", {
-        phase,
-        ...errInfo(error),
-      });
-    }
-  } catch (error) {
-    log.warn("ops.credit_expire_heartbeat_fail", {
-      phase,
-      ...errInfo(error),
-    });
-  }
+  await recordOpsCronHeartbeat(admin, "credit-expire", phase, errorCode, signal);
 }
 
 function maintenanceTimeBudgetResponse() {

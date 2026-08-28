@@ -19,7 +19,7 @@
 --     트리거로 profiles 를 자동 생성한다(0001). 픽스처는 owner/definer RPC 만으로 금융 상태를 만든다(§8·§34).
 
 begin;
-select plan(181);
+select plan(183);
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 -- Part A — 스키마·카탈로그·ACL·불변식 (픽스처 불필요)
@@ -672,6 +672,10 @@ select lives_ok($$ select public.ops_cron_heartbeat('reconcile', 'success', null
   'B.13b ops_cron_heartbeat(reconcile,success)');
 select is((select run_count > 0 from public.ops_cron_heartbeats where job_name = 'reconcile'), true,
   'B.13c heartbeat run_count 증가(§29)');
+select lives_ok($$ select public.ops_cron_heartbeat('gen-recover', 'start', null) $$,
+  'B.13d ops_cron_heartbeat(gen-recover,start) — 침묵 감시 대상 등록(0109)');
+select is((select run_count > 0 from public.ops_cron_heartbeats where job_name = 'gen-recover'), true,
+  'B.13e gen-recover 심박 run_count 증가(0109)');
 
 -- B.17 consent 보너스 로트(§Q1·G-1) — 신규 회원 insert 의 가입 보너스가 signup_bonus 로트와 원자 동기.
 select lives_ok($$
