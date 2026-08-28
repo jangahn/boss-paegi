@@ -303,8 +303,6 @@ export async function POST(req: NextRequest) {
       admin,
       user.id,
       migrationAuthority,
-      req.cookies.get(MIGRATE_COOKIE)?.value,
-      targetSession.session.sessionId,
     ),
     migrationAuthority !== null,
   );

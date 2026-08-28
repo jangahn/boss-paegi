@@ -4,12 +4,8 @@ import {
   extractOAuthProfile,
   type OAuthProfile,
 } from "@/lib/oauth-metadata";
-import { verifyLegacyMigrateValue } from "@/lib/signup-cookie";
 import { log, errInfo } from "@/lib/log";
-import {
-  isMissingAuthUserError,
-  runAnonDataMigration,
-} from "@/lib/anon-data-migration";
+import { deleteAuthUserAcceptingMissing } from "@/lib/anon-data-migration";
 import {
   requireSupabaseSuccess,
   SupabaseOperationError,
@@ -237,53 +233,12 @@ function parseOAuthMigrationReceipt(
   return parseMigrationResult(receipt.migrationResult);
 }
 
-function parseLegacyMigrationReceipt(
-  value: unknown,
-  expectedSourceUserId: string,
-  expectedTargetUserId: string,
-  expectedTargetSessionId: string,
-): {
-  migrationResult: Record<string, unknown>;
-  skipReason: MigrationSkipReceiptReason | null;
-} | null {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
-    return null;
-  }
-  const receipt = value as Record<string, unknown>;
-  const receiptKeys = Object.keys(receipt);
-  if (
-    receiptKeys.length !== 7 ||
-    ![
-      "ok",
-      "sourceUserId",
-      "targetUserId",
-      "targetSessionId",
-      "alreadyConsumed",
-      "consumedAt",
-      "migrationResult",
-    ].every((key) => receiptKeys.includes(key)) ||
-    receipt.ok !== true ||
-    receipt.sourceUserId !== expectedSourceUserId ||
-    receipt.targetUserId !== expectedTargetUserId ||
-    receipt.targetSessionId !== expectedTargetSessionId ||
-    typeof receipt.alreadyConsumed !== "boolean" ||
-    typeof receipt.consumedAt !== "string" ||
-    !Number.isFinite(Date.parse(receipt.consumedAt))
-  ) {
-    return null;
-  }
-  return parseMigrationResult(receipt.migrationResult);
-}
-
 /**
- * 익명→신규회원 데이터 이전 — 서명 쿠키 검증 + 안전검사 통과 시에만.
- * 반환: `migrated`(이전함) / `skipped`(쿠키없음·invalid·대상아님·이상데이터·이전불필요 → 재시도 무의미) /
- *       `failed`(권한·조회·count·reassign·삭제 에러 — 호출부가 MIGRATE_COOKIE 유지·재시도).
- * 호출부가 쿠키 정책을 결정한다.
+ * 익명→신규회원 데이터 이전 — OAuth flow ledger 권위(0093~0095) 전용.
+ * pre-ledger 3-part HMAC 쿠키 경로는 v1.03 에서 제거 — 15분 쿠키 TTL 드레인 완료 후
+ * 프로덕션 legacy 영수증 0건(한 번도 실행되지 않음)을 확인하고 소멸시켰다.
+ * 반환: `migrated`(이전함) / `skipped`(권위없음·이전불필요 → 재시도 무의미) /
+ *       `failed`(권한·reassign·삭제 에러 — 호출부가 재시도 경로 유지).
  */
 export async function migrateAnonData(
   admin: SupabaseClient,
@@ -295,29 +250,13 @@ export async function migrateAnonData(
     targetAccessTokenSha256: string;
     targetRefreshTokenSha256: string;
   } | null,
-  legacyCookieValue?: string,
-  legacyTargetSessionId?: string,
 ): Promise<MigrateResult> {
-  // Expand/contract compatibility: a browser served by the pre-ledger app can
-  // still hold the old three-part HMAC capability. It is accepted only when
-  // the current target session proves that no flow authority exists. 0094
-  // revokes the raw primitive only after the cookie TTL plus the maximum old
-  // invocation lifetime has drained.
-  const legacyCapability =
-    authority === null &&
-    typeof legacyTargetSessionId === "string"
-      ? verifyLegacyMigrateValue(legacyCookieValue)
-      : null;
-  if (authority === null && legacyCapability === null) {
+  if (authority === null) {
     return "skipped";
   }
-  const anonId =
-    authority?.sourceUserId ??
-    legacyCapability?.sourceUserId ??
-    null;
-  if (anonId === null) return "skipped";
+  const anonId = authority.sourceUserId;
   if (anonId === userId) {
-    return authority === null ? "skipped" : "failed";
+    return "failed";
   }
 
   // A flow receipt is the serializable policy boundary and must be consumed
@@ -326,231 +265,65 @@ export async function migrateAnonData(
   // already observe the target member. Replaying the durable receipt first
   // prevents that member row from being misclassified as a new no-transfer
   // decision.
-  if (authority !== null) {
-    let result: Awaited<ReturnType<typeof admin.rpc>>;
-    try {
-      result = await admin.rpc(
-        "consume_oauth_flow_intent_migration",
-        {
-          p_flow_id: authority.flowId,
-          p_target_user_id: userId,
-          p_target_session_id: authority.targetSessionId,
-          p_source_user_id: anonId,
-          p_access_token_sha256:
-            authority.targetAccessTokenSha256,
-          p_refresh_token_sha256:
-            authority.targetRefreshTokenSha256,
-        },
-      );
-    } catch (error) {
-      log.error("onboard.migrate_operation_fail", {
-        anonId,
-        userId,
-        operation: "data.reassign",
-        ...errInfo(error),
-      });
-      return "failed";
-    }
-    const receipt = parseOAuthMigrationReceipt(
-      result.data,
-      authority.flowId,
+  let result: Awaited<ReturnType<typeof admin.rpc>>;
+  try {
+    result = await admin.rpc(
+      "consume_oauth_flow_intent_migration",
+      {
+        p_flow_id: authority.flowId,
+        p_target_user_id: userId,
+        p_target_session_id: authority.targetSessionId,
+        p_source_user_id: anonId,
+        p_access_token_sha256:
+          authority.targetAccessTokenSha256,
+        p_refresh_token_sha256:
+          authority.targetRefreshTokenSha256,
+      },
     );
-    if (result.error !== null || receipt === null) {
-      log.error("onboard.migrate_operation_fail", {
-        anonId,
-        userId,
-        operation: "data.reassign",
-        ...errInfo(
-          result.error ??
-            new Error(
-              "oauth_flow_migration_receipt_invalid",
-            ),
-        ),
-      });
-      return "failed";
-    }
-    if (receipt.skipReason !== null) {
-      return "skipped";
-    }
-
-    try {
-      const deleted = await admin.auth.admin.deleteUser(anonId);
-      // GoTrue 삭제 성공 응답은 user 를 되돌려주지 않는다(auth-js `{ data: { user: {} } }`) —
-      // 응답 형태 재검증은 성공을 전부 실패로 오판하므로 오류로만 판정한다
-      // (user_not_found = 이미 삭제 = 멱등 성공, cleanup-job 의 삭제 계약과 동일).
-      if (
-        deleted.error !== null &&
-        !isMissingAuthUserError(deleted.error)
-      ) {
-        throw deleted.error;
-      }
-    } catch (error) {
-      log.error("onboard.migrate_operation_fail", {
-        anonId,
-        userId,
-        operation: "auth.delete_user",
-        ...errInfo(error),
-      });
-      return "failed";
-    }
-    return "migrated";
-  }
-
-  const outcome = await runAnonDataMigration(
-    {
-      getTargetUser: async () => {
-        const result = await admin.auth.admin.getUserById(userId);
-        return {
-          data: result.data.user
-            ? {
-                userId: result.data.user.id,
-                isAnonymous: result.data.user.is_anonymous === true,
-              }
-            : null,
-          error: result.error,
-        };
-      },
-      getTargetMember: async () => {
-        const result = await admin
-          .from("member_accounts")
-          .select("user_id")
-          .eq("user_id", userId)
-          .maybeSingle();
-        const row = result.data as { user_id: string } | null;
-        return {
-          data: row ? { userId: row.user_id } : null,
-          error: result.error,
-        };
-      },
-      getAnonUser: async () => {
-        const result = await admin.auth.admin.getUserById(anonId);
-        if (isMissingAuthUserError(result.error)) {
-          return { data: null, error: null };
-        }
-        return {
-          data: result.data.user
-            ? { isAnonymous: result.data.user.is_anonymous === true }
-            : null,
-          error: result.error,
-        };
-      },
-      getAnonMember: async () => {
-        const result = await admin
-          .from("member_accounts")
-          .select("user_id")
-          .eq("user_id", anonId)
-          .maybeSingle();
-        const row = result.data as { user_id: string } | null;
-        return {
-          data: row ? { userId: row.user_id } : null,
-          error: result.error,
-        };
-      },
-      countDolls: async () => {
-        const result = await admin
-          .from("dolls")
-          .select("id", { head: true, count: "exact" })
-          .eq("owner_id", anonId);
-        return { count: result.count, error: result.error };
-      },
-      countOrders: async () => {
-        const result = await admin
-          .from("orders")
-          .select("order_uuid", { head: true, count: "exact" })
-          .eq("user_id", anonId);
-        return { count: result.count, error: result.error };
-      },
-      countGenerations: async () => {
-        const result = await admin
-          .from("ai_generations")
-          .select("id", { head: true, count: "exact" })
-          .eq("owner_id", anonId);
-        return { count: result.count, error: result.error };
-      },
-      reassign: async () => {
-        if (
-          legacyCapability === null ||
-          typeof legacyTargetSessionId !== "string"
-        ) {
-          return {
-            data: null,
-            error: new Error(
-              "legacy_migration_authority_missing",
-            ),
-          };
-        }
-        const result = await admin.rpc(
-          "consume_legacy_signup_migration",
-          {
-            p_source_user_id: anonId,
-            p_target_user_id: userId,
-            p_target_session_id:
-              legacyTargetSessionId,
-            p_issued_at: new Date(
-              legacyCapability.issuedAtMs,
-            ).toISOString(),
-            p_expires_at: new Date(
-              legacyCapability.expiresAtMs,
-            ).toISOString(),
-          },
-        );
-        const receipt = parseLegacyMigrationReceipt(
-          result.data,
-          anonId,
-          userId,
-          legacyTargetSessionId,
-        );
-        return {
-          data: receipt
-            ? receipt.migrationResult
-            : null,
-          error:
-            result.error ??
-            (receipt
-              ? null
-              : new Error(
-                  "legacy_migration_receipt_invalid",
-                )),
-        };
-      },
-      deleteAnonUser: async () => {
-        const result = await admin.auth.admin.deleteUser(anonId);
-        if (isMissingAuthUserError(result.error)) {
-          return { deleted: true, error: null };
-        }
-        // GoTrue 삭제 성공 응답은 user 를 되돌려주지 않는다 — 오류 부재가 삭제 확정이다.
-        return {
-          deleted: result.error === null,
-          error: result.error,
-        };
-      },
-    },
-    {
-      sourceUserId: anonId,
-      targetUserId: userId,
-      sourceAuthorityVerified: true,
-    },
-  );
-
-  if (outcome.result === "failed") {
+  } catch (error) {
     log.error("onboard.migrate_operation_fail", {
       anonId,
       userId,
-      operation: outcome.operation,
-      ...errInfo(outcome.error),
+      operation: "data.reassign",
+      ...errInfo(error),
     });
     return "failed";
   }
-  if (outcome.result === "skipped") {
-    if (outcome.reason === "unexpected_data") {
-      log.warn("onboard.legacy_anon_unexpected", {
-        anonId,
-        dolls: outcome.counts?.dolls,
-        orders: outcome.counts?.orders,
-        gens: outcome.counts?.generations,
-      });
-    }
+  const receipt = parseOAuthMigrationReceipt(
+    result.data,
+    authority.flowId,
+  );
+  if (result.error !== null || receipt === null) {
+    log.error("onboard.migrate_operation_fail", {
+      anonId,
+      userId,
+      operation: "data.reassign",
+      ...errInfo(
+        result.error ??
+          new Error(
+            "oauth_flow_migration_receipt_invalid",
+          ),
+      ),
+    });
+    return "failed";
+  }
+  if (receipt.skipReason !== null) {
     return "skipped";
+  }
+
+  try {
+    const deleted = await deleteAuthUserAcceptingMissing(admin, anonId);
+    if (!deleted.ok) {
+      throw deleted.error;
+    }
+  } catch (error) {
+    log.error("onboard.migrate_operation_fail", {
+      anonId,
+      userId,
+      operation: "auth.delete_user",
+      ...errInfo(error),
+    });
+    return "failed";
   }
   return "migrated";
 }

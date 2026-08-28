@@ -157,34 +157,30 @@ test("query stripping discovers an unconsumed flow while an explicit flow bypass
   );
 });
 
-test("flow migration consumes the serializable DB receipt before any legacy policy pre-read", () => {
+test("flow migration consumes the serializable DB receipt before the anon auth delete", () => {
   const onboard = source("lib/account-onboard.ts");
+  const consent = source("app/api/account/consent/route.ts");
   const flowConsume = onboard.indexOf(
     '"consume_oauth_flow_intent_migration"',
   );
-  const genericRunner = onboard.indexOf(
-    "const outcome = await runAnonDataMigration",
-  );
-
   assert.ok(flowConsume >= 0);
-  assert.ok(genericRunner > flowConsume);
   assert.match(
-    onboard.slice(flowConsume, genericRunner),
-    /parseOAuthMigrationReceipt[\s\S]*?receipt\.skipReason !== null[\s\S]*?return "skipped"[\s\S]*?deleteUser\(anonId\)/,
+    onboard.slice(flowConsume),
+    /parseOAuthMigrationReceipt[\s\S]*?receipt\.skipReason !== null[\s\S]*?return "skipped"[\s\S]*?deleteAuthUserAcceptingMissing\(admin, anonId\)/,
   );
-  // 삭제 판정은 오류로만 — GoTrue 성공 응답에는 user 가 없어(auth-js `{ user: {} }`)
-  // 응답 형태 재검증은 성공을 실패로 오판한다(user_not_found 는 멱등 성공).
+  // 삭제 판정은 공용 계약(deleteAuthUserAcceptingMissing) 단일 경로 — GoTrue 성공 응답에는
+  // user 가 없어 응답 형태 재검증은 성공을 실패로 오판한다(v1.00). 직접 deleteUser 호출 금지.
+  assert.doesNotMatch(onboard, /auth\.admin\.deleteUser/);
+  // pre-ledger(legacy 쿠키) 경로는 v1.03 에서 소멸 — flow 권위 3-인자 호출이 유일 경로.
   assert.match(
-    onboard.slice(flowConsume, genericRunner),
-    /deleteUser\(anonId\)[\s\S]*?deleted\.error !== null &&[\s\S]*?!isMissingAuthUserError\(deleted\.error\)[\s\S]*?throw deleted\.error/,
+    consent,
+    /migrateAnonData\(\s*admin,\s*user\.id,\s*migrationAuthority,\s*\)/,
   );
+  assert.match(consent, /export const maxDuration = 300;/);
+  // 식별자 단위 소멸 핀(이력 설명 주석의 'legacy' 단어는 허용).
   assert.doesNotMatch(
-    onboard.slice(flowConsume, genericRunner),
-    /deleted\.data\.user/,
-  );
-  assert.match(
-    source("lib/anon-data-migration.ts"),
-    /reassignmentSkipReason[\s\S]*?if \(reassignedSkip !== null\)[\s\S]*?result: "skipped"/,
+    onboard,
+    /legacyCookieValue|legacyCapability|runAnonDataMigration|parseLegacyMigrationReceipt|verifyLegacyMigrateValue/,
   );
 });
 
@@ -213,50 +209,3 @@ test("status recovery accepts a verified newer target session only after a termi
   );
 });
 
-test("pre-ledger HMAC migration is available only when no flow authority exists", () => {
-  const consent = source("app/api/account/consent/route.ts");
-  const onboard = source("lib/account-onboard.ts");
-  const legacy = onboard.indexOf("const legacyCapability");
-  const flow = onboard.indexOf(
-    '"consume_oauth_flow_intent_migration"',
-    legacy,
-  );
-  const bridge = onboard.indexOf(
-    '"consume_legacy_signup_migration"',
-    flow,
-  );
-  const terminalSkip = onboard.indexOf(
-    'if (outcome.result === "skipped")',
-    bridge,
-  );
-
-  assert.match(
-    consent,
-    /migrateAnonData\([\s\S]*?migrationAuthority,[\s\S]*?req\.cookies\.get\(MIGRATE_COOKIE\)\?\.value,[\s\S]*?targetSession\.session\.sessionId/,
-  );
-  assert.match(consent, /export const maxDuration = 300;/);
-  assert.ok(legacy >= 0);
-  assert.ok(flow > legacy);
-  assert.ok(bridge > flow);
-  assert.ok(terminalSkip > bridge);
-  assert.match(
-    onboard.slice(legacy, flow),
-    /authority === null[\s\S]*?verifyLegacyMigrateValue\(legacyCookieValue\)/,
-  );
-  assert.match(
-    onboard.slice(flow, bridge),
-    /consume_oauth_flow_intent_migration[\s\S]*?parseOAuthMigrationReceipt/,
-  );
-  assert.match(
-    onboard.slice(bridge, terminalSkip),
-    /consume_legacy_signup_migration[\s\S]*?parseLegacyMigrationReceipt/,
-  );
-  assert.doesNotMatch(
-    onboard.slice(legacy, terminalSkip),
-    /"reassign_anon_data"/,
-  );
-  assert.match(
-    onboard.slice(terminalSkip),
-    /outcome\.reason === "unexpected_data"[\s\S]*?return "skipped"/,
-  );
-});

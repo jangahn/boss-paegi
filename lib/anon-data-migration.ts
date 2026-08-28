@@ -1,212 +1,17 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /**
- * 익명 데이터 이전의 순수 정책 경계.
+ * GoTrue admin 사용자 삭제 계약 — 단일 정본.
  *
- * Supabase SDK는 실패를 reject하지 않고 `{ error }`로 resolve할 수 있으므로, 모든 외부 연산을
- * 명시적으로 검사한다. 실제 SDK 어댑터는 `lib/account-onboard.ts`에 두고 이 파일은 fault
- * injection으로 모든 실패 분기를 검증할 수 있게 런타임 의존성을 갖지 않는다.
+ * pre-ledger 익명 데이터 이전 러너(runAnonDataMigration)는 v1.03 에서 legacy 경로와 함께
+ * 제거됐다 — 프로덕션 legacy 영수증 0건(단 한 번도 실행되지 않음)을 확인하고 소멸.
+ * 이 모듈은 auth 사용자 삭제의 판정 계약만 남긴다. deps 없는 경량 모듈이라 node 단위
+ * 테스트가 직접 import 한다.
  */
 
-export type AnonMigrationOperation =
-  | "authorization.verify"
-  | "auth.get_target_user"
-  | "target_member.read"
-  | "auth.get_user"
-  | "member.read"
-  | "dolls.count"
-  | "orders.count"
-  | "generations.count"
-  | "counts.aggregate"
-  | "data.reassign"
-  | "auth.delete_user";
-
-type ReadResult<T> = {
-  data: T | null;
-  error: unknown | null;
-};
-
-type CountResult = {
-  count: number | null;
-  error: unknown | null;
-};
-
-type MutationResult = {
-  error: unknown | null;
-};
-
-export type AnonMigrationDependencies = {
-  getTargetUser: () => Promise<
-    ReadResult<{ userId: string; isAnonymous: boolean }>
-  >;
-  getTargetMember: () => Promise<ReadResult<{ userId: string }>>;
-  getAnonUser: () => Promise<ReadResult<{ isAnonymous: boolean }>>;
-  getAnonMember: () => Promise<ReadResult<{ userId: string }>>;
-  countDolls: () => Promise<CountResult>;
-  countOrders: () => Promise<CountResult>;
-  countGenerations: () => Promise<CountResult>;
-  reassign: () => Promise<MutationResult & { data: unknown }>;
-  deleteAnonUser: () => Promise<MutationResult & { deleted: boolean }>;
-};
-
 /**
- * runner를 호출할 수 있는 최소 권한 증거. `sourceAuthorityVerified`는
- * server-only flow ledger/HMAC 검증을 통과한 뒤에만 true로 구성하고,
- * target은 현재 인증 gate의 user id를 전달한다.
- */
-export type AnonMigrationAuthorization = {
-  sourceUserId: string;
-  targetUserId: string;
-  sourceAuthorityVerified: true;
-};
-
-export type AnonMigrationOutcome =
-  | { result: "migrated" }
-  | {
-      result: "skipped";
-      reason:
-        | "source_not_anonymous"
-        | "source_generation_changed"
-        | "source_is_member"
-        | "target_is_member"
-        | "target_already_claimed"
-        | "source_already_claimed"
-        | "source_already_absent"
-        | "unexpected_data";
-      counts?: {
-        dolls: number;
-        orders: number;
-        generations: number;
-      };
-    }
-  | {
-      result: "failed";
-      operation: AnonMigrationOperation;
-      error: unknown;
-    };
-
-type Captured<T> =
-  | { ok: true; value: T }
-  | {
-      ok: false;
-      failure: Extract<AnonMigrationOutcome, { result: "failed" }>;
-    };
-
-function failure(
-  operation: AnonMigrationOperation,
-  error: unknown,
-): Extract<AnonMigrationOutcome, { result: "failed" }> {
-  return { result: "failed", operation, error };
-}
-
-async function capture<T extends { error: unknown | null }>(
-  operation: AnonMigrationOperation,
-  run: () => Promise<T>,
-): Promise<Captured<T>> {
-  try {
-    const value = await run();
-    if (value.error != null) {
-      return { ok: false, failure: failure(operation, value.error) };
-    }
-    return { ok: true, value };
-  } catch (error) {
-    return { ok: false, failure: failure(operation, error) };
-  }
-}
-
-function validCount(
-  operation: Extract<
-    AnonMigrationOperation,
-    "dolls.count" | "orders.count" | "generations.count"
-  >,
-  count: number | null,
-): Captured<number> {
-  if (count === null || !Number.isSafeInteger(count) || count < 0) {
-    return {
-      ok: false,
-      failure: failure(operation, new Error("count_missing_or_invalid")),
-    };
-  }
-  return { ok: true, value: count };
-}
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const POSTGRES_INTEGER_MAX = 2_147_483_647;
-
-function isReassignmentCount(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value <= POSTGRES_INTEGER_MAX
-  );
-}
-
-function isExactReassignmentSuccess(value: unknown): boolean {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-  return (
-    keys.length === 4 &&
-    keys.includes("ok") &&
-    keys.includes("scores") &&
-    keys.includes("badges") &&
-    keys.includes("telemetry") &&
-    record.ok === true &&
-    isReassignmentCount(record.scores) &&
-    isReassignmentCount(record.badges) &&
-    isReassignmentCount(record.telemetry)
-  );
-}
-
-function reassignmentSkipReason(
-  value: unknown,
-): Extract<AnonMigrationOutcome, { result: "skipped" }>["reason"] | null {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-  if (
-    keys.length !== 2 ||
-    !keys.includes("ok") ||
-    !keys.includes("skipped") ||
-    record.ok !== true
-  ) {
-    return null;
-  }
-  switch (record.skipped) {
-    case "target_already_member":
-      return "target_is_member";
-    case "target_already_claimed":
-      return "target_already_claimed";
-    case "source_already_claimed":
-      return "source_already_claimed";
-    case "source_already_absent":
-      return "source_already_absent";
-    case "source_not_anonymous":
-      return "source_not_anonymous";
-    case "source_is_member":
-      return "source_is_member";
-    case "unexpected_source_data":
-      return "unexpected_data";
-    case "source_generation_changed":
-      return "source_generation_changed";
-    default:
-      return null;
-  }
-}
-
-/**
- * `getUserById`는 삭제된 사용자를 `{ data: { user: null }, error: user_not_found }`로 반환한다.
- * 이는 이전 완료 뒤 consent INSERT만 실패한 재시도에서 정상적으로 발생한다. SDK 어댑터는
- * 오직 이 명시적 오류만 성공한 no-row/이미 삭제됨으로 정규화한다. 서명 쿠키가 source 소유
- * 근거이므로 no-row여도 멱등 reassign은 실행해, Auth만 먼저 사라지고 데이터가 남은 경우를 복구한다.
+ * Auth admin API 가 "이미 없는 사용자"를 알리는 두 형태(user_not_found 코드·Not Found 문구)를
+ * 흡수한다. 멱등 재시도(삭제 재실행·정리 잡)의 성공 판정 근거이므로 형태가 늘면 여기에만 더한다.
  */
 export function isMissingAuthUserError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -219,130 +24,19 @@ export function isMissingAuthUserError(error: unknown): boolean {
 }
 
 /**
- * 익명 source 검증 → 금지 데이터 count → 멱등 reassign → auth user 삭제를 순서대로 수행한다.
- * 어느 단계든 throw 또는 resolved `{ error }`이면 `failed`이며 호출부는 쿠키를 보존해야 한다.
+ * GoTrue admin 삭제 — **오류로만 판정한다.**
+ * 성공 응답은 user 를 되돌려주지 않으므로(auth-js `{ data: { user: {} } }` — 빈 응답 승격)
+ * 응답 형태 재검증은 성공을 전부 실패로 오판한다(2026-08-28 신규가입 6/6 실측, v1.00).
+ * user_not_found 는 이미 삭제된 멱등 성공. 삭제를 응답보다 강하게 확정해야 하는 saga 는
+ * oauth-anon-auth-cleanup-job 처럼 **삭제 후 재조회**를 쓴다(응답 자체는 계약상 신뢰 불가).
  */
-export async function runAnonDataMigration(
-  dependencies: AnonMigrationDependencies,
-  authorization: AnonMigrationAuthorization,
-): Promise<AnonMigrationOutcome> {
-  if (
-    authorization.sourceAuthorityVerified !== true ||
-    !UUID_RE.test(authorization.sourceUserId) ||
-    !UUID_RE.test(authorization.targetUserId) ||
-    authorization.sourceUserId === authorization.targetUserId
-  ) {
-    return failure(
-      "authorization.verify",
-      new Error("migration_authorization_invalid"),
-    );
+export async function deleteAuthUserAcceptingMissing(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: unknown }> {
+  const result = await admin.auth.admin.deleteUser(userId);
+  if (result.error === null || isMissingAuthUserError(result.error)) {
+    return { ok: true };
   }
-
-  const targetUser = await capture(
-    "auth.get_target_user",
-    dependencies.getTargetUser,
-  );
-  if (!targetUser.ok) return targetUser.failure;
-  if (
-    targetUser.value.data === null ||
-    targetUser.value.data.userId !== authorization.targetUserId ||
-    targetUser.value.data.isAnonymous === true
-  ) {
-    return failure("auth.get_target_user", new Error("target_user_invalid"));
-  }
-
-  const targetMember = await capture(
-    "target_member.read",
-    dependencies.getTargetMember,
-  );
-  if (!targetMember.ok) return targetMember.failure;
-  if (
-    targetMember.value.data !== null &&
-    targetMember.value.data.userId !== authorization.targetUserId
-  ) {
-    return failure(
-      "target_member.read",
-      new Error("target_member_result_invalid"),
-    );
-  }
-  if (targetMember.value.data !== null) {
-    return { result: "skipped", reason: "target_is_member" };
-  }
-
-  const anonUser = await capture("auth.get_user", dependencies.getAnonUser);
-  if (!anonUser.ok) return anonUser.failure;
-  if (
-    anonUser.value.data !== null &&
-    anonUser.value.data.isAnonymous !== true
-  ) {
-    return {
-      result: "skipped",
-      reason: "source_not_anonymous",
-    };
-  }
-
-  const anonMember = await capture("member.read", dependencies.getAnonMember);
-  if (!anonMember.ok) return anonMember.failure;
-  if (anonMember.value.data !== null) {
-    return { result: "skipped", reason: "source_is_member" };
-  }
-
-  const [dollsResult, ordersResult, generationsResult] = await Promise.all([
-    capture("dolls.count", dependencies.countDolls),
-    capture("orders.count", dependencies.countOrders),
-    capture("generations.count", dependencies.countGenerations),
-  ]);
-  if (!dollsResult.ok) return dollsResult.failure;
-  if (!ordersResult.ok) return ordersResult.failure;
-  if (!generationsResult.ok) return generationsResult.failure;
-
-  const dolls = validCount("dolls.count", dollsResult.value.count);
-  if (!dolls.ok) return dolls.failure;
-  const orders = validCount("orders.count", ordersResult.value.count);
-  if (!orders.ok) return orders.failure;
-  const generations = validCount(
-    "generations.count",
-    generationsResult.value.count,
-  );
-  if (!generations.ok) return generations.failure;
-
-  const firstTotal = dolls.value + orders.value;
-  const unexpected = firstTotal + generations.value;
-  if (!Number.isSafeInteger(firstTotal) || !Number.isSafeInteger(unexpected)) {
-    return failure("counts.aggregate", new Error("count_total_overflow"));
-  }
-  if (unexpected > 0) {
-    return {
-      result: "skipped",
-      reason: "unexpected_data",
-      counts: {
-        dolls: dolls.value,
-        orders: orders.value,
-        generations: generations.value,
-      },
-    };
-  }
-
-  const reassigned = await capture("data.reassign", dependencies.reassign);
-  if (!reassigned.ok) return reassigned.failure;
-  const reassignedSkip = reassignmentSkipReason(
-    reassigned.value.data,
-  );
-  if (reassignedSkip !== null) {
-    return { result: "skipped", reason: reassignedSkip };
-  }
-  if (!isExactReassignmentSuccess(reassigned.value.data)) {
-    return failure("data.reassign", new Error("reassign_result_invalid"));
-  }
-
-  const deleted = await capture(
-    "auth.delete_user",
-    dependencies.deleteAnonUser,
-  );
-  if (!deleted.ok) return deleted.failure;
-  if (deleted.value.deleted !== true) {
-    return failure("auth.delete_user", new Error("delete_result_invalid"));
-  }
-
-  return { result: "migrated" };
+  return { ok: false, error: result.error };
 }
