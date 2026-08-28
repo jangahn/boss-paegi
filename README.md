@@ -930,6 +930,11 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.07 (2026-08-29, 어드민 전 표면 iPhone SE(375px) 대응 — 좁은 화면 깨짐 전수조사·수정; 마이그레이션 없음):
+- **전수조사**: Playwright(WebKit) 375×667 로 어드민 36 표면(리스트·상세·콘텐츠 콘솔 전부) 렌더 — 페이지 가로 오버플로 + 요소 offender 자동 검출(overflow-x-auto 스크롤 설계는 정상으로 제외) + 풀페이지 스크린샷 육안 확인.
+- 발견 3건 수정: ①v1.06 기간 탭이 제목과 한 줄에 끼며 **CJK 문자 단위 줄바꿈**으로 pill 내부가 세로로 꺾임(오/늘) → PeriodTabs nowrap+shrink-0, 헤더 행 flex-wrap(좁으면 탭 묶음째 다음 줄) ②site_content FAQ 행 삭제/이동 버튼 뷰포트 이탈(+21px) → 질문 input `min-w-0`·버튼 shrink-0 ③badge_catalog fieldset +7px — **fieldset UA 기본 `min-inline-size:min-content` 함정** → `min-w-0`(같은 잠재 함정인 marketing_copy·role_content fieldset 에도 통일 적용).
+- 테이블류(주문·세션·퍼포먼스)는 기존 overflow-x-auto 가로 스크롤 설계 유지(깨짐 아님). 수정 후 재감사 36표면 오버플로 0·스크린샷 재확인. 컨슈머 표면(ReportDialog 등)은 무접촉.
+
 v1.06 (2026-08-29, 어드민 분석 하이브리드 기간 윈도우 — 오늘=raw 라이브·과거=일별 롤업, 3페이지 [오늘|7일|30일|전체] 통일; **Migration 0110·0111·0112**):
 - **공통 규약**: 대시보드(`/admin`)·게임플레이(`/admin/analytics`)·공유유입(`/admin/acquisition`)이 같은 4탭(KST 달력일)·같은 데이터 경로를 쓴다 — 오늘 = `*_rows_for_day(date)` RPC 라이브, 어제까지 = 롤업 `day_kst < 오늘`만(이중계산 차단). **하루치 집계 SQL 함수가 단일 소스**: cron 은 그 출력을 INSERT 하고 어드민은 같은 함수를 오늘 날짜로 SELECT — 두 경로의 의미 드리프트를 구조적으로 차단(pgTAP `hybrid_rollup_live_read` 가 롤업행==라이브출력 set-equality 를 단언). "일 1회 집계라 당일 ~1일 지연" 캐비앳 소멸.
 - **0110(텔레메트리)**: `telemetry_rollup_rows_for_day` 신설 + `telemetry_rollup_days` 를 그 소비자로 재작성(검증→lock→loop 계약 불변). 세션단위 지표가 롤업을 탈 수 있게 dim 확장 — `sess_stat`(스칼라 합계)·`sess_main_weapon`·`sess_start_map`(분포)·`sess_sps_all/pure`(점수/초 히스토그램, 폭1·cap3000)·`sess_perf_avg/p95`(프레임타임 히스토그램, 폭1ms·cap200)·`sess_perf_dev`(세션수·렉수 정확값). 중앙값은 히스토그램 근사(연속 일자 합산 가능한 유일 표현, `lib/admin-analytics-math` 보간). 백필은 **신규 dim 만 insert**(기존 weapon/map/funnel 행 무접촉 — 익명 raw 30일 소실로 재계산하면 역사 파괴). 예외로 raw 직조회 유지: 재방문(일단위 분해 불가)·최악 top5·세션 인스펙터.

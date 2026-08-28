@@ -51,7 +51,7 @@ export default async function AnalyticsPage({
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <h1 className="text-2xl font-bold">게임플레이 분석</h1>
           <PeriodTabs basePath="/admin/analytics" current={window} />
         </div>

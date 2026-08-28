@@ -166,7 +166,7 @@ export function RoleContentEditor({
       </div>
 
       {/* 호칭 (상단 별도 블록) — 조사·갤러리 칩은 호칭에서 자동 파생 */}
-      <fieldset className="flex flex-col gap-2">
+      <fieldset className="min-w-0 flex flex-col gap-2">
         <legend className="text-sm font-semibold text-zinc-500">호칭</legend>
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-500">
@@ -201,7 +201,7 @@ export function RoleContentEditor({
             />
           </label>
         ) : (
-          <fieldset key={sec.key} className="flex flex-col gap-2">
+          <fieldset key={sec.key} className="min-w-0 flex flex-col gap-2">
             <legend className="text-sm font-semibold text-zinc-500">{sec.label}</legend>
             {r[sec.key].map((lines, i) => (
               <label key={i} className="flex flex-col gap-0.5">

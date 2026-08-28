@@ -164,7 +164,7 @@ export function BadgeCatalogEditor({
       {fams.map((f) => {
         const fBadges = badges.filter((b) => b.familyKey === f.key);
         return (
-          <fieldset key={f.key} className="flex flex-col gap-2 rounded-2xl border border-foreground/10 ui-surface p-3">
+          <fieldset key={f.key} className="min-w-0 flex flex-col gap-2 rounded-2xl border border-foreground/10 ui-surface p-3">
             <div className="flex items-end gap-2">
               <label className="flex w-16 flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">이모지</span>
@@ -175,13 +175,13 @@ export function BadgeCatalogEditor({
                   className="rounded-lg border border-foreground/15 ui-field p-2 text-center text-sm outline-none focus:border-foreground/40"
                 />
               </label>
-              <label className="flex flex-1 flex-col gap-0.5">
+              <label className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">카테고리 이름 ({f.key})</span>
                 <input
                   value={f.name}
                   maxLength={20}
                   onChange={(e) => setFam(f.key, "name", e.target.value)}
-                  className="rounded-lg border border-foreground/15 ui-field p-2 text-sm font-semibold outline-none focus:border-foreground/40"
+                  className="min-w-0 rounded-lg border border-foreground/15 ui-field p-2 text-sm font-semibold outline-none focus:border-foreground/40"
                 />
               </label>
             </div>

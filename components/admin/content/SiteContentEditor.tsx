@@ -120,10 +120,11 @@ export function SiteContentEditor({
           <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-zinc-400">#{i + 1}</span>
-              <input value={it.q} maxLength={200} onChange={(e) => setFaq(i, "q", e.target.value)} placeholder="질문" className="flex-1 rounded-lg border border-foreground/15 ui-field p-2 text-sm font-medium outline-none focus:border-foreground/40" />
-              <button type="button" onClick={() => moveFaq(i, -1)} disabled={i === 0} aria-label="위로" className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▲</button>
-              <button type="button" onClick={() => moveFaq(i, 1)} disabled={i === form.faq.length - 1} aria-label="아래로" className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▼</button>
-              <button type="button" onClick={() => removeFaq(i)} disabled={form.faq.length <= 1} className="text-xs text-red-400 hover:underline disabled:opacity-30">삭제</button>
+              {/* min-w-0: input 의 intrinsic min-width 가 좁은 화면에서 우측 버튼을 밀어내지 않게(iPhone SE 375px) */}
+              <input value={it.q} maxLength={200} onChange={(e) => setFaq(i, "q", e.target.value)} placeholder="질문" className="min-w-0 flex-1 rounded-lg border border-foreground/15 ui-field p-2 text-sm font-medium outline-none focus:border-foreground/40" />
+              <button type="button" onClick={() => moveFaq(i, -1)} disabled={i === 0} aria-label="위로" className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▲</button>
+              <button type="button" onClick={() => moveFaq(i, 1)} disabled={i === form.faq.length - 1} aria-label="아래로" className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▼</button>
+              <button type="button" onClick={() => removeFaq(i)} disabled={form.faq.length <= 1} className="shrink-0 whitespace-nowrap text-xs text-red-400 hover:underline disabled:opacity-30">삭제</button>
             </div>
             <textarea value={it.a} maxLength={2000} onChange={(e) => setFaq(i, "a", e.target.value)} placeholder="답변" rows={Math.max(2, it.a.split("\n").length)} className={inputCls} />
           </div>

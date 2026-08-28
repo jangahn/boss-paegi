@@ -201,7 +201,7 @@ export function MarketingCopyEditor({
       </div>
 
       {GROUPS.map((g) => (
-        <fieldset key={g.label} className="flex flex-col gap-3">
+        <fieldset key={g.label} className="min-w-0 flex flex-col gap-3">
           <legend className="text-sm font-semibold text-zinc-500">{g.label}</legend>
           {g.fields.map((fld) => {
             const val = (form[fld.sec] as Record<string, string>)[fld.k] ?? "";
