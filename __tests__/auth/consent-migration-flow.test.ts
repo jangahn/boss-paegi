@@ -172,6 +172,16 @@ test("flow migration consumes the serializable DB receipt before any legacy poli
     onboard.slice(flowConsume, genericRunner),
     /parseOAuthMigrationReceipt[\s\S]*?receipt\.skipReason !== null[\s\S]*?return "skipped"[\s\S]*?deleteUser\(anonId\)/,
   );
+  // 삭제 판정은 오류로만 — GoTrue 성공 응답에는 user 가 없어(auth-js `{ user: {} }`)
+  // 응답 형태 재검증은 성공을 실패로 오판한다(user_not_found 는 멱등 성공).
+  assert.match(
+    onboard.slice(flowConsume, genericRunner),
+    /deleteUser\(anonId\)[\s\S]*?deleted\.error !== null &&[\s\S]*?!isMissingAuthUserError\(deleted\.error\)[\s\S]*?throw deleted\.error/,
+  );
+  assert.doesNotMatch(
+    onboard.slice(flowConsume, genericRunner),
+    /deleted\.data\.user/,
+  );
   assert.match(
     source("lib/anon-data-migration.ts"),
     /reassignmentSkipReason[\s\S]*?if \(reassignedSkip !== null\)[\s\S]*?result: "skipped"/,

@@ -90,8 +90,10 @@ function createFixture(options: FixtureOptions = {}) {
         },
         async deleteUser(userId: string) {
           deleteCalls += 1;
+          assert.equal(userId, SOURCE_USER_ID);
+          // 실 GoTrue 계약: 삭제 성공 응답은 user 를 되돌려주지 않는다(빈 응답).
           return {
-            data: { user: { id: userId } },
+            data: { user: null },
             error: null,
           };
         },
