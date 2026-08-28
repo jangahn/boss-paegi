@@ -71,11 +71,12 @@ begin
   ) t
   where t.first_at >= v_lo and t.first_at < v_hi
   union all
+  -- 현행 get_admin_funnel 과 동일: 테스트 주문 제외(not is_test).
   select 'first_purchase'::text, count(*)::bigint
   from (
     select o.user_id, min(o.paid_at) as first_at
     from public.orders o
-    where o.status = 'paid' and o.paid_at is not null
+    where o.status = 'paid' and not o.is_test and o.paid_at is not null
     group by o.user_id
   ) t
   where t.first_at >= v_lo and t.first_at < v_hi;
@@ -127,7 +128,10 @@ revoke all on function public.admin_funnel_rollup_days(int) from public, anon, a
 grant execute on function public.admin_funnel_rollup_days(int) to service_role;
 
 -- ── 4) 매출·주문 윈도우드 직조회(KST 달력일 · p_days null=전체) ─────────────
--- 기존 get_admin_order_summary() 와 동일한 이중 기준 유지: 매출=paid_at, 주문 건수·상태칩=created_at.
+-- 현행 get_admin_order_summary() 의미를 그대로 윈도우 파라미터화:
+--   매출 = 순매출 sum(greatest(amount - refunded_amount, 0)), paid_at 존재 + 테스트 제외(not is_test)
+--   주문 건수 = created_at 기준 전 주문(테스트 포함 — 현행과 동일)
+--   상태칩 = created_at 기준(현행은 전체 누적 고정이었으나 v1.06 부터 선택 윈도우를 따름 — 의도 변경)
 create or replace function public.get_admin_order_summary_window(p_days int default null)
 returns jsonb
 language plpgsql
@@ -152,8 +156,9 @@ begin
 
   return jsonb_build_object(
     'revenue', coalesce((
-      select sum(o.amount) from public.orders o
-      where o.status = 'paid' and (v_start is null or o.paid_at >= v_start)
+      select sum(greatest(o.amount - o.refunded_amount, 0)) from public.orders o
+      where o.paid_at is not null and not o.is_test
+        and (v_start is null or o.paid_at >= v_start)
     ), 0),
     'orders', coalesce((
       select count(*) from public.orders o
@@ -195,7 +200,7 @@ begin
       from public.dolls dl where dl.owner_id is not null
     union all
     select min((o.paid_at at time zone 'Asia/Seoul'))::date
-      from public.orders o where o.status = 'paid' and o.paid_at is not null
+      from public.orders o where o.status = 'paid' and not o.is_test and o.paid_at is not null
   ) t
   where t.first_day is not null;
   if v_min is null then
