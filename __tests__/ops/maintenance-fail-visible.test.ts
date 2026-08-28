@@ -67,6 +67,23 @@ test("analytics maintenance exposes prune failures to the scheduler", () => {
   );
 });
 
+test("funnel maintenance exposes rollup failures to the scheduler", () => {
+  const source = route("funnel-maintain");
+  assert.match(
+    source,
+    /if \(!rollupRpc\.ok\) \{[\s\S]*?opsMaintenanceResponseInit\(500\)[\s\S]*?\}/,
+  );
+  assert.match(
+    source,
+    /const rollup = parseRollupMaintenanceAck\([\s\S]*?if \(!rollup\) \{[\s\S]*?opsMaintenanceResponseInit\(500\)/,
+  );
+  assert.match(
+    source,
+    /admin_funnel_rollup_days/,
+    "funnel maintenance must call the 0112 cohort rollup RPC",
+  );
+});
+
 test("telemetry maintenance exposes every authoritative stage failure", () => {
   const source = route("telemetry-maintain");
   assert.match(
