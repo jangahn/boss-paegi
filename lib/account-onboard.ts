@@ -375,15 +375,14 @@ export async function migrateAnonData(
 
     try {
       const deleted = await admin.auth.admin.deleteUser(anonId);
+      // GoTrue 삭제 성공 응답은 user 를 되돌려주지 않는다(auth-js `{ data: { user: {} } }`) —
+      // 응답 형태 재검증은 성공을 전부 실패로 오판하므로 오류로만 판정한다
+      // (user_not_found = 이미 삭제 = 멱등 성공, cleanup-job 의 삭제 계약과 동일).
       if (
-        !isMissingAuthUserError(deleted.error) &&
-        (
-          deleted.error !== null ||
-          deleted.data.user?.id !== anonId
-        )
+        deleted.error !== null &&
+        !isMissingAuthUserError(deleted.error)
       ) {
-        throw deleted.error ??
-          new Error("delete_result_invalid");
+        throw deleted.error;
       }
     } catch (error) {
       log.error("onboard.migrate_operation_fail", {
@@ -519,8 +518,9 @@ export async function migrateAnonData(
         if (isMissingAuthUserError(result.error)) {
           return { deleted: true, error: null };
         }
+        // GoTrue 삭제 성공 응답은 user 를 되돌려주지 않는다 — 오류 부재가 삭제 확정이다.
         return {
-          deleted: result.data.user?.id === anonId,
+          deleted: result.error === null,
           error: result.error,
         };
       },

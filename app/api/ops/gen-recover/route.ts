@@ -46,6 +46,10 @@ const SWEEP_LIMIT = 20;
 const RECOVERY_SCAN_PAGE_SIZE = 1000;
 // fal result 만료(보통 단시간) 전에 회수해야 의미. 너무 오래된 건 어차피 만료라 스캔 제외.
 const RECOVER_WINDOW_MS = 4 * 60 * 60 * 1000; // signed submit ack window 포함
+// 방금 시작돼 fal 이 아직 도는 정상 생성이 5분 틱을 가로지르면 pending 으로 세어져
+// sweep_incomplete(429·cron 실패)가 오탐된다 — 어린 행은 클라 폴링이 주 회수자이므로
+// 대상에서 제외하고 다음 틱(그때 age≥2분)에 편입한다. 30분 force·webhook 백스톱 불변.
+const RECOVER_MIN_AGE_MS = 2 * 60 * 1000;
 
 function maintenanceTimeBudgetResponse() {
   return NextResponse.json(
@@ -166,12 +170,16 @@ export async function POST(req: NextRequest) {
       }
 
       // 미완 = fal 요청 수 > 저장된 candidate 수. (fal_request_ids 없는 구버전 행은 회수 불가 → 제외.)
-      const allTargets = scannedRows.filter((r) =>
-        hasIncompleteCandidates(
-          r.candidate_urls,
-          r.fal_request_ids,
-          r.gen_params,
-        ),
+      const sweepScanTime = Date.now();
+      const allTargets = scannedRows.filter(
+        (r) =>
+          sweepScanTime - new Date(r.created_at).getTime() >=
+            RECOVER_MIN_AGE_MS &&
+          hasIncompleteCandidates(
+            r.candidate_urls,
+            r.fal_request_ids,
+            r.gen_params,
+          ),
       );
       const targets = allTargets.slice(0, SWEEP_LIMIT);
 

@@ -38,3 +38,23 @@ test("member and admin date formatters preserve the year and normalize offsets t
     assert.doesNotMatch(admin, /Invalid Date/i, input);
   }
 });
+
+test("date formatters never emit a locale day period — SSR/CSR must render identical text", () => {
+  // Vercel Node 런타임 ICU 는 ko-KR dayPeriod 를 루트 폴백 "AM/PM" 으로 내지만(프로드 SSR 실측)
+  // 클라 ICU 는 "오전/오후" — meridiem 이 출력에 있으면 hydration text mismatch(#418)가 난다.
+  const inputs = [
+    "2026-08-28T03:24:48.444948+00:00", // KST 12:24 (오후 경계)
+    "2026-08-28T22:05:00Z", // KST 다음날 07:05 (오전)
+  ];
+  for (const input of inputs) {
+    for (const formatted of [fmtKstDateTime(input), fmtKst(input)]) {
+      assert.doesNotMatch(formatted, /AM|PM|오전|오후/, input);
+      assert.match(formatted, /\d{2}:\d{2}/, input);
+    }
+  }
+  assert.equal(fmtKst("2026-08-28T03:24:48.444948+00:00"), "2026. 08. 28. 12:24");
+  assert.equal(
+    fmtKstDateTime("2026-08-28T03:24:48.444948+00:00"),
+    "2026. 08. 28. 12:24",
+  );
+});
