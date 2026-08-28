@@ -10,8 +10,9 @@ const memberRoute = readFileSync(
   new URL("../../app/api/generations/route.ts", import.meta.url),
   "utf8",
 );
+// v1.04: cron 회수 표면의 실체는 스윕 스테이지 lib(route 는 오케스트레이션만).
 const cronRoute = readFileSync(
-  new URL("../../app/api/ops/gen-recover/route.ts", import.meta.url),
+  new URL("../../lib/character-gen/generation-sweep.ts", import.meta.url),
   "utf8",
 );
 const recovery = readFileSync(

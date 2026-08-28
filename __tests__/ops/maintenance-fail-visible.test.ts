@@ -294,10 +294,22 @@ test("integrity and credit cron never coerce malformed mutation responses to zer
 });
 
 test("generation recovery never reports green on query or durable retry failures", () => {
+  // v1.04: 스윕 실체는 lib/character-gen/generation-sweep 으로 분해 — 내용 계약(스캔·카운터)은
+  // 스테이지 lib 을, 스케줄러 응답·상태 매핑 계약은 route 를 각각 핀한다.
+  const sweep = readFileSync(
+    join(HERE, "../../lib/character-gen/generation-sweep.ts"),
+    "utf8",
+  );
   const source = route("gen-recover");
   assert.match(
+    sweep,
+    /if \(pageError\) \{[\s\S]*?SWEEP_SCAN_QUERY_FAILED/,
+    "scan query failure must surface as a non-green outcome",
+  );
+  assert.match(
     source,
-    /if \(pageError\) \{[\s\S]*?opsMaintenanceResponseInit\(503\)[\s\S]*?\}/,
+    /scan\.kind === "query_failed"[\s\S]*?"query_failed"[\s\S]*?opsMaintenanceResponseInit\(503\)/,
+    "route must map a failed scan to 503 with the shared headers",
   );
   for (const errorName of [
     "deletedRowsError",
@@ -306,44 +318,45 @@ test("generation recovery never reports green on query or durable retry failures
     "prErr",
   ]) {
     assert.match(
-      source,
-      new RegExp(`if \\(${errorName}\\) \\{[\\s\\S]*?systemErrors\\+\\+`),
+      sweep,
+      new RegExp(`if \\(${errorName}\\) \\{[\\s\\S]*?counters\\.systemErrors\\+\\+`),
       `${errorName} must make the scheduler result non-green`,
     );
   }
   assert.match(
-    source,
-    /if \(pageError \|\| !Array\.isArray\(page\)\) \{\s*systemErrors\+\+;\s*stuckScanFailed = true/,
+    sweep,
+    /if \(pageError \|\| !Array\.isArray\(page\)\) \{\s*counters\.systemErrors\+\+;\s*stuckScanFailed = true/,
     "every failed or malformed page in the stuck-generation scan must make the scheduler result non-green",
   );
   assert.match(
     source,
-    /const retryPending = pending \+ cleanupPending \+ refundPending/,
+    /const retryPending =\s*counters\.pending \+ counters\.cleanupPending \+ counters\.refundPending/,
   );
   assert.match(
     source,
-    /const status = opsMaintenanceStatus\(\{[\s\S]*?systemErrors,[\s\S]*?retryPending,[\s\S]*?boundedBacklogs,[\s\S]*?\}\)/,
+    /const status = opsMaintenanceStatus\(\{[\s\S]*?systemErrors: counters\.systemErrors,[\s\S]*?retryPending,[\s\S]*?boundedBacklogs: counters\.boundedBacklogs,[\s\S]*?\}\)/,
   );
-  assert.match(source, /if \(!Array\.isArray\(page\)\) \{/);
+  assert.match(sweep, /if \(!Array\.isArray\(page\)\) \{/);
+  assert.doesNotMatch(sweep, /\.range\(/);
   assert.doesNotMatch(source, /\.range\(/);
   assert.match(
-    source,
+    sweep,
     /let recoveryCursor: ChronologicalCursor \| null = null/,
   );
   assert.match(
-    source,
+    sweep,
     /pageQuery = pageQuery\.or\(\s*chronologicalKeysetFilter\(recoveryCursor\)/,
   );
-  assert.match(source, /let stuckCursor: ChronologicalCursor \| null = null/);
+  assert.match(sweep, /let stuckCursor: ChronologicalCursor \| null = null/);
   assert.match(
-    source,
+    sweep,
     /pageQuery = pageQuery\.or\(chronologicalKeysetFilter\(stuckCursor\)\)/,
   );
   assert.match(
-    source,
+    sweep,
     /advanceChronologicalCursor\(\s*validatedPage,\s*recoveryCursor/,
   );
-  assert.match(source, /if \(allTargets\.length > SWEEP_LIMIT\)/);
+  assert.match(sweep, /if \(allTargets\.length > SWEEP_LIMIT\)/);
   assert.match(
     source,
     /NextResponse\.json\([\s\S]*?\{ ok: status === 200, \.\.\.result \},[\s\S]*?opsMaintenanceResponseInit\(status\)/,

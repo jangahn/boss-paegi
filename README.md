@@ -929,6 +929,11 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.04 (2026-08-28, gen-recover 스윕 스테이지 분해 — route 는 계약, 실체는 lib; 마이그레이션 없음, 동작 불변):
+- **한 route 5책임 해소(ⓓ④)**: 676줄 route 를 **route 179줄(인증·심박·스케줄러 응답·상태 매핑) + `lib/character-gen/generation-sweep`(스캔/타겟팅/탈퇴자 종결/회수/좀비 백스톱/만료/아티팩트 정리/재환급 스테이지)** 로 분해. 로직·순서·카운터·로그 이벤트 전부 원 구현 그대로 이동(verbatim move + 컨텍스트 스레딩만).
+- **deadline 펜스 위생(ⓓ③의 실현 형태)**: 스테이지는 deadline 초과 시 `SWEEP_STAGE_DEADLINE` 센티널을 **반환**하고 응답은 route 가 단일 지점에서 결정 — route 의 수동 펜스 31곳 → 6곳. throw 기반 펜스 헬퍼는 **기각**(스윕 내부의 per-row try/catch 가 제어 흐름 예외를 삼켜 fail-visible 계약을 깨뜨릴 수 있음 — 검토 결과 반환 기반이 유일하게 안전). 타 ops route 의 펜스는 현행 유지가 옳다고 판정: 같은 catch-swallow 위험 + route 별 응답 키 계약(credit-expire 는 snake_case §10.2)이 정당한 차이라 공용화 실익 없음.
+- 계약 핀 재표적: maintenance-fail-visible(내용→스윕 lib·응답/상태→route 분리), fal-submit-recovery-window·generation-terminal-sql 의 cron 표면 읽기를 스윕 lib 으로. 스케줄러 계약(429 fail-closed·심박 3상·min-age 게이트) 불변.
+
 v1.03 (2026-08-28, pre-ledger legacy 가입 마이그레이션 경로 소멸 + auth 삭제 계약 단일화; 마이그레이션 없음 — DB legacy 객체는 증거로 보존):
 - **소멸 판정 근거(실측)**: `legacy_signup_migration_receipts` **프로덕션 0행**(경로가 단 한 번도 실행된 적 없음) + legacy 쿠키 TTL 15분(v0.78 이후 구클라이언트 소멸로 드레인 완료) + 현행 클라이언트는 flow 쿠키(v2)만 발급·base 쿠키는 적극 clear. 코드 주석 스스로 expand/contract 드레인 창(0094)이라 명시.
 - **제거**: `migrateAnonData` 의 legacy 파라미터/branch·`runAnonDataMigration` 러너 전체·`parseLegacyMigrationReceipt`·`verifyLegacyMigrateValue`(+이미 사장이던 `verifyMigrateValue`)·legacy 전용 테스트 2본(총 ~1,300줄). consent 라우트는 flow 권위 3-인자 호출만. **DB 는 불변**: `legacy_signup_migration_receipts`·`consume_legacy_signup_migration` 은 증거·감사용으로 보존(rollout 계약 핀도 DB 레이어 유지).
