@@ -68,6 +68,11 @@ test("migration 0109 extends the RPC allow-list to gen-recover and nothing else"
     /p_job not in \('credit-expire', 'reconcile', 'gen-recover'\)/,
   );
   assert.match(migration, /grant execute on function public\.ops_cron_heartbeat/);
+  // 함수 허용 목록과 테이블 CHECK 는 같은 잡 목록을 봐야 한다(0062 는 둘 다 제한).
+  assert.match(
+    migration,
+    /add constraint ops_cron_heartbeats_job_name_check[\s\S]*?'credit-expire', 'reconcile', 'gen-recover'/,
+  );
   // 기존 컬럼 갱신 로직 불변(0062 원본과 동일한 upsert 형태).
   assert.match(migration, /on conflict \(job_name\) do update set/);
 });

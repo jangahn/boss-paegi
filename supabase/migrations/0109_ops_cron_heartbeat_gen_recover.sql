@@ -4,6 +4,13 @@
 -- (2026-08-28 점검: gen-recover 는 DB 심박 자체가 없어 침묵 감지 수단이 전무했다.)
 -- 0062 원본 함수의 job 허용 목록만 확장 — 그 외 로직·권한 불변.
 
+-- 0062 는 테이블 CHECK(job_name in (...))로도 잡을 제한한다 — 함수와 같은 목록으로 확장.
+alter table public.ops_cron_heartbeats
+  drop constraint ops_cron_heartbeats_job_name_check;
+alter table public.ops_cron_heartbeats
+  add constraint ops_cron_heartbeats_job_name_check
+  check (job_name in ('credit-expire', 'reconcile', 'gen-recover'));
+
 create or replace function public.ops_cron_heartbeat(p_job text, p_phase text, p_error_code text default null)
 returns void
 language plpgsql
