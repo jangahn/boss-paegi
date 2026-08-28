@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { FadeImg } from "@/components/FadeImg";
 import { EventBanner } from "@/components/events/EventBanner";
 import { timeAgo } from "@/lib/report";
@@ -13,17 +14,38 @@ import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
 
 type Period = "daily" | "weekly" | "monthly";
 
+const PERIODS: readonly Period[] = ["daily", "weekly", "monthly"];
+const DEFAULT_PERIOD: Period = "monthly";
+
+function parsePeriod(value: string | null): Period {
+  return PERIODS.includes(value as Period) ? (value as Period) : DEFAULT_PERIOD;
+}
+
 const DEFAULT_AVATAR = "/avatars/default.png";
 
 /**
  * 랭킹 — 클라 컴포넌트. 진입 즉시 셸+스켈레톤(서버 await 차단 없음), 오늘/이번주는 클라 상태(풀네비 X).
+ * 탭(period)은 URL 쿼리로도 유지 — /history 상세를 다녀온 뒤로가기 재마운트에서 선택이 복원된다.
  * 개인정보 scrub 직후에도 stale 공개행을 재노출하지 않도록 no-store public API를 매번 새로 조회한다.
  */
-export default function LeaderboardPage() {
-  const [period, setPeriod] = useState<Period>("monthly");
+function LeaderboardPageInner() {
+  const searchParams = useSearchParams();
+  const [period, setPeriod] = useState<Period>(() =>
+    parsePeriod(searchParams.get("period")),
+  );
   const [rows, setRows] = useState<RankRow[] | null>(null); // null = 로딩(스켈레톤)
   const [loadError, setLoadError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+
+  // state 가 단일 소스, URL 은 복원용 기록 — replaceState 라 탭 전환이 히스토리를 쌓지 않는다.
+  const selectPeriod = (next: Period) => {
+    setPeriod(next);
+    window.history.replaceState(
+      null,
+      "",
+      next === DEFAULT_PERIOD ? "/leaderboard" : `/leaderboard?period=${next}`,
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -86,13 +108,13 @@ export default function LeaderboardPage() {
           <EventBanner surface="leaderboard" />
 
           <div className="flex gap-2 rounded-full bg-foreground/5 p-1 text-sm">
-            <Tab active={period === "monthly"} onClick={() => setPeriod("monthly")}>
+            <Tab active={period === "monthly"} onClick={() => selectPeriod("monthly")}>
               이번 달
             </Tab>
-            <Tab active={period === "weekly"} onClick={() => setPeriod("weekly")}>
+            <Tab active={period === "weekly"} onClick={() => selectPeriod("weekly")}>
               이번 주
             </Tab>
-            <Tab active={period === "daily"} onClick={() => setPeriod("daily")}>
+            <Tab active={period === "daily"} onClick={() => selectPeriod("daily")}>
               오늘
             </Tab>
           </div>
@@ -204,4 +226,13 @@ function rankColor(i: number) {
   if (i === 1) return "text-zinc-300";
   if (i === 2) return "text-orange-400";
   return "text-zinc-500";
+}
+
+// useSearchParams 는 Suspense 경계 필요 (Next 16).
+export default function LeaderboardPage() {
+  return (
+    <Suspense fallback={<div className="flex flex-1" />}>
+      <LeaderboardPageInner />
+    </Suspense>
+  );
 }
