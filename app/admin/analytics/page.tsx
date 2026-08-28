@@ -11,6 +11,8 @@ import {
   getMapStickiness,
   getDevicePerf,
 } from "@/lib/admin-analytics";
+import { parseStatWindow, statWindowLabel } from "@/lib/admin-period";
+import { PeriodTabs } from "@/components/admin/PeriodTabs";
 import {
   BalanceBars,
   FunnelView,
@@ -32,18 +34,18 @@ export default async function AnalyticsPage({
   if (!gate.ok) redirect("/");
 
   const sp = await searchParams;
-  const days = sp.days === "30" ? 30 : 7;
+  const window = parseStatWindow(sp.days);
 
   const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf] =
     await Promise.all([
-      getWeaponBalance(days),
-      getMapBalance(days),
-      getFunnel(days),
-      getMemberActivity(days),
-      getWeaponConcentration(days),
-      getWeaponThroughput(days),
-      getMapStickiness(days),
-      getDevicePerf(days),
+      getWeaponBalance(window),
+      getMapBalance(window),
+      getFunnel(window),
+      getMemberActivity(window),
+      getWeaponConcentration(window),
+      getWeaponThroughput(window),
+      getMapStickiness(window),
+      getDevicePerf(window),
     ]);
 
   return (
@@ -51,24 +53,20 @@ export default async function AnalyticsPage({
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">게임플레이 분석</h1>
-          <div className="flex gap-1 text-xs">
-            {[7, 30].map((d) => (
-              <Link
-                key={d}
-                href={`/admin/analytics?days=${d}`}
-                className={`rounded-full px-3 py-1.5 font-medium transition ${
-                  days === d ? "bg-foreground text-paper-2" : "text-zinc-500 hover:bg-foreground/5"
-                }`}
-              >
-                {d}일
-              </Link>
-            ))}
-          </div>
+          <PeriodTabs basePath="/admin/analytics" current={window} />
         </div>
         <p className="-mt-4 text-xs text-zinc-400">
-          최근 {days}일(KST 자정 기준). 익명+회원 합산. 비-회원은 요약만 집계(타임라인 없음).
+          {statWindowLabel(window)}. 익명+회원 합산. 비-회원은 요약만 집계(타임라인 없음).
           <br />
-          무기·맵 밸런스와 퍼널은 일 1회 집계라 당일 수치가 최대 ~1일 지연될 수 있어요.
+          오늘은 실시간(raw), 어제까지는 일 단위 확정 집계예요. 점수/초·프레임타임 중앙값은 히스토그램
+          근사예요.
+          {window === "all" && (
+            <>
+              <br />
+              &lsquo;전체&rsquo;의 세션단위 지표(편중·효율·맵고착·퍼포먼스)는 하이브리드 도입(2026-08-29)
+              이전 과거가 잔존 세션(익명 30일 보존) 기준 근사예요.
+            </>
+          )}
         </p>
 
         <section>
@@ -117,6 +115,9 @@ export default async function AnalyticsPage({
             <Stat label="활동 회원" value={member.members.toLocaleString()} />
             <Stat label="재방문(2회+)" value={member.returning.toLocaleString()} />
           </div>
+          <p className="mt-1 text-[10px] text-zinc-400">
+            재방문은 기간을 하루 단위로 쪼갤 수 없어(요일 걸친 2회 방문) 잔존 회원 세션 raw 기준이에요.
+          </p>
         </section>
 
         <Link href="/admin/analytics/sessions" className="text-sm text-sky-600 underline">

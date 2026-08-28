@@ -9,13 +9,13 @@ export type AdminFunnel = {
   first_purchase: number;
 };
 
-export type OrderSummary = {
-  revenue_today: number;
-  revenue_7d: number;
-  revenue_30d: number;
-  orders_today: number;
-  orders_7d: number;
-  orders_30d: number;
+/** 선택 윈도우(오늘/7/30/전체) 하나의 매출·주문 요약 — v1.06 기간 윈도우 규약(KST 달력일). */
+export type OrderSummaryWindow = {
+  /** paid 주문 금액 합(매출=paid_at 기준) */
+  revenue: number;
+  /** 주문 건수(생성 기준) */
+  orders: number;
+  /** 상태별 건수(생성 기준) */
   by_status: Record<string, number>;
 };
 

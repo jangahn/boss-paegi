@@ -1,7 +1,16 @@
 import "server-only";
+import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { WEAPONS } from "@/lib/weapons";
 import { WEAPON_KEYS, MAP_KEYS } from "@/lib/telemetry/budget";
+import type { StatWindow } from "@/lib/admin-period";
+import {
+  histogramCount,
+  histogramMedian,
+  herfindahlOf,
+  parseBucketKey,
+  type HistBucket,
+} from "@/lib/admin-analytics-math";
 import {
   readSupabaseRowsPaginated,
   requireSupabaseOptionalData,
@@ -11,8 +20,11 @@ import {
 import { validateAdminRows } from "@/lib/admin-read-contract";
 
 /**
- * 게임플레이 분석 — telemetry_rollups(일×차원 사전집계)를 읽어 윈도우 합산(JS).
- * 롤업은 작음(차원당 N일 행). 세션 인스펙터만 telemetry_sessions 직접.
+ * 게임플레이 분석 — 하이브리드(v1.06): 오늘 = `telemetry_rollup_rows_for_day`(단일 소스 RPC) 라이브,
+ * 어제까지 = telemetry_rollups(`day_kst < 오늘`만 — 이중계산 차단) 윈도우 합산(JS).
+ * 집계 의미(메인무기 tie-break·throughput 게이트·렉 경계 등)의 단일 소스는 0110 SQL 함수다.
+ * 중앙값 지표는 일별 히스토그램(sps 폭1·cap3000 / perf 폭1ms·cap200, 0110 불변 상수) 근사 복원.
+ * 예외(raw 직조회 유지): 재방문(윈도우 간 회원 distinct — 일단위 분해 불가)·최악 top5(개별 행)·세션 인스펙터.
  */
 
 export type DimStat = { key: string; sessions: number; hits: number; score: number; attempts: number; switches: number };
@@ -67,95 +79,162 @@ export function kstDate(offsetDays = 0): string {
 
 /**
  * KST 기준 offsetDays 일 전의 KST 자정을 UTC instant(ISO)로.
- * 라이브(telemetry_sessions) 윈도우의 시작 경계를 롤업의 `day_kst >= kstDate(days-1)` 와
- * 정확히 일치시키기 위함(둘 다 같은 kstDate 에서 파생 → 재드리프트 방지). KST 는 DST 없음.
+ * 라이브(telemetry_sessions) 윈도우의 시작 경계를 롤업의 day_kst 경계와 정확히 일치시키기 위함
+ * (둘 다 같은 kstDate 에서 파생 → 재드리프트 방지). KST 는 DST 없음.
  */
 function kstDayStartIso(offsetDays = 0): string {
   return new Date(`${kstDate(offsetDays)}T00:00:00+09:00`).toISOString();
 }
 
-async function rollupRows(dimType: string, days: number) {
+/* ──────────────────────────────────────────────────────────────────────────
+ * 하이브리드 dim 행 fetch — 롤업(어제까지) + 라이브(오늘, per-request 1회 RPC).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+type DimRow = {
+  dimType: string;
+  dimKey: string;
+  sessions: number;
+  hits: number;
+  score: number;
+  attempts: number;
+  switches: number;
+  measureA: number;
+};
+
+const DIM_VALUE_SCHEMA = {
+  dim_type: "string",
+  dim_key: "string",
+  sessions: "nonnegativeNumeric",
+  hits: "nonnegativeNumeric",
+  score: "nonnegativeNumeric",
+  attempts: "nonnegativeNumeric",
+  switches: "nonnegativeNumeric",
+  measure_a: "nonnegativeNumeric",
+} as const;
+
+type RawDimRow = {
+  dim_type: string;
+  dim_key: string;
+  sessions: number | string;
+  hits: number | string;
+  score: number | string;
+  attempts: number | string;
+  switches: number | string;
+  measure_a: number | string;
+};
+
+function toDimRow(r: RawDimRow): DimRow {
+  return {
+    dimType: r.dim_type,
+    dimKey: r.dim_key,
+    sessions: Number(r.sessions) || 0,
+    hits: Number(r.hits) || 0,
+    score: Number(r.score) || 0,
+    attempts: Number(r.attempts) || 0,
+    switches: Number(r.switches) || 0,
+    measureA: Number(r.measure_a) || 0,
+  };
+}
+
+/** 오늘 하루 라이브 집계 — 렌더당 1회(React cache). cron 이 쓰는 것과 같은 단일 소스 RPC. */
+const liveTelemetryToday = cache(async (): Promise<DimRow[]> => {
   const admin = createAdminClient();
-  const cutoff = kstDate(days - 1);
+  const data = await requireSupabaseRows(
+    "admin.analytics.live_today",
+    () => admin.rpc("telemetry_rollup_rows_for_day", { p_day: kstDate(0) }),
+  );
+  return validateAdminRows<RawDimRow>(
+    "admin.analytics.live_today",
+    data,
+    DIM_VALUE_SCHEMA,
+  ).map(toDimRow);
+});
+
+/** 윈도우 dim 행 = 롤업(day_kst < 오늘, 윈도우 cutoff) + 라이브(오늘). */
+async function fetchDimRows(dimTypes: readonly string[], window: StatWindow): Promise<DimRow[]> {
+  const admin = createAdminClient();
+  const today = kstDate(0);
+  const operation = `admin.analytics.rollup.${dimTypes.join("+")}`;
   const data = await readSupabaseRowsPaginated(
-    `admin.analytics.rollup.${dimType}`,
-    (offset, limit) =>
-      admin
+    operation,
+    (offset, limit) => {
+      let q = admin
         .from("telemetry_rollups")
-        .select("day_kst,dim_key,sessions,hits,score,attempts,switches")
-        .eq("dim_type", dimType)
-        .gte("day_kst", cutoff)
+        .select("day_kst,dim_type,dim_key,sessions,hits,score,attempts,switches,measure_a")
+        .in("dim_type", [...dimTypes])
+        .lt("day_kst", today);
+      if (window !== "all") q = q.gte("day_kst", kstDate(window - 1));
+      return q
         .order("day_kst", { ascending: true })
+        .order("dim_type", { ascending: true })
         .order("dim_key", { ascending: true })
-        .range(offset, offset + limit - 1),
+        .range(offset, offset + limit - 1);
+    },
     500,
   );
-  return validateAdminRows<{
-    dim_key: string;
-    sessions: number | string;
-    hits: number | string;
-    score: number | string;
-    attempts: number | string;
-    switches: number | string;
-  }>(`admin.analytics.rollup.${dimType}`, data, {
-    day_kst: "date",
-    dim_key: "string",
-    sessions: "nonnegativeNumeric",
-    hits: "nonnegativeNumeric",
-    score: "nonnegativeNumeric",
-    attempts: "nonnegativeNumeric",
-    switches: "nonnegativeNumeric",
-  });
+  const rollup = validateAdminRows<RawDimRow & { day_kst: string }>(
+    operation,
+    data,
+    { day_kst: "date", ...DIM_VALUE_SCHEMA },
+  ).map(toDimRow);
+  const live = (await liveTelemetryToday()).filter((r) => dimTypes.includes(r.dimType));
+  return [...rollup, ...live];
 }
 
 /** dim_key 별 윈도우 합산 → hits 내림차순. */
-async function dimBalance(dimType: string, days: number): Promise<DimStat[]> {
-  const rows = await rollupRows(dimType, days);
+async function dimBalance(dimType: string, window: StatWindow): Promise<DimStat[]> {
+  const rows = await fetchDimRows([dimType], window);
   const agg = new Map<string, DimStat>();
   for (const r of rows) {
-    const k = r.dim_key as string;
-    const cur = agg.get(k) ?? { key: k, sessions: 0, hits: 0, score: 0, attempts: 0, switches: 0 };
-    cur.sessions += Number(r.sessions) || 0;
-    cur.hits += Number(r.hits) || 0;
-    cur.score += Number(r.score) || 0;
-    cur.attempts += Number(r.attempts) || 0;
-    cur.switches += Number(r.switches) || 0;
-    agg.set(k, cur);
+    const cur = agg.get(r.dimKey) ?? { key: r.dimKey, sessions: 0, hits: 0, score: 0, attempts: 0, switches: 0 };
+    cur.sessions += r.sessions;
+    cur.hits += r.hits;
+    cur.score += r.score;
+    cur.attempts += r.attempts;
+    cur.switches += r.switches;
+    agg.set(r.dimKey, cur);
   }
   return [...agg.values()].sort((a, b) => b.hits - a.hits);
 }
 
-export function getWeaponBalance(days: number): Promise<DimStat[]> {
-  return dimBalance("weapon", days);
+export function getWeaponBalance(window: StatWindow): Promise<DimStat[]> {
+  return dimBalance("weapon", window);
 }
-export function getMapBalance(days: number): Promise<DimStat[]> {
-  return dimBalance("map", days);
+export function getMapBalance(window: StatWindow): Promise<DimStat[]> {
+  return dimBalance("map", window);
 }
 
 /** 펀널 단계 윈도우 합산. */
-export async function getFunnel(days: number): Promise<Funnel> {
-  const rows = await rollupRows("funnel_step", days);
+export async function getFunnel(window: StatWindow): Promise<Funnel> {
+  const rows = await fetchDimRows(["funnel_step"], window);
   const out: Funnel = {};
-  for (const r of rows) out[r.dim_key as string] = (out[r.dim_key as string] ?? 0) + (Number(r.sessions) || 0);
+  for (const r of rows) out[r.dimKey] = (out[r.dimKey] ?? 0) + r.sessions;
   return out;
 }
 
-/** 회원 활동(코호트·재방문 — 익명 ephemeral 이라 회원 owner_id 한정). */
-export async function getMemberActivity(days: number): Promise<{ sessions: number; members: number; returning: number }> {
+/**
+ * 회원 활동(코호트·재방문 — 익명 ephemeral 이라 회원 owner_id 한정).
+ * 하이브리드 예외 — "윈도우 내 2회+ 회원" 은 일단위로 분해 불가(월·수 1판씩인 회원은 어느 하루에도
+ * 안 잡힘)해서 raw 직조회를 유지한다. 회원 세션은 30일 prune 대상이 아니라 '전체'도 조회되지만,
+ * 30MB 예산 초과 삭제(0028)가 오래된 세션부터 지울 수 있어 장기적으론 best-effort.
+ */
+export async function getMemberActivity(window: StatWindow): Promise<{ sessions: number; members: number; returning: number }> {
   const admin = createAdminClient();
-  const cutoffIso = kstDayStartIso(days - 1); // 롤업 day_kst 경계와 정합(KST 자정 기준)
+  const cutoffIso = window === "all" ? null : kstDayStartIso(window - 1); // 롤업 day_kst 경계와 정합
   const raw = await readSupabaseRowsPaginated(
     "admin.analytics.member_activity",
-    (offset, limit) =>
-      admin
+    (offset, limit) => {
+      let q = admin
         .from("telemetry_sessions")
         .select("owner_id")
-        .not("owner_id", "is", null)
-        .gte("started_at", cutoffIso)
-        // ORDER BY 없는 limit 은 표본이 비결정적 — fetchSessionsWindow 와 동일하게 최근 우선으로 고정.
+        .not("owner_id", "is", null);
+      if (cutoffIso) q = q.gte("started_at", cutoffIso);
+      // ORDER BY 없는 limit 은 표본이 비결정적 — 최근 우선으로 고정.
+      return q
         .order("started_at", { ascending: false })
         .order("id", { ascending: false })
-        .range(offset, offset + limit - 1),
+        .range(offset, offset + limit - 1);
+    },
     500,
   );
   const data = validateAdminRows<{ owner_id: string }>(
@@ -321,34 +400,21 @@ export async function getSessionDetail(
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
- * 세션 단위 분석(편중/효율/맵고착) — telemetry_rollups 가 아니라 telemetry_sessions
- * 를 윈도우 직접 조회(getMemberActivity 와 동일 패턴). 세션 단위 facts(단일무기율·메인무기·
- * score/sec)는 per-dim 롤업 모양에 안 맞아 여기서 JS 집계. 익명+회원 공통(summary 는 둘 다 저장).
- * 표본/truncation 메타를 항상 동봉해 어드민이 "전체 통계 vs 표본"을 오해하지 않게 한다.
+ * 세션 단위 분석(편중/효율/맵고착/퍼포먼스) — 0110 부터 롤업 dim(sess_*)을 하이브리드로 읽는다.
+ * 집계 의미의 단일 소스는 telemetry_rollup_rows_for_day(0110). unknown key 접기·라벨은 표시 관심사라
+ * 여기(getter)서 수행. '전체' 윈도우의 과거(0110 백필 이전 소실분)는 잔존 세션 기준 근사 — 페이지가 각주.
  * ────────────────────────────────────────────────────────────────────────── */
 
+/** 표본 절단은 롤업 경로에선 발생하지 않는다 — meta 형태 호환용 상한 상수만 유지. */
 const SESSION_FETCH_LIMIT = 5000;
 const TAP_KEYS = new Set<string>(WEAPONS.filter((w) => w.category === "tap").map((w) => w.key));
 const KNOWN_WEAPONS = new Set<string>(WEAPON_KEYS);
 const KNOWN_MAPS = new Set<string>(MAP_KEYS);
-/** 메인무기 동률 시 3순위 tie-break — 고정 무기 순서 */
-const WEAPON_ORDER: readonly string[] = WEAPON_KEYS;
-const COMPLETED_END_REASONS = new Set(["normal", "time_limit", "score_limit"]);
-/** throughput 유효 최소 플레이 시간(짧은 세션 점수/초 노이즈 제거) */
-const MIN_VALID_DURATION_MS = 3000;
+/** 0110 히스토그램 불변 버킷 스펙(저장 포맷) — SQL 상수와 동일해야 한다. */
+const SPS_BUCKET_WIDTH = 1;
+const PERF_BUCKET_WIDTH = 1;
 
 type DimSummary = Record<string, { hits?: number; score?: number; attempts?: number; switches?: number } | undefined>;
-type SessionShapeRow = {
-  id: string;
-  end_reason: string | null;
-  score: number | null;
-  duration_ms: number | null;
-  distinct_weapons: number | null;
-  distinct_maps: number | null;
-  weapon_summary: DimSummary | null;
-  map_summary: DimSummary | null;
-  start_map: string | null;
-};
 
 function validateDimSummary(
   operation: string,
@@ -382,126 +448,48 @@ function validateDimSummary(
   }
 }
 
-/** 표본/절단 메타 — 모든 세션단위 집계 반환에 공통 동봉 */
+/** 표본 메타 — 롤업 경로에선 절단이 없어 isTruncated 항상 false(형태 호환 유지). */
 export type SampleMeta = { sampleSize: number; isTruncated: boolean; limit: number };
-
-/** 윈도우 내 세션 shape 조회 — 필요 컬럼만(timeline 제외), limit+1 로 절단 판정. */
-async function fetchSessionsWindow(
-  days: number
-): Promise<{ rows: SessionShapeRow[]; meta: SampleMeta }> {
-  const admin = createAdminClient();
-  const cutoffIso = kstDayStartIso(days - 1); // 롤업 day_kst 경계와 정합(KST 자정 기준)
-  const raw = await requireSupabaseRows(
-    "admin.analytics.sessions_window",
-    () =>
-      admin
-        .from("telemetry_sessions")
-        .select(
-          "id,end_reason,score,duration_ms,distinct_weapons,distinct_maps,weapon_summary,map_summary,start_map",
-        )
-        .gte("started_at", cutoffIso)
-        .order("started_at", { ascending: false })
-        .limit(SESSION_FETCH_LIMIT + 1),
-  ); // +1 로 5000 초과 여부(절단) 판정
-  const data = validateAdminRows<SessionShapeRow>(
-    "admin.analytics.sessions_window",
-    raw,
-    {
-      id: "uuid",
-      end_reason: "nullableString",
-      score: "nullableNonnegativeInteger",
-      duration_ms: "nullableNonnegativeInteger",
-      distinct_weapons: "nullableNonnegativeInteger",
-      distinct_maps: "nullableNonnegativeInteger",
-      weapon_summary: "nullableJsonObject",
-      map_summary: "nullableJsonObject",
-      start_map: "nullableString",
-    },
-  );
-  for (const row of data) {
-    validateDimSummary(
-      "admin.analytics.sessions_window.weapon_summary",
-      row.weapon_summary,
-    );
-    validateDimSummary(
-      "admin.analytics.sessions_window.map_summary",
-      row.map_summary,
-    );
-  }
-  const isTruncated = data.length > SESSION_FETCH_LIMIT;
-  const rows = (isTruncated ? data.slice(0, SESSION_FETCH_LIMIT) : data) as SessionShapeRow[];
-  return { rows, meta: { sampleSize: rows.length, isTruncated, limit: SESSION_FETCH_LIMIT } };
-}
-
-function median(xs: number[]): number | null {
-  if (!xs.length) return null;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
-function pushTo(map: Map<string, number[]>, key: string, val: number): void {
-  const arr = map.get(key);
-  if (arr) arr.push(val);
-  else map.set(key, [val]);
-}
-
-/** summary 에서 hits>0 인 무기/맵 hit 맵 추출(숫자화). */
-function hitsOf(sum: DimSummary | null): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (sum && typeof sum === "object") {
-    for (const [k, v] of Object.entries(sum)) {
-      const h = Number(v?.hits) || 0;
-      if (h > 0) out[k] = h;
-    }
-  }
-  return out;
-}
-
-/** distinct 무기수 — summary(hits>0 key) 우선, 없으면 컬럼 fallback. */
-function distinctWeaponsOf(row: SessionShapeRow): number {
-  const fromSummary = Object.keys(hitsOf(row.weapon_summary)).length;
-  return fromSummary > 0 ? fromSummary : Math.max(0, Number(row.distinct_weapons) || 0);
-}
-
-/** 메인무기 — hits desc → score desc → 고정 WEAPON_ORDER. unknown key 는 그대로 반환(상위에서 묶음). */
-function mainWeaponOf(sum: DimSummary | null): string | null {
-  if (!sum || typeof sum !== "object") return null;
-  let best: string | null = null;
-  let bh = -1;
-  let bs = -1;
-  let bo = Number.POSITIVE_INFINITY;
-  for (const [k, v] of Object.entries(sum)) {
-    const h = Number(v?.hits) || 0;
-    if (h <= 0) continue;
-    const sc = Number(v?.score) || 0;
-    const idx = WEAPON_ORDER.indexOf(k);
-    const o = idx < 0 ? Number.POSITIVE_INFINITY : idx;
-    if (h > bh || (h === bh && (sc > bs || (sc === bs && o < bo)))) {
-      best = k;
-      bh = h;
-      bs = sc;
-      bo = o;
-    }
-  }
-  return best;
-}
 
 /** unknown 무기 key 는 'unknown' 으로 묶음(throw 금지). */
 function weaponLabel(k: string): string {
   return KNOWN_WEAPONS.has(k) ? k : "unknown";
 }
 
-/** 단일 hit 분포의 Herfindahl(Σshare²). 빈 분포는 null. */
-function herfindahl(hits: Record<string, number>): number | null {
-  const total = Object.values(hits).reduce((a, b) => a + b, 0);
-  if (total <= 0) return null;
-  let h = 0;
-  for (const v of Object.values(hits)) {
-    const sh = v / total;
-    h += sh * sh;
+/** sess_stat 스칼라 합산 헬퍼. */
+function sumSessStats(rows: DimRow[]): (key: string) => number {
+  const agg = new Map<string, number>();
+  for (const r of rows) {
+    if (r.dimType !== "sess_stat") continue;
+    agg.set(r.dimKey, (agg.get(r.dimKey) ?? 0) + r.measureA);
   }
-  return h;
+  return (key: string) => agg.get(key) ?? 0;
+}
+
+/** 히스토그램 dim 행 → 그룹(라벨)별 버킷 카운트 맵. dim_key 형식 불량은 계약 위반으로 throw. */
+function collectHistograms(
+  operation: string,
+  rows: DimRow[],
+  dimType: string,
+  groupLabel: (raw: string) => string,
+): Map<string, Map<number, number>> {
+  const out = new Map<string, Map<number, number>>();
+  for (const r of rows) {
+    if (r.dimType !== dimType) continue;
+    const parsed = parseBucketKey(r.dimKey);
+    if (!parsed) {
+      throw new SupabaseOperationError(operation, new Error(`invalid_bucket_key:${r.dimKey}`));
+    }
+    const label = groupLabel(parsed.group);
+    const hist = out.get(label) ?? new Map<number, number>();
+    hist.set(parsed.bucket, (hist.get(parsed.bucket) ?? 0) + r.measureA);
+    out.set(label, hist);
+  }
+  return out;
+}
+
+function histEntries(hist: Map<number, number> | undefined): HistBucket[] {
+  return [...(hist ?? new Map<number, number>()).entries()].map(([bucket, count]) => ({ bucket, count }));
 }
 
 export type WeaponConcentration = SampleMeta & {
@@ -522,54 +510,41 @@ export type WeaponConcentration = SampleMeta & {
   aggregateHitConcentration: number | null;
 };
 
-export async function getWeaponConcentration(days: number): Promise<WeaponConcentration> {
-  const { rows, meta } = await fetchSessionsWindow(days);
-  let weaponSessions = 0;
-  let singleWeapon = 0;
-  let distinctSum = 0;
+export async function getWeaponConcentration(window: StatWindow): Promise<WeaponConcentration> {
+  const rows = await fetchDimRows(["sess_stat", "sess_main_weapon", "weapon"], window);
+  const stat = sumSessStats(rows);
   const mainWeaponDist: Record<string, number> = {};
-  const aggHits: Record<string, number> = {};
-  const sessionHHIs: number[] = [];
+  const knownAgg: Record<string, number> = {};
   let tapHits = 0;
   let knownHits = 0;
   let allHits = 0;
-
-  for (const row of rows) {
-    const hits = hitsOf(row.weapon_summary);
-    const dw = distinctWeaponsOf(row);
-    if (dw < 1) continue; // 타격 무기 없는 세션 제외
-    weaponSessions += 1;
-    distinctSum += dw;
-    if (dw === 1) singleWeapon += 1;
-    const main = mainWeaponOf(row.weapon_summary);
-    if (main) mainWeaponDist[weaponLabel(main)] = (mainWeaponDist[weaponLabel(main)] ?? 0) + 1;
-    const hhi = herfindahl(hits);
-    if (hhi !== null) sessionHHIs.push(hhi);
-    for (const [k, h] of Object.entries(hits)) {
-      allHits += h;
-      aggHits[weaponLabel(k)] = (aggHits[weaponLabel(k)] ?? 0) + h;
-      if (KNOWN_WEAPONS.has(k)) {
-        knownHits += h;
-        if (TAP_KEYS.has(k)) tapHits += h;
+  for (const r of rows) {
+    if (r.dimType === "sess_main_weapon") {
+      const label = weaponLabel(r.dimKey);
+      mainWeaponDist[label] = (mainWeaponDist[label] ?? 0) + r.measureA;
+    } else if (r.dimType === "weapon") {
+      allHits += r.hits;
+      if (KNOWN_WEAPONS.has(r.dimKey)) {
+        knownHits += r.hits;
+        knownAgg[r.dimKey] = (knownAgg[r.dimKey] ?? 0) + r.hits;
+        if (TAP_KEYS.has(r.dimKey)) tapHits += r.hits;
       }
     }
   }
-
-  // aggregateHitConcentration 은 known 무기 분포 기준(unknown 묶음 제외해 무기 간 비교 일관)
-  const knownAgg: Record<string, number> = {};
-  for (const [k, h] of Object.entries(aggHits)) if (k !== "unknown") knownAgg[k] = h;
-
+  const weaponSessions = stat("weapon_sessions");
+  const hhiSessions = stat("hhi_sessions");
   return {
-    ...meta,
+    sampleSize: stat("sessions_total"),
+    isTruncated: false,
+    limit: SESSION_FETCH_LIMIT,
     weaponSessions,
-    singleWeaponPct: weaponSessions > 0 ? singleWeapon / weaponSessions : 0,
-    avgDistinctWeapons: weaponSessions > 0 ? distinctSum / weaponSessions : 0,
+    singleWeaponPct: weaponSessions > 0 ? stat("single_weapon_sessions") / weaponSessions : 0,
+    avgDistinctWeapons: weaponSessions > 0 ? stat("distinct_weapons_sum") / weaponSessions : 0,
     mainWeaponDist,
     tapCategoryShare: knownHits > 0 ? tapHits / knownHits : 0,
     knownHitCoverage: allHits > 0 ? knownHits / allHits : 1,
-    avgSessionConcentration:
-      sessionHHIs.length > 0 ? sessionHHIs.reduce((a, b) => a + b, 0) / sessionHHIs.length : null,
-    aggregateHitConcentration: herfindahl(knownAgg),
+    avgSessionConcentration: hhiSessions > 0 ? stat("hhi_sum") / hhiSessions : null,
+    aggregateHitConcentration: herfindahlOf(knownAgg),
   };
 }
 
@@ -577,9 +552,9 @@ export type WeaponThroughputRow = {
   weapon: string;
   allN: number;
   pureN: number;
-  /** 메인무기 기준 점수/초 중앙값(근사) */
+  /** 메인무기 기준 점수/초 중앙값(히스토그램 근사) */
   medianAll: number | null;
-  /** 단일무기(pure) 세션 점수/초 중앙값 */
+  /** 단일무기(pure) 세션 점수/초 중앙값(히스토그램 근사) */
   medianPure: number | null;
 };
 export type WeaponThroughput = SampleMeta & {
@@ -590,41 +565,36 @@ export type WeaponThroughput = SampleMeta & {
   rows: WeaponThroughputRow[];
 };
 
-export async function getWeaponThroughput(days: number): Promise<WeaponThroughput> {
-  const { rows, meta } = await fetchSessionsWindow(days);
-  const all = new Map<string, number[]>();
-  const pure = new Map<string, number[]>();
-  let eligible = 0;
-
-  for (const row of rows) {
-    const reason = row.end_reason ?? "";
-    const dur = Number(row.duration_ms) || 0;
-    const score = Number(row.score) || 0;
-    // 완료 세션 + 유효 duration 만 — 부분세션(abandon/reload/hidden_timeout)·초단기 제외
-    if (!COMPLETED_END_REASONS.has(reason) || dur <= MIN_VALID_DURATION_MS) continue;
-    const main = mainWeaponOf(row.weapon_summary);
-    if (!main) continue;
-    eligible += 1;
-    const key = weaponLabel(main);
-    const sps = score / (dur / 1000);
-    pushTo(all, key, sps);
-    if (distinctWeaponsOf(row) === 1) pushTo(pure, key, sps);
-  }
+export async function getWeaponThroughput(window: StatWindow): Promise<WeaponThroughput> {
+  const rows = await fetchDimRows(["sess_stat", "sess_sps_all", "sess_sps_pure"], window);
+  const stat = sumSessStats(rows);
+  const all = collectHistograms("admin.analytics.sps_hist", rows, "sess_sps_all", weaponLabel);
+  const pure = collectHistograms("admin.analytics.sps_hist", rows, "sess_sps_pure", weaponLabel);
 
   const keys = new Set<string>([...all.keys(), ...pure.keys()]);
   const out: WeaponThroughputRow[] = [];
   for (const k of keys) {
-    const a = all.get(k) ?? [];
-    const p = pure.get(k) ?? [];
-    out.push({ weapon: k, allN: a.length, pureN: p.length, medianAll: median(a), medianPure: median(p) });
+    const a = histEntries(all.get(k));
+    const p = histEntries(pure.get(k));
+    out.push({
+      weapon: k,
+      allN: histogramCount(a),
+      pureN: histogramCount(p),
+      medianAll: histogramMedian(a, SPS_BUCKET_WIDTH),
+      medianPure: histogramMedian(p, SPS_BUCKET_WIDTH),
+    });
   }
   out.sort((x, y) => (y.medianPure ?? y.medianAll ?? 0) - (x.medianPure ?? x.medianAll ?? 0));
 
+  const totalSessions = stat("sessions_total");
+  const eligibleSessions = stat("throughput_eligible");
   return {
-    ...meta,
-    totalSessions: rows.length,
-    eligibleSessions: eligible,
-    excludedSessions: rows.length - eligible,
+    sampleSize: totalSessions,
+    isTruncated: false,
+    limit: SESSION_FETCH_LIMIT,
+    totalSessions,
+    eligibleSessions,
+    excludedSessions: Math.max(0, totalSessions - eligibleSessions),
     rows: out,
   };
 }
@@ -640,41 +610,29 @@ export type MapStickiness = SampleMeta & {
   startMapDist: Record<string, number>;
 };
 
-export async function getMapStickiness(days: number): Promise<MapStickiness> {
-  const { rows, meta } = await fetchSessionsWindow(days);
-  let valid = 0;
-  let singleMap = 0;
-  let distinctSum = 0;
-  let switchSum = 0;
+export async function getMapStickiness(window: StatWindow): Promise<MapStickiness> {
+  const rows = await fetchDimRows(["sess_stat", "sess_start_map"], window);
+  const stat = sumSessStats(rows);
   const startMapDist: Record<string, number> = {};
-
-  for (const row of rows) {
-    if (!row.start_map) continue; // 맵 데이터 없는 세션 제외
-    valid += 1;
-    const dm = Math.max(0, Number(row.distinct_maps) || 0);
-    distinctSum += dm;
-    if (dm === 1) singleMap += 1;
-    const startKey = KNOWN_MAPS.has(row.start_map) ? row.start_map : "unknown";
-    startMapDist[startKey] = (startMapDist[startKey] ?? 0) + 1;
-    const ms = row.map_summary;
-    if (ms && typeof ms === "object") {
-      for (const v of Object.values(ms)) switchSum += Number(v?.switches) || 0;
-    }
+  for (const r of rows) {
+    if (r.dimType !== "sess_start_map") continue;
+    const label = KNOWN_MAPS.has(r.dimKey) ? r.dimKey : "unknown";
+    startMapDist[label] = (startMapDist[label] ?? 0) + r.measureA;
   }
-
+  const valid = stat("map_sessions");
   return {
-    ...meta,
+    sampleSize: stat("sessions_total"),
+    isTruncated: false,
+    limit: SESSION_FETCH_LIMIT,
     validMapSessions: valid,
-    singleMapPct: valid > 0 ? singleMap / valid : 0,
-    avgDistinctMaps: valid > 0 ? distinctSum / valid : 0,
-    mapSwitchRate: valid > 0 ? switchSum / valid : 0,
+    singleMapPct: valid > 0 ? stat("single_map_sessions") / valid : 0,
+    avgDistinctMaps: valid > 0 ? stat("distinct_maps_sum") / valid : 0,
+    mapSwitchRate: valid > 0 ? stat("map_switch_sum") / valid : 0,
     startMapDist,
   };
 }
 
-// ── 디바이스 렌더 퍼포먼스(렉 진단) — telemetry_sessions perf 컬럼(mig 0033) 직접 조회 ──
-//   avg_frame_ms>0(실프레임 표본 있는 세션)만 — 무플레이/배포前 0 디폴트는 제외.
-const PERF_LAG_P95_MS = 33; // p95 프레임타임 33ms ≈ 30fps 미달 스파이크 = "렉 세션"
+// ── 디바이스 렌더 퍼포먼스(렉 진단) — 세션수·렉수는 sess_perf_dev 정확값, 중앙값은 히스토그램 근사 ──
 
 export type DevicePerfStat = {
   deviceClass: string;
@@ -712,91 +670,79 @@ type PerfRow = {
 
 const PERF_SELECT = "id, device_class, dpr, refresh_hz, avg_frame_ms, p95_frame_ms, duration_ms";
 
-export async function getDevicePerf(days: number): Promise<DevicePerf> {
+export async function getDevicePerf(window: StatWindow): Promise<DevicePerf> {
   const admin = createAdminClient();
-  const start = kstDayStartIso(days - 1);
-  // 집계 표본과 최악 top5 는 fetch 를 분리 — 하나의 p95 DESC fetch 를 공유하면 윈도우 세션이
-  // limit 을 넘는 순간 byDevice 집계가 "가장 느린 표본"으로 비관 편향된다(절단 감지도 없었음).
-  // 집계는 최근 우선 표본(fetchSessionsWindow 와 동일 규약, limit+1 절단 판정), top5 는 전 윈도우 정확 상위.
-  const [sampleData, worstData] = await Promise.all([
-    requireSupabaseRows(
-      "admin.analytics.device_perf.sample",
-      () =>
-        admin
-          .from("telemetry_sessions")
-          .select(PERF_SELECT)
-          .gte("started_at", start)
-          .gt("avg_frame_ms", 0) // 실프레임 표본 세션만(무플레이/배포前 0 제외)
-          .order("started_at", { ascending: false })
-          .limit(SESSION_FETCH_LIMIT + 1),
-    ),
+  const cutoffIso = window === "all" ? null : kstDayStartIso(window - 1);
+  const [rows, worstData] = await Promise.all([
+    fetchDimRows(["sess_perf_dev", "sess_perf_avg", "sess_perf_p95"], window),
+    // 최악 top5 는 개별 세션 행이라 raw 직조회 유지(하이브리드 예외) — '전체'는 잔존 세션 한정.
     requireSupabaseRows(
       "admin.analytics.device_perf.worst",
-      () =>
-        admin
+      () => {
+        let q = admin
           .from("telemetry_sessions")
           .select(PERF_SELECT)
-          .gte("started_at", start)
-          .gt("avg_frame_ms", 0)
-          .order("p95_frame_ms", { ascending: false })
-          .limit(5),
+          .gt("avg_frame_ms", 0); // 실프레임 표본 세션만(무플레이/배포前 0 제외)
+        if (cutoffIso) q = q.gte("started_at", cutoffIso);
+        return q.order("p95_frame_ms", { ascending: false }).limit(5);
+      },
     ),
   ]);
-  const perfSchema = {
-    id: "uuid",
-    device_class: "string",
-    dpr: "nullableNonnegativeNumeric",
-    refresh_hz: "nullableNonnegativeNumeric",
-    avg_frame_ms: "nonnegativeNumeric",
-    p95_frame_ms: "nonnegativeNumeric",
-    duration_ms: "nullableNonnegativeInteger",
-  } as const;
-  const fetched = validateAdminRows<PerfRow>(
-    "admin.analytics.device_perf.sample",
-    sampleData,
-    perfSchema,
-  );
   const worstRows = validateAdminRows<PerfRow>(
     "admin.analytics.device_perf.worst",
     worstData,
-    perfSchema,
+    {
+      id: "uuid",
+      device_class: "string",
+      dpr: "nullableNonnegativeNumeric",
+      refresh_hz: "nullableNonnegativeNumeric",
+      avg_frame_ms: "nonnegativeNumeric",
+      p95_frame_ms: "nonnegativeNumeric",
+      duration_ms: "nullableNonnegativeInteger",
+    },
   );
-  const isTruncated = fetched.length > SESSION_FETCH_LIMIT;
-  const rows = isTruncated ? fetched.slice(0, SESSION_FETCH_LIMIT) : fetched;
-  const meta: SampleMeta = { sampleSize: rows.length, isTruncated, limit: SESSION_FETCH_LIMIT };
 
-  const byClass = new Map<string, { avgs: number[]; p95s: number[]; lag: number }>();
+  const avgHists = collectHistograms("admin.analytics.perf_hist", rows, "sess_perf_avg", (g) => g);
+  const p95Hists = collectHistograms("admin.analytics.perf_hist", rows, "sess_perf_p95", (g) => g);
+  const byClass = new Map<string, { sessions: number; lag: number }>();
   for (const r of rows) {
-    const g = byClass.get(r.device_class) ?? { avgs: [], p95s: [], lag: 0 };
-    g.avgs.push(r.avg_frame_ms);
-    g.p95s.push(r.p95_frame_ms);
-    if (r.p95_frame_ms > PERF_LAG_P95_MS) g.lag += 1;
-    byClass.set(r.device_class, g);
+    if (r.dimType !== "sess_perf_dev") continue;
+    const cur = byClass.get(r.dimKey) ?? { sessions: 0, lag: 0 };
+    cur.sessions += r.sessions;
+    cur.lag += r.measureA;
+    byClass.set(r.dimKey, cur);
   }
+  const round1 = (v: number) => Math.round(v * 10) / 10;
   const byDevice: DevicePerfStat[] = [...byClass.entries()]
     .map(([deviceClass, g]) => {
-      const medAvg = median(g.avgs) ?? 0;
+      const medAvg = histogramMedian(histEntries(avgHists.get(deviceClass)), PERF_BUCKET_WIDTH) ?? 0;
+      const medP95 = histogramMedian(histEntries(p95Hists.get(deviceClass)), PERF_BUCKET_WIDTH) ?? 0;
       return {
         deviceClass,
-        sessions: g.avgs.length,
-        medAvgMs: Math.round(medAvg * 10) / 10,
-        medP95Ms: Math.round((median(g.p95s) ?? 0) * 10) / 10,
+        sessions: g.sessions,
+        medAvgMs: round1(medAvg),
+        medP95Ms: round1(medP95),
         estFps: medAvg > 0 ? Math.round(1000 / medAvg) : 0,
-        lagRate: g.avgs.length ? g.lag / g.avgs.length : 0,
+        lagRate: g.sessions > 0 ? g.lag / g.sessions : 0,
       };
     })
     .sort((a, b) => b.sessions - a.sessions);
 
-  // 가장 느린 세션 top-5 — 전용 쿼리(p95 desc limit 5)라 표본 절단과 무관하게 전 윈도우 정확값.
   const worst: WorstPerfSession[] = worstRows.map((r) => ({
     id: r.id,
     deviceClass: r.device_class,
     dpr: Number(r.dpr) || 0,
     refreshHz: Number(r.refresh_hz) || 0,
-    avgMs: Math.round(r.avg_frame_ms * 10) / 10,
-    p95Ms: Math.round(r.p95_frame_ms * 10) / 10,
+    avgMs: round1(r.avg_frame_ms),
+    p95Ms: round1(r.p95_frame_ms),
     durationMs: r.duration_ms,
   }));
 
-  return { byDevice, worst, perfSessions: rows.length, meta };
+  const perfSessions = [...byClass.values()].reduce((s, g) => s + g.sessions, 0);
+  return {
+    byDevice,
+    worst,
+    perfSessions,
+    meta: { sampleSize: perfSessions, isTruncated: false, limit: SESSION_FETCH_LIMIT },
+  };
 }

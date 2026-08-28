@@ -109,7 +109,7 @@ export function AcquisitionCard({ stats }: { stats: AcquisitionStats }) {
 
       <p className="text-[11px] leading-relaxed text-zinc-400">
         전환율은 세션·점수제출·계정 단위가 섞인 <b>무식별 근사</b>이며, 바이럴 유입은 first-touch 가 공유링크인 <b>신규</b> 기준입니다.
-        일 1회 집계라 당일 수치는 최대 ~1일 지연될 수 있어요.
+        오늘 수치는 실시간이고, 어제까지는 일 단위 확정 집계예요.
       </p>
     </div>
   );

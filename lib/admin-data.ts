@@ -1,9 +1,12 @@
 import "server-only";
+import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PG_RETRY_CUTOFF_MS } from "@/lib/refund-saga";
+import { kstDate } from "@/lib/admin-analytics";
+import type { StatWindow } from "@/lib/admin-period";
 import type {
   AdminFunnel,
-  OrderSummary,
+  OrderSummaryWindow,
   AdminOrder,
   RefundAttemptRow,
   RefundRequestRow,
@@ -11,6 +14,7 @@ import type {
 } from "@/lib/admin-types";
 import { OPEN_ATTEMPT_STATES, ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
 import {
+  readSupabaseRowsPaginated,
   requireSupabaseData,
   requireSupabaseRows,
   SupabaseOperationError,
@@ -22,10 +26,13 @@ import {
 
 /**
  * 관리자 대시보드 데이터 — server-only, service_role(admin client).
- * 매출/주문 정확수치는 여기(DB)서만(Sentry 아님). 날짜 기준: today=KST 자정 이후, 7d/30d=rolling.
+ * 매출/주문 정확수치는 여기(DB)서만(Sentry 아님). 기간은 v1.06 공통 윈도우(KST 달력일, lib/admin-period).
+ * 매출·주문 = "현재 진실"(환불·대사 소급 반영) → orders 직조회 윈도우드 RPC.
+ * 퍼널 = "역사적 사실"(그날 처음 달성) → 하이브리드: 오늘 = admin_funnel_rows_for_day 라이브,
+ * 어제까지 = admin_funnel_rollups(day_kst < 오늘)만 — 0112 단일 소스 규약.
  */
 
-export type { AdminFunnel, OrderSummary, AdminOrder };
+export type { AdminFunnel, OrderSummaryWindow, AdminOrder };
 
 const ORDER_SELECT =
   "order_uuid, status, amount, credits, product_id, pg_tx_id, payment_id, provider, is_test, pay_channel, created_at, paid_at, error_message, user_id, refunded_credits, refunded_amount, profiles:profiles!orders_user_id_fkey(display_name)";
@@ -106,54 +113,87 @@ function rawOrders(operation: string, value: unknown): RawOrderRow[] {
   return rows;
 }
 
-export async function getAdminFunnel(): Promise<AdminFunnel | null> {
+const FUNNEL_STEPS = ["anon_users", "players", "members", "first_gen", "first_purchase"] as const;
+
+type FunnelStepRow = { step: string; value: number | string };
+const FUNNEL_STEP_SCHEMA = { step: "string", value: "nonnegativeNumeric" } as const;
+
+/** 오늘 하루 코호트 라이브 — 렌더당 1회(React cache). cron 이 쓰는 것과 같은 단일 소스 RPC(0112). */
+const liveFunnelToday = cache(async (): Promise<FunnelStepRow[]> => {
   const admin = createAdminClient();
   const data = await requireSupabaseRows(
-    "admin.dashboard.funnel",
-    () => admin.rpc("get_admin_funnel"),
+    "admin.dashboard.funnel_live",
+    () => admin.rpc("admin_funnel_rows_for_day", { p_day: kstDate(0) }),
   );
-  const rows = validateAdminRows<Record<string, number | string>>(
-    "admin.dashboard.funnel",
+  return validateAdminRows<FunnelStepRow>(
+    "admin.dashboard.funnel_live",
     data,
-    {
-      anon_users: "nonnegativeNumeric",
-      players: "nonnegativeNumeric",
-      members: "nonnegativeNumeric",
-      first_gen: "nonnegativeNumeric",
-      first_purchase: "nonnegativeNumeric",
-    },
+    FUNNEL_STEP_SCHEMA,
   );
-  if (rows.length !== 1) {
+});
+
+/**
+ * 가입·구매 퍼널(윈도우 코호트) — 하이브리드: 롤업(어제까지) + 라이브(오늘) 단계별 합산.
+ * 롤업 도입(0112) 전 과거는 잔존 행 기준 근사(정리된 익명·탈퇴 회원 소급 불가) — 페이지가 각주.
+ */
+export async function getAdminFunnelWindow(window: StatWindow): Promise<AdminFunnel> {
+  const admin = createAdminClient();
+  const today = kstDate(0);
+  const data = await readSupabaseRowsPaginated(
+    "admin.dashboard.funnel_rollup",
+    (offset, limit) => {
+      let q = admin
+        .from("admin_funnel_rollups")
+        .select("day_kst,step,value")
+        .lt("day_kst", today);
+      if (window !== "all") q = q.gte("day_kst", kstDate(window - 1));
+      return q
+        .order("day_kst", { ascending: true })
+        .order("step", { ascending: true })
+        .range(offset, offset + limit - 1);
+    },
+    500,
+  );
+  const rollup = validateAdminRows<FunnelStepRow & { day_kst: string }>(
+    "admin.dashboard.funnel_rollup",
+    data,
+    { day_kst: "date", ...FUNNEL_STEP_SCHEMA },
+  );
+  const sums = new Map<string, number>();
+  for (const r of [...rollup, ...(await liveFunnelToday())]) {
+    sums.set(r.step, (sums.get(r.step) ?? 0) + Number(r.value));
+  }
+  const bad = [...sums.keys()].filter((s) => !FUNNEL_STEPS.includes(s as (typeof FUNNEL_STEPS)[number]));
+  if (bad.length > 0) {
     throw new SupabaseOperationError(
-      "admin.dashboard.funnel",
-      new Error("expected_one_funnel_row"),
+      "admin.dashboard.funnel_rollup",
+      new Error(`unknown_funnel_step:${bad.join(",")}`),
     );
   }
-  const row = rows[0];
   return {
-    anon_users: Number(row.anon_users),
-    players: Number(row.players),
-    members: Number(row.members),
-    first_gen: Number(row.first_gen),
-    first_purchase: Number(row.first_purchase),
+    anon_users: sums.get("anon_users") ?? 0,
+    players: sums.get("players") ?? 0,
+    members: sums.get("members") ?? 0,
+    first_gen: sums.get("first_gen") ?? 0,
+    first_purchase: sums.get("first_purchase") ?? 0,
   };
 }
 
-export async function getOrderSummary(): Promise<OrderSummary | null> {
+/** 매출·주문(선택 윈도우 직조회 — 롤업 없음: 환불·대사의 소급 교정이 즉시 반영돼야 하는 "현재 진실"). */
+export async function getOrderSummaryWindow(window: StatWindow): Promise<OrderSummaryWindow> {
   const admin = createAdminClient();
   const data = await requireSupabaseData(
-    "admin.dashboard.order_summary",
-    () => admin.rpc("get_admin_order_summary"),
+    "admin.dashboard.order_summary_window",
+    () =>
+      admin.rpc("get_admin_order_summary_window", {
+        p_days: window === "all" ? null : window,
+      }),
   );
   const rows = validateAdminRows<
-    Omit<OrderSummary, "by_status"> & { by_status: Record<string, unknown> }
-  >("admin.dashboard.order_summary", [data], {
-    revenue_today: "nonnegativeInteger",
-    revenue_7d: "nonnegativeInteger",
-    revenue_30d: "nonnegativeInteger",
-    orders_today: "nonnegativeInteger",
-    orders_7d: "nonnegativeInteger",
-    orders_30d: "nonnegativeInteger",
+    Omit<OrderSummaryWindow, "by_status"> & { by_status: Record<string, unknown> }
+  >("admin.dashboard.order_summary_window", [data], {
+    revenue: "nonnegativeInteger",
+    orders: "nonnegativeInteger",
     by_status: "jsonObject",
   });
   const summary = rows[0];
@@ -165,13 +205,13 @@ export async function getOrderSummary(): Promise<OrderSummary | null> {
       (count as number) < 0
     ) {
       throw new SupabaseOperationError(
-        "admin.dashboard.order_summary",
+        "admin.dashboard.order_summary_window",
         new Error("invalid_status_count"),
       );
     }
     byStatus[status] = count as number;
   }
-  return { ...summary, by_status: byStatus };
+  return { revenue: summary.revenue, orders: summary.orders, by_status: byStatus };
 }
 
 /** 오래된 결제요청(확인 필요) — 결제 시도(payment_id/pg_tx_id)했으나 2시간+ pending. 미지급 단정 아님.
