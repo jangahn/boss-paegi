@@ -12,8 +12,9 @@ const migration = readFileSync(
   ),
   "utf8",
 );
+// v1.04: 스윕 실체는 lib/character-gen/generation-sweep.
 const recoveryRoute = readFileSync(
-  join(HERE, "../../app/api/ops/gen-recover/route.ts"),
+  join(HERE, "../../lib/character-gen/generation-sweep.ts"),
   "utf8",
 );
 

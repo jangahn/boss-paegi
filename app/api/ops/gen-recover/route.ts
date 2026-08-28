@@ -4,24 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SERVER_ENV } from "@/lib/env.server";
 import { cronSecretMatches } from "@/lib/ops-auth";
 import {
-  recoverQueuedGeneration,
-  failGeneration,
-} from "@/lib/generation-recovery";
-import {
-  CANDIDATE_TTL_MS,
-  QUEUED_STALE_MS,
-  SUBMIT_ACK_STALE_MS,
-  cleanupCandidateStorage,
-} from "@/lib/generation";
-import {
-  hasIncompleteCandidates,
-  hasUnresolvedSubmitAcknowledgement,
-} from "@/lib/character-gen/generation-state";
-import { deleteFaceTmp, tmpFacePath } from "@/lib/character-gen/upload-face";
-import { terminateDeletedOwnerGeneration } from "@/lib/character-gen/deleted-owner-generation";
-import { completeGenerationArtifactCleanup } from "@/lib/character-gen/generation-artifact-cleanup";
-import {
-  boundedBatchMayHaveMore,
   createOpsMaintenanceDeadline,
   opsMaintenanceDeadlineReached,
   opsMaintenanceResponseInit,
@@ -29,12 +11,17 @@ import {
   runOpsMaintenanceWithDeadline,
 } from "@/lib/ops-maintenance-status";
 import {
-  advanceChronologicalCursor,
-  chronologicalKeysetFilter,
-  type ChronologicalCursor,
-} from "@/lib/ops-keyset-pagination";
-import { validateAdminRows } from "@/lib/admin-read-contract";
-import { log, errInfo } from "@/lib/log";
+  cleanupTerminalArtifacts,
+  createSweepCounters,
+  expireStaleDoneGenerations,
+  failStuckQueuedGenerations,
+  recoverIncompleteTargets,
+  reRefundFailedGenerations,
+  scanRecoveryWindow,
+  selectRecoveryTargets,
+  terminalizeDeletedOwnerGenerations,
+} from "@/lib/character-gen/generation-sweep";
+import { log } from "@/lib/log";
 import {
   recordOpsCronHeartbeat,
   alertIfOpsCronSilent,
@@ -44,16 +31,6 @@ export const runtime = "nodejs";
 // 외부 scheduler의 90초 timeout보다 먼저 non-2xx로 끝나는 hard ceiling.
 // 모든 전이는 durable CAS/receipt 기반이라 platform timeout 뒤 같은 job 재실행이 안전하다.
 export const maxDuration = 25;
-
-// 한 실행당 회수 시도 상한(fal 호출량·시간 보호). 더 있으면 다음 주기에.
-const SWEEP_LIMIT = 20;
-const RECOVERY_SCAN_PAGE_SIZE = 1000;
-// fal result 만료(보통 단시간) 전에 회수해야 의미. 너무 오래된 건 어차피 만료라 스캔 제외.
-const RECOVER_WINDOW_MS = 4 * 60 * 60 * 1000; // signed submit ack window 포함
-// 방금 시작돼 fal 이 아직 도는 정상 생성이 5분 틱을 가로지르면 pending 으로 세어져
-// sweep_incomplete(429·cron 실패)가 오탐된다 — 어린 행은 클라 폴링이 주 회수자이므로
-// 대상에서 제외하고 다음 틱(그때 age≥2분)에 편입한다. 30분 force·webhook 백스톱 불변.
-const RECOVER_MIN_AGE_MS = 2 * 60 * 1000;
 
 function maintenanceTimeBudgetResponse() {
   return NextResponse.json(
@@ -109,562 +86,61 @@ export async function POST(req: NextRequest) {
       if (opsMaintenanceDeadlineReached(deadline)) {
         return maintenanceTimeBudgetResponse();
       }
-      const cutoff = new Date(Date.now() - RECOVER_WINDOW_MS).toISOString();
 
-      type Row = {
-        id: string;
-        owner_id: string;
-        status: string;
-        candidate_urls: unknown;
-        fal_request_ids: unknown;
-        gen_params: unknown;
-        created_at: string;
-        version: number;
-      };
-      // Filter-after-limit can permanently starve a newer incomplete row behind
-      // 100 older complete `done` rows. Page the authoritative window first, then
-      // bound only the provider-facing recovery work.
-      const scannedRows: Row[] = [];
-      const recoveryScanUpperBound = new Date().toISOString();
-      let recoveryCursor: ChronologicalCursor | null = null;
-      for (;;) {
-        if (opsMaintenanceDeadlineReached(deadline)) {
-          return maintenanceTimeBudgetResponse();
-        }
-        let pageQuery = admin
-          .from("ai_generations")
-          .select(
-            "id, owner_id, status, candidate_urls, fal_request_ids, gen_params, created_at, version",
-          )
-          .eq("cost_preflight_pending", false)
-          .in("status", ["queued", "done"])
-          .gte("created_at", cutoff)
-          .lte("created_at", recoveryScanUpperBound)
-          .order("created_at", { ascending: true })
-          .order("id", { ascending: true });
-        if (recoveryCursor) {
-          pageQuery = pageQuery.or(chronologicalKeysetFilter(recoveryCursor));
-        }
-        const { data: page, error: pageError } = await pageQuery
-          .limit(RECOVERY_SCAN_PAGE_SIZE)
-          .abortSignal(deadline.signal);
-        if (opsMaintenanceDeadlineReached(deadline)) {
-          return maintenanceTimeBudgetResponse();
-        }
-        if (pageError) {
-          log.error("gen.sweep_query_fail", errInfo(pageError));
-          await heartbeat(admin, "failure", "query_failed", deadline.signal);
-          return NextResponse.json(
-            { error: "query_failed" },
-            opsMaintenanceResponseInit(503),
-          );
-        }
-        if (!Array.isArray(page)) {
-          log.error("gen.sweep_query_invalid", { dataType: typeof page });
-          await heartbeat(admin, "failure", "query_failed", deadline.signal);
-          return NextResponse.json(
-            { error: "query_failed" },
-            opsMaintenanceResponseInit(503),
-          );
-        }
-        let validatedPage: Row[];
-        try {
-          validatedPage = validateAdminRows<Row>("gen.sweep_page", page, {
-            id: "uuid",
-            owner_id: "uuid",
-            status: "string",
-            created_at: "timestamp",
-            version: "nonnegativeInteger",
-          });
-          recoveryCursor = advanceChronologicalCursor(
-            validatedPage,
-            recoveryCursor,
-          );
-        } catch (error) {
-          log.error("gen.sweep_query_invalid", errInfo(error));
-          await heartbeat(admin, "failure", "query_failed", deadline.signal);
-          return NextResponse.json(
-            { error: "query_failed" },
-            opsMaintenanceResponseInit(503),
-          );
-        }
-        scannedRows.push(...validatedPage);
-        if (validatedPage.length < RECOVERY_SCAN_PAGE_SIZE) break;
-      }
-
-      // 미완 = fal 요청 수 > 저장된 candidate 수. (fal_request_ids 없는 구버전 행은 회수 불가 → 제외.)
-      const sweepScanTime = Date.now();
-      const allTargets = scannedRows.filter(
-        (r) =>
-          sweepScanTime - new Date(r.created_at).getTime() >=
-            RECOVER_MIN_AGE_MS &&
-          hasIncompleteCandidates(
-            r.candidate_urls,
-            r.fal_request_ids,
-            r.gen_params,
-          ),
-      );
-      const targets = allTargets.slice(0, SWEEP_LIMIT);
-
-      let recovered = 0;
-      let failed = 0;
-      let pending = 0;
-      let deletedOwnersTerminalized = 0;
-      let systemErrors = 0;
-      let boundedBacklogs = 0;
-      if (allTargets.length > SWEEP_LIMIT) {
-        boundedBacklogs++;
-      }
-
-      // 탈퇴 전 생성 RPC가 먼저 commit한 queued/done은 profiles soft-delete 뒤에도 남는다.
-      // provider 회수와 별개로 매 cron에서 먼저 terminal+artifact cleanup으로 수렴시켜,
-      // cleanup 완료 후 재활성 시 ghost generation이 되살아나지 않게 한다.
-      if (opsMaintenanceDeadlineReached(deadline)) {
+      // 스테이지 실체는 lib/character-gen/generation-sweep(v1.04) — 순서·카운터 의미는
+      // 원 구현 그대로. 어느 스테이지든 deadline 을 넘기면 남은 작업을 다음 틱에 넘기고
+      // 스케줄러에는 non-2xx(재시도)로 알린다.
+      const counters = createSweepCounters();
+      const scan = await scanRecoveryWindow(admin, deadline);
+      if (scan.kind === "deadline") {
         return maintenanceTimeBudgetResponse();
       }
-      const { data: deletedRows, error: deletedRowsError } = await admin
-        .rpc("list_deleted_owner_inflight_generations", {
-          p_limit: SWEEP_LIMIT,
-        })
-        .abortSignal(deadline.signal);
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      if (deletedRowsError) {
-        systemErrors++;
-        log.warn(
-          "gen.deleted_owner_generation_sweep_fail",
-          errInfo(deletedRowsError),
+      if (scan.kind === "query_failed") {
+        await heartbeat(admin, "failure", "query_failed", deadline.signal);
+        return NextResponse.json(
+          { error: "query_failed" },
+          opsMaintenanceResponseInit(503),
         );
-      } else if (!Array.isArray(deletedRows)) {
-        systemErrors++;
-        log.warn("gen.deleted_owner_generation_sweep_invalid", {
-          dataType: typeof deletedRows,
-        });
-      } else {
-        if (boundedBatchMayHaveMore(deletedRows.length, SWEEP_LIMIT)) {
-          boundedBacklogs++;
-        }
-        for (const row of deletedRows as {
-          id: string;
-          owner_id: string;
-        }[]) {
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          const terminalized = await terminateDeletedOwnerGeneration(admin, {
-            genId: row.id,
-            ownerId: row.owner_id,
-          });
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          if (terminalized) deletedOwnersTerminalized++;
-          else pending++;
-        }
       }
+      const targets = selectRecoveryTargets(scan.rows, counters);
 
-      for (const r of targets) {
-        if (opsMaintenanceDeadlineReached(deadline)) {
+      for (const stage of [
+        () => terminalizeDeletedOwnerGenerations(admin, deadline, counters),
+        () => recoverIncompleteTargets(admin, deadline, counters, targets),
+        () => failStuckQueuedGenerations(admin, deadline, counters),
+        () => expireStaleDoneGenerations(admin, deadline, counters),
+        () => cleanupTerminalArtifacts(admin, deadline, counters),
+        () => reRefundFailedGenerations(admin, deadline, counters),
+      ]) {
+        const end = await stage();
+        if (end.kind === "deadline") {
           return maintenanceTimeBudgetResponse();
         }
-        try {
-          const age = Date.now() - new Date(r.created_at).getTime();
-          const awaitingSubmitAck = hasUnresolvedSubmitAcknowledgement(
-            r.gen_params,
-          );
-          const rec = await recoverQueuedGeneration(
-            admin,
-            r.owner_id,
-            r.id,
-            r.fal_request_ids,
-            !awaitingSubmitAck && age > QUEUED_STALE_MS,
-          );
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          if (rec.status === "ready") {
-            recovered++;
-          } else if (rec.status === "owner_deleted") {
-            const terminalized = await terminateDeletedOwnerGeneration(admin, {
-              genId: r.id,
-              ownerId: r.owner_id,
-            });
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            if (terminalized) deletedOwnersTerminalized++;
-            else pending++;
-          } else if (rec.status === "failed" && rec.definitive) {
-            const marked = await failGeneration(
-              admin,
-              r.id,
-              r.owner_id,
-              rec.reason,
-              r.version,
-            );
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            if (marked) failed++;
-            else pending++;
-          } else if (rec.status === "terminal") {
-            // A concurrent pick/fail/expiry won. This row is intentionally not retried.
-          } else {
-            pending++;
-          }
-        } catch (e) {
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          pending++;
-          log.warn("gen.sweep_row_fail", { genId: r.id, ...errInfo(e) });
-        }
       }
 
-      // ── 좀비 백스톱: 일반 queued는 30분, submit 응답이 불확실한 행은 fal의
-      //    signed webhook 2시간 재전송 창+10분 뒤에만 failed+환불한다.
-      //    (A) fal 이 IN_QUEUE 로 무한 정체(완료 0)라 recovery 가 pending 만 반환 / (B) submit~request_id
-      //    영속 사이 하드크래시로 request_id 없어 recovery 대상서 제외. 클라의 age>30분 fall-through 를
-      //    cron 에도 둬 **브라우저 종료 사용자도 크레딧을 잃지 않게** 한다. 정상 행은 수분 내 done/failed 로
-      //    빠지므로 각 상태의 deadline 밖도 포함해 상한 없이 스캔한다.
-      //    failGeneration(RPC 멱등)이 queued→failed+환불을 원자 처리.
-      let stuckFailed = 0;
-      const staleCutoff = new Date(Date.now() - QUEUED_STALE_MS).toISOString();
-      type StuckRow = {
-        id: string;
-        owner_id: string;
-        gen_params: unknown;
-        created_at: string;
-        version: number;
-      };
-      const allStuck: StuckRow[] = [];
-      let stuckScanFailed = false;
-      let stuckCursor: ChronologicalCursor | null = null;
-      for (;;) {
-        if (opsMaintenanceDeadlineReached(deadline)) {
-          return maintenanceTimeBudgetResponse();
-        }
-        let pageQuery = admin
-          .from("ai_generations")
-          .select("id, owner_id, gen_params, created_at, version")
-          .eq("cost_preflight_pending", false)
-          .eq("status", "queued")
-          .lt("created_at", staleCutoff)
-          .order("created_at", { ascending: true })
-          .order("id", { ascending: true });
-        if (stuckCursor) {
-          pageQuery = pageQuery.or(chronologicalKeysetFilter(stuckCursor));
-        }
-        const { data: page, error: pageError } = await pageQuery
-          .limit(RECOVERY_SCAN_PAGE_SIZE)
-          .abortSignal(deadline.signal);
-        if (opsMaintenanceDeadlineReached(deadline)) {
-          return maintenanceTimeBudgetResponse();
-        }
-        if (pageError || !Array.isArray(page)) {
-          systemErrors++;
-          stuckScanFailed = true;
-          log.warn(
-            "gen.stuck_sweep_query_fail",
-            pageError ? errInfo(pageError) : { dataType: typeof page },
-          );
-          break;
-        }
-        let validatedPage: StuckRow[];
-        try {
-          validatedPage = validateAdminRows<StuckRow>(
-            "gen.stuck_sweep_page",
-            page,
-            {
-              id: "uuid",
-              owner_id: "uuid",
-              created_at: "timestamp",
-              version: "nonnegativeInteger",
-            },
-          );
-          stuckCursor = advanceChronologicalCursor(validatedPage, stuckCursor);
-        } catch (error) {
-          systemErrors++;
-          stuckScanFailed = true;
-          log.warn("gen.stuck_sweep_query_invalid", errInfo(error));
-          break;
-        }
-        allStuck.push(...validatedPage);
-        if (validatedPage.length < RECOVERY_SCAN_PAGE_SIZE) break;
-      }
-      if (!stuckScanFailed) {
-        const now = Date.now();
-        const eligibleStuck = allStuck.filter((row) => {
-          if (!hasUnresolvedSubmitAcknowledgement(row.gen_params)) return true;
-          const age = now - new Date(row.created_at).getTime();
-          return age > SUBMIT_ACK_STALE_MS;
-        });
-        const stuck = eligibleStuck.slice(0, SWEEP_LIMIT);
-        if (eligibleStuck.length > SWEEP_LIMIT) {
-          boundedBacklogs++;
-        }
-        for (const g of stuck) {
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          try {
-            const marked = await failGeneration(
-              admin,
-              g.id,
-              g.owner_id,
-              "timeout",
-              g.version,
-            );
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            if (marked) stuckFailed++;
-            else pending++;
-          } catch (e) {
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            pending++;
-            log.warn("gen.stuck_sweep_item_fail", {
-              genId: g.id,
-              ...errInfo(e),
-            });
-          }
-        }
-      }
-
-      // ── 미선택 완료 만료: 생성 성공은 소비 확정이라는 제품 정책을 지키며 환급 없이
-      //    row-lock RPC로 done→expired. pick과 경합하면 conflict로 아무것도 지우지 않는다.
-      let expired = 0;
-      const doneCutoff = new Date(Date.now() - CANDIDATE_TTL_MS).toISOString();
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      const { data: staleDone, error: staleDoneError } = await admin
-        .from("ai_generations")
-        .select("id, owner_id, version")
-        .eq("status", "done")
-        .lt("created_at", doneCutoff)
-        .order("created_at", { ascending: true })
-        .limit(SWEEP_LIMIT)
-        .abortSignal(deadline.signal);
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      if (staleDoneError) {
-        systemErrors++;
-        log.warn("gen.expiry_sweep_query_fail", errInfo(staleDoneError));
-      } else if (!Array.isArray(staleDone)) {
-        systemErrors++;
-        log.warn("gen.expiry_sweep_query_invalid", {
-          dataType: typeof staleDone,
-        });
-      } else {
-        if (boundedBatchMayHaveMore(staleDone.length, SWEEP_LIMIT)) {
-          boundedBacklogs++;
-        }
-        for (const g of staleDone as {
-          id: string;
-          owner_id: string;
-          version: number;
-        }[]) {
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          const { data: expiryData, error: expiryError } = await admin
-            .rpc("expire_generation", {
-              p_gen_id: g.id,
-              p_expected_version: g.version,
-            })
-            .abortSignal(deadline.signal);
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          const outcome = (expiryData as { outcome?: string } | null)?.outcome;
-          if (expiryError) {
-            pending++;
-            log.warn("gen.expiry_sweep_item_fail", {
-              genId: g.id,
-              ...errInfo(expiryError),
-            });
-          } else if (outcome === "expired" || outcome === "already_expired") {
-            expired++;
-          } else if (outcome === "conflict" || outcome === "version_conflict") {
-            // The conflicting winner may still be an unexpired `done` update.
-            // Without a re-read this run cannot prove the stale row disappeared.
-            pending++;
-          } else {
-            pending++;
-            log.warn("gen.expiry_sweep_item_unexpected", {
-              genId: g.id,
-              outcome: outcome ?? "missing",
-            });
-          }
-        }
-      }
-
-      // ── terminal artifact saga: NULL marker가 durable retry manifest다.
-      //    candidate와 tmp face를 모두 지운 뒤에만 marker를 쓴다.
-      let artifactsCleaned = 0;
-      let cleanupPending = 0;
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      const { data: cleanupRows, error: cleanupQueryError } = await admin
-        .from("ai_generations")
-        .select("id, owner_id, status")
-        .in("status", ["failed", "picked", "expired"])
-        .is("artifacts_cleaned_at", null)
-        .order("updated_at", { ascending: true })
-        .limit(SWEEP_LIMIT)
-        .abortSignal(deadline.signal);
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      if (cleanupQueryError) {
-        systemErrors++;
-        log.warn("gen.artifact_sweep_query_fail", errInfo(cleanupQueryError));
-      } else if (!Array.isArray(cleanupRows)) {
-        systemErrors++;
-        log.warn("gen.artifact_sweep_query_invalid", {
-          dataType: typeof cleanupRows,
-        });
-      } else {
-        if (boundedBatchMayHaveMore(cleanupRows.length, SWEEP_LIMIT)) {
-          boundedBacklogs++;
-        }
-        for (const g of cleanupRows as {
-          id: string;
-          owner_id: string;
-          status: "failed" | "picked" | "expired";
-        }[]) {
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          const cleanup = await completeGenerationArtifactCleanup({
-            beginCleanup: () =>
-              admin.rpc("begin_generation_artifact_cleanup", {
-                p_gen_id: g.id,
-                p_expected_status: g.status,
-              }),
-            cleanupCandidates: () =>
-              cleanupCandidateStorage(admin, g.owner_id, g.id),
-            cleanupFace: () => deleteFaceTmp(tmpFacePath(g.owner_id, g.id)),
-            markComplete: () =>
-              admin.rpc("complete_generation_artifact_cleanup", {
-                p_gen_id: g.id,
-                p_expected_status: g.status,
-              }),
-          });
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          if (!cleanup.ok) {
-            cleanupPending++;
-            log.warn("gen.artifact_sweep_item_fail", {
-              genId: g.id,
-              stage: cleanup.stage,
-              outcome: cleanup.outcome,
-              ...errInfo(cleanup.error),
-            });
-          } else {
-            artifactsCleaned++;
-          }
-        }
-      }
-
-      // ── 안전망: 미환급 실패 생성 재환급(§19) — status='failed'·refunded_at=NULL·credit_lot_id set 로
-      //    고착된 소비 크레딧(failGeneration 의 done-fallback flip↔환급 RPC 사이 크래시 윈도우 잔여)을
-      //    멱등 RPC 로 회수. idx_ai_generations_refund_pending 사용. ops(credit_lot_id NULL)는 predicate 로 제외.
-      let reRefunded = 0;
-      let refundPending = 0;
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      const { data: pendingRefunds, error: prErr } = await admin
-        .from("ai_generations")
-        .select("id, fail_reason")
-        .eq("status", "failed")
-        .is("refunded_at", null)
-        .not("credit_lot_id", "is", null)
-        .order("created_at", { ascending: true })
-        .limit(SWEEP_LIMIT)
-        .abortSignal(deadline.signal);
-      if (opsMaintenanceDeadlineReached(deadline)) {
-        return maintenanceTimeBudgetResponse();
-      }
-      if (prErr) {
-        systemErrors++;
-        log.warn("gen.refund_sweep_query_fail", errInfo(prErr));
-      } else if (!Array.isArray(pendingRefunds)) {
-        systemErrors++;
-        log.warn("gen.refund_sweep_query_invalid", {
-          dataType: typeof pendingRefunds,
-        });
-      } else {
-        if (boundedBatchMayHaveMore(pendingRefunds.length, SWEEP_LIMIT)) {
-          boundedBacklogs++;
-        }
-        for (const g of pendingRefunds as {
-          id: string;
-          fail_reason: string | null;
-        }[]) {
-          if (opsMaintenanceDeadlineReached(deadline)) {
-            return maintenanceTimeBudgetResponse();
-          }
-          try {
-            const { error: rErr } = await admin
-              .rpc("mark_generation_failed_and_refund", {
-                p_gen_id: g.id,
-                p_fail_reason: g.fail_reason ?? "recover_sweep",
-              })
-              .abortSignal(deadline.signal);
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            if (rErr) {
-              refundPending++;
-              log.warn("gen.refund_sweep_item_fail", {
-                genId: g.id,
-                ...errInfo(rErr),
-              });
-            } else reRefunded++;
-          } catch (e) {
-            if (opsMaintenanceDeadlineReached(deadline)) {
-              return maintenanceTimeBudgetResponse();
-            }
-            refundPending++;
-            log.warn("gen.refund_sweep_item_fail", {
-              genId: g.id,
-              ...errInfo(e),
-            });
-          }
-        }
-      }
-
-      const retryPending = pending + cleanupPending + refundPending;
+      const retryPending =
+        counters.pending + counters.cleanupPending + counters.refundPending;
       const result = {
-        scanned: scannedRows.length,
+        scanned: scan.rows.length,
         targeted: targets.length,
-        recovered,
-        failed,
-        pending,
-        deletedOwnersTerminalized,
-        stuckFailed,
-        expired,
-        artifactsCleaned,
-        cleanupPending,
-        reRefunded,
-        refundPending,
-        boundedBacklogs,
+        recovered: counters.recovered,
+        failed: counters.failed,
+        pending: counters.pending,
+        deletedOwnersTerminalized: counters.deletedOwnersTerminalized,
+        stuckFailed: counters.stuckFailed,
+        expired: counters.expired,
+        artifactsCleaned: counters.artifactsCleaned,
+        cleanupPending: counters.cleanupPending,
+        reRefunded: counters.reRefunded,
+        refundPending: counters.refundPending,
+        boundedBacklogs: counters.boundedBacklogs,
         retryPending,
-        systemErrors,
+        systemErrors: counters.systemErrors,
       };
       const status = opsMaintenanceStatus({
-        systemErrors,
+        systemErrors: counters.systemErrors,
         retryPending,
-        boundedBacklogs,
+        boundedBacklogs: counters.boundedBacklogs,
       });
       if (opsMaintenanceDeadlineReached(deadline)) {
         return maintenanceTimeBudgetResponse();
