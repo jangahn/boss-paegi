@@ -19,7 +19,7 @@ export const MAX_TOKEN_LEN = 64;
 /**
  * UTM/referrer/source 토큰 정규화 — PII·고cardinality 차단.
  * lowercase·trim → 빈값/64자 초과/`@`·`%40`(email-like)/`/?&=`(query·path-like)/허용외 문자 → **null**(truncate 아님).
- * 허용: `[a-z0-9._-]`(도메인 `m.search.naver.com`, 캠페인 `summer_sale` 등 통과).
+ * 허용: `[a-z0-9._-]`(도메인 `m.search.naver.com`, utm 값 `insta_bio` 등 통과).
  */
 export function normalizeToken(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -31,11 +31,10 @@ export function normalizeToken(v: unknown): string | null {
   return s;
 }
 
+// utm 부가 차원(medium·campaign)은 v1.09 에서 하드 제거(소비처 0 실측·source 1차원 운영 확정 — mig 0113).
 export type RawSource = {
   source_kind?: unknown;
   utm_source?: unknown;
-  utm_medium?: unknown;
-  utm_campaign?: unknown;
   referrer_domain?: unknown;
   viral_type?: unknown;
 };
@@ -45,8 +44,6 @@ export type NormSource = {
   source_value: string;
   referrer_domain: string | null;
   utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
   viral_type: ViralType | null;
 };
 
@@ -55,8 +52,6 @@ export const DIRECT_SOURCE: NormSource = {
   source_value: "direct",
   referrer_domain: null,
   utm_source: null,
-  utm_medium: null,
-  utm_campaign: null,
   viral_type: null,
 };
 
@@ -75,8 +70,6 @@ export function normalizeSource(raw: RawSource | null | undefined): NormSource {
         source_value: utm,
         referrer_domain: null,
         utm_source: utm,
-        utm_medium: normalizeToken(raw.utm_medium),
-        utm_campaign: normalizeToken(raw.utm_campaign),
         viral_type: null,
       };
     }

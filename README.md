@@ -930,6 +930,11 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.09 (2026-08-29, utm_medium·utm_campaign 하드 제거 — 소비처 0 실측·source 1차원 운영 확정; **Migration 0113**):
+- **근거**: 두 필드는 수집·저장·검증에만 존재하고 읽는 곳이 전무(롤업 dim 없음·어드민 미표시·소스 판정은 utm_source 만) — 운영 방침이 "utm_source 1차원에 세부 인코딩"(예: `instagram_story`)으로 확정돼 영구 불용 표면. 최소수집 원칙에 따라 스키마 컬럼·데이터·로직·테스트를 소멸. 재도입은 additive 컬럼 추가로 충분(raw 는 어차피 90일 소멸).
+- **무중단**: 적재 RPC(`record_public_analytics_event`)가 p_event **jsonb** 라 시그니처 불변 — 본문에서 두 키 추출·컬럼만 제거(구 클라가 키를 보내도 무시). `analytics_events_kind_shape` 제약 재정의(share 분기 두 항 제거) 후 컬럼 drop.
+- 코드: core 타입/정규화·acquisition 전송·conversion 동봉 필드·단위테스트·pgTAP 리터럴 정리. 어드민·롤업은 원래 안 쓰므로 무변경.
+
 v1.08 (2026-08-29, 공유·유입 수집 봇 게이트 2단 — lottogen 실증 이식(예방); 마이그레이션 없음):
 - **배경**: lottogen 에서 "봇은 JS 못 돌려 자연 필터" 가정이 깨짐을 실증(JS 렌더링 크롤러가 비콘 발화 — UA 신분 표기형은 정규식으로, 무신분 렌더러는 08시 21기기 배치로 통과). boss-paegi 실측은 새벽 direct 10%·익명 계정 새벽 9건/주로 **대량 오염 징후 없음** — 무식별 도메인이라 사후 정리가 불가능해 예방 이식.
 - ①UA·webdriver 게이트: 판별식 `isBotUserAgent`(`lib/analytics/core` — 클라·서버 단일 소스), 클라 전송 스킵 + `/api/track` 서버 백스톱(무UA 포함 드롭, UA 는 판별에만 사용·미저장 = 무PII 불변). ②**상호작용 게이트**: `lib/acquisition` 이 이벤트를 큐에 쌓고 첫 pointerdown/keydown/scroll/touchstart 후에만 전송 — 방문 정의가 "상호작용한 방문"으로 좁아짐(무조작 이탈 미집계, 어드민 캡션 고지). 공유/전환은 클릭·플레이 뒤라 체감 무변화.

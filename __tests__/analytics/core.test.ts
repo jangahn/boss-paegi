@@ -98,8 +98,6 @@ test("every source kind either canonicalizes exactly or becomes direct", () => {
       source_value: "naver",
       referrer_domain: null,
       utm_source: "naver",
-      utm_medium: "social",
-      utm_campaign: "summer",
       viral_type: null,
     },
     referrer: {
@@ -107,8 +105,6 @@ test("every source kind either canonicalizes exactly or becomes direct", () => {
       source_value: "m.example.com",
       referrer_domain: "m.example.com",
       utm_source: null,
-      utm_medium: null,
-      utm_campaign: null,
       viral_type: null,
     },
     viralScore: {
@@ -116,8 +112,6 @@ test("every source kind either canonicalizes exactly or becomes direct", () => {
       source_value: "score",
       referrer_domain: null,
       utm_source: null,
-      utm_medium: null,
-      utm_campaign: null,
       viral_type: "score",
     },
     viralDoll: {
@@ -125,8 +119,6 @@ test("every source kind either canonicalizes exactly or becomes direct", () => {
       source_value: "doll",
       referrer_domain: null,
       utm_source: null,
-      utm_medium: null,
-      utm_campaign: null,
       viral_type: "doll",
     },
   } as const;
@@ -136,8 +128,6 @@ test("every source kind either canonicalizes exactly or becomes direct", () => {
     normalizeSource({
       source_kind: "utm",
       utm_source: " NAVER ",
-      utm_medium: " Social ",
-      utm_campaign: " SUMMER ",
       referrer_domain: "must-be-cleared.example",
       viral_type: "score",
     }),
@@ -285,8 +275,6 @@ test("conversion builder is canonical for both steps and hostile source input", 
         source_value: "naver",
         referrer_domain: null,
         utm_source: "naver",
-        utm_medium: null,
-        utm_campaign: null,
         viral_type: null,
       },
     );

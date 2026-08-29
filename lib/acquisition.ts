@@ -132,8 +132,6 @@ function computeCurrentRaw(): RawSource {
     return {
       source_kind: "utm",
       utm_source: utm,
-      utm_medium: url.searchParams.get("utm_medium"),
-      utm_campaign: url.searchParams.get("utm_campaign"),
     };
   }
   const path = url.pathname;
@@ -247,8 +245,6 @@ export function firstTouchSourceForConversion(): RawSource | null {
   return {
     source_kind: s.source_kind,
     utm_source: s.utm_source,
-    utm_medium: s.utm_medium,
-    utm_campaign: s.utm_campaign,
     referrer_domain: s.referrer_domain,
     viral_type: s.viral_type,
   };

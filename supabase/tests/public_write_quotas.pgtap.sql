@@ -252,7 +252,7 @@ select is(
     public.record_public_analytics_event(
       pg_catalog.repeat('a', 64),
       'anon',
-      '{"kind":"conversion","conversion_step":"play","source_scope":"first_touch","source_kind":"direct","source_value":"direct","referrer_domain":null,"utm_source":null,"utm_medium":null,"utm_campaign":null,"viral_type":null}'::jsonb
+      '{"kind":"conversion","conversion_step":"play","source_scope":"first_touch","source_kind":"direct","source_value":"direct","referrer_domain":null,"utm_source":null,"viral_type":null}'::jsonb
     )->>'accepted'
   ),
   'true',
