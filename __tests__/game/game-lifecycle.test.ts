@@ -121,7 +121,7 @@ test("native pointercancel reaches the scene exactly until listener cleanup", ()
   assert.equal(cancellations, 1);
 });
 
-test("PlayScene maps all 9 weapons to 6 categories and cancels every held state on blur/hidden", () => {
+test("PlayScene maps all 9 weapons to 7 categories and cancels every held state on blur/hidden", () => {
   const scene = new PlayScene({ app: {} as never });
   scene.layout(800, 600);
   const categories = new Set<string>();
@@ -132,7 +132,7 @@ test("PlayScene maps all 9 weapons to 6 categories and cancels every held state 
   }
   assert.deepEqual(
     [...categories].sort(),
-    ["draw", "grab", "shoot", "swipe", "tap", "throw"],
+    ["draw", "grab", "pinch", "shoot", "swipe", "tap", "throw"],
   );
 
   const win = new EventTarget();

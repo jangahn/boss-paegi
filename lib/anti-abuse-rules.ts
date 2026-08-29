@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  PINCH_STRETCH_BONUS,
   resolveWeapon,
   SWIPE_FACTOR_MAX,
   THROW_FACTOR_MAX,
@@ -59,7 +60,7 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * 게이지 식(첫 타 +0.01, 이후 매 타 최대 +0.11)에서 유도해 0~9타로 1~2회
  * 궁극기를 위조하던 여유치를 제거한다.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-07-anti-abuse-v6";
+export const ANTI_ABUSE_RULES_VERSION = "2026-08-anti-abuse-v7";
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
@@ -133,9 +134,10 @@ export type EvaluateResult = {
   evidence: Record<string, unknown>;
 };
 
-/** 무기 1타 실효 최대 base — PlayScene 득점 경로의 배율 상한에서 유도(전 경로 확인 2026-07-03).
+/** 무기 1타 실효 최대 base — PlayScene 득점 경로의 배율 상한에서 유도(전 경로 확인 2026-07-03, pinch 추가 2026-08 v7).
  *  tap(fist/hammer)·shoot(gun)·draw(pen)는 strength 고정(배율 경로 없음).
- *  grab 은 fling 릴리즈(strength + power×30)가 상한 — 벽히트(15 고정)는 avg 를 낮추는 방향. */
+ *  grab 은 fling 릴리즈(strength + power×30), pinch 는 릴리즈(strength + ratio×26)가 상한 —
+ *  벽히트(15 고정)는 avg 를 낮추는 방향. 은퇴 무기(paper)는 resolveWeapon 이 RETIRED 로 해석. */
 function effectiveMaxBase(weaponKey: string): number {
   const w = resolveWeapon(weaponKey);
   switch (w.category) {
@@ -145,6 +147,8 @@ function effectiveMaxBase(weaponKey: string): number {
       return Math.round(w.strength * THROW_FACTOR_MAX);
     case "grab":
       return w.strength + GRAB_FLING_POWER_BONUS;
+    case "pinch":
+      return w.strength + PINCH_STRETCH_BONUS;
     default:
       return w.strength; // tap · shoot · draw — 고정 데미지
   }

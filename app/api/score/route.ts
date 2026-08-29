@@ -27,7 +27,7 @@ import {
   parsePublicWriteAttemptFailure,
   parsePublicWriteAttemptReservation,
 } from "@/lib/public-write-attempt";
-import { WEAPONS } from "@/lib/weapons";
+import { RETIRED_WEAPONS, WEAPONS } from "@/lib/weapons";
 import { BACKGROUNDS } from "@/lib/backgrounds";
 import {
   isMissingCommitScoreReportRpcError,
@@ -57,7 +57,10 @@ export const SCORE_SUBMISSION_MAX_BODY_BYTES = 64 * 1024;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const WEAPON_KEYS = new Set<string>(WEAPONS.map((weapon) => weapon.key));
+// 은퇴 무기 포함 — 배포 전환기의 구 번들 클라이언트(대표무기 paper) 제출을 거절하지 않는다.
+const WEAPON_KEYS = new Set<string>(
+  [...WEAPONS, ...RETIRED_WEAPONS].map((weapon) => weapon.key)
+);
 const BACKGROUND_KEYS = new Set<string>(
   BACKGROUNDS.map((background) => background.key),
 );

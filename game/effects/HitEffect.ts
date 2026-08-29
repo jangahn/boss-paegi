@@ -1,5 +1,18 @@
 import { Container, Graphics, Text } from "pixi.js";
 
+/** 5각 별 꼭짓점 (외경 r) */
+function starPoints(r: number): number[] {
+  const pts: number[] = [];
+  for (let i = 0; i < 10; i++) {
+    const rad = i % 2 === 0 ? r : r * 0.45;
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    pts.push(Math.cos(a) * rad, Math.sin(a) * rad);
+  }
+  return pts;
+}
+
+const DEBRIS_CHARS = "ㄱㄴㄷㄹㅁㅂㅅㅇㅋㅌ@#!?";
+
 type Particle = {
   g: Graphics;
   vx: number;
@@ -49,6 +62,27 @@ type Flash = {
   peak: number;
 };
 
+/** 회전/개별중력 있는 자유 파편 — 별·눈물·땀·글자 (Graphics/Text 공용) */
+type Debris = {
+  node: Container;
+  vx: number;
+  vy: number;
+  spin: number;
+  grav: number;
+  life: number;
+  ttl: number;
+};
+
+/** 짧은 스케일-페이드 플레어 — 임팩트 라인·히트마커·싸대기 궤적 */
+type Flare = {
+  g: Graphics;
+  life: number;
+  ttl: number;
+  /** 스케일 시작→끝 */
+  s0: number;
+  s1: number;
+};
+
 const DEFAULT_COLORS = [0xffd166, 0xef476f, 0xff9f1c, 0xfdf6e3];
 
 /**
@@ -61,6 +95,8 @@ export class HitEffect extends Container {
   private paperPieces: PaperPiece[] = [];
   private emojiPops: EmojiPop[] = [];
   private flashes: Flash[] = [];
+  private debris: Debris[] = [];
+  private flares: Flare[] = [];
 
   /** 화면 전체 플래시 — 궁극기 마무리 등 임팩트용 (좌표 0,0 ~ viewW,viewH) */
   flash(viewW: number, viewH: number, color = 0xffffff, peak = 0.7, ttl = 0.4) {
@@ -104,14 +140,14 @@ export class HitEffect extends Container {
     this.shockwaves.push({ g, life: 0, ttl: 0.35, startR, endR, color });
   }
 
-  /** 종이 흩뿌려짐 — 흰 조각들이 팔랑팔랑 흩어지며 낙하. */
-  paperScatter(x: number, y: number, count = 10) {
+  /** 종이 흩뿌려짐 — 조각들이 팔랑팔랑 흩어지며 낙하. (책 = 베이지 책장) */
+  paperScatter(x: number, y: number, count = 10, color = 0xffffff) {
     for (let i = 0; i < count; i++) {
       const g = new Graphics();
       const w = 8 + Math.random() * 10;
       const h = 10 + Math.random() * 14;
       g.roundRect(-w / 2, -h / 2, w, h, 2).fill({
-        color: 0xffffff,
+        color,
         alpha: 0.95,
       });
       g.x = x;
@@ -151,6 +187,153 @@ export class HitEffect extends Container {
     if (opts?.swing) t.rotation = -0.9;
     this.addChild(t);
     this.emojiPops.push({ t, life: 0, ttl: 0.32, swing: !!opts?.swing });
+  }
+
+  /** 타격 방사선 — 만화식 임팩트 라인이 바깥으로 확 퍼지며 사라짐 */
+  impactLines(x: number, y: number, color = 0xffffff, count = 8) {
+    const g = new Graphics();
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.35;
+      const r0 = 22 + Math.random() * 6;
+      const r1 = r0 + 26 + Math.random() * 18;
+      const wHalf = 2.2 + Math.random() * 1.6;
+      const px = Math.cos(a);
+      const py = Math.sin(a);
+      const ox = -py * wHalf;
+      const oy = px * wHalf;
+      g.poly([
+        px * r0 + ox, py * r0 + oy,
+        px * r0 - ox, py * r0 - oy,
+        px * r1, py * r1,
+      ]).fill({ color, alpha: 0.9 });
+    }
+    g.x = x;
+    g.y = y;
+    this.addChild(g);
+    this.flares.push({ g, life: 0, ttl: 0.18, s0: 0.6, s1: 1.35 });
+  }
+
+  /** 비비탄 히트마커 — X자 4선 */
+  hitMarker(x: number, y: number, color = 0xffffff) {
+    const g = new Graphics();
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + (i * Math.PI) / 2;
+      const px = Math.cos(a);
+      const py = Math.sin(a);
+      g.moveTo(px * 7, py * 7)
+        .lineTo(px * 16, py * 16)
+        .stroke({ color, width: 3.5, cap: "round" });
+    }
+    g.x = x;
+    g.y = y;
+    this.addChild(g);
+    this.flares.push({ g, life: 0, ttl: 0.16, s0: 0.7, s1: 1.25 });
+  }
+
+  /** 싸대기 궤적 — 진행 방향 호 스워시 */
+  slapArc(x: number, y: number, dirX: number, dirY: number, color = 0xffffff) {
+    const g = new Graphics();
+    const ang = Math.atan2(dirY, dirX);
+    g.arc(0, 0, 34, -0.85, 0.85).stroke({ color, width: 7, alpha: 0.75, cap: "round" });
+    g.arc(0, 0, 48, -0.6, 0.6).stroke({ color, width: 4, alpha: 0.45, cap: "round" });
+    g.rotation = ang;
+    g.x = x;
+    g.y = y;
+    this.addChild(g);
+    this.flares.push({ g, life: 0, ttl: 0.22, s0: 0.7, s1: 1.5 });
+  }
+
+  /** 별 파편 — 뿅망치/해롱. 노란 별이 튀어오르며 회전 낙하 */
+  starBurst(x: number, y: number, count = 6) {
+    for (let i = 0; i < count; i++) {
+      const g = new Graphics();
+      const r = 9 + Math.random() * 8;
+      g.poly(starPoints(r)).fill(0xffd166);
+      g.poly(starPoints(r * 0.45)).fill(0xfff3c4);
+      g.x = x;
+      g.y = y;
+      this.addChild(g);
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+      const speed = 190 + Math.random() * 260;
+      this.debris.push({
+        node: g,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        spin: (Math.random() - 0.5) * 9,
+        grav: 760,
+        life: 0,
+        ttl: 0.6 + Math.random() * 0.35,
+      });
+    }
+  }
+
+  /** 키보드 파편 — 자모/특수문자가 튀어나옴 */
+  letterDebris(x: number, y: number, count = 7) {
+    for (let i = 0; i < count; i++) {
+      const t = new Text({
+        text: DEBRIS_CHARS[Math.floor(Math.random() * DEBRIS_CHARS.length)],
+        style: { fontSize: 15 + Math.random() * 9, fontWeight: "900", fill: 0x37352f },
+      });
+      t.anchor.set(0.5);
+      t.x = x;
+      t.y = y;
+      this.addChild(t);
+      const a = Math.random() * Math.PI * 2;
+      const speed = 150 + Math.random() * 220;
+      this.debris.push({
+        node: t,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed - 190,
+        spin: (Math.random() - 0.5) * 11,
+        grav: 900,
+        life: 0,
+        ttl: 0.55 + Math.random() * 0.3,
+      });
+    }
+  }
+
+  /** 눈물 방울 — 얼굴 양옆으로 포물선 낙하 */
+  tearDrops(x: number, y: number, count = 4) {
+    for (let i = 0; i < count; i++) {
+      const g = new Graphics();
+      const r = 4 + Math.random() * 3.5;
+      g.circle(0, 0, r).fill({ color: 0x7cc7ff, alpha: 0.95 });
+      g.circle(-r * 0.3, -r * 0.3, r * 0.35).fill({ color: 0xffffff, alpha: 0.8 });
+      g.x = x + (Math.random() - 0.5) * 14;
+      g.y = y;
+      this.addChild(g);
+      const side = i % 2 === 0 ? -1 : 1;
+      this.debris.push({
+        node: g,
+        vx: side * (70 + Math.random() * 130),
+        vy: -160 - Math.random() * 130,
+        spin: 0,
+        grav: 980,
+        life: 0,
+        ttl: 0.6 + Math.random() * 0.25,
+      });
+    }
+  }
+
+  /** 진땀 방울 — 꼬집기 한계 근처 긴장 */
+  sweatDrops(x: number, y: number, count = 3) {
+    for (let i = 0; i < count; i++) {
+      const g = new Graphics();
+      const r = 3 + Math.random() * 2.5;
+      g.circle(0, 0, r).fill({ color: 0xbfe6ff, alpha: 0.9 });
+      g.x = x + (Math.random() - 0.5) * 30;
+      g.y = y + (Math.random() - 0.5) * 16;
+      this.addChild(g);
+      this.debris.push({
+        node: g,
+        vx: (Math.random() - 0.5) * 120,
+        vy: -220 - Math.random() * 90,
+        spin: 0,
+        grav: 1050,
+        life: 0,
+        ttl: 0.45 + Math.random() * 0.2,
+      });
+    }
   }
 
   /** +N 점수 popup — 위로 떠오르며 페이드. */
@@ -259,6 +442,37 @@ export class HitEffect extends Container {
       p.g.y += p.vy * deltaSec;
       p.g.rotation += p.spin * deltaSec;
       p.g.alpha = 1 - t * t;
+    }
+
+    for (let i = this.debris.length - 1; i >= 0; i--) {
+      const d = this.debris[i];
+      d.life += deltaSec;
+      if (d.life >= d.ttl) {
+        this.removeChild(d.node);
+        d.node.destroy();
+        this.debris.splice(i, 1);
+        continue;
+      }
+      d.vy += d.grav * deltaSec;
+      d.node.x += d.vx * deltaSec;
+      d.node.y += d.vy * deltaSec;
+      d.node.rotation += d.spin * deltaSec;
+      d.node.alpha = 1 - Math.pow(d.life / d.ttl, 2);
+    }
+
+    for (let i = this.flares.length - 1; i >= 0; i--) {
+      const f = this.flares[i];
+      f.life += deltaSec;
+      const t = f.life / f.ttl;
+      if (t >= 1) {
+        this.removeChild(f.g);
+        f.g.destroy();
+        this.flares.splice(i, 1);
+        continue;
+      }
+      const grow = 1 - Math.pow(1 - t, 2);
+      f.g.scale.set(f.s0 + (f.s1 - f.s0) * grow);
+      f.g.alpha = 1 - t * t;
     }
 
     for (let i = this.flashes.length - 1; i >= 0; i--) {

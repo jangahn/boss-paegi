@@ -31,6 +31,8 @@ import { HitEffect } from "@/game/effects/HitEffect";
 import { Projectile } from "@/game/entities/Projectile";
 import { DrawingLayer } from "@/game/entities/DrawingLayer";
 import { DamageLayer } from "@/game/entities/DamageLayer";
+import { TransientDecals } from "@/game/entities/TransientDecals";
+import { DazeFx } from "@/game/effects/DazeFx";
 import { PhysicsWorld } from "@/game/physics/PhysicsWorld";
 import { ThrowInput } from "@/game/input/ThrowInput";
 import { SwipeInput } from "@/game/input/SwipeInput";
@@ -41,10 +43,18 @@ import {
   SWIPE_FACTOR_MAX,
   THROW_FACTOR_MAX,
   GRAB_FLING_POWER_BONUS,
+  PINCH_STRETCH_BONUS,
   type Weapon,
   type WeaponCategory,
 } from "@/lib/weapons";
-import { playHitSound, unlockAudio } from "@/lib/sound";
+import {
+  playHitSound,
+  playYelp,
+  startPinchTension,
+  setPinchTension,
+  stopPinchTension,
+  unlockAudio,
+} from "@/lib/sound";
 
 type Pellet = {
   g: Graphics;
@@ -130,6 +140,19 @@ export class PlayScene extends Container {
   // drag 중 벽 진입 추적 — 진입 순간(에지)만 점수 발생
   private wallState = { L: false, R: false, T: false, B: false };
 
+  // ── 타격감 (2026-08 개편) ──────────────────────────────────────────
+  /** 히트스톱 — 큰 타격 순간 짧게 전체 동결(임팩트 강조). 초 단위 잔여. */
+  private hitStop = 0;
+  /** 최근 타격 시각(ms) 롤링 윈도우 — 해롱해롱 발동·비명 티어 판정 */
+  private hitTimes: number[] = [];
+  private dazeCooldownUntil = 0;
+  private dazeFx: DazeFx;
+  private transientDecals: TransientDecals;
+  // 꼬집기 상태 (mode === "pinch" 에서 dollPointerId 를 공유)
+  private pinchActive = false;
+  private pinchRatio = 0;
+  private pinchBlushAccum = 0;
+
   // viewport memo
   private viewW = 0;
   private viewH = 0;
@@ -172,6 +195,10 @@ export class PlayScene extends Container {
     );
     decalRoot.addChild(this.damageLayer);
 
+    // 일시 데칼 (손자국/혹/홍조) — 꼬질 위, 낙서 아래
+    this.transientDecals = new TransientDecals(this.doll.naturalSize);
+    decalRoot.addChild(this.transientDecals);
+
     // 낙서 레이어 — 캐릭터 bodyWrap 에 부착. 흔들림/던지기/회전 전부 캐릭터와 함께.
     // 보간 dot 도 실루엣 안만 허용 (빠른 스트로크가 오목 영역을 가로지를 때 잉크 새는 것 방지)
     this.drawingLayer = new DrawingLayer(
@@ -180,6 +207,10 @@ export class PlayScene extends Container {
     );
     decalRoot.addChild(this.drawingLayer);
     this.doll.bodyWrap.addChild(decalRoot);
+
+    // 해롱해롱 별 궤도 — doll child (bodyWrap 지터에 안 떨리게 doll 레벨)
+    this.dazeFx = new DazeFx(this.doll.naturalSize);
+    this.doll.addChild(this.dazeFx);
 
     this.fx = new HitEffect();
     // 이펙트 (이모지/점수팝/파티클) 가 hit-test 를 가로채 연타가 씹히는 것 방지
@@ -297,6 +328,50 @@ export class PlayScene extends Container {
     );
   }
 
+  /** 화면 흔들림 추가 — 궁극기 셰이크 채널을 공용으로 재사용(자연 감쇠). */
+  private addShake(power: number) {
+    this.ultShake = Math.max(this.ultShake, power);
+  }
+
+  /** 히트스톱 — 큰 타격만. 상한 90ms(연타 조작감 보호). */
+  private addHitStop(sec: number) {
+    this.hitStop = Math.min(0.09, Math.max(this.hitStop, sec));
+  }
+
+  /** 캐릭터 머리 위치 (scene 좌표) — 눈물/진땀 스폰 기준 */
+  private headPos() {
+    const sc = this.doll.scale.x || 1;
+    return { x: this.doll.x, y: this.doll.y - this.doll.naturalSize * 0.25 * sc };
+  }
+
+  /**
+   * 타격 펄스 기록 — 2.5초 롤링 윈도우. weight 로 무기별 가중(뿅망치/투척 2, 플링 3).
+   * 임계(14) 도달 시 해롱해롱 발동(별 궤도 + sway + 눈물, 6초 쿨다운).
+   */
+  private registerHitPulse(weight = 1) {
+    const now = performance.now();
+    for (let i = 0; i < weight; i++) this.hitTimes.push(now);
+    const cutoff = now - 2500;
+    while (this.hitTimes.length && this.hitTimes[0] < cutoff) this.hitTimes.shift();
+    if (this.hitTimes.length >= 14 && now >= this.dazeCooldownUntil) {
+      this.dazeCooldownUntil = now + 6000;
+      this.dazeFx.start(1.7);
+      this.doll.setDazed(1.7);
+      const head = this.headPos();
+      this.fx.tearDrops(head.x, head.y, 5);
+      playHitSound("twinkle");
+      playYelp(2);
+    }
+  }
+
+  /** 연타 열기에 비례한 비굴 비명 — chance 확률로 재생, 티어는 최근 타격 수 기준 */
+  private maybeYelp(chance: number, tierBoost = 0) {
+    if (Math.random() >= chance) return;
+    const n = this.hitTimes.length;
+    const base = n >= 12 ? 2 : n >= 6 ? 1 : 0;
+    playYelp(Math.min(2, base + tierBoost) as 0 | 1 | 2);
+  }
+
   /** 게임 종료/중단 시 궁극기 난타 즉시 정지 + 화면 흔들림 복원 */
   stopUltimate() {
     if (!this.ultActive && this.ultShake <= 0.3) return;
@@ -363,9 +438,15 @@ export class PlayScene extends Container {
       this.fx.shockwave(cx, cy, 30, 200 + i * 70, i === 0 ? 0xffd166 : 0xef476f);
     }
     this.fx.burst(cx, cy, 48, 0xef476f);
+    this.fx.starBurst(cx, cy - 20, 10);
     this.fx.flash(this.viewW, this.viewH, 0xffffff, 0.75, 0.45);
     this.doll.triggerHit(3);
+    this.doll.bounce(1.6);
+    this.dazeFx.start(2.3);
+    this.doll.setDazed(2.3);
+    this.addHitStop(0.08);
     playHitSound("thud", 1.4);
+    playYelp(2, 1.2);
     this.position.set(0, 0);
     this.ultShake = 0;
     this.restoreDollAfterUlt();
@@ -409,12 +490,16 @@ export class PlayScene extends Container {
     this.shootInput.setActive(this.mode === "shoot", this.weapon);
     this.drawInput.setActive(this.mode === "draw", this.weapon);
 
-    // tap: 캐릭터 탭만. grab: 캐릭터 잡고 fling. 나머지: 캐릭터 위 제스처를 stage 입력에 양보.
-    const dollInteractive = this.mode === "tap" || this.mode === "grab";
+    // tap: 캐릭터 탭만. grab: 잡고 fling. pinch: 잡아 늘리기. 나머지: stage 입력에 양보.
+    const dollInteractive =
+      this.mode === "tap" || this.mode === "grab" || this.mode === "pinch";
     this.doll.eventMode = dollInteractive ? "static" : "none";
     this.doll.cursor = dollInteractive ? "pointer" : "default";
     if (this.mode !== "grab") {
       this.cancelFling();
+    }
+    if (this.mode !== "pinch") {
+      this.cancelPinch();
     }
   }
 
@@ -437,6 +522,21 @@ export class PlayScene extends Container {
       this.executeTap(local.x, local.y);
       return;
     }
+    if (this.mode === "pinch") {
+      if (this.dollPointerId !== null) return; // 꼬집기는 한 손가락만
+      e.stopPropagation();
+      this.dollPointerId = e.pointerId;
+      this.pinchActive = true;
+      this.pinchRatio = 0;
+      this.pinchBlushAccum = 0;
+      startPinchTension();
+      // 꼬집힌 자리 홍조 (bodyWrap local — down 시점엔 transform 이 사실상 원점)
+      const grabLocal = this.doll.bodyWrap.toLocal(e.global, undefined);
+      if (this.doll.isInsideBody(grabLocal.x, grabLocal.y)) {
+        this.transientDecals.blush(grabLocal.x, grabLocal.y);
+      }
+      return;
+    }
     if (this.mode !== "grab") return;
     if (this.dollPointerId !== null) return; // fling 은 한 손가락만
     e.stopPropagation();
@@ -454,6 +554,36 @@ export class PlayScene extends Container {
     if (this.dollPointerId === null || e.pointerId !== this.dollPointerId)
       return;
     const local = this.toLocal(e.global);
+    if (this.pinchActive) {
+      // 꼬집기 — 캐릭터 중심에서 손가락까지의 당김 벡터를 로컬 px 로 환산
+      const sc = this.doll.scale.x || 1;
+      const maxLen = this.doll.naturalSize * sc * 0.6;
+      let dx = local.x - this.doll.x;
+      let dy = local.y - this.doll.y;
+      const len = Math.hypot(dx, dy);
+      const ratio = Math.min(1, len / maxLen);
+      if (len > maxLen) {
+        dx = (dx / len) * maxLen;
+        dy = (dy / len) * maxLen;
+      }
+      this.pinchRatio = ratio;
+      this.doll.setPinchPull(dx / sc, dy / sc, ratio);
+      setPinchTension(ratio);
+      // 한계 근처 — 진땀
+      if (ratio > 0.82 && Math.random() < 0.1) {
+        const head = this.headPos();
+        this.fx.sweatDrops(head.x, head.y, 2);
+      }
+      // 당기는 동안 홍조 갱신 (0.35s 간격 근사 — move 이벤트 기반 누산)
+      this.pinchBlushAccum += 1;
+      if (this.pinchBlushAccum % 22 === 0 && ratio > 0.25) {
+        const grabLocal = this.doll.bodyWrap.toLocal(e.global, undefined);
+        if (this.doll.isInsideBody(grabLocal.x, grabLocal.y)) {
+          this.transientDecals.blush(grabLocal.x, grabLocal.y);
+        }
+      }
+      return;
+    }
     // history 는 모드 무관 항상 추적 — tap 모드의 "드래그면 탭 아님" 판정에도 사용
     this.flingHistory.push({ x: local.x, y: local.y, t: performance.now() });
     const cutoff = performance.now() - 120;
@@ -495,19 +625,25 @@ export class PlayScene extends Container {
     const newR = x > this.viewW - margin;
     const newT = y < margin;
     const newB = y > this.viewH - margin;
-    const fire = (impactX: number, impactY: number) => {
+    const fire = (impactX: number, impactY: number, nx: number, ny: number) => {
       const points = 15;
       this.fx.shockwave(impactX, impactY, 22, 100, 0xffd166);
       this.fx.burst(impactX, impactY, 10, 0xffd166);
+      this.fx.starBurst(impactX, impactY, 4);
       this.doll.triggerHit(1.4);
+      this.doll.hitSquash(nx, ny, 1.5);
+      this.addShake(7);
+      this.addHitStop(0.035);
       playHitSound("thud");
+      this.registerHitPulse(2);
+      this.maybeYelp(0.6);
       const gain = this.reportHit(impactX, impactY, points, this.weapon.key);
       this.fx.scorePop(impactX, impactY - 30, gain, 0xffd166);
     };
-    if (!this.wallState.L && newL) fire(0, y);
-    if (!this.wallState.R && newR) fire(this.viewW, y);
-    if (!this.wallState.T && newT) fire(x, 0);
-    if (!this.wallState.B && newB) fire(x, this.viewH);
+    if (!this.wallState.L && newL) fire(0, y, 1, 0);
+    if (!this.wallState.R && newR) fire(this.viewW, y, -1, 0);
+    if (!this.wallState.T && newT) fire(x, 0, 0, 1);
+    if (!this.wallState.B && newB) fire(x, this.viewH, 0, -1);
     this.wallState = { L: newL, R: newR, T: newT, B: newB };
   }
 
@@ -516,6 +652,33 @@ export class PlayScene extends Container {
     if (this.dollPointerId === null || e.pointerId !== this.dollPointerId)
       return;
     this.dollPointerId = null;
+    if (this.pinchActive) {
+      const ratio = this.pinchRatio;
+      this.pinchActive = false;
+      this.pinchRatio = 0;
+      if (ratio > 0.12) {
+        const w = this.weapon;
+        this.doll.releasePinch();
+        stopPinchTension(true, ratio);
+        const local = this.toLocal(e.global);
+        const points = Math.round(w.strength + ratio * PINCH_STRETCH_BONUS);
+        this.fx.burst(local.x, local.y, Math.round(4 + 6 * ratio), w.color);
+        if (ratio > 0.5) {
+          const head = this.headPos();
+          this.fx.tearDrops(head.x, head.y, Math.round(2 + ratio * 3));
+        }
+        if (ratio > 0.7) this.addHitStop(0.05);
+        this.addShake(3 + 5 * ratio);
+        this.registerHitPulse(1);
+        this.maybeYelp(0.4 + ratio * 0.6, ratio > 0.7 ? 1 : 0);
+        const gain = this.reportHit(local.x, local.y, points, w.key);
+        this.fx.scorePop(local.x, local.y - 30, gain, w.color);
+      } else {
+        this.doll.cancelPinch();
+        stopPinchTension(false);
+      }
+      return;
+    }
     const upAt = performance.now();
     if (!this.flingActive) {
       // grab 모드에서 threshold 미달로 끝난 짧은 터치 — 아무 일 없음
@@ -566,7 +729,12 @@ export class PlayScene extends Container {
         100 + power * 80,
         0xef476f
       );
+      this.fx.starBurst(this.dollBody.position.x, this.dollBody.position.y, Math.round(3 + power * 4));
       this.doll.triggerHit(1 + power);
+      this.doll.hitSquash(svx, svy, 1 + power);
+      this.addShake(4 + 6 * power);
+      this.registerHitPulse(3);
+      this.maybeYelp(0.75, 1);
       const gain = this.reportHit(
         this.dollBody.position.x,
         this.dollBody.position.y,
@@ -609,7 +777,17 @@ export class PlayScene extends Container {
    * 점수/발사 없이 상태만 리셋. (pixi 8.19 는 pointercancel 을 display object 로
    * 전달하지 않아 DOM 레벨에서 호출됨)
    */
+  private cancelPinch() {
+    if (!this.pinchActive) return;
+    this.pinchActive = false;
+    this.pinchRatio = 0;
+    if (this.dollPointerId !== null) this.dollPointerId = null;
+    this.doll.cancelPinch();
+    stopPinchTension(false);
+  }
+
   cancelActivePointers() {
+    this.cancelPinch();
     this.cancelFling();
     this.throwInput.cancel();
     this.swipeInput.cancel();
@@ -617,17 +795,15 @@ export class PlayScene extends Container {
     this.drawInput.cancel();
   }
 
-  /** 탭 무기 (주먹/뿅망치) — 한 방. 타격 지점에 무기 이모지가 뿅. */
+  /** 탭 무기 (주먹/뿅망치) — 한 방. 무기별 시그니처 연출로 분기. */
   private executeTap(x: number, y: number) {
     const w = this.weapon;
-    this.doll.triggerHit(w.shake);
     this.fx.emojiPop(x, y, w.emoji, {
       size: 60,
       swing: w.key === "hammer",
     });
     this.fx.burst(x, y, w.particleCount, w.color);
     this.fx.shockwave(x, y, 18, 75 + w.shake * 30, w.color);
-    playHitSound(w.sound);
     const dx = this.dollBody.position.x - x;
     const dy = this.dollBody.position.y - y;
     const len = Math.hypot(dx, dy) || 1;
@@ -636,6 +812,32 @@ export class PlayScene extends Container {
       x: (dx / len) * push,
       y: (dy / len) * push,
     });
+    const hitLocal = this.doll.bodyWrap.toLocal({ x, y }, this);
+    if (w.key === "hammer") {
+      // 뾱 + 띠용용용 — 깊은 수직 눌림 후 저감쇠 바운스, 별 분출, 스프링 사운드
+      this.doll.triggerHit(w.shake * 0.6);
+      this.doll.bounce(1.1);
+      this.fx.starBurst(x, y - 12, 5);
+      playHitSound("springy");
+      this.addHitStop(0.045);
+      if (Math.random() < 0.45 && this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
+        this.transientDecals.bump(hitLocal.x, hitLocal.y, 1.15);
+      }
+      this.registerHitPulse(2);
+      this.maybeYelp(0.5, 1);
+    } else {
+      // 주먹 — 묵직: 방사선 임팩트 + 타격 방향 스쿼시 + 혹
+      this.doll.triggerHit(w.shake);
+      this.doll.hitSquash(dx, dy, 1.0);
+      this.fx.impactLines(x, y, 0xffffff, 8);
+      playHitSound(w.sound);
+      this.addHitStop(0.028);
+      if (Math.random() < 0.16 && this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
+        this.transientDecals.bump(hitLocal.x, hitLocal.y, 1);
+      }
+      this.registerHitPulse(1);
+      this.maybeYelp(0.25);
+    }
     const gain = this.reportHit(x, y, w.strength, w.key);
     this.fx.scorePop(x, y - 30, gain, w.color);
   }
@@ -660,10 +862,20 @@ export class PlayScene extends Container {
     // 속도 비례 데미지 (0.6×~상한) + 볼륨
     const factor = Math.min(SWIPE_FACTOR_MAX, Math.max(0.6, speed / 1100));
     const points = Math.round(weapon.strength * factor);
-    this.doll.triggerHit(weapon.shake * factor);
+    // 싸대기 — 고개가 홱(회전 킥) + 스윙 방향 스쿼시 + 손자국 + 궤적 스워시
+    this.doll.triggerHit(weapon.shake * factor * 0.7);
+    this.doll.hitSquash(dirX, dirY, factor * 0.9);
+    this.doll.rotKick((dirX >= 0 ? 1 : -1) * 0.05 * factor);
     this.fx.burst(x, y, Math.round(weapon.particleCount * factor), weapon.color);
-    this.fx.shockwave(x, y, 16, 60 + 50 * factor, weapon.color);
+    this.fx.slapArc(x, y, dirX, dirY, 0xffc2cf);
     playHitSound("slap", 0.6 + factor * 0.5);
+    const hitLocal = this.doll.bodyWrap.toLocal({ x, y }, this);
+    if (this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
+      this.transientDecals.handprint(hitLocal.x, hitLocal.y, Math.atan2(dirY, dirX));
+    }
+    if (factor > 1.5) this.addHitStop(0.035);
+    this.registerHitPulse(1);
+    this.maybeYelp(0.45, factor > 1.5 ? 1 : 0);
     // 손이 움직인 방향으로 캐릭터 밀치기
     Body.applyForce(this.dollBody, this.dollBody.position, {
       x: dirX * 0.012 * factor,
@@ -785,7 +997,11 @@ export class PlayScene extends Container {
       if (dx * dx + dy * dy <= hitR * hitR) {
         const w = p.weapon;
         this.doll.triggerHit(w.shake);
+        this.doll.hitSquash(p.vx, p.vy, 0.45);
+        this.fx.hitMarker(p.x, p.y);
         this.fx.burst(p.x, p.y, w.particleCount, w.color);
+        this.registerHitPulse(1);
+        this.maybeYelp(0.1);
         playHitSound("pop", 0.9);
         const gain = this.reportHit(p.x, p.y, w.strength, w.key);
         this.fx.scorePop(p.x, p.y - 20, gain, w.color);
@@ -802,6 +1018,11 @@ export class PlayScene extends Container {
   private handleDrawStroke = (length: number, weapon: Weapon) => {
     if (this.lifecycle !== "running") return;
     void length;
+    this.doll.tremble(0.35);
+    if (Math.random() < 0.2) {
+      const head = this.headPos();
+      this.fx.sweatDrops(head.x, head.y, 2);
+    }
     playHitSound("scribble");
     this.reportHit(
       this.dollBody.position.x,
@@ -830,16 +1051,23 @@ export class PlayScene extends Container {
     const points = Math.round(w.strength * factor);
 
     if (w.impact === "scatter") {
-      // 종이 — 흩뿌려지며 타격
+      // (은퇴 무기 잔존 경로) — 흩뿌려지며 타격
       this.fx.paperScatter(hx, hy, 12);
       this.fx.burst(hx, hy, w.particleCount, w.color);
       this.doll.triggerHit(w.shake * factor);
       playHitSound("rustle", 0.8 + factor * 0.4);
     } else {
-      // 책/키보드 — 둔탁한 타격
-      this.doll.triggerHit(w.shake * factor);
+      // 책/키보드 — 둔탁: 충돌 방향 스쿼시 + 히트스톱 + 파편 시그니처
+      this.doll.triggerHit(w.shake * factor * 0.7);
+      this.doll.hitSquash(projBody.velocity.x, projBody.velocity.y, factor);
       this.fx.burst(hx, hy, Math.round(w.particleCount * 2 * factor), w.color);
       this.fx.shockwave(hx, hy, 30, 110 + 50 * factor, w.color);
+      this.addShake(3 + 3 * factor);
+      this.addHitStop(0.035 + 0.02 * Math.min(1, factor / THROW_FACTOR_MAX));
+      if (w.key === "book") this.fx.paperScatter(hx, hy, 8, 0xf1e3c2);
+      if (w.key === "keyboard") this.fx.letterDebris(hx, hy, 8);
+      this.registerHitPulse(2);
+      this.maybeYelp(0.65, factor > 1.5 ? 1 : 0);
       playHitSound("thud", 0.7 + factor * 0.5);
       if (w.key === "keyboard") playHitSound("clack", 0.8);
       // projectile momentum 으로 캐릭터 밀어내기.
@@ -858,6 +1086,12 @@ export class PlayScene extends Container {
 
   update(deltaSec: number) {
     if (this.lifecycle !== "running") return;
+    // 히트스톱 — 큰 타격 순간 전체(물리·이펙트·궁극기) 짧은 동결로 임팩트 강조
+    if (this.hitStop > 0) {
+      this.hitStop -= deltaSec;
+      if (this.hitStop > 0) return;
+      this.hitStop = 0;
+    }
     // 궁극기 난사타 — 일정 간격으로 랜덤 무기 타격을 퍼부음
     if (this.ultActive) {
       this.ultTimer -= deltaSec;
@@ -919,6 +1153,8 @@ export class PlayScene extends Container {
       this.doll.rotation = this.dollBody.angle;
     }
     this.doll.update(deltaSec);
+    this.dazeFx.update(deltaSec);
+    this.transientDecals.update(deltaSec);
     this.fx.update(deltaSec);
     this.shootInput.update(deltaSec, this.doll.x, this.doll.y);
     this.updatePellets(deltaSec);

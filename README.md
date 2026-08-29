@@ -110,7 +110,7 @@ boss-paegi/
 │   ├── layout.tsx
 │   └── page.tsx            #   랜딩
 ├── game/                   # PixiJS 게임 로직 (React 와 분리)
-│   ├── scenes/             #   PlayScene (입력 모드 전환 통합)
+│   ├── scenes/             #   PlayScene (입력 모드 전환 통합 + 히트스톱·해롱·무기별 시그니처 연출)
 │   ├── entities/           #   Doll / Projectile / DrawingLayer
 │   ├── effects/            #   HitEffect (파티클)
 │   ├── physics/            #   matter.js wrapper (PhysicsWorld)

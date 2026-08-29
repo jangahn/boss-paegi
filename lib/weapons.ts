@@ -10,6 +10,7 @@ export type { WeaponKey } from "@/lib/weapon-keys";
  * throw — 무기를 잡고 휘둘러 놓으면 드래그 방향·속도로 날아가 캐릭터에 충돌 (책/키보드/종이)
  * shoot — 빈 곳을 꾹 누르고 있으면 캐릭터를 자동 조준해 연사 (비비탄총)
  * grab  — 캐릭터 자체를 잡고 드래그해 내던지기 (이 모드에서만 캐릭터 fling 가능)
+ * pinch — 캐릭터를 꾹 잡고 끌어 늘렸다 놓기 (늘린 거리 비례 데미지)
  * draw  — 캐릭터 실루엣 안에 낙서 (펜)
  */
 export type WeaponCategory =
@@ -18,6 +19,7 @@ export type WeaponCategory =
   | "throw"
   | "shoot"
   | "grab"
+  | "pinch"
   | "draw";
 
 export type Weapon = {
@@ -46,6 +48,7 @@ export type Weapon = {
     | "pew"
     | "pop"
     | "whoosh"
+    | "squeak"
     | "scribble";
   /** 던지기 전용 — 발사체 질량 (matter.js body mass) */
   mass?: number;
@@ -68,6 +71,8 @@ export const SWIPE_FACTOR_MAX = 2.0;
 export const THROW_FACTOR_MAX = 2.2;
 /** grab fling 릴리즈 속도 보너스 상한 — base = strength + power×BONUS, power=min(1, speed/1500). */
 export const GRAB_FLING_POWER_BONUS = 30;
+/** pinch 릴리즈 늘림 보너스 상한 — base = strength + ratio×BONUS, ratio=늘린 거리/최대 거리(0..1). */
+export const PINCH_STRETCH_BONUS = 26;
 
 export const WEAPONS: readonly Weapon[] = [
   // ── tap (2) ────────────────────────────────────────────────────────
@@ -108,7 +113,7 @@ export const WEAPONS: readonly Weapon[] = [
     particleCount: 12,
     sound: "slap",
   },
-  // ── throw (3) ──────────────────────────────────────────────────────
+  // ── throw (2) ──────────────────────────────────────────────────────
   {
     key: "book",
     category: "throw",
@@ -139,21 +144,6 @@ export const WEAPONS: readonly Weapon[] = [
     projectileSize: 56,
     impact: "blunt",
   },
-  {
-    key: "paper",
-    category: "throw",
-    label: "종이",
-    emoji: "📄",
-    hint: "무기를 잡고 휘둘러 던지기",
-    strength: 8,
-    shake: 0.5,
-    color: 0xffffff,
-    particleCount: 18,
-    sound: "rustle",
-    mass: 0.4,
-    projectileSize: 44,
-    impact: "scatter",
-  },
   // ── shoot (1) ──────────────────────────────────────────────────────
   {
     key: "gun",
@@ -180,6 +170,19 @@ export const WEAPONS: readonly Weapon[] = [
     particleCount: 14,
     sound: "whoosh",
   },
+  // ── pinch (1) — 2026-08 종이(최저 사용) 대체 신규 ──────────────────
+  {
+    key: "pinch",
+    category: "pinch",
+    label: "꼬집기",
+    emoji: "🤌",
+    hint: "부장님을 잡아 늘려 꼬집기",
+    strength: 10,
+    shake: 1.0,
+    color: 0xff8fab,
+    particleCount: 8,
+    sound: "squeak",
+  },
   // ── draw (1) ───────────────────────────────────────────────────────
   {
     key: "pen",
@@ -196,8 +199,34 @@ export const WEAPONS: readonly Weapon[] = [
   },
 ] as const;
 
+/**
+ * 은퇴 무기 — 표시 전용(과거 scores/weapon_summary 행 라벨·집계 라벨).
+ * 선택·신규 제출 로스터(WEAPONS)에서 빠졌지만 역사 데이터가 남아 있어 판독은 유지한다.
+ */
+export const RETIRED_WEAPONS: readonly Weapon[] = [
+  {
+    key: "paper",
+    category: "throw",
+    label: "종이",
+    emoji: "📄",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 8,
+    shake: 0.5,
+    color: 0xffffff,
+    particleCount: 18,
+    sound: "rustle",
+    mass: 0.4,
+    projectileSize: 44,
+    impact: "scatter",
+  },
+] as const;
+
 export function resolveWeapon(key?: string | null): Weapon {
-  return WEAPONS.find((w) => w.key === key) ?? WEAPONS[0];
+  return (
+    WEAPONS.find((w) => w.key === key) ??
+    RETIRED_WEAPONS.find((w) => w.key === key) ??
+    WEAPONS[0]
+  );
 }
 
 /**

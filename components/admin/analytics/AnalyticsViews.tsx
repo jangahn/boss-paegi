@@ -1,4 +1,4 @@
-import { WEAPONS } from "@/lib/weapons";
+import { RETIRED_WEAPONS, WEAPONS } from "@/lib/weapons";
 import { BACKGROUNDS } from "@/lib/backgrounds";
 import type {
   DimStat,
@@ -10,7 +10,7 @@ import type {
 
 /** 게임플레이 분석 표시 컴포넌트 — 차트 라이브러리 없이 CSS 바 + 카드. */
 
-const WEAPON_LABEL: Record<string, string> = Object.fromEntries(WEAPONS.map((w) => [w.key, `${w.emoji} ${w.label}`]));
+const WEAPON_LABEL: Record<string, string> = Object.fromEntries([...WEAPONS, ...RETIRED_WEAPONS].map((w) => [w.key, `${w.emoji} ${w.label}`]));
 const MAP_LABEL: Record<string, string> = Object.fromEntries(BACKGROUNDS.map((b) => [b.key, b.label]));
 
 function pct(n: number, d: number): string {
