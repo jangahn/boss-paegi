@@ -144,3 +144,12 @@ export type ConversionRow = {
 export function buildConversionRow(step: ConversionStep, rawSource: RawSource | null | undefined): ConversionRow {
   return { kind: "conversion", conversion_step: step, source_scope: "first_touch", ...normalizeSource(rawSource) };
 }
+
+// ── 봇 판별(v1.08) — 클라 게이트·서버 /api/track 백스톱의 단일 소스. UA 는 판별에만 사용·미저장. ──
+// lottogen 실증: JS 렌더링 크롤러(Googlebot WRS·Yeti 등)는 비콘을 울린다 — "봇은 JS 못 돌린다" 가정 폐기.
+const BOT_UA_RE =
+  /bot|spider|crawl|slurp|headless|lighthouse|preview|yeti|daum|petal|semrush|ahrefs|yandex|baidu|bytespider|gptbot|inspectiontool|googleother|google-extended|facebookexternalhit|kakaotalk-scrap|whatsapp|telegram|skype/i;
+
+export function isBotUserAgent(ua: string): boolean {
+  return BOT_UA_RE.test(ua);
+}

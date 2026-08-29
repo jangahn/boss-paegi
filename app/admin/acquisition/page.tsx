@@ -44,7 +44,7 @@ export default async function AcquisitionPage({
           {statWindowLabel(window)}. <b>무식별·집계</b>(개인추적·PII 없음). 게임플레이 분석과 별개 도메인 —
           공유 행동·유입 경로 전용.
           <br />
-          오늘은 실시간(raw), 어제까지는 일 단위 확정 집계예요.
+          오늘은 실시간(raw), 어제까지는 일 단위 확정 집계예요. 방문은 첫 터치·스크롤 등 상호작용이 있었던 방문만 세요(봇 제외, 2026-08-29부터).
           {window !== 1 && (
             <>
               <br />
