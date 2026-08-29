@@ -16,6 +16,8 @@ function request(
     headers: {
       origin: "http://localhost:3000",
       "content-type": "application/json",
+      // v1.08 봇 게이트: 기본 정상 UA — 각 케이스가 의도한 계층(경계/원본/파싱)에 도달하게 한다.
+      "user-agent": "Mozilla/5.0 (Macintosh; test agent)",
       ...headers,
     },
     body,
@@ -56,4 +58,22 @@ test("track route cross-origin and malformed JSON drops stay indistinguishable",
     }),
   );
   await assertDropped(request("{"));
+});
+
+test("track route drops crawler and missing user agents before any dependency", async () => {
+  await assertDropped(
+    request('{"kind":"visit","source_scope":"current","source_kind":"direct"}', {
+      "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    }),
+  );
+  await assertDropped(
+    request('{"kind":"visit","source_scope":"current","source_kind":"direct"}', {
+      "user-agent": "kakaotalk-scrap/1.0",
+    }),
+  );
+  await assertDropped(
+    request('{"kind":"visit","source_scope":"current","source_kind":"direct"}', {
+      "user-agent": "",
+    }),
+  );
 });

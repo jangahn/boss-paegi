@@ -6,6 +6,7 @@
 
 import { PUBLIC_ENV } from "@/lib/env";
 import {
+  isBotUserAgent,
   normalizeSource,
   normalizeToken,
   type NormSource,
@@ -56,6 +57,63 @@ function send(payload: Record<string, unknown>): boolean {
   } catch {
     return false;
   }
+}
+
+// ── 봇 게이트(v1.08, lottogen 실증 이식) ────────────────────────────────────────
+// ①신분 표기 크롤러·자동화 브라우저: UA(판별에만 사용·미저장)+webdriver 로 전송 자체 스킵.
+// ②무신분 렌더러: 이벤트를 큐에 쌓고 **첫 터치/스크롤/키 입력 후에만** 전송 — 렌더 후 떠나는
+//   봇은 상호작용이 없어 아무것도 못 보낸다. 방문 정의가 "상호작용한 방문"으로 좁아지는
+//   트레이드오프(무조작 이탈 미집계)는 어드민 캡션·README 에 명시. 무식별 도메인이라 오염의
+//   사후 정리가 불가능해 예방이 정본이다. 공유/전환은 클릭·플레이 뒤라 게이트가 체감 지연 없음.
+const INTERACTED_KEY = "bp_touched_v1";
+const INTERACTION_EVENTS = ["pointerdown", "keydown", "scroll", "touchstart"] as const;
+let pendingQueue: Record<string, unknown>[] = [];
+let listenersArmed = false;
+
+function isLikelyBot(): boolean {
+  try {
+    return navigator.webdriver === true || isBotUserAgent(navigator.userAgent);
+  } catch {
+    return false;
+  }
+}
+
+function hasInteracted(): boolean {
+  try {
+    return window.sessionStorage.getItem(INTERACTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function onFirstInteraction(): void {
+  try {
+    window.sessionStorage.setItem(INTERACTED_KEY, "1");
+  } catch {
+    /* storage 불가 — 큐만 비운다 */
+  }
+  const queued = pendingQueue;
+  pendingQueue = [];
+  for (const body of queued) send(body);
+}
+
+function armInteractionListeners(): void {
+  if (listenersArmed) return;
+  listenersArmed = true;
+  const fire = () => {
+    for (const t of INTERACTION_EVENTS) window.removeEventListener(t, fire);
+    onFirstInteraction();
+  };
+  for (const t of INTERACTION_EVENTS) window.addEventListener(t, fire, { passive: true });
+}
+
+/** 게이트 통과 전송 — 봇이면 false, 상호작용 전이면 큐잉(true), 이후엔 즉시 전송. */
+function gatedSend(payload: Record<string, unknown>): boolean {
+  if (isLikelyBot()) return false;
+  if (hasInteracted()) return send(payload);
+  pendingQueue.push(payload);
+  armInteractionListeners();
+  return true;
 }
 
 function ourHost(): string {
@@ -135,7 +193,7 @@ export function trackVisit(): void {
   if (!enabled()) return;
   try {
     if (!window.sessionStorage.getItem(CURRENT_VISIT_KEY)) {
-      if (send({ kind: "visit", source_scope: "current", ...currentSource() })) {
+      if (gatedSend({ kind: "visit", source_scope: "current", ...currentSource() })) {
         window.sessionStorage.setItem(CURRENT_VISIT_KEY, "1");
       }
     }
@@ -144,7 +202,7 @@ export function trackVisit(): void {
   }
   const ft = ensureFirstTouch();
   if (!ft.acquisitionVisitSent) {
-    if (send({ kind: "visit", source_scope: "first_touch", ...ft.source })) {
+    if (gatedSend({ kind: "visit", source_scope: "first_touch", ...ft.source })) {
       ft.acquisitionVisitSent = true;
       writeFirstTouch(ft);
     }
@@ -174,7 +232,7 @@ export function trackShare(opts: {
   } catch {
     /* storage 불가 — 디바운스 없이 1회 전송 */
   }
-  send({
+  gatedSend({
     kind: "share",
     surface: opts.surface,
     target: opts.target,
