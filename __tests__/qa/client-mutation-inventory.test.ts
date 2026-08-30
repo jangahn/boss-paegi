@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  readFileSync,
-  readdirSync,
-  type Dirent,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -92,11 +88,6 @@ const DOMAIN_READ_ONLY_POSTS = [
     source: "app/api/account/onboard/route.ts",
   },
   {
-    method: "POST",
-    endpoint: "/api/account/reconsent",
-    source: "app/api/account/reconsent/route.ts",
-  },
-  {
     // fal queue status/result 프록시(읽기 전용 폴링) — 도메인 상태 무변경.
     method: "POST",
     endpoint: "/api/admin/generation-test/status",
@@ -165,7 +156,7 @@ test("side-effecting GET recovery edges cannot be misclassified as reads", () =>
 
 test("domain-read-only POST exclusions are exact and never overlap mutations", () => {
   const mutationKeys = new Set(CLIENT_MUTATION_SURFACES.map(key));
-  assert.equal(DOMAIN_READ_ONLY_POSTS.length, 5);
+  assert.equal(DOMAIN_READ_ONLY_POSTS.length, 4);
   for (const exclusion of DOMAIN_READ_ONLY_POSTS) {
     assert.equal(mutationKeys.has(key(exclusion)), false, key(exclusion));
     const body = read(exclusion.source);
@@ -176,7 +167,8 @@ test("domain-read-only POST exclusions are exact and never overlap mutations", (
     }
   }
   assert.match(read("app/api/account/onboard/route.ts"), /status: 410/);
-  assert.match(read("app/api/account/reconsent/route.ts"), /status: 410/);
+  // /api/account/reconsent 410 shim 은 v1.10 에서 제거(동의 일원화 후 호출처 0) — 부활 금지.
+  assert.equal(existsSync(new URL("../../app/api/account/reconsent/route.ts", import.meta.url)), false);
 });
 
 function walk(directory: string, skipApi: boolean): string[] {
