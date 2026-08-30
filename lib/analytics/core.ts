@@ -14,6 +14,35 @@ export type MemberState = "anon" | "member";
 export const SURFACES: readonly Surface[] = ["game_over", "history", "highlight_viewer", "doll", "gallery"];
 export const SHARE_TARGETS: readonly ShareTarget[] = ["score", "doll", "highlight"];
 export const VIRAL_TYPES: readonly ViralType[] = ["score", "doll"];
+/**
+ * 진입 페이지(landing) — 경로 첫 세그먼트를 이 화이트리스트로 축약해 저장한다.
+ * 원본 URL·쿼리·식별자는 저장하지 않는다(`/doll/<uuid>` → `doll`). 미등록 경로는 `other`.
+ * 서버 리다이렉트 스텁(`/signup`·`/reconsent`)은 렌더 자체가 없어 값이 될 수 없다.
+ */
+export const LANDING_GROUPS = [
+  "home", "play", "gallery", "leaderboard", "generate", "doll", "share", "history",
+  "news", "badges", "account", "credits", "faq", "terms", "privacy", "login", "other",
+] as const;
+export type Landing = (typeof LANDING_GROUPS)[number];
+
+export function landingGroupOf(pathname: string): Landing {
+  if (!pathname || pathname === "/") return "home";
+  const head = pathname.split("/")[1] ?? "";
+  return (LANDING_GROUPS as readonly string[]).includes(head) ? (head as Landing) : "other";
+}
+
+/**
+ * 분석 비대상 경로 — 트래커가 비콘을 울리지 않고, `/login?next=` 환원 대상에서도 제외한다.
+ * (어드민 운영 트래픽·API·Auth 서브트리·동의 화면.) 트래커와 acquisition 이 함께 쓰는 단일 소스.
+ */
+export const ANALYTICS_EXCLUDED_PREFIXES = ["/admin", "/api", "/auth", "/consent"] as const;
+
+export function isAnalyticsExcludedPath(pathname: string): boolean {
+  return ANALYTICS_EXCLUDED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+}
+
 export const MAX_TOKEN_LEN = 64;
 
 /**
@@ -91,7 +120,7 @@ export function normalizeSource(raw: RawSource | null | undefined): NormSource {
 }
 
 // /api/track 가 받는 클라 이벤트(visit | share). conversion 은 서버 내부에서만 적재(여기서 거부).
-export type VisitRow = { kind: "visit"; source_scope: SourceScope } & NormSource;
+export type VisitRow = { kind: "visit"; source_scope: SourceScope; landing: Landing } & NormSource;
 export type ShareRow = {
   kind: "share";
   surface: Surface;
@@ -109,7 +138,11 @@ export function sanitizeTrackPayload(raw: unknown): TrackRow | null {
   if (o.kind === "visit") {
     const scope = o.source_scope;
     if (scope !== "current" && scope !== "first_touch") return null;
-    return { kind: "visit", source_scope: scope, ...normalizeSource(o as RawSource) };
+    // landing 은 클라 값 불신 — 화이트리스트 밖이면 other 로 강등(드롭하지 않음: 방문 자체는 유효).
+    const landing = (LANDING_GROUPS as readonly string[]).includes(o.landing as string)
+      ? (o.landing as Landing)
+      : "other";
+    return { kind: "visit", source_scope: scope, landing, ...normalizeSource(o as RawSource) };
   }
 
   if (o.kind === "share") {

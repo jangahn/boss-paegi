@@ -109,8 +109,10 @@ export async function getShareStats(window: StatWindow): Promise<ShareStats> {
 }
 
 export type SourceConv = { sourceKind: string; sourceValue: string; visits: number; play: number; signup: number };
+export type LandingVisits = { landing: string; visits: number };
 export type AcquisitionStats = {
   currentBySource: { sourceKind: string; sourceValue: string; visits: number }[]; // 방문 유입 현황(current)
+  currentByLanding: LandingVisits[]; // 랜딩 페이지별 방문(current·탭세션 단위). landing '' = 수집 전
   currentByKind: KeyVal[]; // source_kind 그룹 합계
   conversion: SourceConv[]; // first-touch 기준 방문→플레이→가입(무식별 근사)
   viralLoop: { shares: number; viralInbound: number; byType: KeyVal[] };
@@ -127,7 +129,7 @@ function topNWithRest<T>(rows: T[], n: number, getVal: (r: T) => number, makeRes
 /** 유입 분석 — 방문 현황(current) + source별 전환(first-touch) + 바이럴 루프. */
 export async function getAcquisitionStats(window: StatWindow): Promise<AcquisitionStats> {
   const rows = await analyticsRollupRows(
-    ["visit_by_source", "conversion_play_by_source", "conversion_signup_by_source", "viral_inbound_by_type", "share_by_surface"],
+    ["visit_by_source", "visit_by_landing", "conversion_play_by_source", "conversion_signup_by_source", "viral_inbound_by_type", "share_by_surface"],
     window
   );
 
@@ -149,6 +151,13 @@ export async function getAcquisitionStats(window: StatWindow): Promise<Acquisiti
     }
   }
 
+  // 랜딩 페이지별 방문 — 채널 카드와 같은 규율로 current 만. dim2='' 는 수집 이전 행.
+  const landingMap = new Map<string, number>();
+  for (const r of rows) {
+    if (r.metric !== "visit_by_landing" || r.dim1 !== "current") continue;
+    landingMap.set(r.dim2, (landingMap.get(r.dim2) ?? 0) + num(r.value));
+  }
+
   // 전환 분자: conversion_*_by_source(dim1=kind, dim2=value)
   const play = new Map<string, number>();
   const signup = new Map<string, number>();
@@ -165,6 +174,15 @@ export async function getAcquisitionStats(window: StatWindow): Promise<Acquisiti
       return { sourceKind, sourceValue, visits: ftVisit.get(k) ?? 0, play: play.get(k) ?? 0, signup: signup.get(k) ?? 0 };
     })
     .sort((a, b) => b.visits - a.visits || b.play - a.play);
+
+  const currentByLanding = topNWithRest(
+    [...landingMap.entries()]
+      .map(([landing, visits]) => ({ landing, visits }))
+      .sort((a, b) => b.visits - a.visits),
+    8,
+    (r) => r.visits,
+    (sum) => ({ landing: "기타", visits: sum }),
+  );
 
   const currentBySource = topNWithRest(
     [...curMap.values()].sort((a, b) => b.visits - a.visits),
@@ -188,5 +206,5 @@ export async function getAcquisitionStats(window: StatWindow): Promise<Acquisiti
     .map(([key, value]) => ({ key, value }))
     .sort((a, b) => b.value - a.value);
 
-  return { currentBySource, currentByKind, conversion, viralLoop: { shares, viralInbound, byType: viralByType } };
+  return { currentBySource, currentByLanding, currentByKind, conversion, viralLoop: { shares, viralInbound, byType: viralByType } };
 }

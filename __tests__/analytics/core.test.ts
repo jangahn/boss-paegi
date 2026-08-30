@@ -6,6 +6,8 @@ import {
   SHARE_TARGETS,
   SURFACES,
   buildConversionRow,
+  isAnalyticsExcludedPath,
+  landingGroupOf,
   normalizeSource,
   normalizeToken,
   sanitizeTrackPayload,
@@ -194,6 +196,8 @@ test("visit sanitizer covers every scope and source validity combination", () =>
         assert.deepEqual(actual, {
           kind: "visit",
           source_scope,
+          // payload 에 landing 이 없으면 other 로 강등된다(방문 자체는 유효).
+          landing: "other",
           ...normalizeSource(source),
         });
       }
@@ -331,4 +335,41 @@ test("public track body limit is exact in declared bytes and UTF-8 bytes", () =>
     assert.equal(trackBodyBytesAllowed(exact), true, unit);
     assert.equal(trackBodyBytesAllowed(exact + unit), false, unit);
   }
+});
+
+test("landing 은 경로 첫 세그먼트를 화이트리스트로 축약하고 식별자를 저장하지 않는다", () => {
+  assert.equal(landingGroupOf("/"), "home");
+  assert.equal(landingGroupOf(""), "home");
+  assert.equal(landingGroupOf("/play"), "play");
+  // 식별자가 붙은 경로도 그룹 토큰만 남는다(무PII).
+  assert.equal(landingGroupOf("/doll/2f1c9a7e-0000-4000-8000-000000000000"), "doll");
+  assert.equal(landingGroupOf("/history/abc/42"), "history");
+  assert.equal(landingGroupOf("/share/xyz"), "share");
+  // 미등록 경로는 other 로 강등 — 임의 문자열이 저장되지 않는다.
+  assert.equal(landingGroupOf("/unknown-route"), "other");
+  assert.equal(landingGroupOf("/../etc/passwd"), "other");
+});
+
+test("분석 제외 경로는 단일 소스로 판정된다", () => {
+  for (const p of ["/admin", "/admin/orders", "/api/track", "/auth/callback", "/consent"]) {
+    assert.equal(isAnalyticsExcludedPath(p), true, p);
+  }
+  for (const p of ["/", "/play", "/login", "/consenting", "/apix"]) {
+    assert.equal(isAnalyticsExcludedPath(p), false, p);
+  }
+});
+
+test("visit payload 의 landing 은 화이트리스트 밖이면 other 로 강등된다(방문 자체는 유효)", () => {
+  const ok = sanitizeTrackPayload({
+    kind: "visit", source_scope: "current", source_kind: "direct", landing: "generate",
+  });
+  assert.equal(ok?.kind === "visit" ? ok.landing : null, "generate");
+  const bad = sanitizeTrackPayload({
+    kind: "visit", source_scope: "current", source_kind: "direct", landing: "<script>",
+  });
+  assert.equal(bad?.kind === "visit" ? bad.landing : null, "other");
+  const missing = sanitizeTrackPayload({
+    kind: "visit", source_scope: "current", source_kind: "direct",
+  });
+  assert.equal(missing?.kind === "visit" ? missing.landing : null, "other");
 });

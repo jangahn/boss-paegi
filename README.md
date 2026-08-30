@@ -930,6 +930,12 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.10 (2026-08-30, 진입 페이지(landing) 측정 + `/login?next=` 유입 환원 + signup·reconsent 잔재 제거; **Migration 0114**):
+- **랜딩 측정**: `analytics_events.landing`(nullable) — 경로 첫 세그먼트를 화이트리스트 토큰으로 축약해 저장(`/doll/<uuid>`→`doll`, 원본 URL·쿼리·식별자 무저장). `kind_shape` 에 "landing 은 visit 전용" 추가, `analytics_rollup_rows_for_day` 에 `visit_by_landing`(d1=scope, d2=landing) 메트릭 1줄 추가 — 오늘(라이브)·과거(롤업)가 같은 함수를 지나가므로 기간 창 계약이 자동으로 따라온다. 어드민 「랜딩 페이지별 방문」 카드는 **current(탭 세션 단위)만** 집계(채널 카드와 동일 규율), 표시는 한글 묶음 라벨(저장은 세분 토큰이라 묶음 변경 시 재집계 가능). **세션 단위 보장은 기존 `CURRENT_VISIT_KEY` 플래그가 그대로** — 추가 게이트 없음.
+- **`/login?next=` 유입 환원**(프로드 실측 기반): 비회원이 회원전용 경로(`MEMBER_ONLY_PAGES`)로 오면 proxy 가 `next = pathname + search` 로 `/login` 307 을 보낸다 — **UTM 은 next 안에 보존되고 referrer 도 리다이렉트를 넘어 살아남는데**, 비콘이 최상위 URL 만 봐서 그 UTM 을 놓치고 있었다(실측: referrer 있으면 `referrer`, 없으면 **`direct`** 로 오귀속). 이제 `/login` 에서만 next 를 열어 **경로→landing**, **쿼리의 utm→source** 로 쓴다(우선순위 utm>viral>referrer>direct 불변, next 가 제외 경로면 환원 안 함). next 는 조작 가능한 값이지만 landing 은 화이트리스트·utm 은 기존 정화기를 통과한다.
+- **signup·reconsent 잔재 제거**: `/signup`·`/reconsent` 페이지(둘 다 `/consent` 로 보내는 서버 redirect stub — 렌더 자체가 없어 랜딩 값도 될 수 없었다)와 `/api/account/reconsent`(410 shim, 호출처 0) 삭제. nav/footer hidden prefix 정리. `member_accounts.reconsent_required` 는 이미 0107 에서 drop 됨. **`BLOCKED_NEXT_ROOTS` 의 두 항목은 유지**(open-redirect 방어 — 라우트가 없어도 `/` 로 collapse 되는 편이 404 보다 낫다).
+- 과거 데이터는 소급 불가 — 배포 이전 방문은 `landing NULL` → 카드에서 **(수집 전)** 버킷으로 정직하게 노출한다.
+
 v1.09 (2026-08-29, utm_medium·utm_campaign 하드 제거 — 소비처 0 실측·source 1차원 운영 확정; **Migration 0113**):
 - **근거**: 두 필드는 수집·저장·검증에만 존재하고 읽는 곳이 전무(롤업 dim 없음·어드민 미표시·소스 판정은 utm_source 만) — 운영 방침이 "utm_source 1차원에 세부 인코딩"(예: `instagram_story`)으로 확정돼 영구 불용 표면. 최소수집 원칙에 따라 스키마 컬럼·데이터·로직·테스트를 소멸. 재도입은 additive 컬럼 추가로 충분(raw 는 어차피 90일 소멸).
 - **무중단**: 적재 RPC(`record_public_analytics_event`)가 p_event **jsonb** 라 시그니처 불변 — 본문에서 두 키 추출·컬럼만 제거(구 클라가 키를 보내도 무시). `analytics_events_kind_shape` 제약 재정의(share 분기 두 항 제거) 후 컬럼 drop.

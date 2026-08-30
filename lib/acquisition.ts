@@ -6,9 +6,12 @@
 
 import { PUBLIC_ENV } from "@/lib/env";
 import {
+  isAnalyticsExcludedPath,
   isBotUserAgent,
+  landingGroupOf,
   normalizeSource,
   normalizeToken,
+  type Landing,
   type NormSource,
   type RawSource,
   type Surface,
@@ -124,10 +127,42 @@ function ourHost(): string {
   }
 }
 
+/**
+ * `/login` 진입은 회원전용 게이트(proxy.ts)가 보낸 것이고, 원래 목적지와 그 쿼리가 `next` 에 통째로
+ * 들어 있다(2026-08-30 프로드 실측: `/generate?utm_source=X` → `/login?next=%2Fgenerate%3Futm_source%3DX`).
+ * 최상위 URL 만 보면 그 UTM 을 놓쳐 referrer(없으면 direct)로 오귀속되므로 여기서 열어본다.
+ * 내부 절대경로만 허용하고, 실패·외부 origin 은 null(=환원 안 함).
+ */
+function loginNextUrl(): URL | null {
+  try {
+    if (window.location.pathname !== "/login") return null;
+    const raw = new URL(window.location.href).searchParams.get("next");
+    if (!raw || !raw.startsWith("/")) return null;
+    const parsed = new URL(raw, window.location.origin);
+    return parsed.origin === window.location.origin ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 진입 페이지 — `/login` 이면 원래 가려던 목적지(next)로 환원한다. 제외 경로(어드민 등)는 환원 안 함. */
+function currentLanding(pathname: string): Landing {
+  const viaLogin = loginNextUrl();
+  if (viaLogin && !isAnalyticsExcludedPath(viaLogin.pathname)) {
+    return landingGroupOf(viaLogin.pathname);
+  }
+  return landingGroupOf(pathname);
+}
+
 /** 현재 진입 raw source — 우선순위 + 무효(PII 등) 시 다음 우선순위로 fallthrough. */
 function computeCurrentRaw(): RawSource {
   const url = new URL(window.location.href);
-  const utm = url.searchParams.get("utm_source");
+  // UTM 우선순위는 기존 그대로(utm > viral > referrer > direct). `/login` 로 튕긴 경우의
+  // next 안 UTM 도 같은 자리에서 인정한다 — 리다이렉트가 원인인 오귀속만 교정하고 순서는 불변.
+  const utm =
+    url.searchParams.get("utm_source") ??
+    loginNextUrl()?.searchParams.get("utm_source") ??
+    null;
   if (utm && normalizeToken(utm)) {
     return {
       source_kind: "utm",
@@ -186,12 +221,17 @@ function ensureFirstTouch(): StoredFirstTouch {
   return ft;
 }
 
-/** 방문 — current(탭세션 1회) + first-touch acquisition(생성 시 1회). 두 플래그 독립. */
-export function trackVisit(): void {
+/**
+ * 방문 — current(탭세션 1회) + first-touch acquisition(생성 시 1회). 두 플래그 독립.
+ * landing 은 두 행에 같은 값(그 세션이 실제로 진입한 페이지)을 싣는다 — 세션 단위 보장은
+ * 기존 CURRENT_VISIT_KEY 플래그가 그대로 해 주므로 추가 게이트가 없다.
+ */
+export function trackVisit(pathname: string): void {
   if (!enabled()) return;
+  const landing = currentLanding(pathname);
   try {
     if (!window.sessionStorage.getItem(CURRENT_VISIT_KEY)) {
-      if (gatedSend({ kind: "visit", source_scope: "current", ...currentSource() })) {
+      if (gatedSend({ kind: "visit", source_scope: "current", landing, ...currentSource() })) {
         window.sessionStorage.setItem(CURRENT_VISIT_KEY, "1");
       }
     }
@@ -200,7 +240,7 @@ export function trackVisit(): void {
   }
   const ft = ensureFirstTouch();
   if (!ft.acquisitionVisitSent) {
-    if (gatedSend({ kind: "visit", source_scope: "first_touch", ...ft.source })) {
+    if (gatedSend({ kind: "visit", source_scope: "first_touch", landing, ...ft.source })) {
       ft.acquisitionVisitSent = true;
       writeFirstTouch(ft);
     }
