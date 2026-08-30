@@ -50,6 +50,18 @@ alter table public.analytics_events
     end
   );
 
+-- 롤업 metric 허용 목록에도 visit_by_landing 을 더한다.
+-- (함수만 고치면 테이블 CHECK 에서 거부된다 — CI pgTAP 가 실측으로 잡아준 지점.)
+alter table public.analytics_rollups drop constraint analytics_rollups_metric_check;
+alter table public.analytics_rollups
+  add constraint analytics_rollups_metric_check
+  check (metric = any (array[
+    'visit_by_source','visit_by_landing','share_by_surface','share_by_target',
+    'share_by_score_tier','share_by_member_state','share_game_over','score_submit',
+    'play_session','conversion_play_by_source','conversion_signup_by_source',
+    'viral_inbound_by_type'
+  ]::text[]));
+
 -- ── 적재 RPC — 프로드 실물 정의를 그대로 가져와 visit 분기에만 landing 을 추가한다.
 --    (통째 재작성 금지: 원본의 exception 핸들러(quota_busy) 같은 계약이 소실될 수 있다.)
 CREATE OR REPLACE FUNCTION public.record_public_analytics_event(p_actor_key text, p_member_state text, p_event jsonb)
