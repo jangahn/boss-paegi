@@ -746,7 +746,7 @@ v0.59 (2026-06-29, 캐릭터 생성 결과 회수 실패 수정 #1 — 즉시 �
 - 검증: typecheck 0·build 0. 당시 후속은 모두 후속 버전에서 닫혔다. 제출 전 얼굴 검증은 현재 모호·부분 장애까지 fail-closed하고, ED25519 signed FAL webhook + cron이 응답유실/탭 이탈 회수를 담당하며, 생성·저장 진행률과 사진 오류 안내도 실제 UI에서 사용한다.
 
 v0.60 (2026-06-29, 제출 전 얼굴 게이트 #1-b — no-face 즉시 반려; 마이그레이션 없음):
-- **`lib/fal.ts`**: `detectGlasses` → `analyzeInputFace`(VLM **1회** 호출로 얼굴 존재+안경 동시 판별, 추가 비용 0). 당시에는 `'face=no'` 명시 시에만 반려하고 모호·파싱실패·예외를 통과시켰다. 이 과거 fail-open 정책은 아래 2026-07-29 QA 하드닝에서 폐기됐다.
+- **`lib/fal.ts`**(v1.11 에서 삭제 — 얼굴검사는 `face-check-submit.ts` 로 이관): `detectGlasses` → `analyzeInputFace`(VLM **1회** 호출로 얼굴 존재+안경 동시 판별, 추가 비용 0). 당시에는 `'face=no'` 명시 시에만 반려하고 모호·파싱실패·예외를 통과시켰다. 이 과거 fail-open 정책은 아래 2026-07-29 QA 하드닝에서 폐기됐다.
 - **`app/api/fal/route.ts`**: 차감·제출 *전* 얼굴 게이트 — 확실한 no-face 면 row failed + 임시얼굴 정리 후 `400 no_face`(**차감 없음**) → 30~60초 대기 제거.
 - **`app/generate/page.tsx`**: `no_face` → "얼굴이 정면으로 또렷한 사진으로 다시" 안내 + 업로드 단계 복귀.
 - 검증: typecheck 0·build 0.
@@ -929,6 +929,9 @@ v0.97 (2026-08-23, `/api/ops/warm` 웜 유지 route·크론 제거 — Vercel Ho
 v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'에만 — 감시 노이즈 분리; 마이그레이션 없음):
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
+
+v1.11 (2026-08-31, 죽은 코드 `lib/fal.ts` 제거; 마이그레이션 없음):
+- **`lib/fal.ts` 삭제**: `removeBackground`(birefnet 동기 `fal.subscribe`)·`analyzeInputFace`(moondream 동기 호출) 두 export 모두 **임포트하는 곳이 0곳**(동적 import·문자열 참조 포함 전수 실측). 008901 이후 두 호출은 서명 큐+webhook saga 로 이관됐다 — 누끼는 `doll-pick-submit.ts`(`fal-ai/birefnet` 큐 제출 + `/api/fal/pick-webhook`), 얼굴검사는 `face-check-submit.ts`(`MOONDREAM_MODEL` 큐 제출 + `/api/fal/face-webhook`). `@fal-ai/client` 의존성은 `generation-recovery.ts`·어드민 `generation-test` 2개 라우트가 계속 쓰므로 **유지**한다.
 
 v1.10 (2026-08-30, 진입 페이지(landing) 측정 + `/login?next=` 유입 환원 + signup·reconsent 잔재 제거; **Migration 0114**):
 - **랜딩 측정**: `analytics_events.landing`(nullable) — 경로 첫 세그먼트를 화이트리스트 토큰으로 축약해 저장(`/doll/<uuid>`→`doll`, 원본 URL·쿼리·식별자 무저장). `kind_shape` 에 "landing 은 visit 전용" 추가, `analytics_rollup_rows_for_day` 에 `visit_by_landing`(d1=scope, d2=landing) 메트릭 1줄 추가 — 오늘(라이브)·과거(롤업)가 같은 함수를 지나가므로 기간 창 계약이 자동으로 따라온다. 어드민 「랜딩 페이지별 방문」 카드는 **current(탭 세션 단위)만** 집계(채널 카드와 동일 규율), 표시는 한글 묶음 라벨(저장은 세분 토큰이라 묶음 변경 시 재집계 가능). **세션 단위 보장은 기존 `CURRENT_VISIT_KEY` 플래그가 그대로** — 추가 게이트 없음.
