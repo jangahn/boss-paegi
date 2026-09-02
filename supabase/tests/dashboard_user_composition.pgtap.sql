@@ -6,7 +6,7 @@
 -- Run only on a disposable database after applying every migration in order.
 
 begin;
-select plan(12);
+select plan(13);
 
 -- ── ACL boundary ─────────────────────────────────────────────────────────
 
@@ -122,15 +122,18 @@ select results_eq(
   'all-time window matches the folded principal set'
 );
 
+-- volatile RPC 와 검증 서브쿼리를 한 SELECT 에 두면 평가 순서가 비결정(재계산 전 값을 읽음) — 반드시 분리.
+select ok(
+  (public.admin_funnel_rollup_days(1)->>'ok')::boolean,
+  'funnel rollup rebuild for first_visit parity seeding succeeds'
+);
+
 select is(
   (
-    select (public.admin_funnel_rollup_days(1)->>'ok')::boolean
-      and (
-        select r.value from public.admin_funnel_rollups r
-        where r.day_kst = (select today from composition_ctx) and r.step = 'first_visit'
-      ) = 1
+    select r.value from public.admin_funnel_rollups r
+    where r.day_kst = (select today from composition_ctx) and r.step = 'first_visit'
   ),
-  true,
+  1::bigint,
   'the funnel rollup persists the same first_visit value as the live day'
 );
 
