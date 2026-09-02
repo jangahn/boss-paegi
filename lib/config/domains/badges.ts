@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { DomainEntry } from "../registry";
 import type { GameplayStats } from "@/lib/stats";
+import {
+  PERSONA_DEFS,
+  PERSONA_FALLBACK_ID,
+  matchPersona,
+  personaBadgeSlug,
+  personaIdFromBadgeSlug,
+} from "@/lib/persona";
 
 /**
  * 뱃지 카탈로그 도메인 — 마케터가 임계값(수치)·개수·라벨·활성 편집. 카테고리(패밀리)는 7종 고정,
@@ -17,7 +24,16 @@ export const BADGE_FAMILY_KEYS = [
   "ult",
   "time",
   "map",
+  "persona",
 ] as const;
+/**
+ * 유형(persona) 패밀리 — 임계값이 아니라 "이 판의 유형 == 뱃지의 유형"으로 평가(2026-09-02 v1.13).
+ * 행은 코드의 유형 정의(lib/persona.ts)에서 1:1 파생되는 고정 집합: 어드민은 추가·삭제·임계·라벨 편집
+ * 불가, **active(부여 대상)만** 편집. 디폴트는 폴백 유형만 비활성. 저장된 구 카탈로그는 읽기 시
+ * normalizeBadgeCatalogInput 이 유형 패밀리/행을 편입해 어드민 편집(다른 패밀리)을 잃지 않는다.
+ */
+export const PERSONA_FAMILY_KEY = "persona" as const;
+export const PERSONA_FAMILY_DEFAULT = { key: PERSONA_FAMILY_KEY, name: "유형", emoji: "🎭" } as const;
 export type BadgeFamilyKey = (typeof BADGE_FAMILY_KEYS)[number];
 
 // 패밀리별 달성값(코드 — 마케터 편집 불가). familyKey → (stats,score)→value.
@@ -32,6 +48,8 @@ export const FAMILY_VALUE: Record<
   ult: (s) => s.ultimateCount,
   time: (s) => s.durationMs / 60000,
   map: (s) => s.bgVisits.length,
+  // 유형은 뱃지별 매칭(evaluateBadges 특례) — 패밀리 단일 달성값 개념 없음
+  persona: () => 0,
 };
 
 const familySchema = z.object({
@@ -48,22 +66,79 @@ const badgeSchema = z.object({
   active: z.boolean(),
 });
 
-export const badgeCatalogSchema = z
+type RawBadge = { slug?: unknown; familyKey?: unknown; active?: unknown };
+
+/** 유형 뱃지 고정 행 — 라벨·설명은 유형 정의를 그대로 비춤(단일 소스), active 만 저장값 존중 */
+function personaBadgeRows(stored: RawBadge[]): CatalogBadge[] {
+  const storedActive = new Map<string, boolean>();
+  for (const b of stored) {
+    if (typeof b.slug === "string" && typeof b.active === "boolean") storedActive.set(b.slug, b.active);
+  }
+  return PERSONA_DEFS.map((d) => {
+    const slug = personaBadgeSlug(d.id);
+    return {
+      slug,
+      familyKey: PERSONA_FAMILY_KEY,
+      threshold: 0,
+      label: `${d.emoji} ${d.label}`,
+      desc: `이 판의 패기 유형이 '${d.label}' 으로 판정됨`,
+      active: storedActive.get(slug) ?? d.id !== PERSONA_FALLBACK_ID,
+    };
+  });
+}
+
+/**
+ * 읽기/쓰기 공통 정규화 — 유형 패밀리·행을 코드 정의와 일치시킨다.
+ * 구 카탈로그(7패밀리)는 유형 패밀리를 편입, 미지 유형 slug 는 제거, 라벨/설명은 코드값으로 고정.
+ */
+export function normalizeBadgeCatalogInput(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const c = input as { families?: unknown; badges?: unknown };
+  if (!Array.isArray(c.families) || !Array.isArray(c.badges)) return input;
+  const families = (c.families as { key?: unknown }[]).filter((f) => f?.key !== PERSONA_FAMILY_KEY);
+  const storedPersonaFamily = (c.families as { key?: unknown; name?: unknown; emoji?: unknown }[]).find(
+    (f) => f?.key === PERSONA_FAMILY_KEY
+  );
+  const others = (c.badges as RawBadge[]).filter((b) => b?.familyKey !== PERSONA_FAMILY_KEY);
+  const storedPersona = (c.badges as RawBadge[]).filter((b) => b?.familyKey === PERSONA_FAMILY_KEY);
+  return {
+    ...c,
+    families: [...families, storedPersonaFamily ?? PERSONA_FAMILY_DEFAULT],
+    badges: [...others, ...personaBadgeRows(storedPersona)],
+  };
+}
+
+const badgeCatalogBaseSchema = z
   .object({
     families: z.array(familySchema).length(BADGE_FAMILY_KEYS.length),
-    badges: z.array(badgeSchema).min(1).max(120),
+    badges: z.array(badgeSchema).min(1).max(140),
   })
   .refine((c) => new Set(c.badges.map((b) => b.slug)).size === c.badges.length, {
     message: "duplicate_slug",
     path: ["badges"],
   })
-  // 7개 패밀리 키가 중복 없이 완전(누락/중복 시 표시 깨짐) — API trust-boundary 방어(에디터로는 불가).
+  // 8개 패밀리 키가 중복 없이 완전(누락/중복 시 표시 깨짐) — API trust-boundary 방어(에디터로는 불가).
   .refine((c) => new Set(c.families.map((f) => f.key)).size === BADGE_FAMILY_KEYS.length, {
     message: "family_keys_invalid",
     path: ["families"],
-  });
+  })
+  // 유형 뱃지 집합 == 코드 유형 집합(정규화 후 항상 참 — API 경계 방어)
+  .refine(
+    (c) => {
+      const ids = c.badges
+        .filter((b) => b.familyKey === PERSONA_FAMILY_KEY)
+        .map((b) => personaIdFromBadgeSlug(b.slug))
+        .filter((x): x is string => !!x)
+        .sort();
+      const expected = PERSONA_DEFS.map((d) => d.id).sort();
+      return ids.length === expected.length && ids.every((id, i) => id === expected[i]);
+    },
+    { message: "persona_badges_invalid", path: ["badges"] }
+  );
 
-export type BadgeCatalog = z.infer<typeof badgeCatalogSchema>;
+export const badgeCatalogSchema = z.preprocess(normalizeBadgeCatalogInput, badgeCatalogBaseSchema);
+
+export type BadgeCatalog = z.infer<typeof badgeCatalogBaseSchema>;
 export type CatalogBadge = z.infer<typeof badgeSchema>;
 export type CatalogFamily = z.infer<typeof familySchema>;
 
@@ -80,17 +155,20 @@ const SEED: Seed[] = [
 ];
 
 export const BADGE_CATALOG_DEFAULT: BadgeCatalog = {
-  families: SEED.map((f) => ({ key: f.key, name: f.name, emoji: f.emoji })),
-  badges: SEED.flatMap((f) =>
-    f.tiers.map((t) => ({
-      slug: `${f.key}_${t}`,
-      familyKey: f.key,
-      threshold: t,
-      label: f.label(t),
-      desc: f.desc(t),
-      active: true,
-    }))
-  ),
+  families: [...SEED.map((f) => ({ key: f.key, name: f.name, emoji: f.emoji })), PERSONA_FAMILY_DEFAULT],
+  badges: [
+    ...SEED.flatMap((f) =>
+      f.tiers.map((t) => ({
+        slug: `${f.key}_${t}`,
+        familyKey: f.key,
+        threshold: t,
+        label: f.label(t),
+        desc: f.desc(t),
+        active: true,
+      }))
+    ),
+    ...personaBadgeRows([]),
+  ],
 };
 
 export const badgeEntry: DomainEntry<BadgeCatalog> = {
@@ -106,8 +184,13 @@ export function evaluateBadges(
   score: number,
   catalog: BadgeCatalog
 ): string[] {
+  const personaSlug = personaBadgeSlug(matchPersona(stats).id);
   return catalog.badges
-    .filter((b) => b.active && FAMILY_VALUE[b.familyKey](stats, score) >= b.threshold)
+    .filter((b) =>
+      b.familyKey === PERSONA_FAMILY_KEY
+        ? b.active && b.slug === personaSlug // 유형: 이 판의 유형과 일치할 때 1개
+        : b.active && FAMILY_VALUE[b.familyKey](stats, score) >= b.threshold
+    )
     .map((b) => b.slug);
 }
 
