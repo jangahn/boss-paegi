@@ -930,6 +930,15 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.12 (2026-09-02, 게임 타격감 대규모 개편 — 젤리 물리·히트스톱·해롱해롱·무기별 시그니처·꼬집기·궁극기 리워크·통증 큐·성능; 마이그레이션 없음, **어뷰징 룰 v8**):
+- **무기 교체**: 종이(30일 실측 최저 사용 552타) 은퇴 → **꼬집기(pinch)** 신규 — 캐릭터를 쥔 채 끌어 늘리면 당긴 비율 비례로 붉게 물들고, 흔들 때마다(이동 55px, ≥140ms) `4+ratio×10`, 놓을 때 `10+ratio×26` 피격. `RETIRED_WEAPONS` 로 역사 라벨·구클라 제출 관용 유지(`WEAPON_KEY_VALUES`=데이터 어휘, `WEAPONS`=활성 로스터). 어드민 집계엔 "(은퇴)" 표기. 피커 배치 `주먹·뿅망치 | 싸대기·잡아던지기·꼬집기 | 책·키보드·비비탄 | 펜`(Weapon.group).
+- **타격감 코어**: Doll 젤리 물리(방향성 스쿼시 감쇠진동·회전 킥·부들부들·해롱 sway·피격 플래시/지속 틴트 합성), 히트스톱(무거운 단발 전용 — 뿅망치·투척·벽·강한 싸대기·궁극기 피니시, 전역 150ms 간격), 해롱해롱(2.5s 14타 → 별 궤도+눈물), 일시 데칼(손자국·혹·홍조·총 자국).
+- **무기별 시그니처**: 뿅망치 뾱+띠용용용+별 / 주먹 임팩트라인+혹 / 싸대기 회전 킥+손자국+궤적+붉은 플래시 / 책·키보드 조준 보정 투척(느린 릴리즈도 항상 발사, 최소 950px/s, 중력 72% 상쇄, 잔상)+파편 / 비비탄 탁!(총구 섬광·트레이서·고속탄)→딱콩(스팅·탄환 튕김·붉은 플래시·자국, strength 4→7) / 잡아던지기 릴리즈·벽·자유비행 벽 튕김 세기 비례 붉어짐.
+- **궁극기 리워크**: 발동 즉시 난타·예산(42타) 공유 연타(탭한 자리에 즉시, 점수 분포 불변)·진행도² 가속·집중선·진행도별 붉은 물듦·"반려" 도장 피니시+해롱. 재시작 시 낙서·데칼·해롱 초기화(기존 버그).
+- **사운드**: 합성 프리셋(springy/squeak/snap/twinkle/crack/knock) + 꼬집기 텐션 루프 + 비굴 비명 3티어(합성 — 실녹음 교체 슬롯).
+- **성능**: 체감 렉 원인=고빈도 무기 히트스톱 누적(실측, 프레임 p95 18~20ms 정상) → 재배치. HitEffect 공유 GraphicsContext+노드 풀, 점수 팝 BitmapText, 데칼 그라데이션 1회, 노이즈 버퍼 캐시, 궁극기 사운드 12/s 상한, 이모지·글리프 사전 래스터·풀 사전 채움.
+- 검증: node 1197/1197 · typecheck · 로컬 LAN(https, 자체서명 — http LAN 은 비보안 컨텍스트라 `crypto.subtle` 부재로 세션 부트스트랩 실패) + Vercel preview 실브라우저·프레임 프로파일. `npm audit fix`(browserslist 고위험 어드바이저리) 동반.
+
 v1.11 (2026-08-31, 죽은 코드 `lib/fal.ts` 제거; 마이그레이션 없음):
 - **`lib/fal.ts` 삭제**: `removeBackground`(birefnet 동기 `fal.subscribe`)·`analyzeInputFace`(moondream 동기 호출) 두 export 모두 **임포트하는 곳이 0곳**(동적 import·문자열 참조 포함 전수 실측). 008901 이후 두 호출은 서명 큐+webhook saga 로 이관됐다 — 누끼는 `doll-pick-submit.ts`(`fal-ai/birefnet` 큐 제출 + `/api/fal/pick-webhook`), 얼굴검사는 `face-check-submit.ts`(`MOONDREAM_MODEL` 큐 제출 + `/api/fal/face-webhook`). `@fal-ai/client` 의존성은 `generation-recovery.ts`·어드민 `generation-test` 2개 라우트가 계속 쓰므로 **유지**한다.
 

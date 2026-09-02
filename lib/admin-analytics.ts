@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { WEAPONS } from "@/lib/weapons";
+import { RETIRED_WEAPONS, WEAPONS } from "@/lib/weapons";
 import { WEAPON_KEYS, MAP_KEYS } from "@/lib/telemetry/budget";
 import type { StatWindow } from "@/lib/admin-period";
 import {
@@ -408,7 +408,8 @@ export async function getSessionDetail(
 /** 표본 절단은 롤업 경로에선 발생하지 않는다 — meta 형태 호환용 상한 상수만 유지. */
 const SESSION_FETCH_LIMIT = 5000;
 const TAP_KEYS = new Set<string>(WEAPONS.filter((w) => w.category === "tap").map((w) => w.key));
-const KNOWN_WEAPONS = new Set<string>(WEAPON_KEYS);
+// 은퇴 무기(종이)도 known — 역사 세션의 메인무기·히스토그램이 "알 수 없음" 으로 뭉개지지 않게(어드민은 "(은퇴)" 라벨로 구분)
+const KNOWN_WEAPONS = new Set<string>([...WEAPON_KEYS, ...RETIRED_WEAPONS.map((w) => w.key)]);
 const KNOWN_MAPS = new Set<string>(MAP_KEYS);
 /** 0110 히스토그램 불변 버킷 스펙(저장 포맷) — SQL 상수와 동일해야 한다. */
 const SPS_BUCKET_WIDTH = 1;

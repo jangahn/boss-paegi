@@ -10,7 +10,11 @@ import type {
 
 /** 게임플레이 분석 표시 컴포넌트 — 차트 라이브러리 없이 CSS 바 + 카드. */
 
-const WEAPON_LABEL: Record<string, string> = Object.fromEntries([...WEAPONS, ...RETIRED_WEAPONS].map((w) => [w.key, `${w.emoji} ${w.label}`]));
+// 은퇴 무기(종이 등)는 역사 데이터가 남아 집계에 계속 나타나므로 "(은퇴)" 로 구분 — 신규 데이터가 0 인 이유를 표에서 바로 읽게
+const WEAPON_LABEL: Record<string, string> = Object.fromEntries([
+  ...WEAPONS.map((w) => [w.key, `${w.emoji} ${w.label}`]),
+  ...RETIRED_WEAPONS.map((w) => [w.key, `${w.emoji} ${w.label} (은퇴)`]),
+]);
 const MAP_LABEL: Record<string, string> = Object.fromEntries(BACKGROUNDS.map((b) => [b.key, b.label]));
 
 function pct(n: number, d: number): string {
