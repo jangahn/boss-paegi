@@ -33,6 +33,10 @@ function personaLabel(id: string): string {
  * 패기 유형 분포 — 제출 게임(공개·통계 유효) 단위로 판정된 유형의 게임 수·비중·평균 점수.
  * 유형은 제출 시점 판정값(은퇴 유형은 "(은퇴)")이라 룰 개정 전 판은 옛 유형으로 남는다.
  */
+/** 막대 목록 행 공통 — 좁은 화면(sm 미만, iPhone SE 375px)에선 라벨을 윗줄로 보내 막대가 숫자 열에 찌그러지지 않게 한다. */
+const BAR_ROW = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:flex-nowrap";
+const BAR_LABEL = "basis-full shrink-0 truncate text-zinc-600 dark:text-zinc-300";
+
 export function PersonaBars({ stats }: { stats: PersonaStat[] }) {
   const total = stats.reduce((s, x) => s + x.games, 0);
   const max = Math.max(1, ...stats.map((x) => x.games));
@@ -42,8 +46,8 @@ export function PersonaBars({ stats }: { stats: PersonaStat[] }) {
   return (
     <div className="flex flex-col gap-1.5">
       {stats.map((s) => (
-        <div key={s.id} className="flex items-center gap-2 text-xs">
-          <span className="w-32 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{personaLabel(s.id)}</span>
+        <div key={s.id} className={BAR_ROW}>
+          <span className={`${BAR_LABEL} sm:basis-44`}>{personaLabel(s.id)}</span>
           <div className="relative h-4 flex-1 overflow-hidden rounded bg-foreground/5">
             <div className="h-full rounded bg-violet-400/70" style={{ width: `${Math.max(2, (s.games / max) * 100)}%` }} />
           </div>
@@ -84,8 +88,8 @@ export function BalanceBars({ stats, kind }: { stats: DimStat[]; kind: "weapon" 
         const gapPts = (scoreShare - hitShare) * 100; // 퍼센트포인트
         const dominant = hitShare >= 0.5;
         return (
-          <div key={s.key} className="flex items-center gap-2 text-xs">
-            <span className="w-24 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{labels[s.key] ?? s.key}</span>
+          <div key={s.key} className={BAR_ROW}>
+            <span className={`${BAR_LABEL} sm:basis-24`}>{labels[s.key] ?? s.key}</span>
             <div className="relative h-4 flex-1 overflow-hidden rounded bg-foreground/5">
               <div
                 className={`h-full rounded ${dominant ? "bg-red-400/80" : "bg-sky-400/70"}`}
@@ -183,8 +187,8 @@ function DistBars({ dist, label }: { dist: Record<string, number>; label: (k: st
       {entries.map(([k, v]) => {
         const badge = sampleBadge(v);
         return (
-          <div key={k} className="flex items-center gap-2 text-xs">
-            <span className="w-24 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{label(k)}</span>
+          <div key={k} className={BAR_ROW}>
+            <span className={`${BAR_LABEL} sm:basis-24`}>{label(k)}</span>
             <div className="relative h-3.5 flex-1 overflow-hidden rounded bg-foreground/5">
               <div className="h-full rounded bg-sky-400/70" style={{ width: `${Math.max(2, (v / max) * 100)}%` }} />
             </div>
@@ -260,8 +264,8 @@ export function WeaponThroughputBars({ data }: { data: WeaponThroughput }) {
       {rows.map(({ r, value, n, usePure }) => {
         const badge = sampleBadge(n);
         return (
-          <div key={r.weapon} className="flex items-center gap-2 text-xs">
-            <span className="w-24 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{wLabel(r.weapon)}</span>
+          <div key={r.weapon} className={BAR_ROW}>
+            <span className={`${BAR_LABEL} sm:basis-24`}>{wLabel(r.weapon)}</span>
             <div className="relative h-4 flex-1 overflow-hidden rounded bg-foreground/5">
               <div className="h-full rounded bg-emerald-400/70" style={{ width: `${Math.max(2, ((value ?? 0) / max) * 100)}%` }} />
             </div>

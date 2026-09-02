@@ -930,6 +930,9 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.15 (2026-09-02, 어드민 게임 분석 막대 목록 좁은 화면 규약; 마이그레이션 없음):
+- iPhone SE(375px) 실측에서 `/admin/analytics` 막대 목록의 **막대가 0px 로 찌그러지고 숫자 열이 카드 안쪽 여백을 넘어 끝에 붙는 문제**(무기 밸런스 4열·유형 분포 3열 — 라벨+숫자 열이 카드 폭을 다 차지). `AnalyticsViews` 의 막대 목록 4종(유형 분포·무기/맵 밸런스·분포·처리량)에 공통 행 규약 `BAR_ROW`/`BAR_LABEL` 도입 — **sm 미만은 라벨을 윗줄(전폭)로 보내고 막대+숫자를 아랫줄에**, sm 이상은 종전과 동일한 한 줄(라벨 고정폭 `sm:basis-*`). 유형 라벨 열은 sm 이상 176px 로 넓혀 "(은퇴)" 표기가 잘리지 않게.
+
 v1.14 (2026-09-02, 게임 분석 '패기 유형 분포' 섹션; **Migration 0116**):
 - `/admin/analytics` 에 **제출 게임 단위 유형 분포**(게임 수·비중·평균 점수). 하이브리드 규약 그대로 — `telemetry_rollup_rows_for_day` 에 dim `persona_games`(sessions=게임 수, score=점수 합; 일자=제출 시각 KST) 추가라 오늘=라이브·어제까지=롤업이 자동 성립, cron(00:05) 도 같은 함수. 원본(score_stats·scores)이 영구라 과거 전 기간 백필(신규 dim insert-only, 2026-06-21~). 유형은 **제출 시점 판정값**(SQL 에서 룰 재현 불가) — 룰 개정 전 판은 옛 유형으로 남고 "(은퇴)" 표시.
 
