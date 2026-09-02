@@ -39,6 +39,7 @@ export const DB_RAISE_CODES: ReadonlySet<string> = new Set([
   "admin_mutation_request_append_only",
   "admin_mutation_request_immutable",
   "admin_mutation_request_invalid_transition",
+  "admin_user_composition_window_invalid_days",
   "already_canceled",
   "already_purged",
   "already_set",
