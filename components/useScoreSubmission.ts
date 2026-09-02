@@ -188,7 +188,7 @@ export function useScoreSubmission(opts: {
     setSubmitError(null);
     // 서버 검증과 동일 공식으로 클램프 — 한도 초과 저장 실패 방지
     const clamped = clampForSubmit(score, durationMs);
-    // 방문→플레이 전환(분석) — first-touch 당 1회. source 동봉(분석 off 면 null → 서버 미적재).
+    // 방문→플레이 전환(분석) — first-touch 당 1회. source 동봉(SSR·봇 게이트면 null → 서버 미적재, 방문 비콘과 대칭).
     const sendPlayConv = shouldSendPlayConversion();
     const acqSource = sendPlayConv ? firstTouchSourceForConversion() : null;
     const trackFirstTouchPlay = sendPlayConv && !!acqSource;

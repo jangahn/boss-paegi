@@ -7,6 +7,8 @@ import {
   SURFACES,
   buildConversionRow,
   isAnalyticsExcludedPath,
+  isBotUserAgent,
+  isTrackableUserAgent,
   landingGroupOf,
   normalizeSource,
   normalizeToken,
@@ -372,4 +374,27 @@ test("visit payload 의 landing 은 화이트리스트 밖이면 other 로 강�
     kind: "visit", source_scope: "current", source_kind: "direct",
   });
   assert.equal(missing?.kind === "visit" ? missing.landing : null, "other");
+});
+
+test("trackable user agent rejects missing and crawler agents exactly like the bot predicate", () => {
+  for (const missing of ["", null, undefined]) {
+    assert.equal(isTrackableUserAgent(missing), false, String(missing));
+  }
+  for (const ua of [
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 (compatible; Yeti/1.1; +https://naver.me/spd)",
+    "kakaotalk-scrap/1.0",
+    "HeadlessChrome/120.0",
+  ]) {
+    assert.equal(isBotUserAgent(ua), true, ua);
+    assert.equal(isTrackableUserAgent(ua), false, ua);
+  }
+  for (const ua of [
+    "Mozilla/5.0 (Macintosh; test agent)",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+  ]) {
+    assert.equal(isBotUserAgent(ua), false, ua);
+    assert.equal(isTrackableUserAgent(ua), true, ua);
+  }
 });
