@@ -1,4 +1,5 @@
-// 입력 얼굴 분석 — 순수 파싱·계약(서버 전용 아님 → node --test 가능). fal 호출은 lib/fal.ts.
+// 입력 얼굴 분석 — 순수 파싱·계약(서버 전용 아님 → node --test 가능).
+// 실제 moondream 호출은 서명 큐+webhook saga 인 face-check-submit.ts 가 한다.
 //
 // ⚠️ moondream3-preview/query 는 **compound(복수 질문) 프롬프트를 첫 질문만 답하고 나머지를 무시**한다
 // (실측: "face=.. single=.. complete=.. clear=.." 요청에 `face:yes` 만 반환 → 나머지 parse 전부 fail-open

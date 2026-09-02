@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { safeNext } from "../../lib/oauth-metadata.ts";
 
 const APP_ORIGIN = "https://boss-paegi.example";
@@ -210,8 +210,11 @@ test("every user-controlled auth next surface uses the shared sanitizer before n
     source("lib/auth-oauth.ts"),
     /const next = safeNext\(opts\?\.next\)/,
   );
-  assert.match(source("app/signup/page.tsx"), /safeNext\(next\)/);
-  assert.match(source("app/reconsent/page.tsx"), /safeNext\(next\)/);
+  // /signup·/reconsent 리다이렉트 stub 은 v1.10 에서 제거됐다(동의 화면 일원화 후 잔재).
+  // 라우트가 없으므로 sanitizer 검사 대상도 아니다 — 대신 부활하지 않았는지 확인한다.
+  for (const gone of ["app/signup/page.tsx", "app/reconsent/page.tsx"]) {
+    assert.equal(existsSync(new URL(`../../${gone}`, import.meta.url)), false, gone);
+  }
 });
 
 test("member-only login redirects preserve safe payment and generation resume queries", () => {

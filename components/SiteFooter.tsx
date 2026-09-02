@@ -6,7 +6,7 @@ import type { BusinessInfo } from "@/lib/config/domains/business-info";
 
 // 전체화면 게임·게이트 화면에선 숨김(AppNav self-hide 패턴과 동일 관용구).
 // 심사 요건 노출 대상(홈·/credits)은 목록에 없으므로 항상 노출된다.
-const FOOTER_HIDDEN_PREFIXES = ["/play", "/login", "/signup", "/consent", "/reconsent", "/admin", "/auth"];
+const FOOTER_HIDDEN_PREFIXES = ["/play", "/login", "/consent", "/admin", "/auth"];
 
 /**
  * 전역 푸터 — 사업자정보 상시 노출(PG·카드사·카카오페이 입점 심사 요건: 메인 + 결제페이지 포함,
