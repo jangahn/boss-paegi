@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { buildGameplayStats } from "@/lib/stats";
 import {
+  PERSONA_FAMILY_KEY,
   activeBadges,
   badgeBySlug,
   familyValue,
@@ -55,7 +56,8 @@ export function useBadgeChallenge({
   useEffect(() => {
     if (!recording) return;
     const controller = new AbortController();
-    const defs = activeBadges(catalog); // 활성 뱃지만 도전 후보
+    // 활성 뱃지만 도전 후보 — 유형(persona) 패밀리는 임계값 진행도가 아니라 종료 시 판정이라 제외
+    const defs = activeBadges(catalog).filter((b) => b.familyKey !== PERSONA_FAMILY_KEY);
     let cancelled = false;
     let loaded = false; // owned 로드 전엔 earn 감지 안 함(오탐 방지)
 

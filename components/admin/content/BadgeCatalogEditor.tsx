@@ -163,6 +163,8 @@ export function BadgeCatalogEditor({
 
       {fams.map((f) => {
         const fBadges = badges.filter((b) => b.familyKey === f.key);
+        // 유형 패밀리: 행은 코드 유형 정의(lib/persona.ts)에서 파생되는 고정 집합 — 활성만 편집
+        const locked = f.key === "persona";
         return (
           <fieldset key={f.key} className="min-w-0 flex flex-col gap-2 rounded-2xl border border-foreground/10 ui-surface p-3">
             <div className="flex items-end gap-2">
@@ -186,6 +188,11 @@ export function BadgeCatalogEditor({
               </label>
             </div>
 
+            {locked && (
+              <p className="text-[11px] text-zinc-500">
+                유형 뱃지는 판정 룰과 함께 코드에 정의돼 추가·삭제·임계값·라벨을 여기서 바꿀 수 없어요. 활성(부여 대상)만 조정합니다.
+              </p>
+            )}
             {fBadges.map((b, fi) => {
               const imp = impact[b.slug];
               const earned = imp && (imp.users > 0 || imp.scores > 0);
@@ -198,13 +205,14 @@ export function BadgeCatalogEditor({
                         checked={b.active}
                         onChange={(e) => setBadge(b.uid, "active", e.target.checked)}
                       />
-                      활성
+                      {locked ? "부여 대상" : "활성"}
                     </label>
                     {earned && (
                       <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
                         획득 {imp!.users}명
                       </span>
                     )}
+                    {!locked && (
                     <div className="ml-auto flex items-center gap-1">
                       <button
                         type="button"
@@ -232,6 +240,7 @@ export function BadgeCatalogEditor({
                         삭제
                       </button>
                     </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -247,6 +256,7 @@ export function BadgeCatalogEditor({
                       placeholder="키(slug)"
                       className="w-32 rounded-lg border border-foreground/15 ui-field p-1.5 font-mono text-[11px] outline-none read-only:cursor-not-allowed read-only:opacity-60 focus:border-foreground/40"
                     />
+                    {!locked && (
                     <input
                       type="number"
                       inputMode="numeric"
@@ -255,24 +265,28 @@ export function BadgeCatalogEditor({
                       placeholder="임계값"
                       className="ml-auto w-24 rounded-lg border border-foreground/15 ui-field p-1.5 text-sm outline-none focus:border-foreground/40"
                     />
+                    )}
                   </div>
                   <input
                     value={b.label}
                     maxLength={40}
+                    readOnly={locked}
                     onChange={(e) => setBadge(b.uid, "label", e.target.value)}
                     placeholder="라벨 (예: 1,000점)"
-                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-sm outline-none focus:border-foreground/40"
+                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-sm outline-none read-only:cursor-not-allowed read-only:opacity-60 focus:border-foreground/40"
                   />
                   <input
                     value={b.desc}
                     maxLength={80}
+                    readOnly={locked}
                     onChange={(e) => setBadge(b.uid, "desc", e.target.value)}
                     placeholder="설명"
-                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-xs outline-none focus:border-foreground/40"
+                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-xs outline-none read-only:cursor-not-allowed read-only:opacity-60 focus:border-foreground/40"
                   />
                 </div>
               );
             })}
+            {!locked && (
             <button
               type="button"
               onClick={() => addBadge(f.key)}
@@ -280,6 +294,7 @@ export function BadgeCatalogEditor({
             >
               + {f.name} 뱃지 추가
             </button>
+            )}
           </fieldset>
         );
       })}
