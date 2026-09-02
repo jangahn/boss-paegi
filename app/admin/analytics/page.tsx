@@ -10,11 +10,13 @@ import {
   getWeaponThroughput,
   getMapStickiness,
   getDevicePerf,
+  getPersonaDistribution,
 } from "@/lib/admin-analytics";
 import { parseStatWindow, statWindowLabel } from "@/lib/admin-period";
 import { PeriodTabs } from "@/components/admin/PeriodTabs";
 import {
   BalanceBars,
+  PersonaBars,
   FunnelView,
   WeaponConcentrationCard,
   WeaponThroughputBars,
@@ -36,7 +38,7 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const window = parseStatWindow(sp.days);
 
-  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf] =
+  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf, personas] =
     await Promise.all([
       getWeaponBalance(window),
       getMapBalance(window),
@@ -46,6 +48,7 @@ export default async function AnalyticsPage({
       getWeaponThroughput(window),
       getMapStickiness(window),
       getDevicePerf(window),
+      getPersonaDistribution(window),
     ]);
 
   return (
@@ -99,6 +102,11 @@ export default async function AnalyticsPage({
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">맵 밸런스 <span className="font-normal text-zinc-400">(맵 점유)</span></h2>
           <BalanceBars stats={maps} kind="map" />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">패기 유형 분포 <span className="font-normal text-zinc-400">(제출 게임 단위 판정)</span></h2>
+          <PersonaBars stats={personas} />
         </section>
 
         <section>

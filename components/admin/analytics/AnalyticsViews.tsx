@@ -1,6 +1,7 @@
 import { RETIRED_WEAPONS, WEAPONS } from "@/lib/weapons";
+import { PERSONA_DEFS, personaById } from "@/lib/persona";
 import { BACKGROUNDS } from "@/lib/backgrounds";
-import type {
+import type { PersonaStat,
   DimStat,
   Funnel,
   WeaponConcentration,
@@ -19,6 +20,46 @@ const MAP_LABEL: Record<string, string> = Object.fromEntries(BACKGROUNDS.map((b)
 
 function pct(n: number, d: number): string {
   return d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "—";
+}
+
+const ACTIVE_PERSONA_IDS = new Set(PERSONA_DEFS.map((d) => d.id));
+function personaLabel(id: string): string {
+  const d = personaById(id);
+  if (!d) return id;
+  return ACTIVE_PERSONA_IDS.has(id) ? `${d.emoji} ${d.label}` : `${d.emoji} ${d.label} (은퇴)`;
+}
+
+/**
+ * 패기 유형 분포 — 제출 게임(공개·통계 유효) 단위로 판정된 유형의 게임 수·비중·평균 점수.
+ * 유형은 제출 시점 판정값(은퇴 유형은 "(은퇴)")이라 룰 개정 전 판은 옛 유형으로 남는다.
+ */
+export function PersonaBars({ stats }: { stats: PersonaStat[] }) {
+  const total = stats.reduce((s, x) => s + x.games, 0);
+  const max = Math.max(1, ...stats.map((x) => x.games));
+  if (!stats.length || total === 0) {
+    return <p className="text-sm text-zinc-400">아직 데이터가 없어요.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {stats.map((s) => (
+        <div key={s.id} className="flex items-center gap-2 text-xs">
+          <span className="w-32 shrink-0 truncate text-zinc-600 dark:text-zinc-300">{personaLabel(s.id)}</span>
+          <div className="relative h-4 flex-1 overflow-hidden rounded bg-foreground/5">
+            <div className="h-full rounded bg-violet-400/70" style={{ width: `${Math.max(2, (s.games / max) * 100)}%` }} />
+          </div>
+          <span className="w-14 shrink-0 text-right tabular-nums font-medium" title="게임 수">{s.games.toLocaleString()}</span>
+          <span className="w-12 shrink-0 text-right tabular-nums text-zinc-400" title="비중">{pct(s.games, total)}</span>
+          <span className="w-16 shrink-0 text-right tabular-nums text-zinc-400" title="평균 점수">
+            {s.games > 0 ? Math.round(s.score / s.games).toLocaleString() : "—"}
+          </span>
+        </div>
+      ))}
+      <p className="mt-1 text-[11px] text-zinc-400">
+        게임 수 · 비중 · 평균 점수. 제출 시점에 판정된 유형 기준(공개 제출·통계 유효 게임 {total.toLocaleString()}판). 룰 개정 전
+        판은 옛 유형으로 남아 &ldquo;(은퇴)&rdquo; 로 표시.
+      </p>
+    </div>
+  );
 }
 
 /**

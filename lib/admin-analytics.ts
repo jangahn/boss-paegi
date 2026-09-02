@@ -200,6 +200,20 @@ async function dimBalance(dimType: string, window: StatWindow): Promise<DimStat[
 export function getWeaponBalance(window: StatWindow): Promise<DimStat[]> {
   return dimBalance("weapon", window);
 }
+
+/** 패기 유형 분포(v1.14) — dim persona_games: sessions=게임 수, score=점수 합. 제출 시점 판정 유형(은퇴 id 포함). */
+export type PersonaStat = { id: string; games: number; score: number };
+export async function getPersonaDistribution(window: StatWindow): Promise<PersonaStat[]> {
+  const rows = await fetchDimRows(["persona_games"], window);
+  const agg = new Map<string, PersonaStat>();
+  for (const r of rows) {
+    const cur = agg.get(r.dimKey) ?? { id: r.dimKey, games: 0, score: 0 };
+    cur.games += r.sessions;
+    cur.score += r.score;
+    agg.set(r.dimKey, cur);
+  }
+  return [...agg.values()].sort((a, b) => b.games - a.games || a.id.localeCompare(b.id));
+}
 export function getMapBalance(window: StatWindow): Promise<DimStat[]> {
   return dimBalance("map", window);
 }
