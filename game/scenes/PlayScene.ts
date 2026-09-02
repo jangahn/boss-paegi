@@ -259,6 +259,7 @@ export class PlayScene extends Container {
       if (w.category === "throw") warm.push({ emoji: w.emoji, size: (w.projectileSize ?? 48) * 0.9 });
     }
     this.fx.prewarm(warm);
+    this.fx.prefillPools();
 
     this.projectileLayer = new Container();
     this.projectileLayer.eventMode = "none";

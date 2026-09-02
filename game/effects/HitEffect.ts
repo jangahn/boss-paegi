@@ -184,6 +184,30 @@ export class HitEffect extends Container {
   }
 
   /**
+   * 풀 사전 채움 — 첫 궁극기 난타(초당 ~28타)에서 파티클·별·점수 팝 노드가 처음 대량 생성되며
+   * 생기는 할당·GC 압력을 씬 시작 시로 옮긴다. 생성 후 즉시 풀로 반환(화면 무영향).
+   */
+  prefillPools() {
+    const fill = (key: string, n: number, make: () => Container) => {
+      const nodes: Container[] = [];
+      for (let i = 0; i < n; i++) nodes.push(this.acquire(key, make));
+      for (const node of nodes) this.release(key, node);
+    };
+    fill("circle", 64, () => this.makeShared(SHARED.circle));
+    fill("star", 16, () => this.makeShared(SHARED.star));
+    fill("tear", 8, () => this.makeShared(SHARED.tear));
+    fill("sweat", 4, () => this.makeShared(SHARED.sweat));
+    fill("rico", 4, () => this.makeShared(SHARED.rico));
+    if (scoreFontReady()) {
+      fill("score:bitmap", 24, () => {
+        const bt = new BitmapText({ text: "+0", style: { fontFamily: SCORE_FONT, fontSize: 22 } });
+        bt.anchor.set(0.5);
+        return bt;
+      });
+    }
+  }
+
+  /**
    * 이모지 텍스트 사전 래스터화 — 궁극기가 9개 무기 이모지를 랜덤으로 쓰면서 처음 쓰는 이모지의
    * 텍스처 생성이 난타 중반 프레임에 몰려 ~120ms 스파이크가 나던 것(실측)을 씬 시작 시로 옮긴다.
    * 노드를 거의 투명하게 한 프레임 그린 뒤 풀로 돌려 텍스처 캐시를 데운다.
