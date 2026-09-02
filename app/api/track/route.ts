@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 import { PUBLIC_ENV } from "@/lib/env";
-import { isBotUserAgent, sanitizeTrackPayload, type MemberState } from "@/lib/analytics/core";
+import { isTrackableUserAgent, sanitizeTrackPayload, type MemberState } from "@/lib/analytics/core";
 import { recordTrackEvent, memberStateFromUser } from "@/lib/analytics/server";
 import {
   readTrackJsonRequest,
@@ -48,8 +48,7 @@ function originAllowed(req: NextRequest): boolean {
 
 export async function POST(req: NextRequest) {
   // 봇 게이트(v1.08) — UA 는 판별에만 사용·미저장(무PII 불변). 무UA(비브라우저 클라이언트)도 드롭.
-  const ua = req.headers.get("user-agent") ?? "";
-  if (!ua || isBotUserAgent(ua)) return noContent();
+  if (!isTrackableUserAgent(req.headers.get("user-agent"))) return noContent();
   if (!originAllowed(req)) return noContent();
   const raw = await readTrackJsonRequest(req);
   if (raw === null) return noContent();

@@ -179,3 +179,11 @@ const BOT_UA_RE =
 export function isBotUserAgent(ua: string): boolean {
   return BOT_UA_RE.test(ua);
 }
+
+/**
+ * 수집 허용 UA — 무UA(비브라우저 클라이언트)·봇 UA 는 거부. `/api/track` 서버 백스톱과 conversion 적재(점수·가입)가
+ * 같은 판별을 쓴다(v1.16: 방문·전환 게이트 대칭). UA 는 판별에만 사용·미저장.
+ */
+export function isTrackableUserAgent(ua: string | null | undefined): boolean {
+  return typeof ua === "string" && ua.length > 0 && !isBotUserAgent(ua);
+}

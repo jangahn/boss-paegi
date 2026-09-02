@@ -21,7 +21,7 @@ import {
   resolveDbRead,
 } from "@/lib/auth-read-policy";
 import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
-import type { RawSource } from "@/lib/analytics/core";
+import { isTrackableUserAgent, type RawSource } from "@/lib/analytics/core";
 import { publicWriteActorKey } from "@/lib/public-write-quota";
 import { log, errInfo } from "@/lib/log";
 import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
@@ -353,8 +353,9 @@ export async function POST(req: NextRequest) {
   // OAuth profile/email seed is inside the same RPC transaction. Only the
   // nonessential conversion observation remains post-commit.
   if (isNew) {
-    // 방문→가입 전환(분석, best-effort) — 신규 회원 1회. acqSource 있을 때만(분석 off 면 미적재).
-    if (body.acqSource) {
+    // 방문→가입 전환(분석, best-effort) — 신규 회원 1회. acqSource 있을 때만(SSR·클라 봇 게이트면 미동봉 → 미적재).
+    // 봇 게이트 서버 백스톱(v1.16): `/api/track`·점수 conversion 과 같은 UA 판별.
+    if (body.acqSource && isTrackableUserAgent(req.headers.get("user-agent"))) {
       const actorKey = publicWriteActorKey(req.headers, user.id, true);
       if (actorKey) {
         await recordConversion(

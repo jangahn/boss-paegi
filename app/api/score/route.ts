@@ -18,7 +18,7 @@ import { getBadgeCatalogStrictUncached } from "@/lib/config/getters";
 import { evaluateBadges, knownSlugs } from "@/lib/config/domains/badges";
 import { log, errInfo } from "@/lib/log";
 import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
-import type { RawSource } from "@/lib/analytics/core";
+import { isTrackableUserAgent, type RawSource } from "@/lib/analytics/core";
 import {
   publicWriteActorKey,
   publicWriteNetworkActorKey,
@@ -624,10 +624,12 @@ export async function POST(req: NextRequest) {
   }
 
   // 방문→플레이 전환(분석, best-effort) — 저장 성공 시 1회.
+  // 봇 게이트 서버 백스톱(v1.16): `/api/track` 과 같은 UA 판별 — 클라 게이트(webdriver·봇 UA 면 source 미동봉)와 대칭.
   if (
     !result.duplicate &&
     body.trackFirstTouchPlay === true &&
-    body.acqSource
+    body.acqSource &&
+    isTrackableUserAgent(req.headers.get("user-agent"))
   ) {
     const conversionMemberState = memberStateFromUser(user);
     const actorKey = publicWriteActorKey(req.headers, user.id, isMember);
