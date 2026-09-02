@@ -74,9 +74,19 @@ export type HitInfo = {
   chargeUlt?: boolean;
 };
 
-// 궁극기 난사타 지속/간격
+// 궁극기 난사타 지속/간격 — 총 타격 예산(ULT_BLOW_BUDGET)은 구 등간격 난타와 동일(≈42타)해
+// 점수 총량 분포가 불변(어뷰징 봉투 무영향). 연타는 예산을 앞당겨 터뜨릴 뿐 늘리지 않는다.
 const ULT_DURATION_SEC = 3.9;
 const ULT_BLOW_INTERVAL = 0.085;
+const ULT_BLOW_BUDGET = Math.floor((ULT_DURATION_SEC - 0.25) / ULT_BLOW_INTERVAL);
+/** 인트로 슬로모 길이(초, 실시간) — 이 동안 물리·이펙트 시간이 0.3배 */
+const ULT_INTRO_SEC = 0.35;
+const ULT_INTRO_TIMESCALE = 0.3;
+/** 자동 난타 간격 — 진행도에 따라 가속(고조 곡선) */
+const ULT_BLOW_INTERVAL_START = 0.105;
+const ULT_BLOW_INTERVAL_END = 0.05;
+/** 연타 입력 최소 간격(ms) — 더블 이벤트 방지 */
+const ULT_MASH_MIN_MS = 45;
 // 궁극기 중 캐릭터를 마구 내던지는 간격 + 임펄스 세기 (px/step)
 const ULT_THROW_INTERVAL = 0.4;
 
@@ -163,6 +173,11 @@ export class PlayScene extends Container {
   private ultBlowAccum = 0;
   private ultThrowAccum = 0;
   private ultShake = 0;
+  /** 남은 타격 예산 — 자동·연타 공유. 0 이면 피니시로 직행 */
+  private ultBudget = 0;
+  private ultFired = 0;
+  private ultIntro = 0;
+  private ultLastMashAt = 0;
 
   constructor(opts: PlaySceneOptions) {
     super();
@@ -379,6 +394,9 @@ export class PlayScene extends Container {
     this.ultActive = false;
     this.ultTimer = 0;
     this.ultShake = 0;
+    this.ultBudget = 0;
+    this.ultIntro = 0;
+    this.fx.stopSpeedLines();
     this.position.set(0, 0);
     if (wasActive) this.restoreDollAfterUlt();
   }
@@ -393,10 +411,36 @@ export class PlayScene extends Container {
     this.ultBlowAccum = 0;
     this.ultThrowAccum = ULT_THROW_INTERVAL; // 첫 던지기 즉시
     this.ultShake = 22;
+    this.ultBudget = ULT_BLOW_BUDGET;
+    this.ultFired = 0;
+    this.ultIntro = ULT_INTRO_SEC;
+    this.ultLastMashAt = 0;
     // 캐릭터를 멀리 날려보내려 스프링을 약하게 (난타 동안 자유롭게 휘저음)
     this.dollSpring.stiffness = 0.02;
     this.dollBody.collisionFilter.mask = 0x0001 | 0x0008; // 벽 튕김 유지
+    // 인트로 — 화이트 플래시 + 집중선 + 슬로모(update 에서 timescale)
+    this.fx.flash(this.viewW, this.viewH, 0xffffff, 0.35, 0.3);
+    this.fx.startSpeedLines(this.viewW, this.viewH);
+    this.doll.tremble(ULT_DURATION_SEC);
     playHitSound("whoosh", 1.3);
+    playYelp(1, 1.1);
+  }
+
+  /** 궁극기 진행도 0..1 (예산 소진 기준) */
+  private get ultProgress(): number {
+    return ULT_BLOW_BUDGET > 0 ? this.ultFired / ULT_BLOW_BUDGET : 1;
+  }
+
+  /**
+   * 궁극기 연타 — 난타 중 탭하면 남은 예산에서 한 타를 **즉시, 탭한 자리에** 터뜨린다.
+   * 타격 수·점수 분포는 자동 난타와 동일(예산 공유)이라 총량 불변, 체감만 "내가 팬다".
+   */
+  private ultMash(sx: number, sy: number) {
+    if (!this.ultActive || this.ultIntro > 0 || this.ultBudget <= 0) return;
+    const now = performance.now();
+    if (now - this.ultLastMashAt < ULT_MASH_MIN_MS) return;
+    this.ultLastMashAt = now;
+    this.ultBlow(sx, sy, true);
   }
 
   /** 궁극기 중 캐릭터를 랜덤 방향으로 내던짐 (벽에 튕기며 화면을 휘젓다 복귀) */
@@ -408,47 +452,93 @@ export class PlayScene extends Container {
     playHitSound("whoosh", 0.8);
   }
 
-  /** 난사타 1발 — 랜덤 무기로 캐릭터 실루엣 내 랜덤 위치 타격 (게이지 재충전 X) */
-  private ultBlow() {
+  /**
+   * 난사타 1발 — 랜덤 무기로 캐릭터 타격 (게이지 재충전 X). 예산 1 소모.
+   * aim 이 있으면(연타) 그 자리(실루엣 반경 내 클램프)를, 없으면 랜덤 위치를 때린다.
+   * 진행도에 따라 흔들림·비명·별이 고조된다.
+   */
+  private ultBlow(aimX?: number, aimY?: number, mashed = false) {
+    if (this.ultBudget <= 0) return;
+    this.ultBudget -= 1;
+    this.ultFired += 1;
+    const progress = this.ultProgress;
     const w = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
     const r = this.doll.naturalSize * 0.45 * (this.doll.scale.x || 1);
-    const ang = Math.random() * Math.PI * 2;
-    const rad = Math.random() * r;
-    const x = this.doll.x + Math.cos(ang) * rad;
-    const y = this.doll.y + Math.sin(ang) * rad;
-
-    this.doll.triggerHit(2.2);
-    this.fx.burst(x, y, w.particleCount * 2, w.color);
-    this.fx.shockwave(x, y, 18, 120, w.color);
-    if (Math.random() < 0.55) {
-      this.fx.emojiPop(x, y, w.emoji, { size: 50, swing: w.key === "hammer" });
+    let x: number;
+    let y: number;
+    if (aimX !== undefined && aimY !== undefined) {
+      let dx = aimX - this.doll.x;
+      let dy = aimY - this.doll.y;
+      const len = Math.hypot(dx, dy);
+      if (len > r) {
+        dx = (dx / len) * r;
+        dy = (dy / len) * r;
+      }
+      x = this.doll.x + dx;
+      y = this.doll.y + dy;
+    } else {
+      const ang = Math.random() * Math.PI * 2;
+      const rad = Math.random() * r;
+      x = this.doll.x + Math.cos(ang) * rad;
+      y = this.doll.y + Math.sin(ang) * rad;
     }
-    playHitSound(w.sound, 1.0);
-    // 난타 한 타격당 점수 — 기존(40~85)의 절반 수준
+
+    this.doll.triggerHit(2.2 + progress * 0.8);
+    this.doll.hitSquash(this.doll.x - x, this.doll.y - y, 0.8 + progress * 0.9, {
+      freq: 11,
+      damp: 8,
+    });
+    this.fx.burst(x, y, w.particleCount * 2, w.color);
+    this.fx.shockwave(x, y, 18, 120 + progress * 60, w.color);
+    if (mashed || Math.random() < 0.55) {
+      this.fx.emojiPop(x, y, w.emoji, { size: mashed ? 62 : 50, swing: w.key === "hammer" });
+    }
+    if (mashed) {
+      this.fx.impactLines(x, y, 0xffffff, 6);
+      this.fx.starBurst(x, y, 2);
+    } else if (this.ultFired % 6 === 0) {
+      this.fx.starBurst(x, y, 3);
+    }
+    if (this.ultFired % 7 === 0) {
+      const tier = progress < 0.35 ? 0 : progress < 0.7 ? 1 : 2;
+      playYelp(tier, 0.9);
+    }
+    this.ultShake = Math.max(this.ultShake, 12 + progress * 16);
+    playHitSound(w.sound, 0.85 + progress * 0.35);
+    // 난타 한 타격당 점수 — 기존(40~85)의 절반 수준 (분포 불변)
     const pts = 20 + Math.floor(Math.random() * 22);
     const gain = this.reportHit(x, y, pts, w.key, false);
     this.fx.scorePop(x, y - 20, gain, w.color);
+    // 예산 소진 → 짧은 정적 후 피니시
+    if (this.ultBudget <= 0) this.ultTimer = Math.min(this.ultTimer, 0.3);
   }
 
-  /** 난사타 마무리 — 큰 임팩트 + 화면 플래시 */
+  /** 난사타 마무리 — 남은 예산 정산 + 특대 임팩트 + "반려" 도장 + 해롱 */
   private ultFinish() {
+    this.fx.stopSpeedLines();
+    // 프레임 드랍 등으로 예산이 남았으면 즉시 정산(점수 총량 결정성 유지)
+    while (this.ultBudget > 0) this.ultBlow();
     const cx = this.doll.x;
     const cy = this.doll.y;
     for (let i = 0; i < 3; i++) {
-      this.fx.shockwave(cx, cy, 30, 200 + i * 70, i === 0 ? 0xffd166 : 0xef476f);
+      this.fx.shockwave(cx, cy, 30, 220 + i * 80, i === 0 ? 0xffd166 : 0xef476f);
     }
-    this.fx.burst(cx, cy, 48, 0xef476f);
-    this.fx.starBurst(cx, cy - 20, 10);
-    this.fx.flash(this.viewW, this.viewH, 0xffffff, 0.75, 0.45);
+    this.fx.burst(cx, cy, 56, 0xef476f);
+    this.fx.starBurst(cx, cy - 20, 12);
+    this.fx.impactLines(cx, cy, 0xffd166, 12);
+    this.fx.flash(this.viewW, this.viewH, 0xffffff, 0.9, 0.5);
+    this.fx.stampPop(this.viewW / 2, this.viewH * 0.36, "반려");
     this.doll.triggerHit(3);
-    this.doll.bounce(1.6);
-    this.dazeFx.start(2.3);
-    this.doll.setDazed(2.3);
-    this.addHitStop(0.08);
-    playHitSound("thud", 1.4);
-    playYelp(2, 1.2);
+    this.doll.bounce(1.8);
+    this.dazeFx.start(2.4);
+    this.doll.setDazed(2.4);
+    this.addHitStop(0.09);
+    this.addShake(30);
+    playHitSound("thud", 1.5);
+    playHitSound("snap", 1.2);
+    playHitSound("twinkle", 0.9);
+    playYelp(2, 1.3);
     this.position.set(0, 0);
-    this.ultShake = 0;
     this.restoreDollAfterUlt();
   }
 
@@ -887,7 +977,13 @@ export class PlayScene extends Container {
 
   // ── stage pointer 라우팅 ────────────────────────────────────────────
   private handleStagePointerDown = (e: FederatedPointerEvent) => {
-    if (this.lifecycle !== "running" || this.ultActive) return;
+    if (this.lifecycle !== "running") return;
+    if (this.ultActive) {
+      // 난타 중 탭 = 연타(예산 앞당김) — doll 핸들러는 ult 중 early return 이라 여기로 버블
+      const local = this.toLocal(e.global);
+      this.ultMash(local.x, local.y);
+      return;
+    }
     unlockAudio();
     if (this.mode === "throw") this.throwInput.handlePointerDown(e);
     else if (this.mode === "swipe") this.swipeInput.handlePointerDown(e);
@@ -1092,15 +1188,23 @@ export class PlayScene extends Container {
       if (this.hitStop > 0) return;
       this.hitStop = 0;
     }
-    // 궁극기 난사타 — 일정 간격으로 랜덤 무기 타격을 퍼부음
+    // 궁극기 난사타 — 인트로 슬로모 → 가속 난타(연타로 앞당김 가능) → 예산 소진/시간 종료 시 피니시
     if (this.ultActive) {
-      this.ultTimer -= deltaSec;
-      this.ultBlowAccum += deltaSec;
-      while (this.ultBlowAccum >= ULT_BLOW_INTERVAL && this.ultTimer > 0.25) {
-        this.ultBlowAccum -= ULT_BLOW_INTERVAL;
-        this.ultBlow();
-        this.ultShake = Math.max(this.ultShake, 16); // 난타 내내 흔들림 유지
+      if (this.ultIntro > 0) {
+        // 슬로모: 이하 모든 시뮬레이션(물리·이펙트·타이머)이 0.3배로 흐름
+        this.ultIntro -= deltaSec;
+        deltaSec *= ULT_INTRO_TIMESCALE;
+      } else {
+        this.ultBlowAccum += deltaSec;
+        const interval =
+          ULT_BLOW_INTERVAL_START +
+          (ULT_BLOW_INTERVAL_END - ULT_BLOW_INTERVAL_START) * this.ultProgress;
+        while (this.ultBlowAccum >= interval && this.ultTimer > 0.25 && this.ultBudget > 0) {
+          this.ultBlowAccum -= interval;
+          this.ultBlow();
+        }
       }
+      this.ultTimer -= deltaSec;
       // 마무리 직전(0.35s)까진 캐릭터를 계속 내던짐
       this.ultThrowAccum += deltaSec;
       while (this.ultThrowAccum >= ULT_THROW_INTERVAL && this.ultTimer > 0.35) {

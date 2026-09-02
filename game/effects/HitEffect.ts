@@ -97,6 +97,10 @@ export class HitEffect extends Container {
   private flashes: Flash[] = [];
   private debris: Debris[] = [];
   private flares: Flare[] = [];
+  /** 궁극기 집중선 — 두 프레임을 번갈아 깜빡이는 만화 스피드라인 */
+  private speedLineFrames: Graphics[] | null = null;
+  private speedLineTick = 0;
+  private stamps: { node: Container; life: number; ttl: number }[] = [];
 
   /** 화면 전체 플래시 — 궁극기 마무리 등 임팩트용 (좌표 0,0 ~ viewW,viewH) */
   flash(viewW: number, viewH: number, color = 0xffffff, peak = 0.7, ttl = 0.4) {
@@ -187,6 +191,73 @@ export class HitEffect extends Container {
     if (opts?.swing) t.rotation = -0.9;
     this.addChild(t);
     this.emojiPops.push({ t, life: 0, ttl: 0.32, swing: !!opts?.swing });
+  }
+
+  /** 궁극기 집중선 시작 — 화면 가장자리에서 중심을 향하는 쐐기 2세트 교차 깜빡임 */
+  startSpeedLines(viewW: number, viewH: number) {
+    this.stopSpeedLines();
+    const cx = viewW / 2;
+    const cy = viewH * 0.55;
+    const maxR = Math.hypot(viewW, viewH);
+    const frames: Graphics[] = [];
+    for (let f = 0; f < 2; f++) {
+      const g = new Graphics();
+      const count = 26;
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2 + f * (Math.PI / count) + Math.random() * 0.08;
+        const inner = maxR * (0.34 + Math.random() * 0.14);
+        const outer = maxR;
+        const half = 0.012 + Math.random() * 0.012;
+        g.poly([
+          cx + Math.cos(a - half) * outer, cy + Math.sin(a - half) * outer,
+          cx + Math.cos(a + half) * outer, cy + Math.sin(a + half) * outer,
+          cx + Math.cos(a) * inner, cy + Math.sin(a) * inner,
+        ]).fill({ color: 0xffffff, alpha: 0.28 + Math.random() * 0.18 });
+      }
+      g.visible = f === 0;
+      this.addChild(g);
+      frames.push(g);
+    }
+    this.speedLineFrames = frames;
+    this.speedLineTick = 0;
+  }
+
+  stopSpeedLines() {
+    if (!this.speedLineFrames) return;
+    for (const g of this.speedLineFrames) {
+      this.removeChild(g);
+      g.destroy();
+    }
+    this.speedLineFrames = null;
+  }
+
+  /** 도장 쾅 — 궁극기 피니시 "반려" 스탬프 (도시에 인사기록부 톤) */
+  stampPop(x: number, y: number, text: string) {
+    const wrap = new Container();
+    const t = new Text({
+      text,
+      style: {
+        fontSize: 72,
+        fontWeight: "900",
+        fill: 0xd72638,
+        letterSpacing: 6,
+      },
+    });
+    t.anchor.set(0.5);
+    const pad = 22;
+    const frame = new Graphics();
+    frame
+      .roundRect(-t.width / 2 - pad, -t.height / 2 - pad * 0.55, t.width + pad * 2, t.height + pad * 1.1, 10)
+      .stroke({ color: 0xd72638, width: 7, alpha: 0.95 });
+    wrap.addChild(frame);
+    wrap.addChild(t);
+    wrap.rotation = -0.18;
+    wrap.x = x;
+    wrap.y = y;
+    wrap.scale.set(2.2);
+    wrap.alpha = 0;
+    this.addChild(wrap);
+    this.stamps.push({ node: wrap, life: 0, ttl: 1.25 });
   }
 
   /** 타격 방사선 — 만화식 임팩트 라인이 바깥으로 확 퍼지며 사라짐 */
@@ -442,6 +513,38 @@ export class HitEffect extends Container {
       p.g.y += p.vy * deltaSec;
       p.g.rotation += p.spin * deltaSec;
       p.g.alpha = 1 - t * t;
+    }
+
+    if (this.speedLineFrames) {
+      this.speedLineTick += deltaSec;
+      const on = Math.floor(this.speedLineTick / 0.07) % 2;
+      this.speedLineFrames[0].visible = on === 0;
+      this.speedLineFrames[1].visible = on === 1;
+    }
+
+    for (let i = this.stamps.length - 1; i >= 0; i--) {
+      const st = this.stamps[i];
+      st.life += deltaSec;
+      const t = st.life / st.ttl;
+      if (t >= 1) {
+        this.removeChild(st.node);
+        st.node.destroy({ children: true });
+        this.stamps.splice(i, 1);
+        continue;
+      }
+      // 0~0.12s: 2.2→0.95 쾅(ease-in) → 미세 오버슛 → 유지 → 마지막 30% 페이드
+      if (t < 0.12) {
+        const k = t / 0.12;
+        st.node.scale.set(2.2 - 1.25 * k * k);
+        st.node.alpha = Math.min(1, k * 1.5);
+      } else if (t < 0.2) {
+        const k = (t - 0.12) / 0.08;
+        st.node.scale.set(0.95 + 0.05 * Math.sin(k * Math.PI));
+        st.node.alpha = 1;
+      } else {
+        st.node.scale.set(1);
+        st.node.alpha = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+      }
     }
 
     for (let i = this.debris.length - 1; i >= 0; i--) {
