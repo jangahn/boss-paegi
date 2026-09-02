@@ -81,64 +81,71 @@ export default async function AdminPage({
             </div>
           </section>
 
-          {/* 유저 퍼널·구성(v1.17) — 열=단계, 행=전체/전환/처음/다시. 처음=일별 롤업+오늘 라이브(0112 단일 소스,
-              first_visit 추가), 전체·다시·회원=기간 내 distinct raw RPC(0117). 방문=상호작용·봇 게이트 통과 방문(uid 단위). */}
+          {/* 유저 퍼널(v1.17) — 기간 내 활동 유저(전체) 5단계 가로 연속. 전체=raw RPC(0117), 가입=롤업 members.
+              전환율은 이전 단계 대비. 방문=상호작용·봇 게이트 통과 방문(uid 단위). */}
           <section>
             <h2 className="mb-2 text-sm font-bold text-zinc-500">
-              유저 퍼널·구성{" "}
-              <span className="font-normal">
-                (유저 단위: 비회원=브라우저 익명 계정, 회원=계정 · 전환율은 이전 단계 대비)
-              </span>
+              유저 퍼널{" "}
+              <span className="font-normal">(기간 내 활동 유저 · 전환율은 이전 단계 대비)</span>
             </h2>
-            <StageCards
-              cards={[
-                {
-                  label: "방문",
-                  total: composition.visit.total,
-                  members: composition.visit.members,
-                  first: funnel.first_visit,
-                  again: composition.visit.again,
-                  rate: null,
-                },
-                {
-                  label: "플레이(제출)",
-                  total: composition.play.total,
-                  members: composition.play.members,
-                  first: funnel.players,
-                  again: composition.play.again,
-                  rate: pct(composition.play.total, composition.visit.total),
-                },
-                {
-                  label: "가입",
-                  total: funnel.members,
-                  members: null,
-                  first: funnel.members,
-                  again: null,
-                  rate: pct(funnel.members, composition.play.total),
-                },
-                {
-                  label: "캐릭터 생성",
-                  total: composition.generation.total,
-                  members: null,
-                  first: funnel.first_gen,
-                  again: composition.generation.again,
-                  rate: pct(composition.generation.total, funnel.members),
-                },
-                {
-                  label: "결제",
-                  total: composition.purchase.total,
-                  members: null,
-                  first: funnel.first_purchase,
-                  again: composition.purchase.again,
-                  rate: pct(composition.purchase.total, composition.generation.total),
-                },
-              ]}
-            />
+            <div className="grid grid-cols-5 gap-1 text-center">
+              <FunnelStep label="방문" value={composition.visit.total} members={composition.visit.members} />
+              <FunnelStep
+                label="플레이"
+                value={composition.play.total}
+                members={composition.play.members}
+                rate={pct(composition.play.total, composition.visit.total)}
+              />
+              <FunnelStep label="가입" value={funnel.members} rate={pct(funnel.members, composition.play.total)} />
+              <FunnelStep
+                label="생성"
+                value={composition.generation.total}
+                rate={pct(composition.generation.total, funnel.members)}
+              />
+              <FunnelStep
+                label="결제"
+                value={composition.purchase.total}
+                rate={pct(composition.purchase.total, composition.generation.total)}
+              />
+            </div>
             <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
-              방문 = 첫 터치·스크롤 등 상호작용이 있었던 방문(봇 제외, 2026-09-03 수집 시작). 플레이 = 점수
-              제출(진입→제출은 게임 분석). 처음 = 그 행동을 기간 안에 처음 함. 다시 = 전에 한 적 있는 상태로
-              기간 안에 또 함. 기간 안에서 처음 하고 또 한 유저는 둘 다에 세요(오늘 탭은 겹침 없음). 가입 시
-              익명 시절 기록은 회원 계정에 합쳐요.
+              유저 단위(비회원=브라우저 익명 계정, 회원=계정). 방문 = 첫 터치·스크롤 등 상호작용이 있었던
+              방문(봇 제외, 2026-09-03 수집 시작). 플레이 = 점수 제출(진입→제출은 게임 분석). 생성 = 캐릭터
+              생성. 결제 = 결제 완료(테스트 제외).
+            </p>
+          </section>
+
+          {/* 유저 구성(v1.17) — 단계별 처음/다시. 처음=일별 롤업+오늘 라이브(0112 단일 소스, first_visit 추가),
+              다시=raw RPC(0117). 가입은 계정당 1회라 다시 없음. */}
+          <section>
+            <h2 className="mb-2 text-sm font-bold text-zinc-500">
+              유저 구성{" "}
+              <span className="font-normal">(처음 = 기간 안에 처음 함 · 다시 = 전에 한 적 있는 상태로 기간 안에 또 함)</span>
+            </h2>
+            <div className="space-y-2">
+              {(
+                [
+                  { label: "방문", total: composition.visit.total, first: funnel.first_visit, again: composition.visit.again },
+                  { label: "플레이(제출)", total: composition.play.total, first: funnel.players, again: composition.play.again },
+                  { label: "가입", total: funnel.members, first: funnel.members, again: null },
+                  { label: "캐릭터 생성", total: composition.generation.total, first: funnel.first_gen, again: composition.generation.again },
+                  { label: "결제", total: composition.purchase.total, first: funnel.first_purchase, again: composition.purchase.again },
+                ] as { label: string; total: number; first: number; again: number | null }[]
+              ).map((r) => (
+                <div key={r.label} className="grid max-w-md grid-cols-[5.5rem_1fr_1fr] gap-2">
+                  <p className="self-center text-xs text-zinc-500">{r.label}</p>
+                  <Stat label="처음" value={r.first.toLocaleString()} />
+                  <Stat
+                    label="다시"
+                    value={r.again === null ? "—" : r.again.toLocaleString()}
+                    sub={r.again !== null && r.total > 0 ? `전체의 ${pct(r.again, r.total)}` : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+              기간 안에서 처음 하고 또 한 유저는 둘 다에 세요(오늘 탭은 겹침 없음). 가입은 계정당 1회라 다시가
+              없어요. 결제의 다시 = 재구매. 가입 시 익명 시절 기록은 회원 계정에 합쳐요.
               {window === "all" &&
                 " 전체 탭에서는 처음 = 전체이고, 일별 동결(2026-08-29 도입) 이전 과거는 현재 잔존 데이터 기준 근사예요 — 정리된 익명 계정·탈퇴 회원은 소급되지 않아요."}
             </p>
@@ -175,7 +182,7 @@ export default async function AdminPage({
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-foreground/10 ui-surface p-3">
+    <div className="h-full rounded-xl border border-foreground/10 ui-surface p-3">
       <p className="text-[11px] text-zinc-500">{label}</p>
       <p className="mt-0.5 text-lg font-extrabold tabular-nums">{value}</p>
       {sub && <p className="text-[11px] text-zinc-400">{sub}</p>}
@@ -183,48 +190,16 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-type StageCard = {
-  label: string;
-  total: number;
-  /** 방문·플레이만 회원 수 병기(가입 이후 단계는 전부 회원). */
-  members: number | null;
-  first: number;
-  /** 가입은 '다시'가 없다(계정당 1회). */
-  again: number | null;
-  /** 이전 단계 대비 전환율(전체 기준). 첫 단계는 없음. */
-  rate: string | null;
-};
-
-const nf = (n: number) => n.toLocaleString();
-
-/**
- * 유저 퍼널·구성 카드 — 단계 하나 = 카드 하나(퍼널 순서: 왼→오, 375px 는 2열로 접혀 위→아래).
- * 구 FunnelStep 토큰(라벨/값/주황 전환율) 그대로 + 회원 병기 + '처음 · 다시' 한 줄. 홀수 마지막 카드는 두 칸.
- */
-function StageCards({ cards }: { cards: StageCard[] }) {
+/** 퍼널 카드(구 FunnelStep + 회원 병기 줄) — 5열 고정이라 라벨은 짧게, 줄 수를 맞춰 카드 높이를 정렬한다. */
+function FunnelStep({ label, value, members, rate }: { label: string; value: number; members?: number; rate?: string }) {
   return (
-    <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
-      {cards.map((c, i) => (
-        <div
-          key={c.label}
-          className={`rounded-lg border border-foreground/10 ui-surface p-2 ${
-            i === cards.length - 1 && cards.length % 2 === 1 ? "col-span-2 sm:col-span-1" : ""
-          }`}
-        >
-          <p className="text-[10px] text-zinc-500">{c.label}</p>
-          <p className="text-base font-bold tabular-nums">
-            {nf(c.total)}
-            {c.members !== null && (
-              <span className="ml-1 text-[10px] font-normal text-zinc-400">회원 {nf(c.members)}</span>
-            )}
-          </p>
-          <p className="text-[10px] text-amber-600">{c.rate ? `이전 대비 ${c.rate}` : "\u00a0"}</p>
-          <p className="text-[10px] tabular-nums text-zinc-400">
-            처음 {nf(c.first)}
-            {c.again !== null && ` · 다시 ${nf(c.again)}`}
-          </p>
-        </div>
-      ))}
+    <div className="rounded-lg border border-foreground/10 ui-surface p-2">
+      <p className="text-[10px] text-zinc-500">{label}</p>
+      <p className="text-base font-bold tabular-nums">{value.toLocaleString()}</p>
+      <p className="text-[10px] tabular-nums text-zinc-400">
+        {members === undefined ? "\u00a0" : `회원 ${members.toLocaleString()}`}
+      </p>
+      <p className="text-[10px] text-amber-600">{rate ?? "\u00a0"}</p>
     </div>
   );
 }
