@@ -99,17 +99,21 @@ test("ThrowInput enforces speed boundaries, finite cap, identity, and same-categ
   now = 150;
   input.handlePointerMove(pointer(2, 11.99, 0));
   input.handlePointerUp(pointer(2, 11.99, 0));
-  assert.equal(launches.length, 1, "below-minimum launch is cancelled");
+  // 2026-09 규칙: 느린 릴리즈도 항상 던져진다 — power 0·속도 0 의 약한 토스로 넘기고
+  // PlayScene 이 캐릭터 방향 조준 보정 + 최소 비행 속도를 준다(놓은 자리에서 떨어지지 않게).
+  assert.equal(launches.length, 2, "below-minimum release becomes a weak toss");
+  assert.equal(launches[1].power, 0);
+  assert.equal(Math.hypot(launches[1].vx, launches[1].vy), 0);
 
   now = 200;
   input.handlePointerDown(pointer(3, 0, 0));
   now = 201;
   input.handlePointerMove(pointer(3, 100_000, -100_000));
   input.handlePointerUp(pointer(99, 100_000, -100_000));
-  assert.equal(launches.length, 1, "wrong pointer cannot launch");
+  assert.equal(launches.length, 2, "wrong pointer cannot launch");
   input.handlePointerUp(pointer(3, 100_000, -100_000));
-  assert.equal(launches.length, 2);
-  const capped = launches[1];
+  assert.equal(launches.length, 3);
+  const capped = launches[2];
   assert.equal(Number.isFinite(capped.vx) && Number.isFinite(capped.vy), true);
   assert.ok(
     Math.hypot(capped.vx, capped.vy) <= MAX_THROW_LAUNCH_SPEED + 1e-9,
@@ -124,7 +128,7 @@ test("ThrowInput enforces speed boundaries, finite cap, identity, and same-categ
   input.handlePointerUp(pointer(4, 100, 0));
   assert.equal(
     launches.length,
-    2,
+    3,
     "book down cannot become a keyboard launch after a category-preserving switch",
   );
   input.destroy();

@@ -6,6 +6,7 @@
 type SoundPreset =
   | "punch"
   | "boing"
+  | "springy"
   | "slap"
   | "thud"
   | "clack"
@@ -13,6 +14,11 @@ type SoundPreset =
   | "pew"
   | "pop"
   | "whoosh"
+  | "squeak"
+  | "snap"
+  | "twinkle"
+  | "crack"
+  | "knock"
   | "scribble";
 
 let ctx: AudioContext | null = null;
@@ -129,7 +135,14 @@ export function unlockAudio() {
   }
 }
 
+// 노이즈 버퍼 캐시(2026-09 성능) — 같은 (길이, 게인) 조합은 1회만 생성해 재사용.
+// AudioBuffer 는 읽기 전용 소스라 여러 BufferSource 가 동시에 써도 안전. 매 타격마다
+// 수천 샘플을 새로 채우던 할당·GC 를 없앤다(궁극기 난타 초당 ~30회).
+const noiseCache = new Map<string, AudioBuffer>();
 function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
+  const key = `${durationSec}:${gain}`;
+  const cached = noiseCache.get(key);
+  if (cached) return cached;
   const buffer = c.createBuffer(
     1,
     Math.floor(c.sampleRate * durationSec),
@@ -139,6 +152,7 @@ function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
   for (let i = 0; i < data.length; i++) {
     data[i] = (Math.random() * 2 - 1) * gain;
   }
+  noiseCache.set(key, buffer);
   return buffer;
 }
 
@@ -215,6 +229,151 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     osc.connect(gain).connect(out(c));
     osc.start(t);
     osc.stop(t + 0.27);
+    return;
+  }
+
+  if (preset === "springy") {
+    // 뿅망치 강화 — "뾱" + 띠용용용. boing 곡선 + 낮은 옥타브 잔향 스프링 2회를
+    // Web Audio 스케줄링으로 시간차 배치 (만화 스프링 감쇠).
+    const detune = 0.94 + Math.random() * 0.12;
+    const hits = [
+      { at: 0, f0: 300, f1: 900, f2: 160, dur: 0.22, vol: 0.42 },
+      { at: 0.1, f0: 220, f1: 620, f2: 140, dur: 0.2, vol: 0.26 },
+      { at: 0.21, f0: 180, f1: 460, f2: 120, dur: 0.18, vol: 0.15 },
+      { at: 0.31, f0: 150, f1: 360, f2: 110, dur: 0.16, vol: 0.08 },
+    ];
+    for (const h of hits) {
+      const osc = c.createOscillator();
+      osc.type = "triangle";
+      const t0 = t + h.at;
+      osc.frequency.setValueAtTime(h.f0 * detune, t0);
+      osc.frequency.exponentialRampToValueAtTime(h.f1 * detune, t0 + h.dur * 0.2);
+      osc.frequency.exponentialRampToValueAtTime(h.f2, t0 + h.dur);
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(h.vol * v, t0 + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + h.dur);
+      osc.connect(gain).connect(out(c));
+      osc.start(t0);
+      osc.stop(t0 + h.dur + 0.02);
+    }
+    return;
+  }
+
+  if (preset === "squeak") {
+    // 짧은 고무 삑 — 꼬집기 원샷 (궁극기 난타 등)
+    const detune = 0.9 + Math.random() * 0.25;
+    const osc = c.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(520 * detune, t);
+    osc.frequency.exponentialRampToValueAtTime(1150 * detune, t + 0.07);
+    const filter = c.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 1400;
+    filter.Q.value = 3.5;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.16 * v, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(filter).connect(gain).connect(out(c));
+    osc.start(t);
+    osc.stop(t + 0.1);
+    return;
+  }
+
+  if (preset === "snap") {
+    // 꼬집기 릴리즈 "탱!" — 빠른 하강 플럭 + 팝
+    const osc = c.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(950, t);
+    osc.frequency.exponentialRampToValueAtTime(180, t + 0.09);
+    const og = c.createGain();
+    og.gain.setValueAtTime(0.4 * v, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+    osc.connect(og).connect(out(c));
+    osc.start(t);
+    osc.stop(t + 0.12);
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.03, 0.8);
+    const bf = c.createBiquadFilter();
+    bf.type = "bandpass";
+    bf.frequency.value = 2200;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.2 * v, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    src.connect(bf).connect(ng).connect(out(c));
+    src.start(t);
+    return;
+  }
+
+  if (preset === "twinkle") {
+    // 해롱해롱 별 — 짧은 3음 아르페지오
+    const notes = [1568, 1976, 2349];
+    notes.forEach((f, i) => {
+      const t0 = t + i * 0.07;
+      const osc = c.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f;
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.12 * v, t0 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      osc.connect(gain).connect(out(c));
+      osc.start(t0);
+      osc.stop(t0 + 0.18);
+    });
+    return;
+  }
+
+  if (preset === "crack") {
+    // 비비탄 발사 "탁!" — 초단 노이즈 크랙 + 고역 클릭 + 짧은 저역 킥 (기존 pew 보다 건조하고 날카롭게)
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.035, 1);
+    const hf = c.createBiquadFilter();
+    hf.type = "highpass";
+    hf.frequency.value = 2400;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.42 * v, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+    src.connect(hf).connect(ng).connect(out(c));
+    src.start(t);
+    const kick = c.createOscillator();
+    kick.type = "sine";
+    kick.frequency.setValueAtTime(240, t);
+    kick.frequency.exponentialRampToValueAtTime(70, t + 0.05);
+    const kg = c.createGain();
+    kg.gain.setValueAtTime(0.28 * v, t);
+    kg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    kick.connect(kg).connect(out(c));
+    kick.start(t);
+    kick.stop(t + 0.07);
+    return;
+  }
+
+  if (preset === "knock") {
+    // 비비탄 피격 "딱콩" — 고역 틱(딱) + 공명 몸통 톡(콩) 두 성분을 12ms 시간차로
+    const detune = 0.92 + Math.random() * 0.16;
+    const tick = c.createBufferSource();
+    tick.buffer = noiseBuffer(c, 0.012, 0.9);
+    const tf = c.createBiquadFilter();
+    tf.type = "bandpass";
+    tf.frequency.value = 3200 * detune;
+    tf.Q.value = 2.5;
+    const tg = c.createGain();
+    tg.gain.setValueAtTime(0.35 * v, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.014);
+    tick.connect(tf).connect(tg).connect(out(c));
+    tick.start(t);
+    const body = c.createOscillator();
+    body.type = "triangle";
+    body.frequency.setValueAtTime(620 * detune, t + 0.012);
+    body.frequency.exponentialRampToValueAtTime(210, t + 0.09);
+    const bg = c.createGain();
+    bg.gain.setValueAtTime(0.0001, t);
+    bg.gain.exponentialRampToValueAtTime(0.3 * v, t + 0.014);
+    bg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    body.connect(bg).connect(out(c));
+    body.start(t);
+    body.stop(t + 0.11);
     return;
   }
 
@@ -361,4 +520,105 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     src.start(t);
     return;
   }
+}
+
+// ── 비굴 목소리 (합성 만화 비명 — 실녹음 도입 전까지의 캐릭터 보이스) ──────────
+// tier 0="윽" 1="악!" 2="으악!!" — 콤보/타격 세기에 따라 처절함 상승.
+// 삼각파 피치 급강하 + 성문 노이즈 버스트로 만화식 비명을 흉내낸다(실존 음성 아님).
+export function playYelp(tier: 0 | 1 | 2, volume = 1) {
+  const c = getCtx();
+  if (!c || c.state !== "running") return;
+  const t = c.currentTime;
+  const v = Math.max(0.05, Math.min(2, volume));
+  const base = [430, 560, 700][tier] * (0.92 + Math.random() * 0.16);
+  const dur = [0.13, 0.17, 0.24][tier];
+
+  const osc = c.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(base, t);
+  osc.frequency.exponentialRampToValueAtTime(base * 1.35, t + dur * 0.22); // 치켜올림
+  osc.frequency.exponentialRampToValueAtTime(base * 0.42, t + dur); // 꺾임
+  // 성대 떨림 (vibrato)
+  const vib = c.createOscillator();
+  vib.frequency.value = 26;
+  const vibGain = c.createGain();
+  vibGain.gain.value = base * 0.06;
+  vib.connect(vibGain).connect(osc.frequency);
+  const filter = c.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = 1100;
+  filter.Q.value = 1.1;
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.3 * v * (0.7 + tier * 0.2), t + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.03);
+  osc.connect(filter).connect(gain).connect(out(c));
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
+  vib.start(t);
+  vib.stop(t + dur + 0.05);
+
+  // 어택 자음 ("ㅇ/ㅋ" 질감)
+  const click = c.createBufferSource();
+  click.buffer = noiseBuffer(c, 0.02, 0.6);
+  const cf = c.createBiquadFilter();
+  cf.type = "bandpass";
+  cf.frequency.value = 2600;
+  const cg = c.createGain();
+  cg.gain.setValueAtTime(0.14 * v, t);
+  cg.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+  click.connect(cf).connect(cg).connect(out(c));
+  click.start(t);
+}
+
+// ── 꼬집기 텐션 루프 — 늘린 거리에 비례해 피치가 상승하는 지속 고무 끽 소리 ──
+let pinchOsc: OscillatorNode | null = null;
+let pinchGain: GainNode | null = null;
+let pinchFilter: BiquadFilterNode | null = null;
+
+export function startPinchTension() {
+  const c = getCtx();
+  if (!c || c.state !== "running" || pinchOsc) return;
+  pinchOsc = c.createOscillator();
+  pinchOsc.type = "sawtooth";
+  pinchOsc.frequency.value = 260;
+  pinchFilter = c.createBiquadFilter();
+  pinchFilter.type = "bandpass";
+  pinchFilter.frequency.value = 900;
+  pinchFilter.Q.value = 4;
+  pinchGain = c.createGain();
+  pinchGain.gain.value = 0.0001;
+  pinchOsc.connect(pinchFilter).connect(pinchGain).connect(out(c));
+  pinchOsc.start();
+}
+
+/** ratio 0..1 — 늘린 비율. 피치·볼륨을 실시간 추종. */
+export function setPinchTension(ratio: number) {
+  const c = getCtx();
+  if (!c || !pinchOsc || !pinchGain || !pinchFilter) return;
+  const r = Math.max(0, Math.min(1, ratio));
+  const t = c.currentTime;
+  pinchOsc.frequency.setTargetAtTime(260 + 980 * r * r, t, 0.02);
+  pinchFilter.frequency.setTargetAtTime(700 + 1400 * r, t, 0.03);
+  pinchGain.gain.setTargetAtTime(r < 0.02 ? 0.0001 : 0.03 + 0.11 * r, t, 0.03);
+}
+
+/** released=true 면 "탱!" 스냅과 함께 종료, false 면 조용히 페이드. */
+export function stopPinchTension(released: boolean, ratio = 0) {
+  const c = getCtx();
+  if (c && pinchGain) {
+    pinchGain.gain.setTargetAtTime(0.0001, c.currentTime, 0.02);
+  }
+  const osc = pinchOsc;
+  if (c && osc) {
+    try {
+      osc.stop(c.currentTime + 0.1);
+    } catch {
+      /* already stopped */
+    }
+  }
+  pinchOsc = null;
+  pinchGain = null;
+  pinchFilter = null;
+  if (released && ratio > 0.1) playHitSound("snap", 0.6 + ratio * 0.6);
 }

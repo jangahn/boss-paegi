@@ -121,7 +121,7 @@ test("native pointercancel reaches the scene exactly until listener cleanup", ()
   assert.equal(cancellations, 1);
 });
 
-test("PlayScene maps all 9 weapons to 6 categories and cancels every held state on blur/hidden", () => {
+test("PlayScene maps all 9 weapons to 7 categories and cancels every held state on blur/hidden", () => {
   const scene = new PlayScene({ app: {} as never });
   scene.layout(800, 600);
   const categories = new Set<string>();
@@ -132,7 +132,7 @@ test("PlayScene maps all 9 weapons to 6 categories and cancels every held state 
   }
   assert.deepEqual(
     [...categories].sort(),
-    ["draw", "grab", "shoot", "swipe", "tap", "throw"],
+    ["draw", "grab", "pinch", "shoot", "swipe", "tap", "throw"],
   );
 
   const win = new EventTarget();
@@ -297,7 +297,7 @@ test("pause freezes delta updates, ultimate stop/retrigger is fenced, and end bl
   assert.equal(hits, 0, "100ms while paused is fully frozen");
   scene.resume();
   scene.update(0.1);
-  assert.ok(hits > 0);
+  assert.ok(hits > 0, "궁극기는 발동 즉시 난타 — resume 직후 첫 프레임에 타격");
 
   scene.stopUltimate();
   assert.equal(privateValue(scene, "ultActive"), false);
@@ -331,4 +331,34 @@ test("zero-size layout is a no-op, positive resize remains finite, and destroy c
   Reflect.set(scene, "springRestoreTimer", timer);
   scene.destroy();
   assert.equal(privateValue(scene, "springRestoreTimer"), null);
+});
+
+test("start() wipes the previous round's face — drawing, transient decals, daze, hit heat", () => {
+  const scene = new PlayScene({ app: {} as never });
+  scene.layout(800, 600);
+  const drawing = privateValue<{
+    beginStroke: (x: number, y: number) => void;
+    extendStroke: (x: number, y: number, color: number, width: number) => void;
+    hasDrawing: boolean;
+  }>(scene, "drawingLayer");
+  drawing.beginStroke(0, 0);
+  drawing.extendStroke(12, 12, 0x1a1a1a, 3);
+  assert.equal(drawing.hasDrawing, true, "placeholder head center accepts ink");
+  // handprint 는 순수 Graphics — bump/blush 의 FillGradient 는 node 테스트 환경(document 없음)에서 못 만든다
+  const decals = privateValue<{
+    handprint: (x: number, y: number, angle: number) => void;
+    children: unknown[];
+  }>(scene, "transientDecals");
+  decals.handprint(0, 0, 0);
+  assert.equal(decals.children.length, 1);
+  const daze = privateValue<{ start: (sec: number) => void; active: boolean }>(scene, "dazeFx");
+  daze.start(2);
+  Reflect.set(scene, "hitTimes", [1, 2, 3]);
+
+  scene.start();
+  assert.equal(drawing.hasDrawing, false, "낙서는 새 판에서 남지 않는다");
+  assert.equal(decals.children.length, 0);
+  assert.equal(daze.active, false);
+  assert.deepEqual(privateValue(scene, "hitTimes"), []);
+  scene.destroy();
 });

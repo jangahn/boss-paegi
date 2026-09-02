@@ -32,6 +32,7 @@ const { buildGameplayStats, validateGameplayStats } = await import(
 const {
   FRESH_WEAPON_BONUS,
   GRAB_FLING_POWER_BONUS,
+  PINCH_STRETCH_BONUS,
   SWITCH_ULT_BONUS_RATIO,
   THROW_FACTOR_MAX,
   SWIPE_FACTOR_MAX,
@@ -517,12 +518,15 @@ function effectiveMaxBase(weapon: (typeof WEAPONS)[number]): number {
   if (weapon.category === "grab") {
     return weapon.strength + GRAB_FLING_POWER_BONUS;
   }
+  if (weapon.category === "pinch") {
+    return weapon.strength + PINCH_STRETCH_BONUS;
+  }
   return weapon.strength;
 }
 
 test("S2 checks every 1..19-hit weapon payload instead of leaving the old split bypass", () => {
   assert.equal(S2_MIN_HITS, 1);
-  assert.match(ANTI_ABUSE_RULES_VERSION, /v6$/);
+  assert.match(ANTI_ABUSE_RULES_VERSION, /v8$/);
 
   for (const weapon of WEAPONS) {
     const perHitCap =
