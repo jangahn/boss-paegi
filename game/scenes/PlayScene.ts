@@ -79,12 +79,9 @@ export type HitInfo = {
 const ULT_DURATION_SEC = 3.9;
 const ULT_BLOW_INTERVAL = 0.085;
 const ULT_BLOW_BUDGET = Math.floor((ULT_DURATION_SEC - 0.25) / ULT_BLOW_INTERVAL);
-/** 인트로 슬로모 길이(초, 실시간) — 이 동안 물리·이펙트 시간이 0.3배 */
-const ULT_INTRO_SEC = 0.35;
-const ULT_INTRO_TIMESCALE = 0.3;
-/** 자동 난타 간격 — 진행도에 따라 가속(고조 곡선) */
-const ULT_BLOW_INTERVAL_START = 0.105;
-const ULT_BLOW_INTERVAL_END = 0.05;
+/** 자동 난타 간격 — 발동 즉시 시작해 예산 소진까지 끊김 없이 가속(진행도² 곡선) */
+const ULT_BLOW_INTERVAL_START = 0.12;
+const ULT_BLOW_INTERVAL_END = 0.035;
 /** 연타 입력 최소 간격(ms) — 더블 이벤트 방지 */
 const ULT_MASH_MIN_MS = 45;
 // 궁극기 중 캐릭터를 마구 내던지는 간격 + 임펄스 세기 (px/step)
@@ -108,8 +105,10 @@ const THROW_MIN_FLY_SPEED = 950;
 const THROW_ASSIST_FULL_SPEED = 750;
 /** 투척물 중력 상쇄 비율 — 포물선을 눕혀 더 멀리 날아가게 (1=무중력) */
 const THROW_GRAVITY_CANCEL = 0.72;
-/** 꼬집기 유지 틱 간격(초) — 당기는 동안 길이 비례 데미지 */
-const PINCH_TICK_SEC = 0.5;
+/** 꼬집기 흔들기 — 당긴 채 손가락이 이 거리(px)만큼 움직일 때마다 피격(볼따구 쥐고 괴롭히기) */
+const PINCH_SHAKE_PX = 55;
+/** 흔들기 피격 최소 간격(ms) — 연타 무기와 비슷한 상한(≈10/s) */
+const PINCH_SHAKE_MIN_MS = 95;
 
 export class PlayScene extends Container {
   private app: Application;
@@ -170,7 +169,8 @@ export class PlayScene extends Container {
   private pinchActive = false;
   private pinchRatio = 0;
   private pinchBlushAccum = 0;
-  private pinchTickAccum = 0;
+  private pinchTravel = 0;
+  private pinchLastShakeAt = 0;
   private pinchPos = { x: 0, y: 0 };
 
   // viewport memo
@@ -186,7 +186,6 @@ export class PlayScene extends Container {
   /** 남은 타격 예산 — 자동·연타 공유. 0 이면 피니시로 직행 */
   private ultBudget = 0;
   private ultFired = 0;
-  private ultIntro = 0;
   private ultLastMashAt = 0;
 
   constructor(opts: PlaySceneOptions) {
@@ -411,7 +410,6 @@ export class PlayScene extends Container {
     this.ultTimer = 0;
     this.ultShake = 0;
     this.ultBudget = 0;
-    this.ultIntro = 0;
     this.fx.stopSpeedLines();
     this.position.set(0, 0);
     if (wasActive) this.restoreDollAfterUlt();
@@ -429,12 +427,14 @@ export class PlayScene extends Container {
     this.ultShake = 22;
     this.ultBudget = ULT_BLOW_BUDGET;
     this.ultFired = 0;
-    this.ultIntro = ULT_INTRO_SEC;
     this.ultLastMashAt = 0;
+    // 첫 타는 발동 후 첫 프레임에 즉시 — 누산기를 간격 직전까지 채워 둔다
+    // (정확히 간격이면 dt=0 프레임에도 발사돼 "0초=0타" 불변식이 깨짐)
+    this.ultBlowAccum = ULT_BLOW_INTERVAL_START - 1e-4;
     // 캐릭터를 멀리 날려보내려 스프링을 약하게 (난타 동안 자유롭게 휘저음)
     this.dollSpring.stiffness = 0.02;
     this.dollBody.collisionFilter.mask = 0x0001 | 0x0008; // 벽 튕김 유지
-    // 인트로 — 화이트 플래시 + 집중선 + 슬로모(update 에서 timescale)
+    // 발동 연출 — 화이트 플래시 + 집중선 (난타는 즉시 시작)
     this.fx.flash(this.viewW, this.viewH, 0xffffff, 0.35, 0.3);
     this.fx.startSpeedLines(this.viewW, this.viewH);
     this.doll.tremble(ULT_DURATION_SEC);
@@ -452,7 +452,7 @@ export class PlayScene extends Container {
    * 타격 수·점수 분포는 자동 난타와 동일(예산 공유)이라 총량 불변, 체감만 "내가 팬다".
    */
   private ultMash(sx: number, sy: number) {
-    if (!this.ultActive || this.ultIntro > 0 || this.ultBudget <= 0) return;
+    if (!this.ultActive || this.ultBudget <= 0) return;
     const now = performance.now();
     if (now - this.ultLastMashAt < ULT_MASH_MIN_MS) return;
     this.ultLastMashAt = now;
@@ -635,7 +635,8 @@ export class PlayScene extends Container {
       this.pinchActive = true;
       this.pinchRatio = 0;
       this.pinchBlushAccum = 0;
-      this.pinchTickAccum = 0;
+      this.pinchTravel = 0;
+      this.pinchLastShakeAt = 0;
       const downLocal = this.toLocal(e.global);
       this.pinchPos = { x: downLocal.x, y: downLocal.y };
       startPinchTension();
@@ -676,9 +677,19 @@ export class PlayScene extends Container {
         dy = (dy / len) * maxLen;
       }
       this.pinchRatio = ratio;
+      // 흔들기 — 당긴 채 움직인 거리를 누적해 임계마다 피격
+      this.pinchTravel += Math.hypot(local.x - this.pinchPos.x, local.y - this.pinchPos.y);
       this.pinchPos = { x: local.x, y: local.y };
       this.doll.setPinchPull(dx / sc, dy / sc, ratio);
       setPinchTension(ratio);
+      if (this.pinchTravel >= PINCH_SHAKE_PX) {
+        this.pinchTravel = 0;
+        const now = performance.now();
+        if (now - this.pinchLastShakeAt >= PINCH_SHAKE_MIN_MS) {
+          this.pinchLastShakeAt = now;
+          this.pinchShake();
+        }
+      }
       // 한계 근처 — 진땀
       if (ratio > 0.82 && Math.random() < 0.1) {
         const head = this.headPos();
@@ -887,22 +898,25 @@ export class PlayScene extends Container {
    * 점수/발사 없이 상태만 리셋. (pixi 8.19 는 pointercancel 을 display object 로
    * 전달하지 않아 DOM 레벨에서 호출됨)
    */
-  /** 꼬집기 유지 틱 — 당기는 동안 PINCH_TICK_SEC 마다 늘린 길이 비례 데미지(릴리즈와 같은 봉투). */
-  private pinchTick() {
+  /**
+   * 꼬집기 흔들기 피격 — 볼따구를 쥔 채 흔들 때마다. 데미지는 당긴 비율 비례
+   * (릴리즈와 같은 strength+ratio×BONUS 봉투 — 살짝 쥐고 흔들어도 최소 strength 는 들어감).
+   */
+  private pinchShake() {
     const ratio = this.pinchRatio;
-    if (ratio <= 0.15) return;
     const w = this.weapon;
     const points = Math.round(w.strength + ratio * PINCH_STRETCH_BONUS);
     const { x, y } = this.pinchPos;
-    playHitSound("squeak", 0.5 + ratio * 0.7);
-    this.doll.tremble(0.22);
+    playHitSound("squeak", 0.45 + ratio * 0.75);
+    this.doll.triggerHit(0.6 + ratio * 0.6);
+    this.doll.tremble(0.2);
     this.fx.burst(x, y, Math.round(2 + 4 * ratio), w.color);
-    if (ratio > 0.6) {
+    if (ratio > 0.55 && Math.random() < 0.5) {
       const head = this.headPos();
       this.fx.tearDrops(head.x, head.y, 2);
     }
     this.registerHitPulse(1);
-    this.maybeYelp(0.25 + ratio * 0.5, ratio > 0.8 ? 1 : 0);
+    this.maybeYelp(0.2 + ratio * 0.5, ratio > 0.8 ? 1 : 0);
     const gain = this.reportHit(x, y, points, w.key);
     this.fx.scorePop(x, y - 26, gain, w.color);
   }
@@ -1277,21 +1291,15 @@ export class PlayScene extends Container {
       if (this.hitStop > 0) return;
       this.hitStop = 0;
     }
-    // 궁극기 난사타 — 인트로 슬로모 → 가속 난타(연타로 앞당김 가능) → 예산 소진/시간 종료 시 피니시
+    // 궁극기 난사타 — 발동 즉시 난타, 예산 소진까지 연속 가속(연타로 앞당김 가능) → 피니시
     if (this.ultActive) {
-      if (this.ultIntro > 0) {
-        // 슬로모: 이하 모든 시뮬레이션(물리·이펙트·타이머)이 0.3배로 흐름
-        this.ultIntro -= deltaSec;
-        deltaSec *= ULT_INTRO_TIMESCALE;
-      } else {
-        this.ultBlowAccum += deltaSec;
-        const interval =
-          ULT_BLOW_INTERVAL_START +
-          (ULT_BLOW_INTERVAL_END - ULT_BLOW_INTERVAL_START) * this.ultProgress;
-        while (this.ultBlowAccum >= interval && this.ultTimer > 0.25 && this.ultBudget > 0) {
-          this.ultBlowAccum -= interval;
-          this.ultBlow();
-        }
+      this.ultBlowAccum += deltaSec;
+      // 진행도² 로 간격이 좁아져 뒤로 갈수록 가속이 붙는다
+      const k = this.ultProgress * this.ultProgress;
+      const interval = ULT_BLOW_INTERVAL_START + (ULT_BLOW_INTERVAL_END - ULT_BLOW_INTERVAL_START) * k;
+      while (this.ultBlowAccum >= interval && this.ultTimer > 0.25 && this.ultBudget > 0) {
+        this.ultBlowAccum -= interval;
+        this.ultBlow();
       }
       this.ultTimer -= deltaSec;
       // 마무리 직전(0.35s)까진 캐릭터를 계속 내던짐
@@ -1311,14 +1319,6 @@ export class PlayScene extends Container {
     if (this.flingActive) {
       Body.setPosition(this.dollBody, this.flingPointerPos);
       Body.setVelocity(this.dollBody, { x: 0, y: 0 });
-    }
-    // 꼬집기 유지 틱 — 당기는 동안 일정 간격 데미지
-    if (this.pinchActive) {
-      this.pinchTickAccum += deltaSec;
-      if (this.pinchTickAccum >= PINCH_TICK_SEC) {
-        this.pinchTickAccum -= PINCH_TICK_SEC;
-        this.pinchTick();
-      }
     }
     // 투척물 — 중력 일부 상쇄(포물선 눕힘) + 비행 잔상
     for (const proj of this.projectiles) {

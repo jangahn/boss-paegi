@@ -296,10 +296,8 @@ test("pause freezes delta updates, ultimate stop/retrigger is fenced, and end bl
   scene.update(0.1);
   assert.equal(hits, 0, "100ms while paused is fully frozen");
   scene.resume();
-  // 궁극기 인트로 슬로모(ULT_INTRO_SEC 0.35s 실시간) 동안은 난타가 시작되지 않는다 —
-  // resume 이후 시간이 실제로 흐르는지는 인트로를 지나 확인.
-  for (let i = 0; i < 6; i++) scene.update(0.1);
-  assert.ok(hits > 0);
+  scene.update(0.1);
+  assert.ok(hits > 0, "궁극기는 발동 즉시 난타 — resume 직후 첫 프레임에 타격");
 
   scene.stopUltimate();
   assert.equal(privateValue(scene, "ultActive"), false);
