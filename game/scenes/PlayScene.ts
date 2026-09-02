@@ -111,6 +111,10 @@ const THROW_GRAVITY_CANCEL = 0.72;
 const PINCH_SHAKE_PX = 55;
 /** 흔들기 피격 최소 간격(ms) — ≈7/s (2026-09 데미지 하향과 함께 완화) */
 const PINCH_SHAKE_MIN_MS = 140;
+/** 히트스톱 최소 간격(ms) — 어떤 무기든 정지가 누적돼 '렉'처럼 느껴지지 않게 */
+const HIT_STOP_MIN_GAP_MS = 150;
+/** 궁극기 난타 사운드 상한 간격(ms) — 초당 ~12회(시각 연출은 전 타격 유지) */
+const ULT_SOUND_MIN_MS = 80;
 /** 자유비행 벽 튕김 연출 최소 속도(px/step)·중복 방지 쿨다운(ms) */
 const WALL_BUMP_MIN_SPEED = 5;
 const WALL_BUMP_COOLDOWN_MS = 120;
@@ -165,6 +169,8 @@ export class PlayScene extends Container {
   // ── 타격감 (2026-08 개편) ──────────────────────────────────────────
   /** 히트스톱 — 큰 타격 순간 짧게 전체 동결(임팩트 강조). 초 단위 잔여. */
   private hitStop = 0;
+  private lastHitStopAt = 0;
+  private lastUltSoundAt = 0;
   /** 최근 타격 시각(ms) 롤링 윈도우 — 해롱해롱 발동·비명 티어 판정 */
   private hitTimes: number[] = [];
   private dazeCooldownUntil = 0;
@@ -369,8 +375,15 @@ export class PlayScene extends Container {
     this.ultShake = Math.max(this.ultShake, power);
   }
 
-  /** 히트스톱 — 큰 타격만. 상한 90ms(연타 조작감 보호). */
+  /**
+   * 히트스톱 — 무거운 단발 타격 전용(뿅망치·투척·벽·궁극기 피니시·강한 싸대기/꼬집기).
+   * 고빈도 무기(주먹·총·흔들기)는 호출하지 않는다 — 초당 정지 누적이 '렉'으로 체감됨(2026-09 실측).
+   * 상한 90ms + 최소 간격 150ms.
+   */
   private addHitStop(sec: number) {
+    const now = performance.now();
+    if (now - this.lastHitStopAt < HIT_STOP_MIN_GAP_MS) return;
+    this.lastHitStopAt = now;
     this.hitStop = Math.min(0.09, Math.max(this.hitStop, sec));
   }
 
@@ -512,7 +525,7 @@ export class PlayScene extends Container {
     });
     // 난타가 쌓일수록 연한 분홍 → 진한 붉음으로 물듦 (타 간격보다 길게 유지해 끊기지 않음)
     this.doll.hitFlash(lerpColor(0xffc4c4, 0xff5252, progress), 0.16);
-    this.fx.burst(x, y, w.particleCount * 2, w.color);
+    this.fx.burst(x, y, w.particleCount, w.color);
     this.fx.shockwave(x, y, 18, 120 + progress * 60, w.color);
     if (mashed || Math.random() < 0.55) {
       this.fx.emojiPop(x, y, w.emoji, { size: mashed ? 62 : 50, swing: w.key === "hammer" });
@@ -528,7 +541,11 @@ export class PlayScene extends Container {
       playYelp(tier, 0.9);
     }
     this.ultShake = Math.max(this.ultShake, 12 + progress * 16);
-    playHitSound(w.sound, 0.85 + progress * 0.35);
+    const nowMs = performance.now();
+    if (nowMs - this.lastUltSoundAt >= ULT_SOUND_MIN_MS) {
+      this.lastUltSoundAt = nowMs;
+      playHitSound(w.sound, 0.85 + progress * 0.35);
+    }
     // 난타 한 타격당 점수 — 기존(40~85)의 절반 수준 (분포 불변)
     const pts = 20 + Math.floor(Math.random() * 22);
     const gain = this.reportHit(x, y, pts, w.key, false);
@@ -987,7 +1004,6 @@ export class PlayScene extends Container {
       this.doll.hitFlash(0xff8a8a, 0.07);
       this.fx.impactLines(x, y, 0xffffff, 8);
       playHitSound(w.sound);
-      this.addHitStop(0.028);
       if (Math.random() < 0.16 && this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
         this.transientDecals.bump(hitLocal.x, hitLocal.y, 1);
       }
@@ -1031,7 +1047,7 @@ export class PlayScene extends Container {
     if (this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
       this.transientDecals.handprint(hitLocal.x, hitLocal.y, Math.atan2(dirY, dirX), 1.35);
     }
-    this.addHitStop(factor > 1.4 ? 0.05 : 0.03);
+    if (factor > 1.4) this.addHitStop(0.05);
     if (factor > 1.2) {
       const head = this.headPos();
       this.fx.tearDrops(head.x, head.y, 2);
@@ -1196,7 +1212,6 @@ export class PlayScene extends Container {
         this.doll.triggerHit(w.shake * 1.4);
         this.doll.hitSquash(p.vx, p.vy, 1.0, { freq: 13, damp: 9 });
         this.doll.hitFlash(0xff6b6b, 0.07);
-        this.addHitStop(0.03);
         this.fx.hitMarker(p.x, p.y);
         this.fx.impactLines(p.x, p.y, 0xff5a5a, 5);
         this.fx.ricochet(p.x, p.y, p.vx, p.vy, w.color);

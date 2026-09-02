@@ -135,7 +135,14 @@ export function unlockAudio() {
   }
 }
 
+// 노이즈 버퍼 캐시(2026-09 성능) — 같은 (길이, 게인) 조합은 1회만 생성해 재사용.
+// AudioBuffer 는 읽기 전용 소스라 여러 BufferSource 가 동시에 써도 안전. 매 타격마다
+// 수천 샘플을 새로 채우던 할당·GC 를 없앤다(궁극기 난타 초당 ~30회).
+const noiseCache = new Map<string, AudioBuffer>();
 function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
+  const key = `${durationSec}:${gain}`;
+  const cached = noiseCache.get(key);
+  if (cached) return cached;
   const buffer = c.createBuffer(
     1,
     Math.floor(c.sampleRate * durationSec),
@@ -145,6 +152,7 @@ function noiseBuffer(c: AudioContext, durationSec: number, gain = 1) {
   for (let i = 0; i < data.length; i++) {
     data[i] = (Math.random() * 2 - 1) * gain;
   }
+  noiseCache.set(key, buffer);
   return buffer;
 }
 

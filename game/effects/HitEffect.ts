@@ -1,4 +1,11 @@
-import { Container, Graphics, Text } from "pixi.js";
+import {
+  BitmapFont,
+  BitmapText,
+  Container,
+  Graphics,
+  GraphicsContext,
+  Text,
+} from "pixi.js";
 
 /** 5각 별 꼭짓점 (외경 r) */
 function starPoints(r: number): number[] {
@@ -12,6 +19,64 @@ function starPoints(r: number): number[] {
 }
 
 const DEBRIS_CHARS = "ㄱㄴㄷㄹㅁㅂㅅㅇㅋㅌ@#!?";
+/** 글자 파편 폰트 크기 버킷 — 풀 키 수를 제한 */
+const DEBRIS_SIZES = [16, 20, 24];
+
+/**
+ * 공유 지오메트리(2026-09 성능) — 파티클 종류별 GraphicsContext 를 1회 빌드하고
+ * 인스턴스는 `new Graphics({ context })` 로 공유한다(지오메트리 재빌드·GPU 업로드 0).
+ * 색은 tint, 크기는 scale 로 — 시각 결과는 종전과 동일.
+ */
+const SHARED = {
+  /** 반경 6 흰 원 — burst 파티클(tint=팔레트, scale=r/6) */
+  circle: new GraphicsContext().circle(0, 0, 6).fill(0xffffff),
+  /** 외경 12 별(노랑+연노랑 코어 베이크) — scale=r/12 */
+  star: new GraphicsContext()
+    .poly(starPoints(12))
+    .fill(0xffd166)
+    .poly(starPoints(12 * 0.45))
+    .fill(0xfff3c4),
+  /** 반경 5 눈물(하이라이트 포함) — scale=r/5 */
+  tear: new GraphicsContext()
+    .circle(0, 0, 5)
+    .fill({ color: 0x7cc7ff, alpha: 0.95 })
+    .circle(-1.5, -1.5, 1.75)
+    .fill({ color: 0xffffff, alpha: 0.8 }),
+  /** 반경 4 진땀 — scale=r/4 */
+  sweat: new GraphicsContext().circle(0, 0, 4).fill({ color: 0xbfe6ff, alpha: 0.9 }),
+  /** 탄환 파편(흰 캡슐, tint=무기색) */
+  rico: new GraphicsContext()
+    .roundRect(-6, -1.8, 12, 3.6, 1.8)
+    .fill(0xffffff)
+    .roundRect(-3, -0.9, 6, 1.8, 0.9)
+    .fill({ color: 0xffffff, alpha: 0.85 }),
+};
+
+/** 점수 팝 비트맵 폰트 — 브라우저에서 1회 설치(글리프 아틀라스 캐시, 팝마다 래스터화 없음). node 테스트는 Text 폴백. */
+const SCORE_FONT = "BossPaegiScorePop";
+let scoreFontState: "unknown" | "ready" | "unavailable" = "unknown";
+function scoreFontReady(): boolean {
+  if (scoreFontState !== "unknown") return scoreFontState === "ready";
+  if (typeof document === "undefined") {
+    scoreFontState = "unavailable";
+    return false;
+  }
+  try {
+    BitmapFont.install({
+      name: SCORE_FONT,
+      style: {
+        fontSize: 22,
+        fontWeight: "900",
+        fill: 0xffffff, // tint 로 무기색 착색(검은 스트로크는 tint 무영향)
+        stroke: { color: 0x000000, width: 4 },
+      },
+    });
+    scoreFontState = "ready";
+  } catch {
+    scoreFontState = "unavailable";
+  }
+  return scoreFontState === "ready";
+}
 
 type Particle = {
   g: Graphics;
@@ -32,6 +97,7 @@ type Shockwave = {
 
 type ScorePop = {
   g: Container;
+  key: string;
   life: number;
   ttl: number;
   vy: number;
@@ -49,6 +115,7 @@ type PaperPiece = {
 
 type EmojiPop = {
   t: Text;
+  key: string;
   life: number;
   ttl: number;
   /** true 면 -0.9rad 에서 0 으로 휘두르는 스윙 (뿅망치) */
@@ -62,9 +129,10 @@ type Flash = {
   peak: number;
 };
 
-/** 회전/개별중력 있는 자유 파편 — 별·눈물·땀·글자 (Graphics/Text 공용) */
+/** 회전/개별중력 있는 자유 파편 — 별·눈물·땀·글자 (Graphics/Text 공용). key = 풀 반환 키 */
 type Debris = {
   node: Container;
+  key: string;
   vx: number;
   vy: number;
   spin: number;
@@ -102,7 +170,52 @@ export class HitEffect extends Container {
   private speedLineTick = 0;
   private stamps: { node: Container; life: number; ttl: number }[] = [];
   /** 투척물 잔상 — 비행 중 뒤에 남는 반투명 이모지 */
-  private ghosts: { t: Text; life: number; ttl: number }[] = [];
+  private ghosts: { t: Text; key: string; life: number; ttl: number }[] = [];
+  /** 노드 풀 — 키별 free list. 파티클·이모지·글자·점수 팝을 파괴 대신 반환해 재사용 */
+  private pools = new Map<string, Container[]>();
+
+  /** 풀에서 꺼내거나 생성해 자식으로 부착. 공통 transform 은 초기화(anchor 등 고정 속성은 유지). */
+  private acquire<T extends Container>(key: string, make: () => T): T {
+    const list = this.pools.get(key);
+    const pooled = list?.pop() as T | undefined;
+    const node = pooled ?? make();
+    node.visible = true;
+    node.alpha = 1;
+    node.rotation = 0;
+    node.scale.set(1);
+    this.addChild(node);
+    return node;
+  }
+
+  private release(key: string, node: Container) {
+    this.removeChild(node);
+    node.visible = false;
+    let list = this.pools.get(key);
+    if (!list) {
+      list = [];
+      this.pools.set(key, list);
+    }
+    if (list.length < 256) list.push(node);
+    else node.destroy({ children: true });
+  }
+
+  private makeShared(ctx: GraphicsContext): Graphics {
+    return new Graphics({ context: ctx });
+  }
+
+  private makeEmoji(emoji: string, size: number): Text {
+    const t = new Text({ text: emoji, style: { fontSize: size } });
+    t.anchor.set(0.5);
+    return t;
+  }
+
+  destroy(options?: Parameters<Container["destroy"]>[0]) {
+    for (const list of this.pools.values()) {
+      for (const node of list) node.destroy({ children: true });
+    }
+    this.pools.clear();
+    super.destroy(options);
+  }
 
   /** 화면 전체 플래시 — 궁극기 마무리 등 임팩트용 (좌표 0,0 ~ viewW,viewH) */
   flash(viewW: number, viewH: number, color = 0xffffff, peak = 0.7, ttl = 0.4) {
@@ -118,12 +231,12 @@ export class HitEffect extends Container {
       ? [baseColor, baseColor, ...DEFAULT_COLORS]
       : DEFAULT_COLORS;
     for (let i = 0; i < count; i++) {
-      const g = new Graphics();
+      const g = this.acquire("circle", () => this.makeShared(SHARED.circle));
       const r = 4 + Math.random() * 6;
-      g.circle(0, 0, r).fill(palette[i % palette.length]);
+      g.scale.set(r / 6);
+      g.tint = palette[i % palette.length];
       g.x = x;
       g.y = y;
-      this.addChild(g);
 
       const angle = Math.random() * Math.PI * 2;
       const speed = 200 + Math.random() * 250;
@@ -182,17 +295,14 @@ export class HitEffect extends Container {
     emoji: string,
     opts?: { size?: number; swing?: boolean }
   ) {
-    const t = new Text({
-      text: emoji,
-      style: { fontSize: opts?.size ?? 56 },
-    });
-    t.anchor.set(0.5);
+    const size = Math.round(opts?.size ?? 56);
+    const key = `emoji:${emoji}:${size}`;
+    const t = this.acquire(key, () => this.makeEmoji(emoji, size));
     t.x = x;
     t.y = y;
     t.scale.set(0.5);
     if (opts?.swing) t.rotation = -0.9;
-    this.addChild(t);
-    this.emojiPops.push({ t, life: 0, ttl: 0.32, swing: !!opts?.swing });
+    this.emojiPops.push({ t, key, life: 0, ttl: 0.32, swing: !!opts?.swing });
   }
 
   /** 궁극기 집중선 시작 — 화면 가장자리에서 중심을 향하는 쐐기 2세트 교차 깜빡임 */
@@ -319,12 +429,10 @@ export class HitEffect extends Container {
     const nx = vx / speed;
     const ny = vy / speed;
     for (let i = 0; i < 2; i++) {
-      const g = new Graphics();
-      g.roundRect(-6, -1.8, 12, 3.6, 1.8).fill(color);
-      g.roundRect(-3, -0.9, 6, 1.8, 0.9).fill({ color: 0xffffff, alpha: 0.85 });
+      const g = this.acquire("rico", () => this.makeShared(SHARED.rico));
+      g.tint = color;
       g.x = x;
       g.y = y;
-      this.addChild(g);
       // 반사 + 랜덤 산란 + 위쪽 편향
       const scatter = (Math.random() - 0.5) * 1.4;
       const ca = Math.cos(scatter);
@@ -334,6 +442,7 @@ export class HitEffect extends Container {
       const out = 260 + Math.random() * 220;
       this.debris.push({
         node: g,
+        key: "rico",
         vx: rx * out,
         vy: ry * out - 140,
         spin: (Math.random() - 0.5) * 30,
@@ -346,14 +455,14 @@ export class HitEffect extends Container {
 
   /** 투척 잔상 — 반투명 이모지가 그 자리에 잠깐 남았다 사라짐 */
   ghost(x: number, y: number, emoji: string, size: number, rotation: number) {
-    const t = new Text({ text: emoji, style: { fontSize: size } });
-    t.anchor.set(0.5);
+    const px = Math.round(size);
+    const key = `emoji:${emoji}:${px}`;
+    const t = this.acquire(key, () => this.makeEmoji(emoji, px));
     t.x = x;
     t.y = y;
     t.rotation = rotation;
     t.alpha = 0.45;
-    this.addChild(t);
-    this.ghosts.push({ t, life: 0, ttl: 0.16 });
+    this.ghosts.push({ t, key, life: 0, ttl: 0.16 });
   }
 
   /** 비비탄 히트마커 — X자 4선 */
@@ -389,17 +498,16 @@ export class HitEffect extends Container {
   /** 별 파편 — 뿅망치/해롱. 노란 별이 튀어오르며 회전 낙하 */
   starBurst(x: number, y: number, count = 6) {
     for (let i = 0; i < count; i++) {
-      const g = new Graphics();
+      const g = this.acquire("star", () => this.makeShared(SHARED.star));
       const r = 9 + Math.random() * 8;
-      g.poly(starPoints(r)).fill(0xffd166);
-      g.poly(starPoints(r * 0.45)).fill(0xfff3c4);
+      g.scale.set(r / 12);
       g.x = x;
       g.y = y;
-      this.addChild(g);
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
       const speed = 190 + Math.random() * 260;
       this.debris.push({
         node: g,
+        key: "star",
         vx: Math.cos(a) * speed,
         vy: Math.sin(a) * speed,
         spin: (Math.random() - 0.5) * 9,
@@ -413,18 +521,24 @@ export class HitEffect extends Container {
   /** 키보드 파편 — 자모/특수문자가 튀어나옴 */
   letterDebris(x: number, y: number, count = 7) {
     for (let i = 0; i < count; i++) {
-      const t = new Text({
-        text: DEBRIS_CHARS[Math.floor(Math.random() * DEBRIS_CHARS.length)],
-        style: { fontSize: 15 + Math.random() * 9, fontWeight: "900", fill: 0x37352f },
+      const ch = DEBRIS_CHARS[Math.floor(Math.random() * DEBRIS_CHARS.length)];
+      const size = DEBRIS_SIZES[Math.floor(Math.random() * DEBRIS_SIZES.length)];
+      const key = `ch:${ch}:${size}`;
+      const t = this.acquire(key, () => {
+        const node = new Text({
+          text: ch,
+          style: { fontSize: size, fontWeight: "900", fill: 0x37352f },
+        });
+        node.anchor.set(0.5);
+        return node;
       });
-      t.anchor.set(0.5);
       t.x = x;
       t.y = y;
-      this.addChild(t);
       const a = Math.random() * Math.PI * 2;
       const speed = 150 + Math.random() * 220;
       this.debris.push({
         node: t,
+        key,
         vx: Math.cos(a) * speed,
         vy: Math.sin(a) * speed - 190,
         spin: (Math.random() - 0.5) * 11,
@@ -438,16 +552,15 @@ export class HitEffect extends Container {
   /** 눈물 방울 — 얼굴 양옆으로 포물선 낙하 */
   tearDrops(x: number, y: number, count = 4) {
     for (let i = 0; i < count; i++) {
-      const g = new Graphics();
+      const g = this.acquire("tear", () => this.makeShared(SHARED.tear));
       const r = 4 + Math.random() * 3.5;
-      g.circle(0, 0, r).fill({ color: 0x7cc7ff, alpha: 0.95 });
-      g.circle(-r * 0.3, -r * 0.3, r * 0.35).fill({ color: 0xffffff, alpha: 0.8 });
+      g.scale.set(r / 5);
       g.x = x + (Math.random() - 0.5) * 14;
       g.y = y;
-      this.addChild(g);
       const side = i % 2 === 0 ? -1 : 1;
       this.debris.push({
         node: g,
+        key: "tear",
         vx: side * (70 + Math.random() * 130),
         vy: -160 - Math.random() * 130,
         spin: 0,
@@ -461,14 +574,14 @@ export class HitEffect extends Container {
   /** 진땀 방울 — 꼬집기 한계 근처 긴장 */
   sweatDrops(x: number, y: number, count = 3) {
     for (let i = 0; i < count; i++) {
-      const g = new Graphics();
+      const g = this.acquire("sweat", () => this.makeShared(SHARED.sweat));
       const r = 3 + Math.random() * 2.5;
-      g.circle(0, 0, r).fill({ color: 0xbfe6ff, alpha: 0.9 });
+      g.scale.set(r / 4);
       g.x = x + (Math.random() - 0.5) * 30;
       g.y = y + (Math.random() - 0.5) * 16;
-      this.addChild(g);
       this.debris.push({
         node: g,
+        key: "sweat",
         vx: (Math.random() - 0.5) * 120,
         vy: -220 - Math.random() * 90,
         spin: 0,
@@ -481,22 +594,37 @@ export class HitEffect extends Container {
 
   /** +N 점수 popup — 위로 떠오르며 페이드. */
   scorePop(x: number, y: number, points: number, color = 0xffd166) {
-    const wrap = new Container();
-    wrap.x = x;
-    wrap.y = y;
-    const t = new Text({
-      text: `+${points}`,
-      style: {
-        fontSize: 22,
-        fontWeight: "900",
-        fill: color,
-        stroke: { color: 0x000000, width: 4 },
-      },
-    });
-    t.anchor.set(0.5);
-    wrap.addChild(t);
-    this.addChild(wrap);
-    this.scorePops.push({ g: wrap, life: 0, ttl: 0.7, vy: -120 });
+    const label = `+${points}`;
+    let node: Container;
+    let key: string;
+    if (scoreFontReady()) {
+      key = "score:bitmap";
+      const t = this.acquire(key, () => {
+        const bt = new BitmapText({ text: label, style: { fontFamily: SCORE_FONT, fontSize: 22 } });
+        bt.anchor.set(0.5);
+        return bt;
+      });
+      t.text = label;
+      t.tint = color;
+      node = t;
+    } else {
+      // 비트맵 폰트 불가 환경(node 테스트 등) — 종전 Text 경로
+      key = "score:text";
+      const t = this.acquire(key, () => {
+        const tx = new Text({
+          text: label,
+          style: { fontSize: 22, fontWeight: "900", fill: 0xffffff, stroke: { color: 0x000000, width: 4 } },
+        });
+        tx.anchor.set(0.5);
+        return tx;
+      });
+      t.text = label;
+      t.tint = color;
+      node = t;
+    }
+    node.x = x;
+    node.y = y;
+    this.scorePops.push({ g: node, key, life: 0, ttl: 0.7, vy: -120 });
   }
 
   update(deltaSec: number) {
@@ -505,8 +633,7 @@ export class HitEffect extends Container {
       const p = this.particles[i];
       p.life += deltaSec;
       if (p.life >= p.ttl) {
-        this.removeChild(p.g);
-        p.g.destroy();
+        this.release("circle", p.g);
         this.particles.splice(i, 1);
         continue;
       }
@@ -536,8 +663,7 @@ export class HitEffect extends Container {
       p.life += deltaSec;
       const t = p.life / p.ttl;
       if (t >= 1) {
-        this.removeChild(p.g);
-        p.g.destroy({ children: true });
+        this.release(p.key, p.g);
         this.scorePops.splice(i, 1);
         continue;
       }
@@ -552,8 +678,7 @@ export class HitEffect extends Container {
       p.life += deltaSec;
       const t = p.life / p.ttl;
       if (t >= 1) {
-        this.removeChild(p.t);
-        p.t.destroy();
+        this.release(p.key, p.t);
         this.emojiPops.splice(i, 1);
         continue;
       }
@@ -599,8 +724,7 @@ export class HitEffect extends Container {
       gh.life += deltaSec;
       const t = gh.life / gh.ttl;
       if (t >= 1) {
-        this.removeChild(gh.t);
-        gh.t.destroy();
+        this.release(gh.key, gh.t);
         this.ghosts.splice(i, 1);
         continue;
       }
@@ -637,8 +761,7 @@ export class HitEffect extends Container {
       const d = this.debris[i];
       d.life += deltaSec;
       if (d.life >= d.ttl) {
-        this.removeChild(d.node);
-        d.node.destroy();
+        this.release(d.key, d.node);
         this.debris.splice(i, 1);
         continue;
       }
