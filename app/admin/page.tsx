@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
 import Link from "next/link";
@@ -91,8 +90,8 @@ export default async function AdminPage({
                 (유저 단위: 비회원=브라우저 익명 계정, 회원=계정 · 전환율은 이전 단계 대비)
               </span>
             </h2>
-            <UserCompositionTable
-              columns={[
+            <StageCards
+              cards={[
                 {
                   label: "방문",
                   total: composition.visit.total,
@@ -184,7 +183,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-type CompositionColumn = {
+type StageCard = {
   label: string;
   total: number;
   /** 방문·플레이만 회원 수 병기(가입 이후 단계는 전부 회원). */
@@ -192,59 +191,40 @@ type CompositionColumn = {
   first: number;
   /** 가입은 '다시'가 없다(계정당 1회). */
   again: number | null;
-  /** 이전 단계 대비 전환율(전체 행 기준). 첫 단계는 없음. */
+  /** 이전 단계 대비 전환율(전체 기준). 첫 단계는 없음. */
   rate: string | null;
 };
 
 const nf = (n: number) => n.toLocaleString();
 
-/** 유저 퍼널·구성 표 — 넓은 표는 overflow-x-auto 컨테이너 안에서만 스크롤(375px 무깨짐 규칙). */
-function UserCompositionTable({ columns }: { columns: CompositionColumn[] }) {
-  const rows: { label: string; cell: (c: CompositionColumn) => ReactNode; muted?: boolean }[] = [
-    {
-      label: "전체",
-      cell: (c) => (
-        <>
-          <b>{nf(c.total)}</b>
-          {c.members !== null && (
-            <span className="ml-1 text-[10px] font-normal text-zinc-400">회원 {nf(c.members)}</span>
-          )}
-        </>
-      ),
-    },
-    { label: "전환", cell: (c) => c.rate ?? "—", muted: true },
-    { label: "처음", cell: (c) => nf(c.first) },
-    { label: "다시", cell: (c) => (c.again === null ? "—" : nf(c.again)) },
-  ];
+/**
+ * 유저 퍼널·구성 카드 — 단계 하나 = 카드 하나(퍼널 순서: 왼→오, 375px 는 2열로 접혀 위→아래).
+ * 구 FunnelStep 토큰(라벨/값/주황 전환율) 그대로 + 회원 병기 + '처음 · 다시' 한 줄. 홀수 마지막 카드는 두 칸.
+ */
+function StageCards({ cards }: { cards: StageCard[] }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full whitespace-nowrap text-xs tabular-nums">
-        <thead>
-          <tr className="text-left text-[11px] text-zinc-400">
-            <th className="pb-1 pr-3 font-medium" />
-            {columns.map((c) => (
-              <th key={c.label} className="px-2 pb-1 text-right font-medium">
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.label} className="border-t border-foreground/10">
-              <td className="py-1 pr-3 text-zinc-500">{r.label}</td>
-              {columns.map((c) => (
-                <td
-                  key={c.label}
-                  className={`px-2 py-1 text-right ${r.muted ? "text-amber-600" : ""}`}
-                >
-                  {r.cell(c)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
+      {cards.map((c, i) => (
+        <div
+          key={c.label}
+          className={`rounded-lg border border-foreground/10 ui-surface p-2 ${
+            i === cards.length - 1 && cards.length % 2 === 1 ? "col-span-2 sm:col-span-1" : ""
+          }`}
+        >
+          <p className="text-[10px] text-zinc-500">{c.label}</p>
+          <p className="text-base font-bold tabular-nums">
+            {nf(c.total)}
+            {c.members !== null && (
+              <span className="ml-1 text-[10px] font-normal text-zinc-400">회원 {nf(c.members)}</span>
+            )}
+          </p>
+          <p className="text-[10px] text-amber-600">{c.rate ? `이전 대비 ${c.rate}` : "\u00a0"}</p>
+          <p className="text-[10px] tabular-nums text-zinc-400">
+            처음 {nf(c.first)}
+            {c.again !== null && ` · 다시 ${nf(c.again)}`}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }
