@@ -937,6 +937,7 @@ v1.12 (2026-09-02, 게임 타격감 대규모 개편 — 젤리 물리·히트�
 - **궁극기 리워크**: 발동 즉시 난타·예산(42타) 공유 연타(탭한 자리에 즉시, 점수 분포 불변)·진행도² 가속·집중선·진행도별 붉은 물듦·"반려" 도장 피니시+해롱. 재시작 시 낙서·데칼·해롱 초기화(기존 버그).
 - **사운드**: 합성 프리셋(springy/squeak/snap/twinkle/crack/knock) + 꼬집기 텐션 루프 + 비굴 비명 3티어(합성 — 실녹음 교체 슬롯).
 - **성능**: 체감 렉 원인=고빈도 무기 히트스톱 누적(실측, 프레임 p95 18~20ms 정상) → 재배치. HitEffect 공유 GraphicsContext+노드 풀, 점수 팝 BitmapText, 데칼 그라데이션 1회, 노이즈 버퍼 캐시, 궁극기 사운드 12/s 상한, 이모지·글리프 사전 래스터·풀 사전 채움.
+- **DB 무기 allowlist(핫픽스 Migration 0115)**: 앱 레이어만 바꾸면 안 되는 곳 2곳 — `bp_submit_score_with_review_core` 의 대표 무기 프로토콜 검사(`p_weapon not in (...)` → 누락 시 `invalid_score_protocol`=클라 `invalid_submission`, 2026-09-02 실측)와 `telemetry_rollup_rows_for_day` 의 `c_weapon_order`(동률 tie-break). **무기 추가/은퇴 시 이 두 함수 갱신이 동반 필수.** 'paper' 는 구 번들 관용으로 유지.
 - 검증: node 1197/1197 · typecheck · 로컬 LAN(https, 자체서명 — http LAN 은 비보안 컨텍스트라 `crypto.subtle` 부재로 세션 부트스트랩 실패) + Vercel preview 실브라우저·프레임 프로파일. `npm audit fix`(browserslist 고위험 어드바이저리) 동반.
 
 v1.11 (2026-08-31, 죽은 코드 `lib/fal.ts` 제거; 마이그레이션 없음):
