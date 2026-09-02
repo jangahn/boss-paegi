@@ -105,6 +105,17 @@ const THROW_MIN_FLY_SPEED = 950;
 const THROW_ASSIST_FULL_SPEED = 750;
 /** 투척물 중력 상쇄 비율 — 포물선을 눕혀 더 멀리 날아가게 (1=무중력) */
 const THROW_GRAVITY_CANCEL = 0.72;
+/** 0xRRGGBB 두 색을 t(0..1)로 보간 — 궁극기 진행도별 붉은 물듦 */
+function lerpColor(a: number, b: number, t: number): number {
+  const k = Math.max(0, Math.min(1, t));
+  const ch = (shift: number) => {
+    const x = (a >> shift) & 0xff;
+    const y = (b >> shift) & 0xff;
+    return Math.round(x + (y - x) * k) & 0xff;
+  };
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
 /** 꼬집기 흔들기 — 당긴 채 손가락이 이 거리(px)만큼 움직일 때마다 피격(볼따구 쥐고 괴롭히기) */
 const PINCH_SHAKE_PX = 55;
 /** 흔들기 피격 최소 간격(ms) — 연타 무기와 비슷한 상한(≈10/s) */
@@ -504,6 +515,8 @@ export class PlayScene extends Container {
       freq: 11,
       damp: 8,
     });
+    // 난타가 쌓일수록 연한 분홍 → 진한 붉음으로 물듦 (타 간격보다 길게 유지해 끊기지 않음)
+    this.doll.hitFlash(lerpColor(0xffc4c4, 0xff5252, progress), 0.16);
     this.fx.burst(x, y, w.particleCount * 2, w.color);
     this.fx.shockwave(x, y, 18, 120 + progress * 60, w.color);
     if (mashed || Math.random() < 0.55) {
@@ -546,6 +559,7 @@ export class PlayScene extends Container {
     this.fx.stampPop(this.viewW / 2, this.viewH * 0.36, "반려");
     this.doll.triggerHit(3);
     this.doll.bounce(1.8);
+    this.doll.hitFlash(0xff3d3d, 0.32);
     this.dazeFx.start(2.4);
     this.doll.setDazed(2.4);
     this.addHitStop(0.09);
@@ -780,6 +794,7 @@ export class PlayScene extends Container {
       if (ratio > 0.12) {
         const w = this.weapon;
         this.doll.releasePinch();
+        this.doll.hitFlash(0xff7a7a, 0.07 + 0.07 * ratio);
         stopPinchTension(true, ratio);
         const local = this.toLocal(e.global);
         const points = Math.round(w.strength + ratio * PINCH_STRETCH_BONUS);
@@ -909,6 +924,7 @@ export class PlayScene extends Container {
     const { x, y } = this.pinchPos;
     playHitSound("squeak", 0.45 + ratio * 0.75);
     this.doll.triggerHit(0.6 + ratio * 0.6);
+    this.doll.hitFlash(0xffa3a3, 0.06);
     this.doll.tremble(0.2);
     this.fx.burst(x, y, Math.round(2 + 4 * ratio), w.color);
     if (ratio > 0.55 && Math.random() < 0.5) {
@@ -970,9 +986,10 @@ export class PlayScene extends Container {
       this.registerHitPulse(2);
       this.maybeYelp(0.5, 1);
     } else {
-      // 주먹 — 묵직: 방사선 임팩트 + 타격 방향 스쿼시 + 혹
+      // 주먹 — 묵직: 방사선 임팩트 + 타격 방향 스쿼시 + 붉은 플래시 + 혹
       this.doll.triggerHit(w.shake);
       this.doll.hitSquash(dx, dy, 1.0);
+      this.doll.hitFlash(0xff8a8a, 0.07);
       this.fx.impactLines(x, y, 0xffffff, 8);
       playHitSound(w.sound);
       this.addHitStop(0.028);
@@ -1256,9 +1273,10 @@ export class PlayScene extends Container {
       this.doll.triggerHit(w.shake * factor);
       playHitSound("rustle", 0.8 + factor * 0.4);
     } else {
-      // 책/키보드 — 둔탁: 충돌 방향 스쿼시 + 히트스톱 + 파편 시그니처
+      // 책/키보드 — 둔탁: 충돌 방향 스쿼시 + 붉은 플래시(충돌 세기 비례) + 히트스톱 + 파편 시그니처
       this.doll.triggerHit(w.shake * factor * 0.7);
       this.doll.hitSquash(projBody.velocity.x, projBody.velocity.y, factor);
+      this.doll.hitFlash(0xff6e6e, 0.08 + 0.04 * Math.min(1, factor / THROW_FACTOR_MAX));
       this.fx.burst(hx, hy, Math.round(w.particleCount * 2 * factor), w.color);
       this.fx.shockwave(hx, hy, 30, 110 + 50 * factor, w.color);
       this.addShake(3 + 3 * factor);
