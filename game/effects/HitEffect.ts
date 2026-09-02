@@ -168,11 +168,17 @@ export class HitEffect extends Container {
   /** 궁극기 집중선 — 두 프레임을 번갈아 깜빡이는 만화 스피드라인 */
   private speedLineFrames: Graphics[] | null = null;
   private speedLineTick = 0;
-  private stamps: { node: Container; life: number; ttl: number }[] = [];
+  private stamps: { node: Container; key: string; life: number; ttl: number }[] = [];
   /** 투척물 잔상 — 비행 중 뒤에 남는 반투명 이모지 */
   private ghosts: { t: Text; key: string; life: number; ttl: number }[] = [];
   /** 노드 풀 — 키별 free list. 파티클·이모지·글자·점수 팝을 파괴 대신 반환해 재사용 */
   private pools = new Map<string, Container[]>();
+
+  constructor() {
+    super();
+    // 워밍업 — 첫 점수 팝에서 폰트 설치·글리프 생성 비용(콜드 30~40ms)이 프레임에 얹히지 않게
+    scoreFontReady();
+  }
 
   /** 풀에서 꺼내거나 생성해 자식으로 부착. 공통 transform 은 초기화(anchor 등 고정 속성은 유지). */
   private acquire<T extends Container>(key: string, make: () => T): T {
@@ -345,31 +351,34 @@ export class HitEffect extends Container {
 
   /** 도장 쾅 — 궁극기 피니시 "반려" 스탬프 (도시에 인사기록부 톤) */
   stampPop(x: number, y: number, text: string) {
-    const wrap = new Container();
-    const t = new Text({
-      text,
-      style: {
-        fontSize: 72,
-        fontWeight: "900",
-        fill: 0xd72638,
-        letterSpacing: 6,
-      },
+    const key = `stamp:${text}`;
+    const wrap = this.acquire(key, () => {
+      const node = new Container();
+      const t = new Text({
+        text,
+        style: {
+          fontSize: 72,
+          fontWeight: "900",
+          fill: 0xd72638,
+          letterSpacing: 6,
+        },
+      });
+      t.anchor.set(0.5);
+      const pad = 22;
+      const frame = new Graphics();
+      frame
+        .roundRect(-t.width / 2 - pad, -t.height / 2 - pad * 0.55, t.width + pad * 2, t.height + pad * 1.1, 10)
+        .stroke({ color: 0xd72638, width: 7, alpha: 0.95 });
+      node.addChild(frame);
+      node.addChild(t);
+      return node;
     });
-    t.anchor.set(0.5);
-    const pad = 22;
-    const frame = new Graphics();
-    frame
-      .roundRect(-t.width / 2 - pad, -t.height / 2 - pad * 0.55, t.width + pad * 2, t.height + pad * 1.1, 10)
-      .stroke({ color: 0xd72638, width: 7, alpha: 0.95 });
-    wrap.addChild(frame);
-    wrap.addChild(t);
     wrap.rotation = -0.18;
     wrap.x = x;
     wrap.y = y;
     wrap.scale.set(2.2);
     wrap.alpha = 0;
-    this.addChild(wrap);
-    this.stamps.push({ node: wrap, life: 0, ttl: 1.25 });
+    this.stamps.push({ node: wrap, key, life: 0, ttl: 1.25 });
   }
 
   /** 타격 방사선 — 만화식 임팩트 라인이 바깥으로 확 퍼지며 사라짐 */
@@ -737,8 +746,7 @@ export class HitEffect extends Container {
       st.life += deltaSec;
       const t = st.life / st.ttl;
       if (t >= 1) {
-        this.removeChild(st.node);
-        st.node.destroy({ children: true });
+        this.release(st.key, st.node);
         this.stamps.splice(i, 1);
         continue;
       }
