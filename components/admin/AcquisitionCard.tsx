@@ -47,7 +47,7 @@ export function AcquisitionCard({ stats }: { stats: AcquisitionStats }) {
       {/* 방문 유입 현황(current) */}
       <div className="rounded-xl border border-foreground/10 ui-surface p-3">
         <p className="mb-2 text-[11px] font-semibold text-zinc-400">
-          방문 유입 현황 <span className="font-normal">— 현재 진입 기준(채널 합계: {currentByKind.map((k) => `${KIND_KO[k.key] ?? k.key} ${k.value}`).join(" · ") || "없음"})</span>
+          방문 출처 <span className="font-normal">— 탭 세션 단위 · 현재 진입(채널 합계: {currentByKind.map((k) => `${KIND_KO[k.key] ?? k.key} ${k.value}`).join(" · ") || "없음"})</span>
         </p>
         {currentBySource.length === 0 ? (
           <p className="text-[11px] text-zinc-400">데이터 없음</p>
@@ -100,7 +100,7 @@ export function AcquisitionCard({ stats }: { stats: AcquisitionStats }) {
       {/* source별 전환(first-touch) */}
       <div className="rounded-xl border border-foreground/10 ui-surface p-3">
         <p className="mb-2 text-[11px] font-semibold text-zinc-400">
-          유입 → 전환 <span className="font-normal">— first-touch 귀속 · 방문 대비 플레이/가입</span>
+          유입 → 전환 <span className="font-normal">— first-touch 귀속 · 방문(탭 세션) 대비 플레이=첫 점수 제출 / 가입=신규 회원</span>
         </p>
         {conversion.length === 0 ? (
           <p className="text-[11px] text-zinc-400">데이터 없음</p>

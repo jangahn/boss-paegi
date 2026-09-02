@@ -5,6 +5,7 @@ import { readCurrentAuthSessionState } from "@/lib/auth-session-live";
 import { PUBLIC_ENV } from "@/lib/env";
 import { isTrackableUserAgent, sanitizeTrackPayload, type MemberState } from "@/lib/analytics/core";
 import { recordTrackEvent, memberStateFromUser } from "@/lib/analytics/server";
+import { recordUserVisitDay } from "@/lib/user-visit-days";
 import {
   readTrackJsonRequest,
 } from "@/lib/analytics/request-boundary";
@@ -14,6 +15,7 @@ export const runtime = "nodejs";
 
 // 공유·유입 분석 수집 — **공개**(anon 허용·requireAdmin/Member 아님). 성공/드롭 모두 204 + no-store.
 // 무PII: 식별자/원본 URL/query/IP/UA 미저장. 클라 값 불신 — sanitize(core) + member_state 서버 판정.
+// v1.17: 방문(visit)은 별도로 user_visit_days 에 세션 uid·KST 일자만 남긴다(대시보드 유저 퍼널·구성 — analytics 행과 무결합).
 const HEADERS = { "Cache-Control": "no-store" } as const;
 function noContent() {
   return new NextResponse(null, { status: 204, headers: HEADERS });
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
 
   // member_state — Supabase auth session 기준(member_accounts 조회 안 함, 도메인 격리).
   let memberState: MemberState = "anon";
+  let visitUserId: string | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -69,6 +72,7 @@ export async function POST(req: NextRequest) {
       );
       if (sessionState.kind === "live") {
         memberState = memberStateFromUser(user);
+        visitUserId = user.id;
       }
     }
   } catch {
@@ -81,5 +85,7 @@ export async function POST(req: NextRequest) {
   const actorKey = publicWriteNetworkActorKey(req.headers);
   if (!actorKey) return noContent();
   await recordTrackEvent(row, memberState, actorKey); // bounded best-effort
+  // 상호작용·봇 게이트를 지난 방문만 여기 도달 — 유저 단위 방문일(PK 로 1행/일, 멱등). 세션 없으면 기록 없음.
+  if (row.kind === "visit" && visitUserId) await recordUserVisitDay(visitUserId);
   return noContent();
 }

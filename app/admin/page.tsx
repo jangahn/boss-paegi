@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
 import Link from "next/link";
@@ -6,6 +7,7 @@ import {
   getOrderSummaryWindow,
   getStalePending,
   getRefundWarnings,
+  getUserCompositionWindow,
 } from "@/lib/admin-data";
 import { parseStatWindow, statWindowLabel } from "@/lib/admin-period";
 import { PeriodTabs } from "@/components/admin/PeriodTabs";
@@ -32,8 +34,9 @@ export default async function AdminPage({
   const sp = await searchParams;
   const window = parseStatWindow(sp.days);
 
-  const [funnel, summary, stale, refundWarnings] = await Promise.all([
+  const [funnel, composition, summary, stale, refundWarnings] = await Promise.all([
     getAdminFunnelWindow(window),
+    getUserCompositionWindow(window),
     getOrderSummaryWindow(window),
     getStalePending(),
     getRefundWarnings(),
@@ -49,8 +52,8 @@ export default async function AdminPage({
           <PeriodTabs basePath="/admin" current={window} />
         </div>
         <p className="-mt-4 text-xs text-zinc-400">
-          {statWindowLabel(window)} · KST 달력일 기준. 오늘은 실시간, 어제까지의 퍼널은 일 단위 확정
-          집계예요.
+          {statWindowLabel(window)} · KST 달력일 기준. 오늘은 실시간, 어제까지의 &lsquo;처음&rsquo; 행은 일 단위
+          확정 집계예요(전체·다시 행은 기간 내 유저 수 직조회).
         </p>
 
         <DashboardWarnings
@@ -79,25 +82,67 @@ export default async function AdminPage({
             </div>
           </section>
 
-          {/* 가입·구매 퍼널 — 윈도우 코호트(그 기간에 처음 달성한 수) */}
+          {/* 유저 퍼널·구성(v1.17) — 열=단계, 행=전체/전환/처음/다시. 처음=일별 롤업+오늘 라이브(0112 단일 소스,
+              first_visit 추가), 전체·다시·회원=기간 내 distinct raw RPC(0117). 방문=상호작용·봇 게이트 통과 방문(uid 단위). */}
           <section>
             <h2 className="mb-2 text-sm font-bold text-zinc-500">
-              가입·구매 퍼널{" "}
-              <span className="font-normal">(기간 내 최초 달성 코호트)</span>
+              유저 퍼널·구성{" "}
+              <span className="font-normal">
+                (유저 단위: 비회원=브라우저 익명 계정, 회원=계정 · 전환율은 이전 단계 대비)
+              </span>
             </h2>
-            <div className="grid grid-cols-5 gap-1 text-center">
-              <FunnelStep label="방문(익명)" value={funnel.anon_users} />
-              <FunnelStep label="플레이" value={funnel.players} rate={pct(funnel.players, funnel.anon_users)} />
-              <FunnelStep label="가입" value={funnel.members} rate={pct(funnel.members, funnel.players)} />
-              <FunnelStep label="첫 생성" value={funnel.first_gen} rate={pct(funnel.first_gen, funnel.members)} />
-              <FunnelStep label="첫 구매" value={funnel.first_purchase} rate={pct(funnel.first_purchase, funnel.members)} />
-            </div>
-            {window === "all" && (
-              <p className="mt-1 text-[11px] text-zinc-400">
-                일별 동결(2026-08-29 도입) 이전 과거는 현재 잔존 데이터 기준 근사예요 — 정리된 익명
-                계정·탈퇴 회원은 소급되지 않아요.
-              </p>
-            )}
+            <UserCompositionTable
+              columns={[
+                {
+                  label: "방문",
+                  total: composition.visit.total,
+                  members: composition.visit.members,
+                  first: funnel.first_visit,
+                  again: composition.visit.again,
+                  rate: null,
+                },
+                {
+                  label: "플레이(제출)",
+                  total: composition.play.total,
+                  members: composition.play.members,
+                  first: funnel.players,
+                  again: composition.play.again,
+                  rate: pct(composition.play.total, composition.visit.total),
+                },
+                {
+                  label: "가입",
+                  total: funnel.members,
+                  members: null,
+                  first: funnel.members,
+                  again: null,
+                  rate: pct(funnel.members, composition.play.total),
+                },
+                {
+                  label: "캐릭터 생성",
+                  total: composition.generation.total,
+                  members: null,
+                  first: funnel.first_gen,
+                  again: composition.generation.again,
+                  rate: pct(composition.generation.total, funnel.members),
+                },
+                {
+                  label: "결제",
+                  total: composition.purchase.total,
+                  members: null,
+                  first: funnel.first_purchase,
+                  again: composition.purchase.again,
+                  rate: pct(composition.purchase.total, composition.generation.total),
+                },
+              ]}
+            />
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+              방문 = 첫 터치·스크롤 등 상호작용이 있었던 방문(봇 제외, 2026-09-03 수집 시작). 플레이 = 점수
+              제출(진입→제출은 게임 분석). 처음 = 그 행동을 기간 안에 처음 함. 다시 = 전에 한 적 있는 상태로
+              기간 안에 또 함. 기간 안에서 처음 하고 또 한 유저는 둘 다에 세요(오늘 탭은 겹침 없음). 가입 시
+              익명 시절 기록은 회원 계정에 합쳐요.
+              {window === "all" &&
+                " 전체 탭에서는 처음 = 전체이고, 일별 동결(2026-08-29 도입) 이전 과거는 현재 잔존 데이터 기준 근사예요 — 정리된 익명 계정·탈퇴 회원은 소급되지 않아요."}
+            </p>
           </section>
 
           {/* 오래된 결제요청 (확인 필요) + 운영 액션 */}
@@ -139,12 +184,67 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function FunnelStep({ label, value, rate }: { label: string; value: number; rate?: string }) {
+type CompositionColumn = {
+  label: string;
+  total: number;
+  /** 방문·플레이만 회원 수 병기(가입 이후 단계는 전부 회원). */
+  members: number | null;
+  first: number;
+  /** 가입은 '다시'가 없다(계정당 1회). */
+  again: number | null;
+  /** 이전 단계 대비 전환율(전체 행 기준). 첫 단계는 없음. */
+  rate: string | null;
+};
+
+const nf = (n: number) => n.toLocaleString();
+
+/** 유저 퍼널·구성 표 — 넓은 표는 overflow-x-auto 컨테이너 안에서만 스크롤(375px 무깨짐 규칙). */
+function UserCompositionTable({ columns }: { columns: CompositionColumn[] }) {
+  const rows: { label: string; cell: (c: CompositionColumn) => ReactNode; muted?: boolean }[] = [
+    {
+      label: "전체",
+      cell: (c) => (
+        <>
+          <b>{nf(c.total)}</b>
+          {c.members !== null && (
+            <span className="ml-1 text-[10px] font-normal text-zinc-400">회원 {nf(c.members)}</span>
+          )}
+        </>
+      ),
+    },
+    { label: "전환", cell: (c) => c.rate ?? "—", muted: true },
+    { label: "처음", cell: (c) => nf(c.first) },
+    { label: "다시", cell: (c) => (c.again === null ? "—" : nf(c.again)) },
+  ];
   return (
-    <div className="rounded-lg border border-foreground/10 ui-surface p-2">
-      <p className="text-[10px] text-zinc-500">{label}</p>
-      <p className="text-base font-bold tabular-nums">{value.toLocaleString()}</p>
-      {rate && <p className="text-[10px] text-amber-600">{rate}</p>}
+    <div className="overflow-x-auto">
+      <table className="w-full whitespace-nowrap text-xs tabular-nums">
+        <thead>
+          <tr className="text-left text-[11px] text-zinc-400">
+            <th className="pb-1 pr-3 font-medium" />
+            {columns.map((c) => (
+              <th key={c.label} className="px-2 pb-1 text-right font-medium">
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-t border-foreground/10">
+              <td className="py-1 pr-3 text-zinc-500">{r.label}</td>
+              {columns.map((c) => (
+                <td
+                  key={c.label}
+                  className={`px-2 py-1 text-right ${r.muted ? "text-amber-600" : ""}`}
+                >
+                  {r.cell(c)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -7,7 +7,15 @@ export type AdminFunnel = {
   members: number;
   first_gen: number;
   first_purchase: number;
+  /** v1.17 처음 방문(그날 방문했고 첫 관측일이 그날인 유저, 0117). */
+  first_visit: number;
 };
+
+/** v1.17 유저 퍼널·구성 — 기간 내 distinct(전체·다시·회원) raw 윈도우(admin_user_composition_window). '처음'은 AdminFunnel(롤업). */
+export const USER_COMPOSITION_STAGES = ["visit", "play", "generation", "purchase"] as const;
+export type UserCompositionStage = (typeof USER_COMPOSITION_STAGES)[number];
+export type UserCompositionCell = { total: number; again: number; members: number };
+export type UserComposition = Record<UserCompositionStage, UserCompositionCell>;
 
 /** 선택 윈도우(오늘/7/30/전체) 하나의 매출·주문 요약 — v1.06 기간 윈도우 규약(KST 달력일). */
 export type OrderSummaryWindow = {

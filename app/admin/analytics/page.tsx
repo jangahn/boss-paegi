@@ -110,22 +110,19 @@ export default async function AnalyticsPage({
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-bold text-zinc-500">플레이내 펀널 · 이탈</h2>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">플레이내 퍼널 · 이탈</h2>
           <FunnelView funnel={funnel} />
         </section>
 
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">
-            회원 활동 <span className="font-normal text-zinc-400">(코호트·재방문 — 익명은 ephemeral 이라 회원 한정)</span>
+            회원 플레이 빈도 <span className="font-normal text-zinc-400">(회원 한정 · 세션 = 게임 한 판 · 익명 세션은 30일 뒤 삭제)</span>
           </h2>
           <div className="grid grid-cols-3 gap-2">
             <Stat label="회원 세션" value={member.sessions.toLocaleString()} />
-            <Stat label="활동 회원" value={member.members.toLocaleString()} />
-            <Stat label="재방문(2회+)" value={member.returning.toLocaleString()} />
+            <Stat label="플레이 회원" value={member.members.toLocaleString()} />
+            <Stat label="2세션+ 회원" value={member.twoPlus.toLocaleString()} />
           </div>
-          <p className="mt-1 text-[10px] text-zinc-400">
-            재방문은 기간을 하루 단위로 쪼갤 수 없어(요일 걸친 2회 방문) 잔존 회원 세션 raw 기준이에요.
-          </p>
         </section>
 
         <Link href="/admin/analytics/sessions" className="text-sm text-sky-600 underline">

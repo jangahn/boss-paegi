@@ -218,12 +218,12 @@ select is(
   'acquisition rollup rows and live-day output are identical sets'
 );
 
--- ── 퍼널 코호트: 항상 5단계, 롤업과 라이브 동일 ────────────────────────────
+-- ── 퍼널 코호트: 항상 6단계(0117 first_visit 포함), 롤업과 라이브 동일 ─────────
 
 select results_eq(
   $$select step from public.admin_funnel_rows_for_day((now() at time zone 'Asia/Seoul')::date) order by step$$,
-  $$values ('anon_users'), ('first_gen'), ('first_purchase'), ('members'), ('players')$$,
-  'the funnel live day always yields exactly the five cohort steps'
+  $$values ('anon_users'), ('first_gen'), ('first_purchase'), ('first_visit'), ('members'), ('players')$$,
+  'the funnel live day always yields exactly the six cohort steps'
 );
 
 select is(

@@ -6,13 +6,15 @@ import { kstDate } from "@/lib/admin-analytics";
 import type { StatWindow } from "@/lib/admin-period";
 import type {
   AdminFunnel,
+  UserComposition,
+  UserCompositionStage,
   OrderSummaryWindow,
   AdminOrder,
   RefundAttemptRow,
   RefundRequestRow,
   ReconIssueRow,
 } from "@/lib/admin-types";
-import { OPEN_ATTEMPT_STATES, ACTIVE_REQUEST_STATES } from "@/lib/admin-types";
+import { OPEN_ATTEMPT_STATES, ACTIVE_REQUEST_STATES, USER_COMPOSITION_STAGES } from "@/lib/admin-types";
 import {
   readSupabaseRowsPaginated,
   requireSupabaseData,
@@ -30,6 +32,8 @@ import {
  * 매출·주문 = "현재 진실"(환불·대사 소급 반영) → orders 직조회 윈도우드 RPC.
  * 퍼널 = "역사적 사실"(그날 처음 달성) → 하이브리드: 오늘 = admin_funnel_rows_for_day 라이브,
  * 어제까지 = admin_funnel_rollups(day_kst < 오늘)만 — 0112 단일 소스 규약.
+ * v1.17 유저 퍼널·구성: '처음' 행은 위 롤업(first_visit 추가), 전체·다시·회원 행은 기간 내 distinct 라
+ * raw RPC admin_user_composition_window(0117) — v1.06 규약의 예외 부류(재방문·로또젠 유저 구성과 동일).
  */
 
 export type { AdminFunnel, OrderSummaryWindow, AdminOrder };
@@ -113,7 +117,7 @@ function rawOrders(operation: string, value: unknown): RawOrderRow[] {
   return rows;
 }
 
-const FUNNEL_STEPS = ["anon_users", "players", "members", "first_gen", "first_purchase"] as const;
+const FUNNEL_STEPS = ["anon_users", "players", "members", "first_gen", "first_purchase", "first_visit"] as const;
 
 type FunnelStepRow = { step: string; value: number | string };
 const FUNNEL_STEP_SCHEMA = { step: "string", value: "nonnegativeNumeric" } as const;
@@ -176,7 +180,51 @@ export async function getAdminFunnelWindow(window: StatWindow): Promise<AdminFun
     members: sums.get("members") ?? 0,
     first_gen: sums.get("first_gen") ?? 0,
     first_purchase: sums.get("first_purchase") ?? 0,
+    first_visit: sums.get("first_visit") ?? 0,
   };
+}
+
+type CompositionRow = { stage: string; total: number | string; again: number | string; members: number | string };
+const COMPOSITION_ROW_SCHEMA = {
+  stage: "string",
+  total: "nonnegativeNumeric",
+  again: "nonnegativeNumeric",
+  members: "nonnegativeNumeric",
+} as const;
+
+/**
+ * 유저 퍼널·구성의 전체·다시·회원(v1.17) — 기간 내 distinct 유저(윈도우 간 일단위 분해 불가 → raw RPC).
+ * 방문 = user_visit_days(상호작용·봇 게이트 통과 방문, 익명→회원 이관 원장으로 대표 계정에 접음),
+ * 플레이 = scores, 캐릭터 생성 = dolls, 결제 = paid·not is_test 주문. 가입은 롤업 members 가 전체=처음.
+ */
+export async function getUserCompositionWindow(window: StatWindow): Promise<UserComposition> {
+  const admin = createAdminClient();
+  const data = await requireSupabaseRows(
+    "admin.dashboard.user_composition",
+    () => admin.rpc("admin_user_composition_window", { p_days: window === "all" ? null : window }),
+  );
+  const rows = validateAdminRows<CompositionRow>(
+    "admin.dashboard.user_composition",
+    data,
+    COMPOSITION_ROW_SCHEMA,
+  );
+  const out = Object.fromEntries(
+    USER_COMPOSITION_STAGES.map((s) => [s, { total: 0, again: 0, members: 0 }]),
+  ) as UserComposition;
+  for (const r of rows) {
+    if (!USER_COMPOSITION_STAGES.includes(r.stage as UserCompositionStage)) {
+      throw new SupabaseOperationError(
+        "admin.dashboard.user_composition",
+        new Error(`unknown_composition_stage:${r.stage}`),
+      );
+    }
+    out[r.stage as UserCompositionStage] = {
+      total: Number(r.total),
+      again: Number(r.again),
+      members: Number(r.members),
+    };
+  }
+  return out;
 }
 
 /** 매출·주문(선택 윈도우 직조회 — 롤업 없음: 환불·대사의 소급 교정이 즉시 반영돼야 하는 "현재 진실"). */

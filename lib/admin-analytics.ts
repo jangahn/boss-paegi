@@ -24,7 +24,7 @@ import { validateAdminRows } from "@/lib/admin-read-contract";
  * 어제까지 = telemetry_rollups(`day_kst < 오늘`만 — 이중계산 차단) 윈도우 합산(JS).
  * 집계 의미(메인무기 tie-break·throughput 게이트·렉 경계 등)의 단일 소스는 0110 SQL 함수다.
  * 중앙값 지표는 일별 히스토그램(sps 폭1·cap3000 / perf 폭1ms·cap200, 0110 불변 상수) 근사 복원.
- * 예외(raw 직조회 유지): 재방문(윈도우 간 회원 distinct — 일단위 분해 불가)·최악 top5(개별 행)·세션 인스펙터.
+ * 예외(raw 직조회 유지): 회원 플레이 빈도(윈도우 간 회원 distinct — 일단위 분해 불가)·최악 top5(개별 행)·세션 인스펙터.
  */
 
 export type DimStat = { key: string; sessions: number; hits: number; score: number; attempts: number; switches: number };
@@ -227,12 +227,13 @@ export async function getFunnel(window: StatWindow): Promise<Funnel> {
 }
 
 /**
- * 회원 활동(코호트·재방문 — 익명 ephemeral 이라 회원 owner_id 한정).
- * 하이브리드 예외 — "윈도우 내 2회+ 회원" 은 일단위로 분해 불가(월·수 1판씩인 회원은 어느 하루에도
+ * 회원 플레이 빈도(세션 = 게임 한 판 — 익명 세션은 30일 삭제라 회원 owner_id 한정). '재방문'이라 부르지 않는다:
+ * 다른 날 다시 온 유저는 대시보드 유저 퍼널·구성의 '다시'(v1.17)가 답하고, 여기는 기간 안 세션 수 분포다.
+ * 하이브리드 예외 — "윈도우 내 2세션+ 회원" 은 일단위로 분해 불가(월·수 1판씩인 회원은 어느 하루에도
  * 안 잡힘)해서 raw 직조회를 유지한다. 회원 세션은 30일 prune 대상이 아니라 '전체'도 조회되지만,
  * 30MB 예산 초과 삭제(0028)가 오래된 세션부터 지울 수 있어 장기적으론 best-effort.
  */
-export async function getMemberActivity(window: StatWindow): Promise<{ sessions: number; members: number; returning: number }> {
+export async function getMemberActivity(window: StatWindow): Promise<{ sessions: number; members: number; twoPlus: number }> {
   const admin = createAdminClient();
   const cutoffIso = window === "all" ? null : kstDayStartIso(window - 1); // 롤업 day_kst 경계와 정합
   const raw = await readSupabaseRowsPaginated(
@@ -258,8 +259,8 @@ export async function getMemberActivity(window: StatWindow): Promise<{ sessions:
   );
   const counts = new Map<string, number>();
   for (const r of data) counts.set(r.owner_id as string, (counts.get(r.owner_id as string) ?? 0) + 1);
-  const returning = [...counts.values()].filter((n) => n >= 2).length;
-  return { sessions: data.length, members: counts.size, returning };
+  const twoPlus = [...counts.values()].filter((n) => n >= 2).length;
+  return { sessions: data.length, members: counts.size, twoPlus };
 }
 
 /** 최근 세션 목록(인스펙터 진입). */
