@@ -122,30 +122,40 @@ export default async function AdminPage({
               유저 구성{" "}
               <span className="font-normal">(처음 = 기간 안에 처음 함 · 다시 = 전에 한 적 있는 상태로 기간 안에 또 함)</span>
             </h2>
-            <div className="space-y-2">
-              {(
-                [
-                  { label: "방문", total: composition.visit.total, first: funnel.first_visit, again: composition.visit.again },
-                  { label: "플레이(제출)", total: composition.play.total, first: funnel.players, again: composition.play.again },
-                  { label: "가입", total: funnel.members, first: funnel.members, again: null },
-                  { label: "캐릭터 생성", total: composition.generation.total, first: funnel.first_gen, again: composition.generation.again },
-                  { label: "결제", total: composition.purchase.total, first: funnel.first_purchase, again: composition.purchase.again },
-                ] as { label: string; total: number; first: number; again: number | null }[]
-              ).map((r) => (
-                <div key={r.label} className="grid max-w-md grid-cols-[5.5rem_1fr_1fr] gap-2">
-                  <p className="self-center text-xs text-zinc-500">{r.label}</p>
-                  <Stat label="처음" value={r.first.toLocaleString()} />
-                  <Stat
-                    label="다시"
-                    value={r.again === null ? "—" : r.again.toLocaleString()}
-                    sub={r.again !== null && r.total > 0 ? `전체의 ${pct(r.again, r.total)}` : undefined}
-                  />
+            {(() => {
+              // 퍼널과 같은 5열(단계) × 2행(처음/다시) — 위 퍼널 카드와 열이 맞아 세로로 읽힌다.
+              const stages: { label: string; total: number; first: number; again: number | null }[] = [
+                { label: "방문", total: composition.visit.total, first: funnel.first_visit, again: composition.visit.again },
+                { label: "플레이", total: composition.play.total, first: funnel.players, again: composition.play.again },
+                { label: "가입", total: funnel.members, first: funnel.members, again: null },
+                { label: "생성", total: composition.generation.total, first: funnel.first_gen, again: composition.generation.again },
+                { label: "결제", total: composition.purchase.total, first: funnel.first_purchase, again: composition.purchase.again },
+              ];
+              return (
+                <div className="grid grid-cols-5 gap-1 text-center">
+                  {stages.map((st) => (
+                    <p key={`h-${st.label}`} className="text-[10px] text-zinc-500">
+                      {st.label}
+                    </p>
+                  ))}
+                  {stages.map((st) => (
+                    <CompositionCard key={`first-${st.label}`} label="처음" value={st.first.toLocaleString()} />
+                  ))}
+                  {stages.map((st) => (
+                    <CompositionCard
+                      key={`again-${st.label}`}
+                      label="다시"
+                      value={st.again === null ? "—" : st.again.toLocaleString()}
+                      sub={st.again !== null && st.total > 0 ? pct(st.again, st.total) : undefined}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
             <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
-              기간 안에서 처음 하고 또 한 유저는 둘 다에 세요(오늘 탭은 겹침 없음). 가입은 계정당 1회라 다시가
-              없어요. 결제의 다시 = 재구매. 가입 시 익명 시절 기록은 회원 계정에 합쳐요.
+              다시 카드의 % = 그 단계 전체 대비. 기간 안에서 처음 하고 또 한 유저는 둘 다에 세요(오늘 탭은 겹침
+              없음). 가입은 계정당 1회라 다시가 없어요. 결제의 다시 = 재구매. 가입 시 익명 시절 기록은 회원 계정에
+              합쳐요.
               {window === "all" &&
                 " 전체 탭에서는 처음 = 전체이고, 일별 동결(2026-08-29 도입) 이전 과거는 현재 잔존 데이터 기준 근사예요 — 정리된 익명 계정·탈퇴 회원은 소급되지 않아요."}
             </p>
@@ -186,6 +196,17 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
       <p className="text-[11px] text-zinc-500">{label}</p>
       <p className="mt-0.5 text-lg font-extrabold tabular-nums">{value}</p>
       {sub && <p className="text-[11px] text-zinc-400">{sub}</p>}
+    </div>
+  );
+}
+
+/** 유저 구성 카드(처음/다시) — 퍼널 카드와 같은 폭·토큰, 세 줄(라벨/값/전체 대비 %). */
+function CompositionCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-foreground/10 ui-surface p-2">
+      <p className="text-[10px] text-zinc-500">{label}</p>
+      <p className="text-base font-bold tabular-nums">{value}</p>
+      <p className="text-[10px] tabular-nums text-zinc-400">{sub ?? "\u00a0"}</p>
     </div>
   );
 }
