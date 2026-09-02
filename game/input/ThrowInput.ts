@@ -21,7 +21,7 @@ type Callbacks = {
   onLaunch: (info: LaunchInfo) => void;
 };
 
-const MIN_LAUNCH_SPEED = 240; // px/sec — 이보다 느리면 발사 취소
+const MIN_LAUNCH_SPEED = 240; // px/sec — 이보다 느리면 power 0 의 '약한 토스'(PlayScene 이 캐릭터 쪽으로 조준 보정)
 const MAX_POWER_SPEED = 1600; // px/sec — power 1.0 기준
 /** pointer timestamp가 뭉치거나 합성 입력이어도 물리 body 속도를 유한하게 제한한다. */
 export const MAX_THROW_LAUNCH_SPEED = 1600;
@@ -108,14 +108,23 @@ export class ThrowInput {
     const upAt = performance.now();
     const recent = this.history.filter((p) => p.t > upAt - 100);
     this.history = [];
-    if (recent.length < 2) return;
+    const up = this.stage.toLocal(e.global);
+    // 놓기만 해도 항상 던져진다 — 느린 릴리즈는 power 0 의 약한 토스로 넘기고
+    // PlayScene 이 캐릭터 쪽으로 조준 보정 + 최소 비행 속도를 준다(놓은 자리에서 떨어지지 않게).
+    if (recent.length < 2) {
+      this.cb.onLaunch({ x: up.x, y: up.y, vx: 0, vy: 0, power: 0, weapon: w });
+      return;
+    }
     const first = recent[0];
     const last = recent[recent.length - 1];
     const dt = Math.max(0.008, (last.t - first.t) / 1000);
     const rawVx = (last.x - first.x) / dt;
     const rawVy = (last.y - first.y) / dt;
     const rawSpeed = Math.hypot(rawVx, rawVy);
-    if (!Number.isFinite(rawSpeed) || rawSpeed < MIN_LAUNCH_SPEED) return;
+    if (!Number.isFinite(rawSpeed) || rawSpeed < MIN_LAUNCH_SPEED) {
+      this.cb.onLaunch({ x: last.x, y: last.y, vx: 0, vy: 0, power: 0, weapon: w });
+      return;
+    }
     const launchSpeed = Math.min(rawSpeed, MAX_THROW_LAUNCH_SPEED);
     const scale = launchSpeed / rawSpeed;
     const vx = rawVx * scale;

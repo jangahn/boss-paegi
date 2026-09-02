@@ -102,6 +102,14 @@ type PlaySceneOptions = {
 
 // fling 으로 전환되는 이동 거리 (stage px)
 const FLING_DRAG_THRESHOLD = 14;
+/** 투척 최소 비행 속도(px/sec) — 이보다 느린 릴리즈는 이 속도로 캐릭터를 향해 날아감 */
+const THROW_MIN_FLY_SPEED = 950;
+/** 이 속도(px/sec) 미만이면 드래그 방향을 캐릭터 방향으로 점진 보정(느릴수록 강하게) */
+const THROW_ASSIST_FULL_SPEED = 750;
+/** 투척물 중력 상쇄 비율 — 포물선을 눕혀 더 멀리 날아가게 (1=무중력) */
+const THROW_GRAVITY_CANCEL = 0.72;
+/** 꼬집기 유지 틱 간격(초) — 당기는 동안 길이 비례 데미지 */
+const PINCH_TICK_SEC = 0.5;
 
 export class PlayScene extends Container {
   private app: Application;
@@ -162,6 +170,8 @@ export class PlayScene extends Container {
   private pinchActive = false;
   private pinchRatio = 0;
   private pinchBlushAccum = 0;
+  private pinchTickAccum = 0;
+  private pinchPos = { x: 0, y: 0 };
 
   // viewport memo
   private viewW = 0;
@@ -625,6 +635,9 @@ export class PlayScene extends Container {
       this.pinchActive = true;
       this.pinchRatio = 0;
       this.pinchBlushAccum = 0;
+      this.pinchTickAccum = 0;
+      const downLocal = this.toLocal(e.global);
+      this.pinchPos = { x: downLocal.x, y: downLocal.y };
       startPinchTension();
       // 꼬집힌 자리 홍조 (bodyWrap local — down 시점엔 transform 이 사실상 원점)
       const grabLocal = this.doll.bodyWrap.toLocal(e.global, undefined);
@@ -663,6 +676,7 @@ export class PlayScene extends Container {
         dy = (dy / len) * maxLen;
       }
       this.pinchRatio = ratio;
+      this.pinchPos = { x: local.x, y: local.y };
       this.doll.setPinchPull(dx / sc, dy / sc, ratio);
       setPinchTension(ratio);
       // 한계 근처 — 진땀
@@ -873,6 +887,26 @@ export class PlayScene extends Container {
    * 점수/발사 없이 상태만 리셋. (pixi 8.19 는 pointercancel 을 display object 로
    * 전달하지 않아 DOM 레벨에서 호출됨)
    */
+  /** 꼬집기 유지 틱 — 당기는 동안 PINCH_TICK_SEC 마다 늘린 길이 비례 데미지(릴리즈와 같은 봉투). */
+  private pinchTick() {
+    const ratio = this.pinchRatio;
+    if (ratio <= 0.15) return;
+    const w = this.weapon;
+    const points = Math.round(w.strength + ratio * PINCH_STRETCH_BONUS);
+    const { x, y } = this.pinchPos;
+    playHitSound("squeak", 0.5 + ratio * 0.7);
+    this.doll.tremble(0.22);
+    this.fx.burst(x, y, Math.round(2 + 4 * ratio), w.color);
+    if (ratio > 0.6) {
+      const head = this.headPos();
+      this.fx.tearDrops(head.x, head.y, 2);
+    }
+    this.registerHitPulse(1);
+    this.maybeYelp(0.25 + ratio * 0.5, ratio > 0.8 ? 1 : 0);
+    const gain = this.reportHit(x, y, points, w.key);
+    this.fx.scorePop(x, y - 26, gain, w.color);
+  }
+
   private cancelPinch() {
     if (!this.pinchActive) return;
     this.pinchActive = false;
@@ -958,24 +992,31 @@ export class PlayScene extends Container {
     // 속도 비례 데미지 (0.6×~상한) + 볼륨
     const factor = Math.min(SWIPE_FACTOR_MAX, Math.max(0.6, speed / 1100));
     const points = Math.round(weapon.strength * factor);
-    // 싸대기 — 고개가 홱(회전 킥) + 스윙 방향 스쿼시 + 손자국 + 궤적 스워시
-    this.doll.triggerHit(weapon.shake * factor * 0.7);
-    this.doll.hitSquash(dirX, dirY, factor * 0.9);
-    this.doll.rotKick((dirX >= 0 ? 1 : -1) * 0.05 * factor);
+    // 싸대기 — 고개가 홱(회전 킥 강화) + 스윙 방향 스쿼시 + 붉은 플래시 + 큰 손자국 + 궤적 스워시
+    this.doll.triggerHit(weapon.shake * factor * 0.8);
+    this.doll.hitSquash(dirX, dirY, factor * 1.2, { freq: 10, damp: 7 });
+    this.doll.rotKick((dirX >= 0 ? 1 : -1) * 0.09 * factor);
+    this.doll.hitFlash(0xff7a7a, 0.09);
     this.fx.burst(x, y, Math.round(weapon.particleCount * factor), weapon.color);
+    this.fx.impactLines(x, y, 0xffd6dc, 6);
     this.fx.slapArc(x, y, dirX, dirY, 0xffc2cf);
-    playHitSound("slap", 0.6 + factor * 0.5);
+    playHitSound("slap", 0.8 + factor * 0.6);
     const hitLocal = this.doll.bodyWrap.toLocal({ x, y }, this);
     if (this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
-      this.transientDecals.handprint(hitLocal.x, hitLocal.y, Math.atan2(dirY, dirX));
+      this.transientDecals.handprint(hitLocal.x, hitLocal.y, Math.atan2(dirY, dirX), 1.35);
     }
-    if (factor > 1.5) this.addHitStop(0.035);
+    this.addHitStop(factor > 1.4 ? 0.05 : 0.03);
+    this.addShake(3 + 4 * factor);
+    if (factor > 1.2) {
+      const head = this.headPos();
+      this.fx.tearDrops(head.x, head.y, 2);
+    }
     this.registerHitPulse(1);
-    this.maybeYelp(0.45, factor > 1.5 ? 1 : 0);
-    // 손이 움직인 방향으로 캐릭터 밀치기
+    this.maybeYelp(0.85, factor > 1.2 ? 1 : 0);
+    // 손이 움직인 방향으로 캐릭터 밀치기 (강화)
     Body.applyForce(this.dollBody, this.dollBody.position, {
-      x: dirX * 0.012 * factor,
-      y: dirY * 0.012 * factor,
+      x: dirX * 0.019 * factor,
+      y: dirY * 0.019 * factor,
     });
     const gain = this.reportHit(x, y, points, weapon.key);
     this.fx.scorePop(x, y - 30, gain, weapon.color);
@@ -1032,20 +1073,41 @@ export class PlayScene extends Container {
     if (this.lifecycle !== "running") return;
     const size = weapon.projectileSize ?? 48;
     const mass = weapon.mass ?? 1;
+    // 조준 보정: 느린 릴리즈일수록 드래그 방향을 캐릭터 방향으로 섞고, 최소 비행 속도를 보장
+    // (놓은 자리에서 툭 떨어지지 않고 항상 '던져진' 궤적으로 날아감). 상한은 기존 1600 유지.
+    const rawSpeed = Math.hypot(vx, vy);
+    const tdx = this.doll.x - x;
+    const tdy = this.doll.y - y;
+    const tlen = Math.hypot(tdx, tdy) || 1;
+    const aimX = tdx / tlen;
+    const aimY = tdy / tlen;
+    const assist = rawSpeed <= 0 ? 1 : Math.max(0, 1 - rawSpeed / THROW_ASSIST_FULL_SPEED);
+    let dirX = rawSpeed > 0 ? vx / rawSpeed : aimX;
+    let dirY = rawSpeed > 0 ? vy / rawSpeed : aimY;
+    dirX = dirX * (1 - assist) + aimX * assist;
+    dirY = dirY * (1 - assist) + aimY * assist;
+    const dlen = Math.hypot(dirX, dirY) || 1;
+    dirX /= dlen;
+    dirY /= dlen;
+    const flySpeed = Math.min(1600, Math.max(rawSpeed, THROW_MIN_FLY_SPEED));
+    const launchVx = dirX * flySpeed;
+    const launchVy = dirY * flySpeed - 90; // 살짝 띄워 포물선
+    const launchPower = Math.max(power, flySpeed / 1600);
     // px/sec → matter px/step
     const body = this.physics.createProjectile(
       x,
       y,
       size,
       mass,
-      vx / 60,
-      vy / 60
+      launchVx / 60,
+      launchVy / 60
     );
+    Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.9);
     this.physics.add(body);
     const proj = new Projectile(body, weapon);
     this.projectileLayer.addChild(proj);
     this.projectiles.push(proj);
-    playHitSound("whoosh", 0.5 + power * 0.7);
+    playHitSound("whoosh", 0.6 + launchPower * 0.7);
   };
 
   // ── shoot (비비탄총) ────────────────────────────────────────────────
@@ -1105,19 +1167,27 @@ export class PlayScene extends Container {
         p.y > this.viewH + 100;
       if (dx * dx + dy * dy <= hitR * hitR) {
         const w = p.weapon;
-        // 딱콩 — 탄 방향 움찔 + 초단 히트스톱 + 히트마커 + 붉은 자국 + 딱콩 사운드
-        this.doll.triggerHit(w.shake);
-        this.doll.hitSquash(p.vx, p.vy, 0.7, { freq: 12, damp: 9 });
-        this.addHitStop(0.02);
+        // 딱콩 — 따끔: 붉은 플래시 + 탄 방향 움찔(강) + 히트스톱 + 스팅 스파이크 + 탄환 튕김 + 넉백 + 자국
+        this.doll.triggerHit(w.shake * 1.4);
+        this.doll.hitSquash(p.vx, p.vy, 1.0, { freq: 13, damp: 9 });
+        this.doll.hitFlash(0xff6b6b, 0.07);
+        this.addHitStop(0.03);
         this.fx.hitMarker(p.x, p.y);
+        this.fx.impactLines(p.x, p.y, 0xff5a5a, 5);
+        this.fx.ricochet(p.x, p.y, p.vx, p.vy, w.color);
         this.fx.burst(p.x, p.y, w.particleCount, w.color);
+        const pl = Math.hypot(p.vx, p.vy) || 1;
+        Body.applyForce(this.dollBody, this.dollBody.position, {
+          x: (p.vx / pl) * 0.006,
+          y: (p.vy / pl) * 0.006,
+        });
         const hitLocal = this.doll.bodyWrap.toLocal({ x: p.x, y: p.y }, this);
         if (this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
           this.transientDecals.welt(hitLocal.x, hitLocal.y);
         }
         this.registerHitPulse(1);
-        this.maybeYelp(0.25);
-        playHitSound("knock", 1.0);
+        this.maybeYelp(0.5, 1);
+        playHitSound("knock", 1.15);
         const gain = this.reportHit(p.x, p.y, w.strength, w.key);
         this.fx.scorePop(p.x, p.y - 20, gain, w.color);
       } else if (!out) {
@@ -1241,6 +1311,34 @@ export class PlayScene extends Container {
     if (this.flingActive) {
       Body.setPosition(this.dollBody, this.flingPointerPos);
       Body.setVelocity(this.dollBody, { x: 0, y: 0 });
+    }
+    // 꼬집기 유지 틱 — 당기는 동안 일정 간격 데미지
+    if (this.pinchActive) {
+      this.pinchTickAccum += deltaSec;
+      if (this.pinchTickAccum >= PINCH_TICK_SEC) {
+        this.pinchTickAccum -= PINCH_TICK_SEC;
+        this.pinchTick();
+      }
+    }
+    // 투척물 — 중력 일부 상쇄(포물선 눕힘) + 비행 잔상
+    for (const proj of this.projectiles) {
+      if (proj.hasHit) continue;
+      const b = proj.body;
+      Body.applyForce(b, b.position, {
+        x: 0,
+        y: -b.mass * 1.6 * 0.001 * THROW_GRAVITY_CANCEL,
+      });
+      proj.trailAccum += deltaSec;
+      if (proj.trailAccum >= 0.045) {
+        proj.trailAccum = 0;
+        this.fx.ghost(
+          b.position.x,
+          b.position.y,
+          proj.weapon.emoji,
+          (proj.weapon.projectileSize ?? 48) * 0.9,
+          b.angle
+        );
+      }
     }
     this.physics.step(deltaSec * 1000);
     // 최후 안전망: 그래도 화면 밖 멀리 탈출했으면 anchor 로 즉시 복귀

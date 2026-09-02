@@ -46,6 +46,9 @@ export class Doll extends Container {
   // 부들부들 (펜 낙서 굴욕 떨림)
   private trembleTime = 0;
   private tremblePhase = 0;
+  // 피격 플래시 — bodyWrap.tint 를 잠깐 물들임 (통증 큐)
+  private flashTime = 0;
+  private flashColor = 0xffffff;
 
   // AI sprite 의 알파맵 (실루엣 판정용)
   private alphaMap: { data: Uint8ClampedArray; w: number; h: number } | null =
@@ -283,6 +286,12 @@ export class Doll extends Container {
     this.trembleTime = Math.max(this.trembleTime, sec);
   }
 
+  /** 피격 플래시 — sec 동안 캐릭터 전체를 color 로 물들임(붉은색=통증). */
+  hitFlash(color: number, sec: number) {
+    this.flashColor = color;
+    this.flashTime = Math.max(this.flashTime, sec);
+  }
+
   /** ticker 에서 매 프레임 호출. delta 는 초 단위. 모든 리액션 transform 을 여기서 합성. */
   update(deltaSec: number) {
     let ox = 0;
@@ -357,6 +366,12 @@ export class Doll extends Container {
       this.tremblePhase += deltaSec * 42;
       ox += Math.sin(this.tremblePhase * Math.PI * 2) * 1.7;
       rot += Math.sin(this.tremblePhase * Math.PI * 2 * 0.7) * 0.01;
+    }
+
+    // 7) 피격 플래시
+    if (this.flashTime > 0) {
+      this.flashTime = Math.max(0, this.flashTime - deltaSec);
+      this.bodyWrap.tint = this.flashTime > 0 ? this.flashColor : 0xffffff;
     }
 
     this.bodyWrap.x = ox;

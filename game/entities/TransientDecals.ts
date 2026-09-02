@@ -42,9 +42,9 @@ export class TransientDecals extends Container {
   }
 
   /** 빨간 손자국 — 싸대기. 손바닥 + 손가락 4개 실루엣, 스치듯 기울여 찍힘 */
-  handprint(x: number, y: number, angle: number) {
+  handprint(x: number, y: number, angle: number, scale = 1) {
     const g = new Graphics();
-    const s = this.base * 0.09;
+    const s = this.base * 0.09 * scale;
     const red = 0xe25555;
     // 손바닥
     g.roundRect(-s * 0.75, -s * 0.55, s * 1.5, s * 1.35, s * 0.45).fill(red);
@@ -56,7 +56,7 @@ export class TransientDecals extends Container {
     }
     // 엄지
     g.roundRect(s * 0.62, -s * 0.35, s * 0.85, s * 0.32, s * 0.16).fill(red);
-    this.push(g, x, y, 2.2, 0.34, angle);
+    this.push(g, x, y, 2.6, 0.42, angle);
   }
 
   /** 혹 — 주먹/뿅망치. 밝은 볼록 + 하이라이트 점 */

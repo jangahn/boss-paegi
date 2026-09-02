@@ -15,6 +15,8 @@ export class Projectile extends Container {
   readonly weapon: Weapon;
   isDead = false;
   hasHit = false;
+  /** 잔상 스폰 누산(초) — PlayScene 이 비행 중 일정 간격으로 ghost 를 남길 때 사용 */
+  trailAccum = 0;
   private fadeTime = 0;
   private static readonly FADE_DURATION = 0.2;
 

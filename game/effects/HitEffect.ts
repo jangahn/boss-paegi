@@ -101,6 +101,8 @@ export class HitEffect extends Container {
   private speedLineFrames: Graphics[] | null = null;
   private speedLineTick = 0;
   private stamps: { node: Container; life: number; ttl: number }[] = [];
+  /** 투척물 잔상 — 비행 중 뒤에 남는 반투명 이모지 */
+  private ghosts: { t: Text; life: number; ttl: number }[] = [];
 
   /** 화면 전체 플래시 — 궁극기 마무리 등 임팩트용 (좌표 0,0 ~ viewW,viewH) */
   flash(viewW: number, viewH: number, color = 0xffffff, peak = 0.7, ttl = 0.4) {
@@ -309,6 +311,49 @@ export class HitEffect extends Container {
     g.y = y;
     this.addChild(g);
     this.flares.push({ g, life: 0, ttl: 0.07, s0: 0.8, s1: 1.3 });
+  }
+
+  /** 탄환 튕김 — 맞은 자리에서 입사 반대쪽으로 팍 튀어 회전하며 낙하 */
+  ricochet(x: number, y: number, vx: number, vy: number, color: number) {
+    const speed = Math.hypot(vx, vy) || 1;
+    const nx = vx / speed;
+    const ny = vy / speed;
+    for (let i = 0; i < 2; i++) {
+      const g = new Graphics();
+      g.roundRect(-6, -1.8, 12, 3.6, 1.8).fill(color);
+      g.roundRect(-3, -0.9, 6, 1.8, 0.9).fill({ color: 0xffffff, alpha: 0.85 });
+      g.x = x;
+      g.y = y;
+      this.addChild(g);
+      // 반사 + 랜덤 산란 + 위쪽 편향
+      const scatter = (Math.random() - 0.5) * 1.4;
+      const ca = Math.cos(scatter);
+      const sa = Math.sin(scatter);
+      const rx = -nx * ca + ny * sa;
+      const ry = -ny * ca - nx * sa;
+      const out = 260 + Math.random() * 220;
+      this.debris.push({
+        node: g,
+        vx: rx * out,
+        vy: ry * out - 140,
+        spin: (Math.random() - 0.5) * 30,
+        grav: 1400,
+        life: 0,
+        ttl: 0.42 + Math.random() * 0.2,
+      });
+    }
+  }
+
+  /** 투척 잔상 — 반투명 이모지가 그 자리에 잠깐 남았다 사라짐 */
+  ghost(x: number, y: number, emoji: string, size: number, rotation: number) {
+    const t = new Text({ text: emoji, style: { fontSize: size } });
+    t.anchor.set(0.5);
+    t.x = x;
+    t.y = y;
+    t.rotation = rotation;
+    t.alpha = 0.45;
+    this.addChild(t);
+    this.ghosts.push({ t, life: 0, ttl: 0.16 });
   }
 
   /** 비비탄 히트마커 — X자 4선 */
@@ -547,6 +592,20 @@ export class HitEffect extends Container {
       const on = Math.floor(this.speedLineTick / 0.07) % 2;
       this.speedLineFrames[0].visible = on === 0;
       this.speedLineFrames[1].visible = on === 1;
+    }
+
+    for (let i = this.ghosts.length - 1; i >= 0; i--) {
+      const gh = this.ghosts[i];
+      gh.life += deltaSec;
+      const t = gh.life / gh.ttl;
+      if (t >= 1) {
+        this.removeChild(gh.t);
+        gh.t.destroy();
+        this.ghosts.splice(i, 1);
+        continue;
+      }
+      gh.t.alpha = 0.45 * (1 - t);
+      gh.t.scale.set(1 - t * 0.25);
     }
 
     for (let i = this.stamps.length - 1; i >= 0; i--) {
