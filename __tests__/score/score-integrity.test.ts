@@ -526,7 +526,7 @@ function effectiveMaxBase(weapon: (typeof WEAPONS)[number]): number {
 
 test("S2 checks every 1..19-hit weapon payload instead of leaving the old split bypass", () => {
   assert.equal(S2_MIN_HITS, 1);
-  assert.match(ANTI_ABUSE_RULES_VERSION, /v7$/);
+  assert.match(ANTI_ABUSE_RULES_VERSION, /v8$/);
 
   for (const weapon of WEAPONS) {
     const perHitCap =

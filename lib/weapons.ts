@@ -77,6 +77,9 @@ export const THROW_FACTOR_MAX = 2.2;
 export const GRAB_FLING_POWER_BONUS = 30;
 /** pinch 릴리즈 늘림 보너스 상한 — base = strength + ratio×BONUS, ratio=늘린 거리/최대 거리(0..1). */
 export const PINCH_STRETCH_BONUS = 26;
+/** pinch 흔들기 피격(쥔 채 이동) — base = SHAKE_BASE + ratio×SHAKE_BONUS. 최대 14 < 릴리즈 상한 36 이라 S2 봉투 안. */
+export const PINCH_SHAKE_BASE = 4;
+export const PINCH_SHAKE_BONUS = 10;
 
 export const WEAPONS: readonly Weapon[] = [
   // ── tap: 주먹·뿅망치 ─────────────────────────────────────────────
@@ -186,7 +189,7 @@ export const WEAPONS: readonly Weapon[] = [
     label: "비비탄총",
     emoji: "🔫",
     hint: "빈 곳을 꾹 누르면 자동 발사",
-    strength: 4,
+    strength: 7, // 2026-09 상향(4→7, 사용자 튜닝) — S2 봉투는 strength 에서 유도되므로 자동 반영, RULES v8
     shake: 0.4,
     color: 0xffe066,
     particleCount: 5,

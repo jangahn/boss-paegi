@@ -44,6 +44,8 @@ import {
   THROW_FACTOR_MAX,
   GRAB_FLING_POWER_BONUS,
   PINCH_STRETCH_BONUS,
+  PINCH_SHAKE_BASE,
+  PINCH_SHAKE_BONUS,
   type Weapon,
   type WeaponCategory,
 } from "@/lib/weapons";
@@ -107,8 +109,11 @@ const THROW_ASSIST_FULL_SPEED = 750;
 const THROW_GRAVITY_CANCEL = 0.72;
 /** 꼬집기 흔들기 — 당긴 채 손가락이 이 거리(px)만큼 움직일 때마다 피격(볼따구 쥐고 괴롭히기) */
 const PINCH_SHAKE_PX = 55;
-/** 흔들기 피격 최소 간격(ms) — 연타 무기와 비슷한 상한(≈10/s) */
-const PINCH_SHAKE_MIN_MS = 95;
+/** 흔들기 피격 최소 간격(ms) — ≈7/s (2026-09 데미지 하향과 함께 완화) */
+const PINCH_SHAKE_MIN_MS = 140;
+/** 자유비행 벽 튕김 연출 최소 속도(px/step)·중복 방지 쿨다운(ms) */
+const WALL_BUMP_MIN_SPEED = 5;
+const WALL_BUMP_COOLDOWN_MS = 120;
 
 export class PlayScene extends Container {
   private app: Application;
@@ -172,6 +177,7 @@ export class PlayScene extends Container {
   private pinchTravel = 0;
   private pinchLastShakeAt = 0;
   private pinchPos = { x: 0, y: 0 };
+  private wallBumpAt = 0;
 
   // viewport memo
   private viewW = 0;
@@ -756,6 +762,7 @@ export class PlayScene extends Container {
       this.fx.starBurst(impactX, impactY, 4);
       this.doll.triggerHit(1.4);
       this.doll.hitSquash(nx, ny, 1.5);
+      this.doll.hitFlash(0xff6e6e, 0.1);
       this.addShake(7);
       this.addHitStop(0.035);
       playHitSound("thud");
@@ -856,6 +863,7 @@ export class PlayScene extends Container {
       this.fx.starBurst(this.dollBody.position.x, this.dollBody.position.y, Math.round(3 + power * 4));
       this.doll.triggerHit(1 + power);
       this.doll.hitSquash(svx, svy, 1 + power);
+      this.doll.hitFlash(lerpColor(0xffb0b0, 0xff4a4a, power), 0.08 + 0.14 * power);
       this.addShake(4 + 6 * power);
       this.registerHitPulse(3);
       this.maybeYelp(0.75, 1);
@@ -908,7 +916,7 @@ export class PlayScene extends Container {
   private pinchShake() {
     const ratio = this.pinchRatio;
     const w = this.weapon;
-    const points = Math.round(w.strength + ratio * PINCH_STRETCH_BONUS);
+    const points = Math.round(PINCH_SHAKE_BASE + ratio * PINCH_SHAKE_BONUS);
     const { x, y } = this.pinchPos;
     playHitSound("squeak", 0.45 + ratio * 0.75);
     this.doll.triggerHit(0.6 + ratio * 0.6);
@@ -1237,6 +1245,27 @@ export class PlayScene extends Container {
   // ── collision (projectile ↔ doll) ──────────────────────────────────
   private handleCollision = (a: Body, b: Body) => {
     if (this.lifecycle !== "running") return;
+    // 캐릭터 ↔ 벽 (던져진 뒤 자유비행·궁극기 투척 중 튕김) — 속도 비례 붉어짐·스쿼시·소리. 점수 없음.
+    const wallHit =
+      (a.label === "doll" && b.label === "wall") || (b.label === "doll" && a.label === "wall");
+    if (wallHit) {
+      const now = performance.now();
+      const speed = this.dollBody.speed;
+      if (speed >= WALL_BUMP_MIN_SPEED && now - this.wallBumpAt >= WALL_BUMP_COOLDOWN_MS) {
+        this.wallBumpAt = now;
+        const k = Math.min(1, speed / 28);
+        const v = this.dollBody.velocity;
+        this.doll.triggerHit(0.8 + k * 1.4);
+        this.doll.hitSquash(v.x, v.y, 0.8 + k * 1.2, { freq: 9, damp: 6 });
+        this.doll.hitFlash(lerpColor(0xffc0c0, 0xff4040, k), 0.06 + 0.16 * k);
+        this.fx.shockwave(this.doll.x, this.doll.y, 20, 80 + 90 * k, 0xffd166);
+        this.fx.starBurst(this.doll.x, this.doll.y, Math.round(2 + 4 * k));
+        this.addShake(2 + 8 * k);
+        playHitSound("thud", 0.5 + 0.9 * k);
+        this.maybeYelp(0.3 + 0.5 * k, k > 0.6 ? 1 : 0);
+      }
+      return;
+    }
     let projBody: Body | null = null;
     if (a.label === "projectile" && b.label === "doll") projBody = a;
     else if (b.label === "projectile" && a.label === "doll") projBody = b;
