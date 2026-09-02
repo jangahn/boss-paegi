@@ -17,6 +17,8 @@ type SoundPreset =
   | "squeak"
   | "snap"
   | "twinkle"
+  | "crack"
+  | "knock"
   | "scribble";
 
 let ctx: AudioContext | null = null;
@@ -311,6 +313,59 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
       osc.start(t0);
       osc.stop(t0 + 0.18);
     });
+    return;
+  }
+
+  if (preset === "crack") {
+    // 비비탄 발사 "탁!" — 초단 노이즈 크랙 + 고역 클릭 + 짧은 저역 킥 (기존 pew 보다 건조하고 날카롭게)
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.035, 1);
+    const hf = c.createBiquadFilter();
+    hf.type = "highpass";
+    hf.frequency.value = 2400;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.42 * v, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+    src.connect(hf).connect(ng).connect(out(c));
+    src.start(t);
+    const kick = c.createOscillator();
+    kick.type = "sine";
+    kick.frequency.setValueAtTime(240, t);
+    kick.frequency.exponentialRampToValueAtTime(70, t + 0.05);
+    const kg = c.createGain();
+    kg.gain.setValueAtTime(0.28 * v, t);
+    kg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    kick.connect(kg).connect(out(c));
+    kick.start(t);
+    kick.stop(t + 0.07);
+    return;
+  }
+
+  if (preset === "knock") {
+    // 비비탄 피격 "딱콩" — 고역 틱(딱) + 공명 몸통 톡(콩) 두 성분을 12ms 시간차로
+    const detune = 0.92 + Math.random() * 0.16;
+    const tick = c.createBufferSource();
+    tick.buffer = noiseBuffer(c, 0.012, 0.9);
+    const tf = c.createBiquadFilter();
+    tf.type = "bandpass";
+    tf.frequency.value = 3200 * detune;
+    tf.Q.value = 2.5;
+    const tg = c.createGain();
+    tg.gain.setValueAtTime(0.35 * v, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.014);
+    tick.connect(tf).connect(tg).connect(out(c));
+    tick.start(t);
+    const body = c.createOscillator();
+    body.type = "triangle";
+    body.frequency.setValueAtTime(620 * detune, t + 0.012);
+    body.frequency.exponentialRampToValueAtTime(210, t + 0.09);
+    const bg = c.createGain();
+    bg.gain.setValueAtTime(0.0001, t);
+    bg.gain.exponentialRampToValueAtTime(0.3 * v, t + 0.014);
+    bg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    body.connect(bg).connect(out(c));
+    body.start(t);
+    body.stop(t + 0.11);
     return;
   }
 

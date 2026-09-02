@@ -22,9 +22,13 @@ export type WeaponCategory =
   | "pinch"
   | "draw";
 
+/** 피커 묶음(구분선 기준) — 카테고리와 별개의 UX 그룹. tap | hands(캐릭터 직접 조작) | projectile(날아가는 것) | draw */
+export type WeaponGroup = "tap" | "hands" | "projectile" | "draw";
+
 export type Weapon = {
   key: WeaponKey;
   category: WeaponCategory;
+  group: WeaponGroup;
   label: string;
   emoji: string;
   /** 무기 선택 시 화면 하단에 뜨는 조작 안내 */
@@ -75,10 +79,11 @@ export const GRAB_FLING_POWER_BONUS = 30;
 export const PINCH_STRETCH_BONUS = 26;
 
 export const WEAPONS: readonly Weapon[] = [
-  // ── tap (2) ────────────────────────────────────────────────────────
+  // ── tap: 주먹·뿅망치 ─────────────────────────────────────────────
   {
     key: "fist",
     category: "tap",
+    group: "tap",
     label: "주먹",
     emoji: "👊",
     hint: "부장님을 탭해서 퍽퍽",
@@ -91,6 +96,7 @@ export const WEAPONS: readonly Weapon[] = [
   {
     key: "hammer",
     category: "tap",
+    group: "tap",
     label: "뿅망치",
     emoji: "🔨",
     hint: "부장님을 탭해서 뿅뿅",
@@ -100,10 +106,11 @@ export const WEAPONS: readonly Weapon[] = [
     particleCount: 12,
     sound: "boing",
   },
-  // ── swipe (1) ──────────────────────────────────────────────────────
+  // ── hands: 캐릭터 직접 조작 — 싸대기·잡아던지기·꼬집기 ──────────────
   {
     key: "slap",
     category: "swipe",
+    group: "hands",
     label: "싸대기",
     emoji: "✋",
     hint: "문지르듯 휘둘러 싸대기",
@@ -113,10 +120,37 @@ export const WEAPONS: readonly Weapon[] = [
     particleCount: 12,
     sound: "slap",
   },
-  // ── throw (2) ──────────────────────────────────────────────────────
+  {
+    key: "grab",
+    category: "grab",
+    group: "hands",
+    label: "잡아던지기",
+    emoji: "🤏",
+    hint: "부장님을 잡아 휘둘러 던지기",
+    strength: 20,
+    shake: 2.0,
+    color: 0xef476f,
+    particleCount: 14,
+    sound: "whoosh",
+  },
+  {
+    key: "pinch",
+    category: "pinch",
+    group: "hands",
+    label: "꼬집기",
+    emoji: "🤌",
+    hint: "부장님을 잡아 늘려 꼬집기",
+    strength: 10,
+    shake: 1.0,
+    color: 0xff8fab,
+    particleCount: 8,
+    sound: "squeak",
+  },
+  // ── projectile: 날아가는 것 — 책·키보드·비비탄 ───────────────────
   {
     key: "book",
     category: "throw",
+    group: "projectile",
     label: "책",
     emoji: "📚",
     hint: "무기를 잡고 휘둘러 던지기",
@@ -132,6 +166,7 @@ export const WEAPONS: readonly Weapon[] = [
   {
     key: "keyboard",
     category: "throw",
+    group: "projectile",
     label: "키보드",
     emoji: "⌨️",
     hint: "무기를 잡고 휘둘러 던지기",
@@ -144,10 +179,10 @@ export const WEAPONS: readonly Weapon[] = [
     projectileSize: 56,
     impact: "blunt",
   },
-  // ── shoot (1) ──────────────────────────────────────────────────────
   {
     key: "gun",
     category: "shoot",
+    group: "projectile",
     label: "비비탄총",
     emoji: "🔫",
     hint: "빈 곳을 꾹 누르면 자동 발사",
@@ -157,36 +192,11 @@ export const WEAPONS: readonly Weapon[] = [
     particleCount: 5,
     sound: "pop",
   },
-  // ── grab (1) ───────────────────────────────────────────────────────
-  {
-    key: "grab",
-    category: "grab",
-    label: "잡아던지기",
-    emoji: "🤏",
-    hint: "부장님을 잡아 휘둘러 던지기",
-    strength: 20,
-    shake: 2.0,
-    color: 0xef476f,
-    particleCount: 14,
-    sound: "whoosh",
-  },
-  // ── pinch (1) — 2026-08 종이(최저 사용) 대체 신규 ──────────────────
-  {
-    key: "pinch",
-    category: "pinch",
-    label: "꼬집기",
-    emoji: "🤌",
-    hint: "부장님을 잡아 늘려 꼬집기",
-    strength: 10,
-    shake: 1.0,
-    color: 0xff8fab,
-    particleCount: 8,
-    sound: "squeak",
-  },
-  // ── draw (1) ───────────────────────────────────────────────────────
+  // ── draw: 펜 ─────────────────────────────────────────────────────
   {
     key: "pen",
     category: "draw",
+    group: "draw",
     label: "펜",
     emoji: "🖊️",
     hint: "얼굴에 낙서",
@@ -207,6 +217,7 @@ export const RETIRED_WEAPONS: readonly Weapon[] = [
   {
     key: "paper",
     category: "throw",
+    group: "projectile",
     label: "종이",
     emoji: "📄",
     hint: "무기를 잡고 휘둘러 던지기",

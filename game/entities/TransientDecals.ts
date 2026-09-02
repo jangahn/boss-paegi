@@ -91,6 +91,22 @@ export class TransientDecals extends Container {
     this.push(g, x, y, 1.3, 0.85);
   }
 
+  /** 비비탄 자국 — 작은 붉은 점 (딱콩 맞은 자리) */
+  welt(x: number, y: number) {
+    const g = new Graphics();
+    const r = this.base * 0.026;
+    const grad = new FillGradient({
+      type: "radial",
+      colorStops: [
+        { offset: 0, color: "rgba(226,72,72,0.85)" },
+        { offset: 0.6, color: "rgba(226,72,72,0.45)" },
+        { offset: 1, color: "rgba(226,72,72,0)" },
+      ],
+    });
+    g.circle(0, 0, r).fill(grad);
+    this.push(g, x, y, 2.6, 0.9);
+  }
+
   clear() {
     for (const it of this.items) {
       this.removeChild(it.g);

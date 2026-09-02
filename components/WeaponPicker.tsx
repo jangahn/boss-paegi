@@ -30,7 +30,7 @@ export function WeaponPicker({
     >
       {WEAPONS.map((w, i) => {
         const prev = WEAPONS[i - 1];
-        const newGroup = prev && prev.category !== w.category;
+        const newGroup = prev && prev.group !== w.group;
         const isEraser = w.key === "pen" && hasDrawing;
         return (
           <div key={w.key} className="flex items-center">

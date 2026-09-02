@@ -334,3 +334,33 @@ test("zero-size layout is a no-op, positive resize remains finite, and destroy c
   scene.destroy();
   assert.equal(privateValue(scene, "springRestoreTimer"), null);
 });
+
+test("start() wipes the previous round's face — drawing, transient decals, daze, hit heat", () => {
+  const scene = new PlayScene({ app: {} as never });
+  scene.layout(800, 600);
+  const drawing = privateValue<{
+    beginStroke: (x: number, y: number) => void;
+    extendStroke: (x: number, y: number, color: number, width: number) => void;
+    hasDrawing: boolean;
+  }>(scene, "drawingLayer");
+  drawing.beginStroke(0, 0);
+  drawing.extendStroke(12, 12, 0x1a1a1a, 3);
+  assert.equal(drawing.hasDrawing, true, "placeholder head center accepts ink");
+  // handprint 는 순수 Graphics — bump/blush 의 FillGradient 는 node 테스트 환경(document 없음)에서 못 만든다
+  const decals = privateValue<{
+    handprint: (x: number, y: number, angle: number) => void;
+    children: unknown[];
+  }>(scene, "transientDecals");
+  decals.handprint(0, 0, 0);
+  assert.equal(decals.children.length, 1);
+  const daze = privateValue<{ start: (sec: number) => void; active: boolean }>(scene, "dazeFx");
+  daze.start(2);
+  Reflect.set(scene, "hitTimes", [1, 2, 3]);
+
+  scene.start();
+  assert.equal(drawing.hasDrawing, false, "낙서는 새 판에서 남지 않는다");
+  assert.equal(decals.children.length, 0);
+  assert.equal(daze.active, false);
+  assert.deepEqual(privateValue(scene, "hitTimes"), []);
+  scene.destroy();
+});

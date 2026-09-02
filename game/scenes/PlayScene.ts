@@ -294,6 +294,12 @@ export class PlayScene extends Container {
     this.cancelActivePointers();
     this.stopUltimate();
     this.clearTransientAttacks();
+    // 새 판 = 새 얼굴: 낙서·일시 데칼·해롱·연타 열기 전부 초기화 (꼬질 데칼은 스토어 점수 0 → setDamageScore 가 정리)
+    this.drawingLayer.clear();
+    this.transientDecals.clear();
+    this.dazeFx.stop();
+    this.hitTimes = [];
+    this.hitStop = 0;
     this.lifecycle = "running";
   }
 
@@ -1056,9 +1062,14 @@ export class PlayScene extends Container {
     const dx = this.doll.x - x;
     const dy = this.doll.y - y;
     const len = Math.hypot(dx, dy) || 1;
-    const speed = 1400;
+    const nx = dx / len;
+    const ny = dy / len;
+    // 탁! — 고속탄(등속 부유감 제거) + 총구 섬광 + 트레이서 광선
+    const speed = 2600;
     const g = new Graphics();
-    g.circle(0, 0, 3.5).fill(weapon.color);
+    g.roundRect(-9, -2.2, 18, 4.4, 2.2).fill(weapon.color);
+    g.roundRect(-4, -1.2, 9, 2.4, 1.2).fill({ color: 0xffffff, alpha: 0.9 });
+    g.rotation = Math.atan2(ny, nx);
     g.x = x;
     g.y = y;
     this.projectileLayer.addChild(g);
@@ -1066,11 +1077,13 @@ export class PlayScene extends Container {
       g,
       x,
       y,
-      vx: (dx / len) * speed,
-      vy: (dy / len) * speed,
+      vx: nx * speed,
+      vy: ny * speed,
       weapon,
     });
-    playHitSound("pew", 0.9);
+    this.fx.muzzleFlash(x + nx * 14, y + ny * 14, nx, ny);
+    this.fx.tracer(x + nx * 18, y + ny * 18, x + nx * Math.min(len * 0.55, 150), y + ny * Math.min(len * 0.55, 150));
+    playHitSound("crack", 0.9);
   };
 
   /** 매 프레임 pellet 전진 + 캐릭터 명중 판정 */
@@ -1092,13 +1105,19 @@ export class PlayScene extends Container {
         p.y > this.viewH + 100;
       if (dx * dx + dy * dy <= hitR * hitR) {
         const w = p.weapon;
+        // 딱콩 — 탄 방향 움찔 + 초단 히트스톱 + 히트마커 + 붉은 자국 + 딱콩 사운드
         this.doll.triggerHit(w.shake);
-        this.doll.hitSquash(p.vx, p.vy, 0.45);
+        this.doll.hitSquash(p.vx, p.vy, 0.7, { freq: 12, damp: 9 });
+        this.addHitStop(0.02);
         this.fx.hitMarker(p.x, p.y);
         this.fx.burst(p.x, p.y, w.particleCount, w.color);
+        const hitLocal = this.doll.bodyWrap.toLocal({ x: p.x, y: p.y }, this);
+        if (this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
+          this.transientDecals.welt(hitLocal.x, hitLocal.y);
+        }
         this.registerHitPulse(1);
-        this.maybeYelp(0.1);
-        playHitSound("pop", 0.9);
+        this.maybeYelp(0.25);
+        playHitSound("knock", 1.0);
         const gain = this.reportHit(p.x, p.y, w.strength, w.key);
         this.fx.scorePop(p.x, p.y - 20, gain, w.color);
       } else if (!out) {

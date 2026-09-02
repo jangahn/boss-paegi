@@ -284,6 +284,33 @@ export class HitEffect extends Container {
     this.flares.push({ g, life: 0, ttl: 0.18, s0: 0.6, s1: 1.35 });
   }
 
+  /** 탄도 트레이서 — 총구에서 탄 방향으로 짧은 광선이 번쩍 (히트스캔 느낌) */
+  tracer(x0: number, y0: number, x1: number, y1: number, color = 0xfff1a8) {
+    const g = new Graphics();
+    g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color, width: 2.5, alpha: 0.85, cap: "round" });
+    g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: 0xffffff, width: 1, alpha: 0.9, cap: "round" });
+    this.addChild(g);
+    this.flares.push({ g, life: 0, ttl: 0.09, s0: 1, s1: 1 });
+  }
+
+  /** 총구 섬광 — 짧은 노란 스파이크 */
+  muzzleFlash(x: number, y: number, dirX: number, dirY: number) {
+    const g = new Graphics();
+    const ang = Math.atan2(dirY, dirX);
+    for (let i = -1; i <= 1; i++) {
+      const a = ang + i * 0.45;
+      const len = i === 0 ? 26 : 16;
+      g.moveTo(Math.cos(a) * 6, Math.sin(a) * 6)
+        .lineTo(Math.cos(a) * len, Math.sin(a) * len)
+        .stroke({ color: 0xffe066, width: i === 0 ? 5 : 3, alpha: 0.95, cap: "round" });
+    }
+    g.circle(0, 0, 5).fill({ color: 0xffffff, alpha: 0.9 });
+    g.x = x;
+    g.y = y;
+    this.addChild(g);
+    this.flares.push({ g, life: 0, ttl: 0.07, s0: 0.8, s1: 1.3 });
+  }
+
   /** 비비탄 히트마커 — X자 4선 */
   hitMarker(x: number, y: number, color = 0xffffff) {
     const g = new Graphics();
