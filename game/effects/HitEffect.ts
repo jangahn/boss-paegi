@@ -174,10 +174,42 @@ export class HitEffect extends Container {
   /** 노드 풀 — 키별 free list. 파티클·이모지·글자·점수 팝을 파괴 대신 반환해 재사용 */
   private pools = new Map<string, Container[]>();
 
+  /** 사전 래스터화 대기 노드 — 첫 update 에서 한 프레임 그려진 뒤 풀로 반환 */
+  private warmups: { key: string; node: Container }[] = [];
+
   constructor() {
     super();
     // 워밍업 — 첫 점수 팝에서 폰트 설치·글리프 생성 비용(콜드 30~40ms)이 프레임에 얹히지 않게
     scoreFontReady();
+  }
+
+  /**
+   * 이모지 텍스트 사전 래스터화 — 궁극기가 9개 무기 이모지를 랜덤으로 쓰면서 처음 쓰는 이모지의
+   * 텍스처 생성이 난타 중반 프레임에 몰려 ~120ms 스파이크가 나던 것(실측)을 씬 시작 시로 옮긴다.
+   * 노드를 거의 투명하게 한 프레임 그린 뒤 풀로 돌려 텍스처 캐시를 데운다.
+   */
+  prewarm(entries: { emoji: string; size: number }[]) {
+    if (typeof document === "undefined") return;
+    for (const e of entries) {
+      const size = Math.round(e.size);
+      const key = `emoji:${e.emoji}:${size}`;
+      const node = this.acquire(key, () => this.makeEmoji(e.emoji, size));
+      node.alpha = 0.02;
+      node.x = -9999;
+      this.warmups.push({ key, node });
+    }
+    if (scoreFontReady()) {
+      const key = "score:bitmap";
+      const t = this.acquire(key, () => {
+        const bt = new BitmapText({ text: "+0123456789", style: { fontFamily: SCORE_FONT, fontSize: 22 } });
+        bt.anchor.set(0.5);
+        return bt;
+      });
+      t.text = "+0123456789";
+      t.alpha = 0.02;
+      t.x = -9999;
+      this.warmups.push({ key, node: t });
+    }
   }
 
   /** 풀에서 꺼내거나 생성해 자식으로 부착. 공통 transform 은 초기화(anchor 등 고정 속성은 유지). */
@@ -637,6 +669,12 @@ export class HitEffect extends Container {
   }
 
   update(deltaSec: number) {
+    // 사전 래스터화 노드 — 한 프레임 그려진 뒤(= 첫 update 이후) 풀로 반환
+    if (this.warmups.length) {
+      const done = this.warmups;
+      this.warmups = [];
+      for (const w of done) this.release(w.key, w.node);
+    }
     const gravity = 900;
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];

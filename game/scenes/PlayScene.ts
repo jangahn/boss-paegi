@@ -252,6 +252,13 @@ export class PlayScene extends Container {
     // 이펙트 (이모지/점수팝/파티클) 가 hit-test 를 가로채 연타가 씹히는 것 방지
     this.fx.eventMode = "none";
     this.addChild(this.fx);
+    // 무기 이모지 사전 래스터화 — emojiPop(탭 60·궁극기 50/62)·투척 잔상(projectileSize×0.9) 크기 전부
+    const warm: { emoji: string; size: number }[] = [];
+    for (const w of WEAPONS) {
+      for (const size of [60, 50, 62]) warm.push({ emoji: w.emoji, size });
+      if (w.category === "throw") warm.push({ emoji: w.emoji, size: (w.projectileSize ?? 48) * 0.9 });
+    }
+    this.fx.prewarm(warm);
 
     this.projectileLayer = new Container();
     this.projectileLayer.eventMode = "none";
