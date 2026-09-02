@@ -6,6 +6,20 @@ type DollOptions = {
   size?: number;
 };
 
+/** 0xRRGGBB 두 색을 t(0..1)로 보간 — 피격 물듦·궁극기 진행도 색 */
+export function lerpColor(a: number, b: number, t: number): number {
+  const k = Math.max(0, Math.min(1, t));
+  const ch = (shift: number) => {
+    const x = (a >> shift) & 0xff;
+    const y = (b >> shift) & 0xff;
+    return Math.round(x + (y - x) * k) & 0xff;
+  };
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/** 꼬집기 물듦 색 — 당긴 비율 1 에서 이 색까지 */
+const PINCH_TINT_COLOR = 0xff4a4a;
+
 /**
  * 캐릭터 본체. placeholder (Graphics) 또는 AI 생성 PNG sprite.
  *
@@ -49,6 +63,8 @@ export class Doll extends Container {
   // 피격 플래시 — bodyWrap.tint 를 잠깐 물들임 (통증 큐)
   private flashTime = 0;
   private flashColor = 0xffffff;
+  // 꼬집기 물듦 — 당긴 비율을 따라 올라가고, 놓으면 서서히 빠지는 지속 틴트 레벨(0..1)
+  private pinchTintLevel = 0;
 
   // AI sprite 의 알파맵 (실루엣 판정용)
   private alphaMap: { data: Uint8ClampedArray; w: number; h: number } | null =
@@ -368,11 +384,21 @@ export class Doll extends Container {
       rot += Math.sin(this.tremblePhase * Math.PI * 2 * 0.7) * 0.01;
     }
 
-    // 7) 피격 플래시
+    // 7) 틴트 합성 — 꼬집기 물듦(지속, 당긴 비율 추종·놓으면 감쇠) 위에 피격 플래시(순간)가 덮음
+    const pinchTarget = this.pinchRatio > 0.001 ? Math.pow(this.pinchRatio, 0.8) : 0;
+    if (pinchTarget >= this.pinchTintLevel) {
+      this.pinchTintLevel = pinchTarget; // 당길수록 즉시 붉어짐
+    } else {
+      // 놓았거나 느슨해짐 — 0.25s 시간상수로 서서히 원래색
+      this.pinchTintLevel = Math.max(pinchTarget, this.pinchTintLevel * Math.exp(-deltaSec / 0.25));
+      if (this.pinchTintLevel < 0.01) this.pinchTintLevel = pinchTarget;
+    }
+    let tint = this.pinchTintLevel > 0 ? lerpColor(0xffffff, PINCH_TINT_COLOR, this.pinchTintLevel) : 0xffffff;
     if (this.flashTime > 0) {
       this.flashTime = Math.max(0, this.flashTime - deltaSec);
-      this.bodyWrap.tint = this.flashTime > 0 ? this.flashColor : 0xffffff;
+      if (this.flashTime > 0) tint = this.flashColor;
     }
+    if (this.bodyWrap.tint !== tint) this.bodyWrap.tint = tint;
 
     this.bodyWrap.x = ox;
     this.bodyWrap.y = oy;

@@ -26,7 +26,7 @@ import {
   Texture,
 } from "pixi.js";
 import { Body, Constraint } from "matter-js";
-import { Doll } from "@/game/entities/Doll";
+import { Doll, lerpColor } from "@/game/entities/Doll";
 import { HitEffect } from "@/game/effects/HitEffect";
 import { Projectile } from "@/game/entities/Projectile";
 import { DrawingLayer } from "@/game/entities/DrawingLayer";
@@ -105,17 +105,6 @@ const THROW_MIN_FLY_SPEED = 950;
 const THROW_ASSIST_FULL_SPEED = 750;
 /** 투척물 중력 상쇄 비율 — 포물선을 눕혀 더 멀리 날아가게 (1=무중력) */
 const THROW_GRAVITY_CANCEL = 0.72;
-/** 0xRRGGBB 두 색을 t(0..1)로 보간 — 궁극기 진행도별 붉은 물듦 */
-function lerpColor(a: number, b: number, t: number): number {
-  const k = Math.max(0, Math.min(1, t));
-  const ch = (shift: number) => {
-    const x = (a >> shift) & 0xff;
-    const y = (b >> shift) & 0xff;
-    return Math.round(x + (y - x) * k) & 0xff;
-  };
-  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
-}
-
 /** 꼬집기 흔들기 — 당긴 채 손가락이 이 거리(px)만큼 움직일 때마다 피격(볼따구 쥐고 괴롭히기) */
 const PINCH_SHAKE_PX = 55;
 /** 흔들기 피격 최소 간격(ms) — 연타 무기와 비슷한 상한(≈10/s) */
@@ -794,7 +783,6 @@ export class PlayScene extends Container {
       if (ratio > 0.12) {
         const w = this.weapon;
         this.doll.releasePinch();
-        this.doll.hitFlash(0xff7a7a, 0.07 + 0.07 * ratio);
         stopPinchTension(true, ratio);
         const local = this.toLocal(e.global);
         const points = Math.round(w.strength + ratio * PINCH_STRETCH_BONUS);
@@ -924,7 +912,6 @@ export class PlayScene extends Container {
     const { x, y } = this.pinchPos;
     playHitSound("squeak", 0.45 + ratio * 0.75);
     this.doll.triggerHit(0.6 + ratio * 0.6);
-    this.doll.hitFlash(0xffa3a3, 0.06);
     this.doll.tremble(0.2);
     this.fx.burst(x, y, Math.round(2 + 4 * ratio), w.color);
     if (ratio > 0.55 && Math.random() < 0.5) {
@@ -1037,7 +1024,6 @@ export class PlayScene extends Container {
       this.transientDecals.handprint(hitLocal.x, hitLocal.y, Math.atan2(dirY, dirX), 1.35);
     }
     this.addHitStop(factor > 1.4 ? 0.05 : 0.03);
-    this.addShake(3 + 4 * factor);
     if (factor > 1.2) {
       const head = this.headPos();
       this.fx.tearDrops(head.x, head.y, 2);
