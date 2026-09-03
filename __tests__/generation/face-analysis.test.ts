@@ -117,13 +117,25 @@ test("분석 불확실성은 generation row·크레딧·외부 생성 제출 전
     new URL("../../app/api/fal/route.ts", import.meta.url),
     "utf8",
   );
+  // v1.20: commit→제출은 lib/character-gen/generation-continuation 으로 이동(route 는 위임).
+  // 순서 계약은 route(얼굴검사 제출 → continuation 위임) + lib(commit → 외부 제출)로 이어진다.
+  const continuation = readFileSync(
+    new URL(
+      "../../lib/character-gen/generation-continuation.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
   const childSubmit = route.indexOf("submitFaceCheckOnce(");
-  const commit = route.indexOf('"commit_generation_preflight"');
-  const submit = route.indexOf("provider.submitPlan");
+  const delegate = route.indexOf("runGenerationContinuation({");
+  const commit = continuation.indexOf('"commit_generation_preflight"');
+  const submit = continuation.indexOf("provider.submitPlan");
   assert.ok(childSubmit > 0);
-  assert.ok(commit > childSubmit);
+  assert.ok(delegate > childSubmit);
+  assert.ok(commit > 0);
   assert.ok(submit > commit);
   assert.doesNotMatch(route, /analyzeInputFace|fal\.subscribe/);
+  assert.doesNotMatch(continuation, /analyzeInputFace|fal\.subscribe/);
 
   const webhook = readFileSync(
     new URL("../../app/api/fal/face-webhook/route.ts", import.meta.url),

@@ -12,7 +12,9 @@ import {
 } from "@/lib/ops-maintenance-status";
 import {
   cleanupTerminalArtifacts,
+  continuePendingPreflights,
   createSweepCounters,
+  releaseStalePreflights,
   expireStaleDoneGenerations,
   failStuckQueuedGenerations,
   recoverIncompleteTargets,
@@ -105,12 +107,16 @@ export async function POST(req: NextRequest) {
       const targets = selectRecoveryTargets(scan.rows, counters);
 
       for (const stage of [
+        // v1.20: 웹훅이 놓친 accepted/committed 예약을 서버가 먼저 이어간다(사용자 대기 최소화).
+        () => continuePendingPreflights(admin, deadline, counters),
         () => terminalizeDeletedOwnerGenerations(admin, deadline, counters),
         () => recoverIncompleteTargets(admin, deadline, counters, targets),
         () => failStuckQueuedGenerations(admin, deadline, counters),
         () => expireStaleDoneGenerations(admin, deadline, counters),
         () => cleanupTerminalArtifacts(admin, deadline, counters),
         () => reRefundFailedGenerations(admin, deadline, counters),
+        // v1.20: 10분+ 방치된 예약은 사용자 재진입 없이도 환불·종결.
+        () => releaseStalePreflights(admin, deadline, counters),
       ]) {
         const end = await stage();
         if (end.kind === "deadline") {
@@ -123,6 +129,9 @@ export async function POST(req: NextRequest) {
       const result = {
         scanned: scan.rows.length,
         targeted: targets.length,
+        continued: counters.continued,
+        continuePending: counters.continuePending,
+        stalePreflightsReleased: counters.stalePreflightsReleased,
         recovered: counters.recovered,
         failed: counters.failed,
         pending: counters.pending,
