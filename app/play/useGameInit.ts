@@ -14,6 +14,7 @@ import type { GameHandle, CreateGameOptions } from "@/game/BossPaegiGame";
 import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
 import { runBoundedClientOperation } from "@/lib/client-operation";
+import { isTransportFailure } from "@/lib/transport-failure";
 
 /**
  * Pixi 게임 인스턴스 생성/해제 — 캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy.
@@ -178,9 +179,10 @@ export function useGameInit(opts: {
       // 실관측: 같은 사용자가 남의 캐릭터 URL 로 3회 연속 재시도).
       const deterministicUnavailable =
         e instanceof PlayDollInitError && e.message === "doll_unavailable";
-      // 결정적 거절은 warn → Logs 로만(sentry-bridge CAPTURE_SKIP). 조회 장애·
-      // 계약 위반·텍스처/게임 생성 실패 등 진짜 실패만 error 이슈로 승격.
-      if (deterministicUnavailable) {
+      // 결정적 거절·무응답(transport: 에셋 다운로드 타임아웃·이탈 abort)은 warn →
+      // Logs 로만(sentry-bridge CAPTURE_SKIP). 조회 장애·계약 위반·텍스처/게임 생성
+      // 실패 등 서버가 응답한 진짜 실패만 error 이슈로 승격.
+      if (deterministicUnavailable || isTransportFailure(e)) {
         log.warn("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
       } else {
         log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });

@@ -5,7 +5,10 @@ import {
   isScoreSubmissionId,
   scoreSubmissionRetryDelayMs,
 } from "@/lib/score-retry";
-import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
+import {
+  runBoundedClientJsonFetch,
+  unconfirmedOutcomeError,
+} from "@/lib/client-mutation";
 
 export const SCORE_OUTBOX_STORAGE_KEY = "boss-paegi:score-outbox:v1";
 export const SCORE_OUTBOX_ENTRY_PREFIX = "boss-paegi:score-outbox:v2:";
@@ -542,11 +545,18 @@ export function submitScoreWithOutbox(
       attemptMs: options.attemptMs,
     });
     if (delivery.kind !== "confirmed") {
-      throw new Error(
-        delivery.kind === "aborted"
-          ? "score_submit_aborted"
-          : "score_submit_response_unconfirmed",
-      );
+      // 메시지는 계약(테스트·UI 매핑) 그대로, 원인·사유는 cause/reason 으로 보존.
+      // (bounded JSON fetch 는 rejected 를 만들지 않지만 타입상 분기만 유지.)
+      throw delivery.kind === "rejected"
+        ? new Error("score_submit_response_unconfirmed", {
+            cause: delivery.error,
+          })
+        : unconfirmedOutcomeError(
+            delivery,
+            delivery.kind === "aborted"
+              ? "score_submit_aborted"
+              : "score_submit_response_unconfirmed",
+          );
     }
     const { response, body } = delivery.value;
     if (!response.ok) {

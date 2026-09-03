@@ -195,7 +195,9 @@ export class TelemetryTransport {
       const blob = new Blob([JSON.stringify(this.build(endReason))], {
         type: "application/json",
       });
-      navigator.sendBeacon(ENDPOINT, blob);
+      // 서버 진단용 표식 — 같은 세션의 다른 전송은 수락되는데 이탈 beacon 만 세션
+      // 없이 도착하는 사례(2026-09-03)를 keepalive fetch 와 구분한다.
+      navigator.sendBeacon(`${ENDPOINT}?beacon=1`, blob);
     } catch {
       // beacon 미지원/실패 무시
     }
