@@ -682,11 +682,11 @@ export async function continueReservationServerSide(args: {
   trigger: "face_webhook" | "sweep";
 }): Promise<ServerContinuationOutcome> {
   const { admin, provider, requestId, trigger } = args;
-  const { data: rawRow, error: rowError } = await admin
-    .from("generation_preflight_reservations")
-    .select("id, owner_id, role, image_digest, state, continuation_state")
-    .eq("id", requestId)
-    .maybeSingle();
+  // 예약 테이블은 service_role 직접 접근이 revoke 돼 있다(008901) — 0118 읽기 RPC 로만.
+  const { data: readData, error: rowError } = await admin.rpc(
+    "read_generation_preflight_for_continuation",
+    { p_request_id: requestId },
+  );
   if (rowError) {
     log.warn("gen.continuation_reservation_read_fail", {
       requestId,
@@ -695,12 +695,20 @@ export async function continueReservationServerSide(args: {
     });
     return { kind: "claim_fail" };
   }
-  if (!rawRow) return { kind: "missing" };
+  const read =
+    readData && typeof readData === "object" && !Array.isArray(readData)
+      ? (readData as Record<string, unknown>)
+      : null;
+  if (read?.ok !== true) {
+    log.warn("gen.continuation_reservation_read_invalid", { requestId, trigger });
+    return { kind: "claim_fail" };
+  }
+  if (read.found !== true) return { kind: "missing" };
   let row: ReservationRow;
   try {
     row = validateAdminRows<ReservationRow>(
       "gen.continuation_reservation",
-      [rawRow],
+      [read],
       {
         id: "uuid",
         owner_id: "uuid",

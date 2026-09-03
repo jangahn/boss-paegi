@@ -133,15 +133,13 @@ export async function continuePendingPreflights(
 ): Promise<SweepStageEnd> {
   if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
   const now = Date.now();
+  // 예약 테이블은 service_role 직접 접근이 revoke 돼 있다(008901) — 0118 읽기 RPC 로만.
   const { data: rows, error } = await admin
-    .from("generation_preflight_reservations")
-    .select("id, owner_id, state, continuation_state, continuation_leased_until, created_at")
-    .in("state", ["accepted", "committed"])
-    .neq("continuation_state", "submitted")
-    .gte("created_at", new Date(now - PREFLIGHT_CONTINUE_MAX_AGE_COMMITTED_MS).toISOString())
-    .lte("created_at", new Date(now - PREFLIGHT_CONTINUE_MIN_AGE_MS).toISOString())
-    .order("created_at", { ascending: true })
-    .limit(50)
+    .rpc("list_generation_preflight_continuations", {
+      p_min_age_seconds: Math.floor(PREFLIGHT_CONTINUE_MIN_AGE_MS / 1000),
+      p_max_age_seconds: Math.floor(PREFLIGHT_CONTINUE_MAX_AGE_COMMITTED_MS / 1000),
+      p_limit: 50,
+    })
     .abortSignal(deadline.signal);
   if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
   if (error || !Array.isArray(rows)) {
@@ -217,14 +215,12 @@ export async function releaseStalePreflights(
   counters: SweepCounters,
 ): Promise<SweepStageEnd> {
   if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
-  const cutoff = new Date(Date.now() - PREFLIGHT_STALE_RELEASE_AGE_MS).toISOString();
+  // 예약 테이블은 service_role 직접 접근이 revoke 돼 있다(008901) — 0118 읽기 RPC 로만.
   const { data: rows, error } = await admin
-    .from("generation_preflight_reservations")
-    .select("owner_id")
-    .in("state", ["claimed", "accepted"])
-    .lt("created_at", cutoff)
-    .order("created_at", { ascending: true })
-    .limit(100)
+    .rpc("list_stale_generation_preflight_owners", {
+      p_min_age_seconds: Math.floor(PREFLIGHT_STALE_RELEASE_AGE_MS / 1000),
+      p_limit: 100,
+    })
     .abortSignal(deadline.signal);
   if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
   if (error || !Array.isArray(rows)) {
@@ -236,9 +232,7 @@ export async function releaseStalePreflights(
     return SWEEP_STAGE_DONE;
   }
   const owners = [...new Set(
-    rows
-      .map((row) => (row as { owner_id?: unknown }).owner_id)
-      .filter((value): value is string => typeof value === "string"),
+    rows.filter((value): value is string => typeof value === "string"),
   )];
   if (owners.length > PREFLIGHT_STALE_OWNER_LIMIT) counters.boundedBacklogs++;
   for (const ownerId of owners.slice(0, PREFLIGHT_STALE_OWNER_LIMIT)) {

@@ -931,6 +931,11 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.21 (2026-09-03, v1.20 핫픽스 — 예약 읽기를 service_role RPC 로; **Migration 0118**):
+- **실측 실패**: v1.20 배포 직후 리뷰어 계정으로 요청 1회 후 폴링 없이 관찰 → 얼굴검사 4건 accepted 까지는 서버가 끝냈지만 웹훅 continuation 이 `gen.continuation_reservation_read_fail`(permission denied), gen-recover 스윕이 `gen.continue_sweep_query_fail`/`gen.stale_preflight_query_fail` → `gen.sweep_incomplete`(503, cron-job.org 실패 1회). 원인: `generation_preflight_reservations` 는 008901 이래 service_role 포함 전 역할 직접 접근 revoke(SECURITY DEFINER RPC 만) — v1.20 이 테이블을 직접 select 했다.
+- **0118**: 읽기 전용 RPC 3종(`read_generation_preflight_for_continuation`·`list_generation_preflight_continuations`·`list_stale_generation_preflight_owners`, service_role 전용 SECURITY DEFINER, 상태 전이는 종전 RPC 만). 웹훅·스윕이 이걸로 읽는다. pgTAP `generation_preflight_read_rpcs`(테이블은 여전히 닫힘·RPC ACL·빈 창 계약) + source 계약(직접 `from(...)` 금지).
+- **적용 순서**: 0118 을 prod 에 먼저 적용(추가 전용) → 앱 배포. 교훈: 새 서버 읽기 경로는 테이블 ACL(008901 revoke 목록)부터 확인하고, 배포 전 disposable DB 가 아닌 **실 계정 실측**을 머지 게이트로.
+
 v1.20 (2026-09-03, 캐릭터 생성 서버 주도 continuation — 얼굴검사 뒤 제출을 클라이언트 재요청에 의존하지 않음; 마이그레이션 없음):
 - **배경(실관측)**: 가입 직후 생성을 누르고 카메라 앱으로 전환한 회원의 요청이 fetch 단절로 끊겼다. 얼굴검사 4건은 서버 웹훅으로 정상 통과(accepted)했지만 **실제 3장 제출은 같은 requestId 의 클라이언트 재요청(`POST /api/fal`)만이 실행**하는 구조라 예약이 `accepted/continuation pending` 으로 방치됐고, 크레딧은 차감된 채 1시간 40분 동안 환불되지 않았다(정리 RPC 는 사용자가 /generate 에 재진입할 때만 호출됐고 5분 스윕은 `cost_preflight_pending` 행을 제외). 화면은 "자동 환불되었어요"로 사실과 다르게 안내했다.
 - **원본 사진 보존 시점(사용자 결정)**: 얼굴검사 통과(accepted) 시 tmp/face/{requestId} 를 지우지 않고 보존 → continuation 이 genId 경로로 **복사**(`copyFaceTmp`)한 뒤 원본을 지우고, 생성용 사본은 종전처럼 **후보 3장이 도착한 생성 웹훅**(`get_generation_face_cleanup_readiness`)에서 삭제. fal 이 실행 시점에 URL 을 받아가므로 제출 직후 삭제는 불가. 실질 보존 시간은 종전 생성용 사본과 같고, 백스톱은 content-maintain 고아 sweep(12분+).
