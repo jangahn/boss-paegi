@@ -62,7 +62,12 @@ export const marketingCopySchema = z.object({
     scoreOgTitle: tpl(80),
     // 점수 공유 OG 설명 — 롤 무관 단일 값(구 롤 ogLines 대체). 발행된 행엔 없을 수 있어 .default().
     scoreOgDesc: tpl(160).default("{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?"),
-    // 게임오버 — 공유 버튼(하이라이트 없을 때/있을 때) + 다시 버튼. 발행행 무중단 .default().
+    // 게임오버 — 1차 '다음 플레이' 버튼: 회원=갤러리("다른 캐릭터로 패기") / 비회원=가입 후 생성
+    // ("내 {호칭} 만들어서 패기", 홈 주 버튼과 같은 결). 비회원 부제는 signupBanner.nonmemberTitle 을
+    // 그대로 재사용(가입 혜택 문구 단일 소스). 발행행 무중단 .default().
+    gameoverPlayBtnMember: tpl(30).default("다른 캐릭터로 패기"),
+    gameoverPlayBtnNonmember: tpl(30).default("내 {호칭} 만들어서 패기"),
+    // 게임오버 — 공유 버튼(하이라이트 없을 때/있을 때, 2차) + 다시 패기 링크(하단 텍스트 행). 발행행 무중단 .default().
     gameoverShareBtn: tpl(30),
     gameoverShareBtnHighlight: tpl(30).default("🔥 하이라이트 공유하기"),
     gameoverRetryBtn: tpl(20),
@@ -114,6 +119,8 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     scoreShareText: "{호칭} {점수}점 패고 옴 🥊",
     scoreOgTitle: "[결재완료] {제작자} — {점수}점 ({등급})",
     scoreOgDesc: "{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?",
+    gameoverPlayBtnMember: "다른 캐릭터로 패기",
+    gameoverPlayBtnNonmember: "내 {호칭} 만들어서 패기",
     gameoverShareBtn: "보고서 공유하기",
     gameoverShareBtnHighlight: "🔥 하이라이트 공유하기",
     gameoverRetryBtn: "다시 패기",
