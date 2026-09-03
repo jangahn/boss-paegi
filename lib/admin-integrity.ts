@@ -1,3 +1,4 @@
+import { normalizeFlagSignalShape } from "@/lib/integrity-signal-shape";
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -417,7 +418,7 @@ export async function getIntegrityDetail(scoreId: string): Promise<IntegrityDeta
         value: number | string | null;
         threshold: number | string | null;
         source: string;
-      }>("integrity.detail.flag.signals", flag.signals, {
+      }>("integrity.detail.flag.signals", normalizeFlagSignalShape(flag.signals), {
         id: "string",
         value: "nullableNumeric",
         threshold: "nullableNumeric",
