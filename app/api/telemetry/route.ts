@@ -124,11 +124,14 @@ export async function POST(req: NextRequest) {
     log.warn("telemetry.identity_rejected", {
       sessionId: payload.sessionId,
       stage: actor.stage,
+      // boolean 값은 Sentry Logs 속성 조회에서 null 로 보여(2026-09-03 실측) 문자열로 남긴다.
       hasAuthCookie: req.cookies
         .getAll()
-        .some((cookie) => /^sb-.*-auth-token/.test(cookie.name)),
-      contentType: req.headers.get("content-type")?.split(";", 1)[0] ?? null,
-      beacon: req.nextUrl.searchParams.get("beacon") === "1",
+        .some((cookie) => /^sb-.*-auth-token/.test(cookie.name))
+        ? "yes"
+        : "no",
+      contentType: req.headers.get("content-type")?.split(";", 1)[0] ?? "none",
+      beacon: req.nextUrl.searchParams.get("beacon") === "1" ? "yes" : "no",
       uaFamily: uaFamily(req.headers.get("user-agent")),
       ...(actor.cause ? errInfo(actor.cause) : {}),
     });
