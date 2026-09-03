@@ -368,6 +368,19 @@ function GeneratePageInner() {
       log.warn("gen.client_request_fail", errInfo(e));
       const raw =
         e instanceof Error ? e.message : "알 수 없는 오류";
+      if (raw === "generation_delivery_unconfirmed") {
+        // 전송이 끊겨도(카메라 앱 전환 등) 서버는 얼굴검사→제출을 이어간다(v1.20). 종전 문구는
+        // "자동 환불되었어요"로 사실과 달랐다(2026-09-03 실관측). 잠시 뒤 재진입해 진행 중 생성을
+        // 진입 가드가 resume 으로 이어받게 한다.
+        setError(
+          "요청이 접수돼 서버가 이어서 처리해요. 잠시 후 진행 상황을 불러옵니다.",
+        );
+        setStage("upload");
+        window.setTimeout(() => {
+          if (!controller.signal.aborted) window.location.assign("/generate");
+        }, 2_500);
+        return;
+      }
       setError(
         raw === "operation_poll_deadline"
           ? "처리가 오래 걸리고 있어 자동 확인을 멈췄어요. 다시 시도하면 같은 요청을 안전하게 이어갑니다."

@@ -29,6 +29,16 @@ import {
 } from "@/lib/ops-keyset-pagination";
 import { validateAdminRows } from "@/lib/admin-read-contract";
 import { log, errInfo } from "@/lib/log";
+import { selectProvider } from "@/lib/character-gen";
+import { continueReservationServerSide } from "@/lib/character-gen/generation-continuation";
+import {
+  PREFLIGHT_CONTINUE_MAX_AGE_COMMITTED_MS,
+  PREFLIGHT_CONTINUE_MIN_AGE_MS,
+  PREFLIGHT_STALE_OWNER_LIMIT,
+  PREFLIGHT_STALE_RELEASE_AGE_MS,
+  selectContinuationTargets,
+  type PreflightContinuationRow,
+} from "@/lib/character-gen/preflight-continuation-targets";
 
 /**
  * gen-recover 스윕의 스테이지 분해(v1.04) — route(app/api/ops/gen-recover)는 인증·심박·
@@ -73,6 +83,11 @@ export type RecoveryScanOutcome =
   | { kind: "rows"; rows: RecoverySweepRow[] };
 
 export type SweepCounters = {
+  /** 얼굴검사 accepted/committed 인데 제출이 안 된 예약을 서버가 이어간 수(v1.20). */
+  continued: number;
+  continuePending: number;
+  /** 10분+ 방치된 claimed/accepted 예약을 소유자 단위로 환불·종결한 수(v1.20). */
+  stalePreflightsReleased: number;
   recovered: number;
   failed: number;
   pending: number;
@@ -89,6 +104,9 @@ export type SweepCounters = {
 
 export function createSweepCounters(): SweepCounters {
   return {
+    continued: 0,
+    continuePending: 0,
+    stalePreflightsReleased: 0,
     recovered: 0,
     failed: 0,
     pending: 0,
@@ -102,6 +120,154 @@ export function createSweepCounters(): SweepCounters {
     reRefunded: 0,
     refundPending: 0,
   };
+}
+
+/**
+ * accepted(얼굴검사 통과·미제출)·committed(크레딧 확정·lease 만료) 예약을 서버가 이어간다.
+ * 웹훅이 이미 처리했으면 claim 이 submitted/processing 을 돌려줘 아무 것도 바꾸지 않는다.
+ */
+export async function continuePendingPreflights(
+  admin: SupabaseClient,
+  deadline: OpsMaintenanceDeadline,
+  counters: SweepCounters,
+): Promise<SweepStageEnd> {
+  if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+  const now = Date.now();
+  const { data: rows, error } = await admin
+    .from("generation_preflight_reservations")
+    .select("id, owner_id, state, continuation_state, continuation_leased_until, created_at")
+    .in("state", ["accepted", "committed"])
+    .neq("continuation_state", "submitted")
+    .gte("created_at", new Date(now - PREFLIGHT_CONTINUE_MAX_AGE_COMMITTED_MS).toISOString())
+    .lte("created_at", new Date(now - PREFLIGHT_CONTINUE_MIN_AGE_MS).toISOString())
+    .order("created_at", { ascending: true })
+    .limit(50)
+    .abortSignal(deadline.signal);
+  if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+  if (error || !Array.isArray(rows)) {
+    counters.systemErrors++;
+    log.warn(
+      "gen.continue_sweep_query_fail",
+      error ? errInfo(error) : { dataType: typeof rows },
+    );
+    return SWEEP_STAGE_DONE;
+  }
+  let validated: PreflightContinuationRow[];
+  try {
+    validated = validateAdminRows<PreflightContinuationRow>(
+      "gen.continue_sweep_page",
+      rows,
+      {
+        id: "uuid",
+        owner_id: "uuid",
+        state: "string",
+        continuation_state: "string",
+        continuation_leased_until: "nullableTimestamp",
+        created_at: "timestamp",
+      },
+    );
+  } catch (validationError) {
+    counters.systemErrors++;
+    log.warn("gen.continue_sweep_query_invalid", errInfo(validationError));
+    return SWEEP_STAGE_DONE;
+  }
+  const eligible = selectContinuationTargets(validated, now, Number.MAX_SAFE_INTEGER);
+  const targets = selectContinuationTargets(validated, now);
+  if (eligible.length > targets.length) counters.boundedBacklogs++;
+  const provider = selectProvider(null);
+  for (const row of targets) {
+    if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+    try {
+      const outcome = await continueReservationServerSide({
+        admin,
+        provider,
+        requestId: row.id,
+        trigger: "sweep",
+      });
+      if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+      if (
+        outcome.kind === "continued" &&
+        (outcome.result.kind === "submitted" ||
+          outcome.result.kind === "submit_pending")
+      ) {
+        counters.continued++;
+      } else {
+        counters.continuePending++;
+      }
+    } catch (e) {
+      if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+      counters.continuePending++;
+      log.warn("gen.continue_sweep_item_fail", {
+        requestId: row.id,
+        ...errInfo(e),
+      });
+    }
+  }
+  return SWEEP_STAGE_DONE;
+}
+
+/**
+ * 10분+ 방치된 claimed/accepted 예약을 소유자 단위 RPC(release_stale_generation_preflights —
+ * 폴링 허브가 재진입 때 쓰는 것과 동일)로 환불·종결한다. 종전엔 사용자가 /generate 에 다시
+ * 들어와야만 실행돼 크레딧이 무기한 묶였다(2026-09-03 실관측 1시간 40분).
+ */
+export async function releaseStalePreflights(
+  admin: SupabaseClient,
+  deadline: OpsMaintenanceDeadline,
+  counters: SweepCounters,
+): Promise<SweepStageEnd> {
+  if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+  const cutoff = new Date(Date.now() - PREFLIGHT_STALE_RELEASE_AGE_MS).toISOString();
+  const { data: rows, error } = await admin
+    .from("generation_preflight_reservations")
+    .select("owner_id")
+    .in("state", ["claimed", "accepted"])
+    .lt("created_at", cutoff)
+    .order("created_at", { ascending: true })
+    .limit(100)
+    .abortSignal(deadline.signal);
+  if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+  if (error || !Array.isArray(rows)) {
+    counters.systemErrors++;
+    log.warn(
+      "gen.stale_preflight_query_fail",
+      error ? errInfo(error) : { dataType: typeof rows },
+    );
+    return SWEEP_STAGE_DONE;
+  }
+  const owners = [...new Set(
+    rows
+      .map((row) => (row as { owner_id?: unknown }).owner_id)
+      .filter((value): value is string => typeof value === "string"),
+  )];
+  if (owners.length > PREFLIGHT_STALE_OWNER_LIMIT) counters.boundedBacklogs++;
+  for (const ownerId of owners.slice(0, PREFLIGHT_STALE_OWNER_LIMIT)) {
+    if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+    const { data, error: releaseError } = await admin.rpc(
+      "release_stale_generation_preflights",
+      { p_owner_id: ownerId },
+    );
+    if (opsMaintenanceDeadlineReached(deadline)) return SWEEP_STAGE_DEADLINE;
+    const released =
+      !releaseError &&
+      data &&
+      typeof data === "object" &&
+      (data as { ok?: unknown }).ok === true &&
+      typeof (data as { released?: unknown }).released === "number"
+        ? (data as { released: number }).released
+        : 0;
+    if (releaseError) {
+      counters.systemErrors++;
+      log.warn("gen.stale_preflight_release_fail", {
+        userId: ownerId,
+        ...errInfo(releaseError),
+      });
+    } else if (released > 0) {
+      counters.stalePreflightsReleased += released;
+      log.info("gen.preflight_released", { userId: ownerId, released, trigger: "sweep" });
+    }
+  }
+  return SWEEP_STAGE_DONE;
 }
 
 export async function scanRecoveryWindow(

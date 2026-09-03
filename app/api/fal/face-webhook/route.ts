@@ -24,9 +24,12 @@ import {
   tmpFacePath,
 } from "@/lib/character-gen/upload-face";
 import { isUuid } from "@/lib/upload-write-safety";
+import { selectProvider } from "@/lib/character-gen";
+import { continueReservationServerSide } from "@/lib/character-gen/generation-continuation";
 
 export const runtime = "nodejs";
-export const maxDuration = 15;
+// accepted 면 이 핸들러가 3장 제출까지 이어간다(fal 제출 ~1-3초×3) — 15초는 빠듯해 30초.
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   const binding = {
@@ -211,6 +214,26 @@ export async function POST(req: NextRequest) {
       ...errInfo(finalizeError),
     });
     return NextResponse.json({ error: "record_unavailable" }, { status: 503 });
+  }
+  if (finalized.outcome === "accepted") {
+    // v1.20: 얼굴검사 통과 → 서버가 곧바로 크레딧 commit + 3장 제출(클라이언트 재요청 불필요).
+    // 보존된 원본(tmp/face/{reservationId})은 continuation 이 genId 경로로 복사한 뒤 지운다.
+    // 여기서 실패해도 응답은 200 — fal 재전송이 아니라 gen-recover 스윕(5분)이 백스톱이고,
+    // 그마저 못 이어가면 release_stale(10분+) 환불·고아 sweep(12분+) 정리로 종결된다.
+    try {
+      await continueReservationServerSide({
+        admin,
+        provider: selectProvider(null),
+        requestId: binding.reservationId,
+        trigger: "face_webhook",
+      });
+    } catch (error) {
+      log.warn("gen.face_webhook_continuation_fail", {
+        check: binding.checkKey,
+        ...errInfo(error),
+      });
+    }
+    return NextResponse.json({ ok: true });
   }
   if (!(await cleanupTerminalInput())) {
     return NextResponse.json(

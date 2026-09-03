@@ -931,6 +931,14 @@ v0.98 (2026-08-23, 결제 intent 시효 24h→6h + stale 경고를 '미해결'�
 - **시효 단축(사용자 결정)**: `PAYMENT_INTENT_EXPIRE_MS` 24h→**6h**. 종단돼도 재시도 결제는 동일 경로·결과이고, 종단 직후 늦은 PAID 도 grant RPC 가 미지급 canceled 주문에 지급을 허용(v0.94 근거)해 손실 없음. reconcile 자동 종단·어드민 취소 예외가 같은 상수를 공유.
 - **`pay.stale_payment_request` 분리**: 자동 대사가 해소하지 못한 `unresolved` 건이 있을 때만 warn(Sentry 경보 유지). 시효 내 결제창 이탈 등 `watching` 상태뿐이면 `pay.stale_payment_watching` **info**(브레드크럼) — 8/22 실사용자 카카오페이 이탈 1건으로 매 5분 Sentry 경보가 울리던 노이즈 제거(BOSS-PAEGI-16 resolve). 응답 JSON 의 `watching` 카운터·ops 계약은 불변.
 
+v1.20 (2026-09-03, 캐릭터 생성 서버 주도 continuation — 얼굴검사 뒤 제출을 클라이언트 재요청에 의존하지 않음; 마이그레이션 없음):
+- **배경(실관측)**: 가입 직후 생성을 누르고 카메라 앱으로 전환한 회원의 요청이 fetch 단절로 끊겼다. 얼굴검사 4건은 서버 웹훅으로 정상 통과(accepted)했지만 **실제 3장 제출은 같은 requestId 의 클라이언트 재요청(`POST /api/fal`)만이 실행**하는 구조라 예약이 `accepted/continuation pending` 으로 방치됐고, 크레딧은 차감된 채 1시간 40분 동안 환불되지 않았다(정리 RPC 는 사용자가 /generate 에 재진입할 때만 호출됐고 5분 스윕은 `cost_preflight_pending` 행을 제외). 화면은 "자동 환불되었어요"로 사실과 다르게 안내했다.
+- **원본 사진 보존 시점(사용자 결정)**: 얼굴검사 통과(accepted) 시 tmp/face/{requestId} 를 지우지 않고 보존 → continuation 이 genId 경로로 **복사**(`copyFaceTmp`)한 뒤 원본을 지우고, 생성용 사본은 종전처럼 **후보 3장이 도착한 생성 웹훅**(`get_generation_face_cleanup_readiness`)에서 삭제. fal 이 실행 시점에 URL 을 받아가므로 제출 직후 삭제는 불가. 실질 보존 시간은 종전 생성용 사본과 같고, 백스톱은 content-maintain 고아 sweep(12분+).
+- **continuation 공용화(`lib/character-gen/generation-continuation.ts`)**: `app/api/fal/route.ts` 의 commit→제출→완료 후반부를 그대로 옮긴 `runGenerationContinuation`(faceSource bytes|retained) + 서버 진입점 `continueReservationServerSide`(예약 행의 소유자·롤·digest 로 `claim_generation_preflight` 재확인 후 진행). 호출 경로 3: ①클라 재요청(종전) ②**마지막 얼굴검사 웹훅**(`face-webhook`, accepted 즉시) ③**gen-recover 스윕** `continuePendingPreflights`(1~9분 accepted / lease 만료 committed, 틱당 3). DB lease(2분)가 세 경로의 동시 실행을 한 명으로 줄여 제출은 한 번.
+- **방치 예약 환불 백스톱**: gen-recover 스윕 `releaseStalePreflights` — 10분+ claimed/accepted 예약을 소유자 단위 `release_stale_generation_preflights`(폴링 허브와 동일 RPC)로 환불·종결. 사용자 재진입 불필요.
+- **클라이언트 문구**: 전송 단절(`generation_delivery_unconfirmed`) 시 "요청이 접수돼 서버가 이어서 처리해요" 로 교정하고 2.5초 뒤 /generate 재진입(진입 가드가 진행 중 생성을 resume).
+- **검증**: source 계약 테스트(웹훅 accepted 분기·스윕 스테이지 순서·route 위임·strict 순서 불변) + 순수 선택기 테스트. 배포 후 실계정으로 요청 직후 fetch 를 끊는 실측을 남긴다.
+
 v1.19 (2026-09-03, iOS hydration 원인 제거·무결성 상세 레거시 flag·렉 표본 hidden 제외·최소 결제금액 100원; 마이그레이션 없음):
 - **iOS hydration(`app/layout.tsx` `formatDetection`)**: 8월 20~26일 iOS Safari 'Hydration Error' 73건(`/`·`/leaderboard`·`/news` 등 푸터 노출 페이지)의 원인은 iOS 데이터 디텍터가 푸터의 사업자등록번호·전화번호를 `<a href="tel:">` 로 감싸 SSR HTML 과 달라진 것(리플레이 DOM 원본으로 확정). `<meta name="format-detection" content="telephone=no, address=no, email=no, date=no">` 로 자동인식을 끈다. 화면 변화 없음(탭-통화 자동링크만 사라짐). Windows 번역 확장(Immersive Translate)이 낸 1건은 코드 무관.
 - **무결성 상세 페이지 500(`lib/integrity-signal-shape.ts`)**: 2026-07 anti-abuse v1/v2 flag 의 signals 에 `value`·`threshold` 키가 없어 strict 읽기 계약(`nullableNumeric`)이 예외 → `/admin/integrity/[scoreId]` 가 깨졌다(3건). 누락 키만 null 로 정규화한 뒤 검증(계약 자체는 불변).
