@@ -85,3 +85,29 @@ test("gen-recover runs continuation first and stale release last", () => {
   assert.match(route, /continued: counters\.continued/);
   assert.match(route, /stalePreflightsReleased: counters\.stalePreflightsReleased/);
 });
+
+test("reservation reads go through the 0118 service-role RPCs, never the revoked table", () => {
+  for (const path of [
+    "lib/character-gen/generation-continuation.ts",
+    "lib/character-gen/generation-sweep.ts",
+  ]) {
+    const source = readFileSync(path, "utf8");
+    assert.doesNotMatch(source, /from\("generation_preflight_reservations"\)/, path);
+  }
+  const continuation = readFileSync("lib/character-gen/generation-continuation.ts", "utf8");
+  assert.match(continuation, /"read_generation_preflight_for_continuation"/);
+  const sweep = readFileSync("lib/character-gen/generation-sweep.ts", "utf8");
+  assert.match(sweep, /"list_generation_preflight_continuations"/);
+  assert.match(sweep, /"list_stale_generation_preflight_owners"/);
+  const migration = readFileSync(
+    "supabase/migrations/0118_generation_preflight_read_rpcs.sql",
+    "utf8",
+  );
+  for (const fn of [
+    "read_generation_preflight_for_continuation",
+    "list_generation_preflight_continuations",
+    "list_stale_generation_preflight_owners",
+  ]) {
+    assert.match(migration, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\)\\s+to service_role`));
+  }
+});
