@@ -43,7 +43,7 @@ const GROUPS: Group[] = [
   {
     label: "갤러리 — 비회원 배너",
     fields: [
-      { sec: "signupBanner", k: "nonmemberTitle", label: "제목", max: 80 },
+      { sec: "signupBanner", k: "nonmemberTitle", label: "제목 (게임 종료 화면 비회원 부제에도 표시)", max: 80 },
       { sec: "signupBanner", k: "nonmemberSub", label: "설명", max: 200, multiline: true },
       { sec: "signupBanner", k: "nonmemberCta", label: "버튼", max: 30 },
     ],
@@ -81,10 +81,12 @@ const GROUPS: Group[] = [
   {
     label: "게임 종료 화면",
     fields: [
+      { sec: "share", k: "gameoverPlayBtnMember", label: "다음 플레이 버튼 — 회원 (갤러리로)", max: 30 },
+      { sec: "share", k: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼 — 비회원 (가입 후 생성으로)", max: 30 },
       { sec: "share", k: "gameoverShareBtn", label: "공유 버튼 — 하이라이트 없을 때", max: 30 },
       { sec: "share", k: "gameoverShareBtnHighlight", label: "공유 버튼 — 하이라이트 있을 때", max: 30 },
       { sec: "share", k: "scoreShareText", label: "웹 공유 텍스트 (이 화면에서 공유 시)", max: 60, multiline: true },
-      { sec: "share", k: "gameoverRetryBtn", label: "다시 버튼", max: 20 },
+      { sec: "share", k: "gameoverRetryBtn", label: "다시 패기 링크 (하단)", max: 20 },
     ],
   },
   {

@@ -37,7 +37,7 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
   galNonmember: {
     title: "갤러리 — 비회원 배너",
     regions: [
-      { id: "nonmemberTitle", label: "제목", tone: "edit" },
+      { id: "nonmemberTitle", label: "제목 (게임 종료 화면 비회원 부제 공용)", tone: "edit" },
       { id: "nonmemberSub", label: "설명", tone: "edit" },
       { id: "nonmemberCta", label: "버튼", tone: "edit" },
     ],
@@ -99,9 +99,12 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
     title: "게임 종료 화면 — 하이라이트 없을 때",
     regions: [
       { label: "보고서 본문(제목·점수·뱃지·피격자 의견) — 코드/롤/등급", tone: "ctx" },
-      { id: "gameoverShareBtn", label: "공유 버튼", tone: "edit" },
+      { id: "gameoverPlayBtnMember", label: "다음 플레이 버튼 — 회원 (갤러리로)", tone: "edit" },
+      { id: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼 — 비회원 (가입 후 생성으로)", tone: "edit" },
+      { id: "nonmemberTitle", label: "비회원 부제 (갤러리 비회원 배너 제목 공용)", tone: "edit" },
+      { id: "gameoverShareBtn", label: "공유 버튼 (2차)", tone: "edit" },
       { id: "scoreShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
-      { id: "gameoverRetryBtn", label: "다시 버튼", tone: "edit" },
+      { id: "gameoverRetryBtn", label: "하단 링크: 랭킹 · 내 뱃지 · [다시 패기] · 홈으로", tone: "edit" },
     ],
   },
   gameoverHl: {
@@ -109,9 +112,12 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
     regions: [
       { label: "보고서 본문(제목·점수·뱃지·피격자 의견) — 코드/롤/등급", tone: "ctx" },
       { label: "하이라이트 영상 (모바일은 공유에 첨부) — 자동", tone: "ctx" },
-      { id: "gameoverShareBtnHighlight", label: "공유 버튼", tone: "edit" },
+      { id: "gameoverPlayBtnMember", label: "다음 플레이 버튼 — 회원 (갤러리로)", tone: "edit" },
+      { id: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼 — 비회원 (가입 후 생성으로)", tone: "edit" },
+      { id: "nonmemberTitle", label: "비회원 부제 (갤러리 비회원 배너 제목 공용)", tone: "edit" },
+      { id: "gameoverShareBtnHighlight", label: "공유 버튼 (2차)", tone: "edit" },
       { id: "scoreShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
-      { id: "gameoverRetryBtn", label: "다시 버튼", tone: "edit" },
+      { id: "gameoverRetryBtn", label: "하단 링크: 랭킹 · 내 뱃지 · [다시 패기] · 홈으로", tone: "edit" },
     ],
   },
   history: {
@@ -197,7 +203,12 @@ export const FIELD_SURFACE: Record<
   secondaryCta: [{ surface: "home", region: "secondaryCta" }],
   disclaimer: [{ surface: "home", region: "disclaimer" }],
   // 갤러리
-  nonmemberTitle: [{ surface: "galNonmember", region: "nonmemberTitle" }],
+  // 비회원 배너 제목은 게임 종료 화면 비회원 부제로도 쓰인다(가입 혜택 문구 단일 소스).
+  nonmemberTitle: [
+    { surface: "galNonmember", region: "nonmemberTitle" },
+    { surface: "gameover", region: "nonmemberTitle" },
+    { surface: "gameoverHl", region: "nonmemberTitle" },
+  ],
   nonmemberSub: [{ surface: "galNonmember", region: "nonmemberSub" }],
   nonmemberCta: [{ surface: "galNonmember", region: "nonmemberCta" }],
   memberEmptyTitle: [{ surface: "galMemberEmpty", region: "memberEmptyTitle" }],
@@ -224,7 +235,16 @@ export const FIELD_SURFACE: Record<
   scoreRankLink: [{ surface: "share", region: "scoreRankLink" }],
   scoreOgTitle: [{ surface: "shareOg", region: "scoreOgTitle" }],
   scoreOgDesc: [{ surface: "shareOg", region: "scoreOgDesc" }],
-  // 게임 종료 화면 — 웹 공유 텍스트(scoreShareText)·다시 버튼은 하이라이트 유/무 두 상태 공통.
+  // 게임 종료 화면 — 다음 플레이 버튼 2종·웹 공유 텍스트(scoreShareText)·다시 패기 링크는
+  // 하이라이트 유/무 두 상태 공통.
+  gameoverPlayBtnMember: [
+    { surface: "gameover", region: "gameoverPlayBtnMember" },
+    { surface: "gameoverHl", region: "gameoverPlayBtnMember" },
+  ],
+  gameoverPlayBtnNonmember: [
+    { surface: "gameover", region: "gameoverPlayBtnNonmember" },
+    { surface: "gameoverHl", region: "gameoverPlayBtnNonmember" },
+  ],
   scoreShareText: [
     { surface: "gameover", region: "scoreShareText" },
     { surface: "gameoverHl", region: "scoreShareText" },
@@ -277,7 +297,7 @@ const ROLE_SURFACES: Record<RoleSurfaceKey, { title: string; regions: Region[] }
     regions: [
       { label: "점수·뱃지·정산표 (자동)", tone: "ctx" },
       { id: "reactions", label: "피격 반응", tone: "edit" },
-      { label: "공유·다시 버튼 (마케팅 카피에서 관리)", tone: "ctx" },
+      { label: "다음 플레이·공유 버튼 (마케팅 카피에서 관리)", tone: "ctx" },
     ],
   },
   play: {

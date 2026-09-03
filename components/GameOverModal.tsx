@@ -18,6 +18,8 @@ import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { resolveCopy } from "@/lib/config/template";
 import { getMyProfile } from "@/lib/profile";
+import { ctaFor } from "@/lib/gallery-cta";
+import { log } from "@/lib/log";
 import type { HighlightClip } from "@/lib/highlight";
 import { elapsedScoreDurationMs } from "@/lib/score-retry";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
@@ -123,6 +125,10 @@ export function GameOverModal({
 
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [nickname, setNickname] = useState<string>("");
+  // 로그인 여부 — 1차 '다음 플레이' 버튼 분기(회원=갤러리 / 비회원=가입 후 생성). 홈과 같은
+  // fail-closed 기본값(비회원): 프로필 조회 전·실패 시 비회원 CTA. 판이 바뀌어도 로그인 상태는
+  // 유지되므로 open 리셋 대상이 아니다(재조회가 갱신).
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   // 하이라이트 업로드(백그라운드) 진행/완료 표시 + 1회 가드(중복 업로드 차단).
   const [uploading, setUploading] = useState(false);
   const [attached, setAttached] = useState(false);
@@ -196,6 +202,7 @@ export function GameOverModal({
           )
         ) {
           setNickname(p.display_name);
+          setIsLoggedIn(p.isLoggedIn);
         }
       })
       .catch(() => {});
@@ -224,6 +231,28 @@ export function GameOverModal({
   const pendingNotice = isPending
     ? { notice: mk.share.pendingReviewNotice, warning: mk.share.pendingReviewWarning }
     : null;
+
+  // 1차 '다음 플레이' — 회원은 갤러리에서 다른 캐릭터 선택, 비회원은 가입 후 생성(갤러리 CTA 와
+  // 같은 목적지 helper). 비회원은 항상 기본 부장님 플레이라 {호칭}=부장님 으로 풀린다.
+  const nextPlay = isLoggedIn
+    ? { kind: "member" as const, href: "/gallery", label: mk.share.gameoverPlayBtnMember }
+    : {
+        kind: "nonmember" as const,
+        href: ctaFor("nonmember").href,
+        label: resolveCopy(mk.share.gameoverPlayBtnNonmember, roleLabel),
+      };
+  const handleNextPlayClick = () => {
+    // 결과 화면 CTA 클릭 계측(Sentry Logs, game.* 로그와 같은 관례) — 계측이 내비를 막지 않는다.
+    try {
+      log.info("gameover.cta_click", {
+        kind: nextPlay.kind,
+        dollId: dollId ?? "default",
+        score,
+      });
+    } catch {
+      // Logging must never block navigation.
+    }
+  };
 
   // gesture 안에서 URL 즉시 공유(친구는 보통 수 초+ 뒤 열어 그때면 attach 완료).
   // 클립 업로드/카드 저장은 같은 탭의 백그라운드 — 실패해도 링크 공유는 이미 됨(불변 원칙).
@@ -440,12 +469,27 @@ export function GameOverModal({
 
         {/* ── CTA ────────────────────────────────────────── */}
         <div className="mt-4 flex flex-col gap-2.5">
+          {/* 1차: 다음 플레이 — 로그인 여부로 분기. 상태 전환 시 key 리마운트(iOS WebKit 텍스트 잔상 처방). */}
+          <Link
+            key={nextPlay.kind}
+            href={nextPlay.href}
+            onClick={handleNextPlayClick}
+            className="transform-gpu rounded-full bg-white py-3 text-center font-semibold text-black transition hover:opacity-90"
+          >
+            {nextPlay.label}
+          </Link>
+          {nextPlay.kind === "nonmember" && (
+            <p className="-mt-1 text-center text-xs text-zinc-300">
+              {mk.signupBanner.nonmemberTitle}
+            </p>
+          )}
+          {/* 2차: 공유 — 검토 중(pending) 점수는 숨김 */}
           {!isPending && (
             <button
               type="button"
               onClick={handleShare}
               disabled={!scoreId || sharing}
-              className="rounded-full bg-white py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-40"
+              className="rounded-full border border-white/25 py-3 font-medium text-white transition hover:bg-white/10 disabled:opacity-40"
             >
               {sharing
                 ? "공유 준비 중…"
@@ -454,13 +498,7 @@ export function GameOverModal({
                   : mk.share.gameoverShareBtn}
             </button>
           )}
-          <button
-            type="button"
-            onClick={onRestart}
-            className="rounded-full border border-white/25 py-3 font-medium text-white transition hover:bg-white/10"
-          >
-            {mk.share.gameoverRetryBtn}
-          </button>
+          {/* 하단 텍스트 행 — 다시 패기는 여기(2차 알약에서 강등, 동작 동일). 갤러리 링크는 1차 버튼이 담당. */}
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-1 text-sm text-zinc-300">
             <button
               type="button"
@@ -475,9 +513,13 @@ export function GameOverModal({
             >
               내 뱃지
             </Link>
-            <Link href="/gallery" className="underline-offset-4 hover:underline">
-              갤러리
-            </Link>
+            <button
+              type="button"
+              onClick={onRestart}
+              className="underline-offset-4 hover:underline"
+            >
+              {mk.share.gameoverRetryBtn}
+            </button>
             <Link href="/" className="underline-offset-4 hover:underline">
               홈으로
             </Link>
