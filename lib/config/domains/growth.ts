@@ -7,12 +7,13 @@ import {
 import type { PayMode } from "@/lib/pay-channels";
 
 // 성장 레버 도메인 — 가입 생성권 개수 + 충전 상품(가격/개수). 머니 패스(체크아웃)에 직결.
-// 가격: 최소 1,000원(소액 카드결제 하한 가드) + 상한 100,000원 가드(과실 과금 방지). productId 불변.
+// 가격: 최소 100원(카카오페이 카드·머니 최소 결제금액 — 공식 FAQ·포트원 도움말 기준, 2026-09-03 사용자 결정으로
+//       구 1,000원 카드 PG 하한 가드에서 하향) + 상한 100,000원 가드(과실 과금 방지). productId 불변.
 // soft delete = active(false→/credits·checkout 숨김; 과거 주문은 amount/credits 스냅샷이라 무관).
 const productSchema = z.object({
   productId: z.string().trim().min(1).max(40),
   goodname: z.string().trim().min(1).max(60),
-  price: z.number().int().min(1000).max(100000),
+  price: z.number().int().min(100).max(100000),
   credits: z.number().int().min(1).max(1000),
   active: z.boolean(),
 });

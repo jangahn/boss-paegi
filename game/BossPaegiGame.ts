@@ -181,10 +181,17 @@ export async function createGame(
   }
 
   // 프레임타임 표본(렉 진단용) — 초기 N프레임(에셋 디코드 잰크) 스킵 후 deltaMS 수집(캡).
+  // 탭이 hidden 이면 브라우저가 rAF 를 조여 Pixi 가 deltaMS 를 100ms 로 클램프한다 —
+  // 그 표본은 렌더 성능이 아니라 백그라운드 스로틀이라 제외하고(2026-09-03 실관측: avg 100ms
+  // 세션이 전부 hidden_timeout), 다시 보일 때 첫 프레임들도 건너뛴다.
   const frameSamples: number[] = [];
   let frameSkip = 30;
   const onTick = (ticker: Ticker) => {
     scene.update(ticker.deltaMS / 1000);
+    if (document.visibilityState === "hidden") {
+      frameSkip = Math.max(frameSkip, 3);
+      return;
+    }
     if (frameSkip > 0) {
       frameSkip -= 1;
     } else if (frameSamples.length < 5000) {

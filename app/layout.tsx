@@ -42,6 +42,10 @@ export async function generateMetadata(): Promise<Metadata> {
     applicationName: SERVICE_NAME,
     keywords: sc.keywords,
     alternates: { canonical: "/" },
+    // iOS Safari 데이터 디텍터 차단 — 푸터의 사업자등록번호·전화번호를 <a href="tel:"> 로
+    // 감싸 SSR HTML 과 달라지며 hydration 오류(8월 iOS 73건, 리플레이 DOM 원본으로 확정)를
+    // 내던 것. 화면 변화 없음(탭-통화 자동링크만 사라짐).
+    formatDetection: { telephone: false, address: false, email: false, date: false },
     // 검색엔진 소유확인(메타태그 방식). 토큰은 비밀 아님(공개 HTML 렌더) — 코드에 고정.
     verification: {
       google: "lFpQQH8GbI-gtGbDbWuHYkrHngToMMWUT294pxdm3MY",
