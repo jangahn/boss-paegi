@@ -8,10 +8,12 @@ import { deriveStats, type GameplayStats } from "@/lib/stats";
  * GameOverModal(클라)·/api/score(서버 저장·유형 뱃지 부여)·/share·/history(렌더) 공용.
  *
  * v2 (2026-09-02, 사용자 확정):
- *   궁극기 ≥10 → 무기 7종+(웨폰 마스터) → 최대 콤보 ≥500 → 비중 40%+ 무기 중 최고 비중 무기의 유형
+ *   궁극기 ≥10 → 무기 9종(웨폰 마스터) → 최대 콤보 ≥400 → 비중 40%+ 무기 중 최고 비중 무기의 유형
  *   → 폴백(균형 잡힌 실무형). 비중 = 무기별 타격 횟수 / 총 타격(궁극기 난타 제외).
  *   무기 유형은 카테고리가 아니라 **무기 단위**(주먹/뿅망치, 싸대기/꼬집기, 책/키보드 분리).
  *   과거 유형(속전속결·투척왕·정밀타격)은 은퇴 — 표시 정의만 보존(공유/히스토리는 통계로 재계산하므로 새 룰 적용).
+ * v2.1 (2026-09-03, 사용자 확정): 웨폰 마스터 7종+ → 9종(현 활성 로스터 전부. 로스터 길이 파생이 아닌 상수 — 추후 하향 여지),
+ *   콤보 500 → 400, 궁극기 유형 라벨 '궁극기 의존형' → '궁극기 폭격기'(id·뱃지 slug·blurb·이모지 불변).
  */
 
 export type PersonaDef = {
@@ -24,15 +26,16 @@ export type PersonaDef = {
 };
 
 export const PERSONA_ULT_MIN = 10;
-export const PERSONA_WEAPON_MASTER_MIN = 7;
-export const PERSONA_COMBO_MIN = 500;
+/** 현 활성 로스터(WEAPONS) 9종 전부 — 의도적으로 상수(로스터 길이 파생 X, 추후 하향 여지) */
+export const PERSONA_WEAPON_MASTER_MIN = 9;
+export const PERSONA_COMBO_MIN = 400;
 /** 무기 유형 진입 최소 비중(타격 횟수 기준) */
 export const PERSONA_WEAPON_SHARE_MIN = 0.4;
 
 const DEFS = {
   ult_dependent: {
     id: "ult_dependent",
-    label: "궁극기 의존형",
+    label: "궁극기 폭격기",
     emoji: "💥",
     blurb: "필살기 없으면 손이 안 나가는, 한 방의 승부사.",
   },
