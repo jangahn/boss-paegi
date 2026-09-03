@@ -14,6 +14,7 @@ import {
   telemetryDropAck,
 } from "@/lib/telemetry/server-ingest";
 import { publicWriteActorKey } from "@/lib/public-write-quota";
+import { uaFamily } from "@/lib/telemetry/ua-family";
 import { log, errInfo } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -117,9 +118,18 @@ export async function POST(req: NextRequest) {
     },
   });
   if (!actor.ok) {
+    // 진단 필드(2026-09-03): 같은 세션의 다른 전송은 수락되는데 특정 1건만 세션 없이
+    // 도착하는 사례의 원인 확정용 — 쿠키 존재 여부(값 아님)·content-type·이탈 beacon
+    // 표식·UA 계열만 남긴다.
     log.warn("telemetry.identity_rejected", {
       sessionId: payload.sessionId,
       stage: actor.stage,
+      hasAuthCookie: req.cookies
+        .getAll()
+        .some((cookie) => /^sb-.*-auth-token/.test(cookie.name)),
+      contentType: req.headers.get("content-type")?.split(";", 1)[0] ?? null,
+      beacon: req.nextUrl.searchParams.get("beacon") === "1",
+      uaFamily: uaFamily(req.headers.get("user-agent")),
       ...(actor.cause ? errInfo(actor.cause) : {}),
     });
     return NextResponse.json(

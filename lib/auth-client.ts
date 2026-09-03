@@ -6,7 +6,10 @@ import {
 } from "@/lib/supabase/client";
 import { log, errInfo } from "@/lib/log";
 import { isTransportFailure } from "@/lib/transport-failure";
-import { runClientMutation } from "@/lib/client-mutation";
+import {
+  runClientMutation,
+  unconfirmedOutcomeError,
+} from "@/lib/client-mutation";
 
 // 진행 중 익명 로그인 1건만 공유 — SessionBootstrap·AccountMenu·ConsentGuard 등이 첫 진입에
 // 동시에 ensureAuth() 를 호출해도 signInAnonymously 가 한 번만 일어나게(익명 유저 다중 생성 race 방지).
@@ -41,11 +44,17 @@ export async function ensureAuth(signal?: AbortSignal): Promise<Session> {
         });
         return session;
       }
+      // deadline/aborted 결과는 원인(cause)·사유(reason)를 실은 무응답 에러로
+      // 감싼다 — 12초 타임아웃도 transport 로 분류돼 warn 이 된다(2026-09-03
+      // 실관측: supabase.co 가 차단된 클라이언트 1대가 19초마다 error 를 냈다).
       const error =
         outcome.kind === "rejected"
           ? outcome.error
-          : new Error("auth_anon_sign_in_unconfirmed");
-      // transport 실패(무응답 — 크롤러 렌더러·이탈·전파 불량)는 warn → Logs 로만
+          : unconfirmedOutcomeError(
+              outcome,
+              "auth_anon_sign_in_unconfirmed",
+            );
+      // transport 실패(무응답 — 크롤러 렌더러·이탈·전파 불량·타임아웃)는 warn → Logs 로만
       // (sentry-bridge CAPTURE_SKIP). Supabase 가 응답으로 거절한 실패만 error 이슈.
       if (isTransportFailure(error)) {
         log.warn("auth.anon_sign_in_fail", errInfo(error));
@@ -74,7 +83,8 @@ export async function ensureAuth(signal?: AbortSignal): Promise<Session> {
   if (wait.kind === "confirmed") return wait.value;
   throw wait.kind === "rejected"
     ? wait.error
-    : new Error(
+    : unconfirmedOutcomeError(
+        wait,
         wait.kind === "aborted"
           ? "auth_anon_sign_in_aborted"
           : "auth_anon_sign_in_unconfirmed",

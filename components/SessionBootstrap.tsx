@@ -25,6 +25,10 @@ import { markPlayConversionSent } from "@/lib/acquisition";
 import { log, errInfo } from "@/lib/log";
 import { isTransportFailure } from "@/lib/transport-failure";
 import {
+  BOOTSTRAP_RETRY_MAX_ATTEMPTS,
+  bootstrapRetryDelayMs,
+} from "@/lib/bootstrap-retry";
+import {
   acquireSessionReconciliation,
 } from "@/lib/session-reconciliation";
 import { isOAuthFlowId } from "@/lib/oauth-flow-lease";
@@ -199,6 +203,7 @@ function SessionBootstrapEffects({
 }) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -219,6 +224,14 @@ function SessionBootstrapEffects({
       | ReturnType<typeof acquireSessionReconciliation>
       | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    // 대기 중 네트워크가 돌아오면(online) 타이머를 기다리지 않고 즉시 다음 시도로.
+    let onOnline: (() => void) | null = null;
+    const clearOnline = () => {
+      if (onOnline) {
+        window.removeEventListener("online", onOnline);
+        onOnline = null;
+      }
+    };
     // ensureAuth() 가 실패 시 이미 "auth.anon_sign_in_fail" 을 레벨 분류(transport→warn,
     // 서버 거절→error)해 남기므로 여기서 또 로깅하면 같은 사건이 두 줄로 갈린다 → 침묵.
     (async () => {
@@ -322,13 +335,31 @@ function SessionBootstrapEffects({
       reconciliation?.release();
       reconciliation = null;
       setFailed(true);
-      retry = setTimeout(() => {
+      // 지수 backoff + 상한(lib/bootstrap-retry): 처음 두 번은 종전처럼 짧게, 이후
+      // 최대 60초 간격, 8회 뒤 자동 재시도 중단. 무상한 5초 루프가 차단된 클라이언트
+      // 1대당 분당 3건의 로그를 영구 생성하던 것을 막는다(2026-09-03 실관측).
+      const delayMs = bootstrapRetryDelayMs(attempt + 1);
+      if (delayMs === null) {
+        setExhausted(true);
+        log.warn("auth.bootstrap_retry_exhausted", {
+          attempts: BOOTSTRAP_RETRY_MAX_ATTEMPTS,
+        });
+        return;
+      }
+      const nextAttempt = () => {
+        if (retry) clearTimeout(retry);
+        retry = null;
+        clearOnline();
         setAttempt((value) => value + 1);
-      }, 5_000);
+      };
+      retry = setTimeout(nextAttempt, delayMs);
+      onOnline = nextAttempt;
+      window.addEventListener("online", onOnline, { once: true });
     });
     return () => {
       controller.abort();
       if (retry) clearTimeout(retry);
+      clearOnline();
       reconciliation?.release();
     };
   }, [attempt, onReady]);
@@ -340,9 +371,11 @@ function SessionBootstrapEffects({
       aria-live="polite"
       className="sr-only"
     >
-      {failed
-        ? "안전한 로그인 상태를 다시 확인하고 있어요."
-        : "로그인 상태를 확인하고 있어요…"}
+      {exhausted
+        ? "로그인 상태를 확인하지 못했어요. 새로고침하면 다시 시도해요."
+        : failed
+          ? "안전한 로그인 상태를 다시 확인하고 있어요."
+          : "로그인 상태를 확인하고 있어요…"}
     </p>
   );
 }

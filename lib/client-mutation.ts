@@ -448,6 +448,40 @@ export async function runClientMutation<T>(
 }
 
 /**
+ * Turns a non-confirmed, non-rejected outcome into an Error that keeps its
+ * evidence for logs: the provider error rides on `cause`, the outcome reason
+ * on `reason`. Deadline, transport and lifecycle-abort outcomes are
+ * no-response failures, so they get `status: 0` and a TimeoutError/AbortError
+ * name that `isTransportFailure` recognises (warn, logs-only). An unconfirmed
+ * or unreconciled *response* keeps a plain Error because the server answered.
+ */
+export function unconfirmedOutcomeError(
+  outcome: Extract<
+    ClientMutationOutcome<unknown>,
+    { kind: "unconfirmed" | "aborted" }
+  >,
+  message: string,
+): Error {
+  const cause = outcome.kind === "unconfirmed" ? outcome.error : undefined;
+  const reason = outcome.kind === "aborted" ? "aborted" : outcome.reason;
+  const error =
+    cause === undefined ? new Error(message) : new Error(message, { cause });
+  if (outcome.kind === "aborted") {
+    error.name = "AbortError";
+  } else if (reason === "deadline") {
+    error.name = "TimeoutError";
+  }
+  const noResponse =
+    outcome.kind === "aborted" ||
+    reason === "deadline" ||
+    reason === "transport";
+  return Object.assign(error, {
+    reason,
+    ...(noResponse ? { status: 0 } : {}),
+  });
+}
+
+/**
  * JSON convenience for receipt-bearing mutations. The URL, method, headers,
  * and already-serialized body are captured once and reused byte-for-byte for
  * reconciliation; callers still own exact response parsing.
