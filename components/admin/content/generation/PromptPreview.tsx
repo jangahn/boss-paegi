@@ -28,13 +28,13 @@ export function PromptPreview({ prompt }: { prompt: GenerationPromptConfig }) {
     <div className="rounded-xl border border-foreground/10 bg-foreground/[0.02] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-zinc-500">미리보기</span>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {ROLES.map((r) => (
             <button
               key={r.id}
               type="button"
               onClick={() => setRole(r.id)}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+              className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition ${
                 role === r.id
                   ? "bg-foreground text-paper-2"
                   : "text-zinc-500 hover:bg-foreground/5"

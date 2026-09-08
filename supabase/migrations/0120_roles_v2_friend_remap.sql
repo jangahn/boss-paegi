@@ -1,13 +1,19 @@
 -- 0120: 롤 7종 — 사장님(ceo)·신입(junior)·친구(friend) 신설, 동료(coworker)→친구 흡수 (v1.25, PR-B)
 --
 -- 앱 어휘 단일 소스 lib/roles/ids.ts 와 동일한 7종으로 DB 어휘를 맞춘다.
---  1) 리맵: dolls(24)·ai_generations(27)·generation_preflight_reservations 의 coworker → friend.
+--  1) CHECK 3개 해제 → 리맵 → CHECK 3개 재정의(0017·0018·008901 이 만든 이름 유지).
+--     리맵: dolls(24)·ai_generations(27)·generation_preflight_reservations 의 coworker → friend.
 --     이미지·통계·점수는 불변(롤은 메타데이터, 0017 결정과 동일). 트리거: dolls 는 version/moderation_version 이
 --     자동 증가(0007·0085), ai_generations 는 status 불변이라 전이 트리거 무영향, privacy fence 는 scrub 행에만
 --     걸리며(적용 시점 실측 0건) 안전 위해 where 절로 제외한다.
---  2) CHECK 3개 재정의(0017·0018·008901 이 만든 이름 유지).
---  3) allowlist 함수 2개 — 프로덕션 pg_get_functiondef 실측본(0079·0096 반영) + 한 줄 교체.
---  적용 순서: 리맵 → CHECK(신 어휘) → 함수. 코드 배포 전에 적용해도 구 코드(5롤 쓰기)는 그대로 통과한다.
+--     ⚠ 순서가 중요하다: 구 CHECK 는 'friend' 를 거절하므로 리맵 전에 해제해야 하고, 신 CHECK 는 'coworker' 를
+--     거절하므로 리맵 후에 걸어야 한다(빈 로컬 DB 에선 리맵이 no-op 이라 드러나지 않는다 — 프로덕션 1차 적용 실패 교훈).
+--  2) allowlist 함수 2개 — 프로덕션 pg_get_functiondef 실측본(0079·0096 반영) + 한 줄 교체.
+--  코드 배포 전에 적용해도 구 코드(5롤 쓰기)는 그대로 통과한다.
+
+alter table public.dolls drop constraint if exists dolls_role_check;
+alter table public.ai_generations drop constraint if exists ai_generations_role_check;
+alter table public.generation_preflight_reservations drop constraint if exists generation_preflight_reservations_role_check;
 
 update public.dolls set role = 'friend' where role = 'coworker';
 update public.ai_generations set role = 'friend' where role = 'coworker' and privacy_scrubbed_at is null;
@@ -18,15 +24,10 @@ update public.generation_preflight_reservations r set role = 'friend'
       where g.id = r.generation_id and g.privacy_scrubbed_at is not null
    );
 
-alter table public.dolls drop constraint if exists dolls_role_check;
 alter table public.dolls add constraint dolls_role_check
   check (role in ('boss', 'ceo', 'exec', 'teamlead', 'client', 'junior', 'friend'));
-
-alter table public.ai_generations drop constraint if exists ai_generations_role_check;
 alter table public.ai_generations add constraint ai_generations_role_check
   check (role in ('boss', 'ceo', 'exec', 'teamlead', 'client', 'junior', 'friend'));
-
-alter table public.generation_preflight_reservations drop constraint if exists generation_preflight_reservations_role_check;
 alter table public.generation_preflight_reservations add constraint generation_preflight_reservations_role_check
   check (role in ('boss', 'ceo', 'exec', 'teamlead', 'client', 'junior', 'friend'));
 
