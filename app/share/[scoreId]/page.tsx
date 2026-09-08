@@ -21,6 +21,7 @@ import {
 } from "@/lib/score-detail";
 import { signedDollUrl } from "@/lib/storage";
 import { asRole } from "@/lib/roles";
+import { asGender } from "@/lib/gender";
 import { getRoleConfig, getScoreConfig, getBadgeCatalog, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
@@ -98,7 +99,14 @@ export default async function SharePage({
   ]);
   const rlabel = roleFrom(role, cfg).label;
   const grade = gradeFor(score.score, scoreCfg);
-  const reaction = bossReaction({ score: score.score, seed: score.id, role, roleCfg: cfg, scoreCfg });
+  const reaction = bossReaction({
+    score: score.score,
+    seed: score.id,
+    role,
+    gender: asGender(score.dolls?.gender),
+    roleCfg: cfg,
+    scoreCfg,
+  });
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = await clipSignedUrl(score);
   const dollImg = await signedDollUrl(score.dolls?.image_url, 600, { thumb: true }); // 384px 썸네일(삭제/없음=null→기본보스)

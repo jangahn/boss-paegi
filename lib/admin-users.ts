@@ -369,7 +369,7 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
       admin
         .from("dolls")
         .select(
-          "id, image_url, role, created_at, deleted_at, artifacts_purged_at",
+          "id, image_url, role, gender, created_at, deleted_at, artifacts_purged_at",
           { count: "exact" },
         )
         .eq("owner_id", userId)
@@ -383,6 +383,7 @@ export async function getUserDolls(userId: string, page = 1): Promise<Paged<Doll
       id: "uuid",
       image_url: "string",
       role: "string",
+      gender: "string",
       created_at: "timestamp",
       deleted_at: "nullableTimestamp",
       artifacts_purged_at: "nullableTimestamp",

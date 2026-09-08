@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { ROLE_IDS, josaEul, josaEun, josaEuro, type RoleId } from "@/lib/roles";
+import { DEFAULT_GENDER, GENDERS, GENDER_LABEL, type Gender } from "@/lib/gender";
 import {
   RoleSurfaceDiagram,
   ROLE_FIELD_SURFACE,
@@ -54,6 +55,7 @@ function clean(cfg: RoleConfig): RoleConfig {
     out[r] = {
       reactions: v.reactions.map(cleanArr),
       taunts: v.taunts.map(cleanArr),
+      female: { reactions: v.female.reactions.map(cleanArr), taunts: v.female.taunts.map(cleanArr) },
       traits: cleanArr(v.traits),
       ranks: cleanArr(v.ranks),
       departments: cleanArr(v.departments),
@@ -82,6 +84,8 @@ export function RoleContentEditor({
   const submitAdminConfigMutation = useAdminConfigMutation();
   const [form, setForm] = useState<RoleConfig>(initial);
   const [role, setRole] = useState<RoleId>("boss");
+  // 보이스 성별 탭 — 피격 반응·시비 멘트는 남/여 한 벌씩(v1.26). 남=루트, 여=female 블록.
+  const [voice, setVoice] = useState<Gender>(DEFAULT_GENDER);
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -91,9 +95,12 @@ export function RoleContentEditor({
   const surfs = focused ? ROLE_FIELD_SURFACE[focused] ?? [] : [];
   const patch = (next: Partial<RoleFull>) =>
     setForm((f) => ({ ...f, [role]: { ...f[role], ...next } }));
+  const voiceLines = (kind: "reactions" | "taunts"): string[][] =>
+    voice === "female" ? r.female[kind] : r[kind];
   const setTier = (kind: "reactions" | "taunts", i: number, text: string) => {
-    const arr = r[kind].map((t, ti) => (ti === i ? text.split("\n") : t));
-    patch({ [kind]: arr } as Partial<RoleFull>);
+    const arr = voiceLines(kind).map((t, ti) => (ti === i ? text.split("\n") : t));
+    if (voice === "female") patch({ female: { ...r.female, [kind]: arr } });
+    else patch({ [kind]: arr } as Partial<RoleFull>);
   };
 
   const submit = async () => {
@@ -217,7 +224,23 @@ export function RoleContentEditor({
               {sec.label}
               <span className="ml-1 font-normal text-zinc-400">· 단계당 권장 {sec.recommended}줄</span>
             </legend>
-            {r[sec.key].map((lines, i) => (
+            {/* 보이스 성별 — 두 tiered 섹션이 같은 탭을 공유. 캐릭터 성별은 얼굴검사 판정(어드민 캐릭터 상세에서 변경). */}
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-[11px] text-zinc-400">보이스</span>
+              {GENDERS.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setVoice(g)}
+                  className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                    voice === g ? "bg-foreground text-paper-2" : "bg-foreground/5 text-zinc-500"
+                  }`}
+                >
+                  {GENDER_LABEL[g]}
+                </button>
+              ))}
+            </div>
+            {voiceLines(sec.key).map((lines, i) => (
               <label key={i} className="flex flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">
                   {i}단계 · {tierBandLabel(i, thresholds)}점

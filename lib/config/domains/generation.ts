@@ -3,9 +3,13 @@ import type { DomainEntry } from "../registry";
 // 롤 어휘(순수 모듈)·공용 own-property guard는 상대 경로로 import해
 // node --test golden에서도 Next 별칭 해석 없이 실행 가능하게 유지한다.
 import { LEGACY_ROLE_ALIASES, ROLE_IDS, type RoleId } from "../../roles/ids.ts";
+import { GENDERS, type Gender } from "../../gender.ts";
 import { ownRecordValue } from "../../own-record.ts";
 
-// 캐릭터 생성(fal-ai/flux-pulid) 파라미터·프롬프트 도메인 — **v2 (2026-08-01 제품 결정)**.
+// 캐릭터 생성(fal-ai/flux-pulid) 파라미터·프롬프트 도메인 — **v2 (2026-08-01 제품 결정)** + **v3 성별 축(v1.26)**.
+// v3 = 롤당 subject/body 를 성별(male/female)별로 둔다: prompt.roles[role][gender] = {subject, body}.
+// 구 v2 발행행(롤당 {subject, body})은 normalizeGenerationConfigInput 이 읽기 시 male 로 승격하고 female 은 코드
+// 기본값으로 충전한다(재발행 시 v3 모양으로 저장). 조립 입력의 gender 는 얼굴검사 판정(unknown→male).
 // 수치는 스키마 하드경계 대신 **앱 안전 서브레인지**(identity 붕괴·원가·지연 방지).
 // 프롬프트는 **100% config 소유** — 코드에 영어 프롬프트 리터럴 없음.
 // v2 구조 = 고정 **통짜 template**({subject}{role}{glasses}{idGlasses} 각 1회) + 롤당 subject/body
@@ -54,7 +58,7 @@ function validTemplate(s: string): boolean {
   return TEMPLATE_PLACEHOLDERS.every((p) => c.get(p) === 1);
 }
 
-const rolePromptSchema = z.object({
+const roleVariantSchema = z.object({
   // 호칭(짧은 명사구) — template {subject} 위치에 삽입.
   subject: z.string().min(1).max(FIELD_MAX),
   // 복장+표정 통합 1필드 — template {role} 위치에 삽입.
@@ -66,6 +70,18 @@ const rolePromptSchema = z.object({
       message: "body 는 {suitColor} 를 정확히 1회 포함해야 하며 다른 placeholder 는 금지",
     }),
 });
+
+// 롤 1개 = 성별 2변주(정확히 male/female) — 추가 키는 strict 거절.
+const rolePromptSchema = z
+  .object(
+    Object.fromEntries(GENDERS.map((g) => [g, roleVariantSchema])) as Record<
+      Gender,
+      typeof roleVariantSchema
+    >,
+  )
+  .strict();
+
+export type GenerationRoleVariant = z.infer<typeof roleVariantSchema>;
 
 const promptSchema = z.object({
   template: z
@@ -121,9 +137,9 @@ function fill(template: string, map: Record<string, string>): string {
 export function assembleGenerationPrompts(
   prompt: GenerationPromptConfig,
   role: RoleId,
-  opts: { wearsGlasses: boolean; suitColor: string }
+  opts: { gender: Gender; wearsGlasses: boolean; suitColor: string }
 ): { positive: string; negative: string } {
-  const rv = prompt.roles[role];
+  const rv = prompt.roles[role][opts.gender];
   const positive = fill(prompt.template, {
     subject: rv.subject,
     role: fill(rv.body, { suitColor: opts.suitColor }),
@@ -140,9 +156,23 @@ const numbersSchema = z.object({
   imageSize: z.enum(GENERATION_IMAGE_SIZES),
 });
 
+/** v2 롤 값(롤당 {subject, body}) 판별 — v3 는 {male, female} 키를 가진다. */
+function isLegacyRoleVariant(value: unknown): value is { subject: unknown; body: unknown } {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "subject" in value &&
+    "body" in value &&
+    !("male" in value) &&
+    !("female" in value)
+  );
+}
+
 /**
- * 읽기/쓰기 공통 정규화(v1.25) — 발행행(v18: 5롤)에 ① 흡수된 구 롤 키(coworker) 제거 ② 없는 롤은 코드 기본값
- * 프롬프트로 충전. 그 외 미지 키는 건드리지 않아 strict 가 거절한다(API 경계 방어). 튜닝된 template/numbers 는 무접촉.
+ * 읽기/쓰기 공통 정규화(v1.25·v1.26) — 발행행에 ① 흡수된 구 롤 키(coworker) 제거 ② 없는 롤은 코드 기본값으로 충전
+ * ③ v2 롤 값({subject, body})은 male 로 승격하고 female 은 코드 기본값으로 충전(v3). 그 외 미지 키는 건드리지 않아
+ * strict 가 거절한다(API 경계 방어). 튜닝된 template/numbers 는 무접촉.
  */
 export function normalizeGenerationConfigInput(input: unknown): unknown {
   if (!input || typeof input !== "object" || Array.isArray(input)) return input;
@@ -153,7 +183,11 @@ export function normalizeGenerationConfigInput(input: unknown): unknown {
   const roles: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(prompt.roles as Record<string, unknown>)) {
     if (Object.hasOwn(LEGACY_ROLE_ALIASES, key)) continue;
-    roles[key] = value;
+    const fallback = ownRecordValue(GENERATION_CONFIG_DEFAULT.prompt.roles, key);
+    roles[key] =
+      isLegacyRoleVariant(value) && fallback
+        ? { male: { subject: value.subject, body: value.body }, female: fallback.female }
+        : value;
   }
   for (const r of ROLE_IDS) {
     if (!(r in roles)) roles[r] = GENERATION_CONFIG_DEFAULT.prompt.roles[r];
@@ -167,20 +201,23 @@ const generationConfigBaseSchema = z
     prompt: promptSchema,
   })
   .superRefine((cfg, ctx) => {
-    // 조립 총 길이 상한 — 모든 role × 안경 T/F, 가장 긴 suitColor 로 실조립 후 검사(절단 방지).
-    // strict roles 라 keys = 정확히 7롤(ROLE_IDS).
+    // 조립 총 길이 상한 — 모든 role × 성별 × 안경 T/F, 가장 긴 suitColor 로 실조립 후 검사(절단 방지).
+    // strict roles 라 keys = 정확히 7롤(ROLE_IDS) × 2성별.
     const longest = cfg.prompt.suitColors.reduce((a, b) => (b.length > a.length ? b : a), "");
     for (const role of Object.keys(cfg.prompt.roles) as RoleId[]) {
-      for (const wearsGlasses of [true, false]) {
-        const { positive } = assembleGenerationPrompts(cfg.prompt, role, {
-          wearsGlasses,
-          suitColor: longest,
-        });
-        if (positive.length > ASSEMBLED_MAX) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `조립 positive prompt 가 ${ASSEMBLED_MAX}자 초과 (role=${role}, glasses=${wearsGlasses})`,
+      for (const gender of GENDERS) {
+        for (const wearsGlasses of [true, false]) {
+          const { positive } = assembleGenerationPrompts(cfg.prompt, role, {
+            gender,
+            wearsGlasses,
+            suitColor: longest,
           });
+          if (positive.length > ASSEMBLED_MAX) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `조립 positive prompt 가 ${ASSEMBLED_MAX}자 초과 (role=${role}, gender=${gender}, glasses=${wearsGlasses})`,
+            });
+          }
         }
       }
     }
@@ -253,9 +290,16 @@ export function convertGenerationConfigV1toV2(
     throw new Error("generation_config_v1_scaffold_unsupported");
   }
   const p = v1.prompt;
-  const convertRole = (r: GenerationRolePromptV1) => ({
-    subject: r.subject,
-    body: convertGenerationRoleBodyV1toV2(r.attireTemplate, r.expression),
+  // v1 롤 값은 남성 변주로 승격(byte-identity 는 male·안경=false 조립에서 유지), female 은 코드 기본값(v1.26).
+  const convertRole = (
+    role: RoleId,
+    r: GenerationRolePromptV1,
+  ) => ({
+    male: {
+      subject: r.subject,
+      body: convertGenerationRoleBodyV1toV2(r.attireTemplate, r.expression),
+    },
+    female: GENERATION_CONFIG_DEFAULT.prompt.roles[role].female,
   });
   return {
     numbers: { ...v1.numbers },
@@ -267,11 +311,11 @@ export function convertGenerationConfigV1toV2(
       suitColors: [...p.suitColors],
       // v1 의 4롤은 변환, coworker 는 friend 로 흡수(프롬프트는 신규 기본값), ceo/junior/friend 는 코드 기본값(v1.25).
       roles: {
-        boss: convertRole(p.roles.boss),
+        boss: convertRole("boss", p.roles.boss),
         ceo: GENERATION_CONFIG_DEFAULT.prompt.roles.ceo,
-        exec: convertRole(p.roles.exec),
-        teamlead: convertRole(p.roles.teamlead),
-        client: convertRole(p.roles.client),
+        exec: convertRole("exec", p.roles.exec),
+        teamlead: convertRole("teamlead", p.roles.teamlead),
+        client: convertRole("client", p.roles.client),
         junior: GENERATION_CONFIG_DEFAULT.prompt.roles.junior,
         friend: GENERATION_CONFIG_DEFAULT.prompt.roles.friend,
       },
@@ -310,42 +354,92 @@ export const GENERATION_CONFIG_DEFAULT: GenerationConfig = {
       "light grey",
       "black",
     ],
+    // 롤 × 성별 변주(v3). male = v2 발행 튜닝 방향 유지, female = v1.26 신설(복장·액세서리만 다르고 표정·톤은 동일).
     roles: {
       boss: {
-        subject: "Korean office boss",
-        body:
-          "a {suitColor} business suit jacket, dress shirt, necktie, dress trousers with belt, dress shoes, slightly grumpy stern facial expression, rosy cheeks,",
+        male: {
+          subject: "Korean office boss",
+          body:
+            "a {suitColor} business suit jacket, dress shirt, necktie, dress trousers with belt, dress shoes, slightly grumpy stern facial expression, rosy cheeks,",
+        },
+        female: {
+          subject: "Korean female office boss",
+          body:
+            "a {suitColor} business suit jacket over a blouse, pencil skirt, low heels, slightly grumpy stern facial expression with a raised eyebrow, rosy cheeks,",
+        },
       },
       exec: {
-        subject: "senior Korean corporate executive",
-        body:
-          "a premium tailored {suitColor} suit jacket with a pocket square, crisp dress shirt, silk necktie, dress trousers, polished dress shoes, composed smug confident facial expression, dignified air, rosy cheeks,",
+        male: {
+          subject: "senior Korean corporate executive",
+          body:
+            "a premium tailored {suitColor} suit jacket with a pocket square, crisp dress shirt, silk necktie, dress trousers, polished dress shoes, composed smug confident facial expression, dignified air, rosy cheeks,",
+        },
+        female: {
+          subject: "senior Korean female corporate executive",
+          body:
+            "a premium tailored {suitColor} suit jacket with a brooch, silk blouse, slim dress trousers, polished heels, composed smug confident facial expression, dignified air, rosy cheeks,",
+        },
       },
       teamlead: {
-        subject: "Korean team manager",
-        body:
-          "a {suitColor} business-casual blazer with no necktie, dress shirt with rolled-up sleeves, chinos, loafers, earnest slightly weary facial expression, faint nervous smile, rosy cheeks,",
+        male: {
+          subject: "Korean team manager",
+          body:
+            "a {suitColor} business-casual blazer with no necktie, dress shirt with rolled-up sleeves, chinos, loafers, earnest slightly weary facial expression, faint nervous smile, rosy cheeks,",
+        },
+        female: {
+          subject: "Korean female team manager",
+          body:
+            "a {suitColor} business-casual blazer over a knit top, slim slacks, flat loafers, earnest slightly weary facial expression, faint nervous smile, rosy cheeks,",
+        },
       },
       client: {
-        subject: "visiting Korean business client",
-        body:
-          "a formal {suitColor} business suit, dress shirt, necktie, a visitor lanyard badge around the neck, dress shoes, cordial but demanding facial expression, polite yet pushy look, rosy cheeks,",
+        male: {
+          subject: "visiting Korean business client",
+          body:
+            "a formal {suitColor} business suit, dress shirt, necktie, a visitor lanyard badge around the neck, dress shoes, cordial but demanding facial expression, polite yet pushy look, rosy cheeks,",
+        },
+        female: {
+          subject: "visiting Korean female business client",
+          body:
+            "a formal {suitColor} business suit with a blouse, a visitor lanyard badge around the neck, low heels, cordial but demanding facial expression, polite yet pushy look, rosy cheeks,",
+        },
       },
-      // v1.25 신규 3롤 — 발행 튜닝(subject 에 국적 미표기) 방향을 따른다. 성별 변주는 PR-C.
+      // v1.25 신규 3롤 — 발행 튜닝(subject 에 국적 미표기) 방향을 따른다.
       ceo: {
-        subject: "company president and owner",
-        body:
-          "a luxurious {suitColor} double-breasted suit with a gold tie pin and a wristwatch, crisp dress shirt, silk necktie, polished leather shoes, arrogant self-satisfied grin with chin raised, rosy cheeks,",
+        male: {
+          subject: "company president and owner",
+          body:
+            "a luxurious {suitColor} double-breasted suit with a gold tie pin and a wristwatch, crisp dress shirt, silk necktie, polished leather shoes, arrogant self-satisfied grin with chin raised, rosy cheeks,",
+        },
+        female: {
+          subject: "female company president and owner",
+          body:
+            "a luxurious {suitColor} tailored suit with a pearl necklace and a wristwatch, silk blouse, polished heels, arrogant self-satisfied grin with chin raised, rosy cheeks,",
+        },
       },
       junior: {
-        subject: "Gen-Z junior office employee",
-        body:
-          "a {suitColor} knit vest over a white shirt with rolled-up sleeves, slim slacks, white sneakers, wireless earbuds in the ears, bored deadpan facial expression with a slight eye-roll, rosy cheeks,",
+        male: {
+          subject: "Gen-Z junior office employee",
+          body:
+            "a {suitColor} knit vest over a white shirt with rolled-up sleeves, slim slacks, white sneakers, wireless earbuds in the ears, bored deadpan facial expression with a slight eye-roll, rosy cheeks,",
+        },
+        female: {
+          subject: "Gen-Z female junior office employee",
+          body:
+            "a {suitColor} knit vest over a white shirt, pleated skirt, white sneakers, wireless earbuds in the ears, bored deadpan facial expression with a slight eye-roll, rosy cheeks,",
+        },
       },
       friend: {
-        subject: "annoying smug best friend",
-        body:
-          "a trendy {suitColor} oversized hoodie, baggy jeans, chunky sneakers, a small crossbody bag, smug teasing grin with one eyebrow raised, rosy cheeks,",
+        male: {
+          subject: "annoying smug best friend",
+          body:
+            "a trendy {suitColor} oversized hoodie, baggy jeans, chunky sneakers, a small crossbody bag, smug teasing grin with one eyebrow raised, rosy cheeks,",
+        },
+        female: {
+          subject: "annoying smug female best friend",
+          body:
+            "a trendy {suitColor} oversized hoodie, wide-leg jeans, chunky sneakers, a small crossbody bag, smug teasing grin with one eyebrow raised, rosy cheeks,",
+        },
       },
     },
   },

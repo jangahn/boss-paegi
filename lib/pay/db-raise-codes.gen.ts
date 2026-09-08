@@ -140,6 +140,7 @@ export const DB_RAISE_CODES: ReadonlySet<string> = new Set([
   "event_still_unmatched",
   "flags_required",
   "forbidden",
+  "gender_invalid",
   "generation_face_checks_forbidden",
   "generation_not_found",
   "generation_plan_snapshot_conflict",

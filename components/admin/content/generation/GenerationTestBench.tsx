@@ -10,6 +10,7 @@ import {
   type GenerationConfig,
 } from "@/lib/config/domains/generation";
 import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { DEFAULT_GENDER, GENDERS, GENDER_LABEL, type Gender } from "@/lib/gender";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 
@@ -27,6 +28,7 @@ type BenchSlot = {
   trueCfg: string;
   imageSize: GenerationConfig["numbers"]["imageSize"];
   role: RoleId;
+  gender: Gender;
   wearsGlasses: boolean;
 };
 
@@ -63,6 +65,7 @@ function slotFrom(current: GenerationConfig): BenchSlot {
     trueCfg: String(current.numbers.trueCfg),
     imageSize: current.numbers.imageSize,
     role: "boss",
+    gender: DEFAULT_GENDER,
     wearsGlasses: false,
   };
 }
@@ -124,6 +127,7 @@ function diffAgainstFirst(slot: BenchSlot, first: BenchSlot): string[] {
   if (slot.imageSize !== first.imageSize)
     diffs.push(`image_size ${first.imageSize}→${slot.imageSize}`);
   if (slot.role !== first.role) diffs.push(`롤 ${first.role}→${slot.role}`);
+  if (slot.gender !== first.gender) diffs.push(`성별 ${first.gender}→${slot.gender}`);
   if (slot.wearsGlasses !== first.wearsGlasses)
     diffs.push(`안경 ${first.wearsGlasses ? "on→off" : "off→on"}`);
   return diffs;
@@ -240,6 +244,7 @@ export function GenerationTestBench({ current }: { current: GenerationConfig }) 
           slots.map((slot) => ({
             value: composeSlotValue(slot),
             role: slot.role,
+            gender: slot.gender,
             wearsGlasses: slot.wearsGlasses,
           })),
         ),
@@ -433,6 +438,17 @@ export function GenerationTestBench({ current }: { current: GenerationConfig }) 
                     {ROLES.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={slot.gender}
+                    onChange={(e) => setSlot(index, { gender: e.target.value as Gender })}
+                    className="rounded-lg border border-foreground/15 ui-field p-1.5 text-xs outline-none focus:border-foreground/40"
+                  >
+                    {GENDERS.map((g) => (
+                      <option key={g} value={g}>
+                        {GENDER_LABEL[g]}
                       </option>
                     ))}
                   </select>

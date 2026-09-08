@@ -3,6 +3,7 @@ import {
   parseDollSignedUrlResponse,
 } from "./doll-signed-url-response.ts";
 import { isRoleId, type RoleId } from "./roles/ids.ts";
+import { isGender, type Gender } from "./gender.ts";
 
 export class PlayDollInitError extends Error {
   readonly causeValue: unknown;
@@ -17,6 +18,8 @@ export class PlayDollInitError extends Error {
 export type PlayDollRow = {
   image_url: string;
   role: RoleId;
+  /** 캐릭터 성별(dolls.gender, v1.26) — 시비 멘트·피격 반응 보이스 분기. */
+  gender: Gender;
 };
 
 /** Client Supabase maybeSingle 결과: 진짜 no-row와 resolved 장애를 구분한다. */
@@ -35,11 +38,12 @@ export function parsePlayDollLookup(
     typeof row.image_url !== "string" ||
     row.image_url.length === 0 ||
     row.image_url.trim() !== row.image_url ||
-    !isRoleId(row.role)
+    !isRoleId(row.role) ||
+    !isGender(row.gender)
   ) {
     throw new PlayDollInitError("invalid_doll_response");
   }
-  return { image_url: row.image_url, role: row.role as RoleId };
+  return { image_url: row.image_url, role: row.role as RoleId, gender: row.gender };
 }
 
 /** Signed URL endpoint의 정확한 1-id acknowledgement를 플레이용 단일 URL로 축소. */

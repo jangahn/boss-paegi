@@ -199,6 +199,8 @@ export type DollRow = {
   id: string;
   image_url: string;
   role: string;
+  /** 캐릭터 성별(v1.26, 보이스 분기) — 얼굴검사 자동 판정 + 어드민 후처리. */
+  gender: string;
   created_at: string;
   /** 숨김(takedown) soft-delete 시각. null=공개. (탈퇴=하드삭제라 목록서 사라짐.) */
   deleted_at: string | null;

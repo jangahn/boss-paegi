@@ -7,6 +7,8 @@ import { FadeImg } from "@/components/FadeImg";
 import { getRoleConfig } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { asRole } from "@/lib/roles";
+import { asGender, GENDER_LABEL } from "@/lib/gender";
+import { DollGenderControl } from "@/components/admin/DollGenderControl";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +100,18 @@ export default async function AdminGenerationDetailPage({
             </Link>
           </Row>
           <Row label="롤">{roleFrom(asRole(gen.role), roleCfg).label} <span className="text-zinc-400">({gen.role})</span></Row>
+          <Row label="성별">
+            {GENDER_LABEL[asGender(gen.gender)]} <span className="text-zinc-400">({gen.gender}) · 프롬프트에 적용된 값</span>
+            {gen.pickedDollId && gen.pickedDoll && (
+              <div className="mt-1.5">
+                <DollGenderControl
+                  dollId={gen.pickedDollId}
+                  gender={asGender(gen.pickedDoll.gender)}
+                  version={gen.pickedDoll.version}
+                />
+              </div>
+            )}
+          </Row>
           <Row label="생성 시각">{fmtKst(gen.createdAt)}</Row>
           <Row label="후보 수">{gen.candidateCount}</Row>
           <Row label="크레딧">
@@ -167,6 +181,13 @@ export default async function AdminGenerationDetailPage({
                 <Row label="얼굴 가림">{p.analyze.faceClear ? "없음" : "가려짐"}</Row>
               )}
               <Row label="안경">{p.analyze.wearsGlasses ? "예" : "아니오"}</Row>
+              <Row label="성별 판정">
+                {p.analyze.gender == null
+                  ? "기록 없음(v1.26 이전 · 남 적용)"
+                  : p.analyze.gender === "unknown"
+                    ? "판정 불가 → 남 적용"
+                    : `${GENDER_LABEL[p.analyze.gender]} (${p.analyze.gender})`}
+              </Row>
               <Row label="상태">{p.analyze.status}</Row>
               {p.analyze.checks?.length ? (
                 <div className="mt-1">

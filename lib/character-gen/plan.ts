@@ -6,6 +6,7 @@ import {
   type GenerationConfig,
 } from "../config/domains/generation.ts";
 import type { RoleId } from "@/lib/roles";
+import { DEFAULT_GENDER, isGender, type Gender } from "../gender.ts";
 
 // 고정(비-config) fal 파라미터 — 노출하지 않되 provider default drift 제거 위해 명시 제출·기록.
 export const FIXED_FLUX = {
@@ -35,6 +36,8 @@ export type GenRequestParams = {
 // generation_config v2 감사 스냅샷(표시 전용) — 최종 프롬프트는 candidates.positivePrompt 가 소유.
 export type GenSnapshot = {
   template: string;
+  /** 조립에 쓴 성별 변주(v1.26). v1.26 이전 plan 은 필드가 없어 male 로 읽는다. */
+  gender: Gender;
   roleSubject: string;
   roleBody: string;
   glasses: string;
@@ -122,6 +125,7 @@ export function parsePersistedGenerationPlan(
 }
 
 const SNAPSHOT_KEYS: readonly (keyof GenSnapshot)[] = [
+  "gender",
   "glasses",
   "glassesIdentity",
   "negative",
@@ -129,6 +133,15 @@ const SNAPSHOT_KEYS: readonly (keyof GenSnapshot)[] = [
   "roleSubject",
   "template",
 ];
+// 배포 경계 창 back-compat — v1.26(성별 축) 이전에 커밋된 plan 의 v2 스냅샷 키(gender 없음 → male).
+const V2_SNAPSHOT_KEYS = [
+  "glasses",
+  "glassesIdentity",
+  "negative",
+  "roleBody",
+  "roleSubject",
+  "template",
+] as const;
 // 배포 경계 창 back-compat — v2 배포 전에 커밋된 plan 의 v1 스냅샷 키.
 const LEGACY_SNAPSHOT_KEYS = [
   "attireTemplate",
@@ -160,10 +173,13 @@ function parsePersistedGenSnapshot(
   snapshot: Record<string, unknown>,
 ): GenSnapshot | null {
   const joined = Object.keys(snapshot).sort().join(",");
-  if (joined === SNAPSHOT_KEYS.join(",")) {
-    if (!allBoundedStrings(snapshot, SNAPSHOT_KEYS)) return null;
+  if (joined === SNAPSHOT_KEYS.join(",") || joined === V2_SNAPSHOT_KEYS.join(",")) {
+    const keys = joined === SNAPSHOT_KEYS.join(",") ? SNAPSHOT_KEYS : V2_SNAPSHOT_KEYS;
+    if (!allBoundedStrings(snapshot, keys)) return null;
+    if ("gender" in snapshot && !isGender(snapshot.gender)) return null;
     return {
       template: snapshot.template as string,
+      gender: isGender(snapshot.gender) ? snapshot.gender : DEFAULT_GENDER,
       roleSubject: snapshot.roleSubject as string,
       roleBody: snapshot.roleBody as string,
       glasses: snapshot.glasses as string,
@@ -174,6 +190,7 @@ function parsePersistedGenSnapshot(
   if (joined === LEGACY_SNAPSHOT_KEYS.join(",")) {
     if (!allBoundedStrings(snapshot, LEGACY_SNAPSHOT_KEYS)) return null;
     return {
+      gender: DEFAULT_GENDER,
       template: convertGenerationTemplateV1toV2(
         snapshot.headTemplate as string,
         snapshot.tail as string,
@@ -239,19 +256,21 @@ export function buildGenerationPlan(
   config: GenerationConfig,
   opts: {
     role: RoleId;
+    /** 얼굴검사 성별 판정(unknown 은 호출자가 male 로 수렴시켜 전달). */
+    gender: Gender;
     wearsGlasses: boolean;
     numImages: number;
     seed: string;
   },
 ): GenerationPlan {
-  const { role, wearsGlasses, numImages, seed } = opts;
-  const rv = config.prompt.roles[role];
+  const { role, gender, wearsGlasses, numImages, seed } = opts;
+  const rv = config.prompt.roles[role][gender];
   const colors = fisherYatesShuffle(
     config.prompt.suitColors,
     seededRandom(seed),
   ).slice(0, numImages);
   const candidates: GenCandidatePlan[] = colors.map((suitColor, index) => {
-    const { positive } = assembleGenerationPrompts(config.prompt, role, { wearsGlasses, suitColor });
+    const { positive } = assembleGenerationPrompts(config.prompt, role, { gender, wearsGlasses, suitColor });
     return { index, suitColor, positivePrompt: positive };
   });
   return {
@@ -267,6 +286,7 @@ export function buildGenerationPlan(
     },
     snapshot: {
       template: config.prompt.template,
+      gender,
       roleSubject: rv.subject,
       roleBody: rv.body,
       glasses: config.prompt.glasses,

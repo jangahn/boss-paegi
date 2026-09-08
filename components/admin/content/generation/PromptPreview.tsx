@@ -6,6 +6,7 @@ import {
   type GenerationPromptConfig,
 } from "@/lib/config/domains/generation";
 import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { DEFAULT_GENDER, GENDERS, GENDER_LABEL, type Gender } from "@/lib/gender";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 
@@ -15,11 +16,13 @@ import { roleFrom } from "@/lib/config/domains/roles";
  */
 export function PromptPreview({ prompt }: { prompt: GenerationPromptConfig }) {
   const [role, setRole] = useState<RoleId>("boss");
+  const [gender, setGender] = useState<Gender>(DEFAULT_GENDER);
   const [glasses, setGlasses] = useState(false);
   const roleCfg = useRoleConfig(); // 롤 호칭 = 발행 config(콘솔 호칭과 단일 소스)
   const ROLES = ROLE_IDS.map((id) => ({ id, label: roleFrom(id, roleCfg).label }));
   const suitColor = prompt.suitColors[0] ?? "(정장색 없음)";
   const { positive, negative } = assembleGenerationPrompts(prompt, role, {
+    gender,
     wearsGlasses: glasses,
     suitColor,
   });
@@ -41,6 +44,20 @@ export function PromptPreview({ prompt }: { prompt: GenerationPromptConfig }) {
               }`}
             >
               {r.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          {GENDERS.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setGender(g)}
+              className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                gender === g ? "bg-foreground text-paper-2" : "text-zinc-500 hover:bg-foreground/5"
+              }`}
+            >
+              {GENDER_LABEL[g]}
             </button>
           ))}
         </div>

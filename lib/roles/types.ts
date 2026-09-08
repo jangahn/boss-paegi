@@ -14,11 +14,19 @@ export type TieredLines = readonly [
   readonly string[],
 ];
 
-export type RoleContent = {
-  /** 피격자 의견 (게임오버/공유 보고서). 5단계 × 여러 줄(시드 6줄), seed 결정적 선택. */
+/** 성별 보이스 — 피격 반응·시비 멘트 한 벌(5단계 × 줄). 루트의 reactions/taunts 가 남성(기본) 보이스다. */
+export type GenderVoice = {
   reactions: TieredLines;
-  /** 시비 멘트 (플레이 중 말풍선). 5단계 × 여러 줄(시드 8줄). */
   taunts: TieredLines;
+};
+
+export type RoleContent = {
+  /** 피격자 의견 (게임오버/공유 보고서) — 남성(기본) 보이스. 5단계 × 여러 줄(시드 6줄), seed 결정적 선택. */
+  reactions: TieredLines;
+  /** 시비 멘트 (플레이 중 말풍선) — 남성(기본) 보이스. 5단계 × 여러 줄(시드 8줄). */
+  taunts: TieredLines;
+  /** 여성 보이스(v1.26) — 같은 5단계 아크, 롤 성격의 여성 변주(예: 여자 부장님 = 히스테리 중심). */
+  female: GenderVoice;
   /** 인사기록 특이사항. */
   traits: readonly string[];
   /** 인사기록 직급. */

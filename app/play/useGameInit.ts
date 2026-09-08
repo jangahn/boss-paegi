@@ -4,6 +4,7 @@ import { useEffect, type RefObject, type MutableRefObject } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { log, errInfo } from "@/lib/log";
 import type { RoleId } from "@/lib/roles";
+import type { Gender } from "@/lib/gender";
 import {
   PlayDollInitError,
   parsePlayDollLookup,
@@ -36,8 +37,8 @@ export function useGameInit(opts: {
   setGameReady: (v: boolean) => void;
   setGameInitError: (message: string | null) => void;
   setDollImageUrl: (url: string) => void;
-  /** doll 의 롤을 호출부에 전달 (시비 멘트·게임오버 보고서 분기용). 기본 플레이(dollId 없음)는 미호출 → boss 유지. */
-  setDollRole: (role: RoleId) => void;
+  /** doll 의 롤·성별을 호출부에 전달 (시비 멘트·게임오버 보고서 보이스 분기용). 기본 플레이(dollId 없음)는 미호출 → boss·male 유지. */
+  setDollRole: (role: RoleId, gender: Gender) => void;
   onInitialBackgroundReady: (key: string) => void;
 }): void {
   const {
@@ -85,7 +86,7 @@ export function useGameInit(opts: {
             (signal) =>
               createClient()
                 .from("dolls")
-                .select("image_url, role")
+                .select("image_url, role, gender")
                 .eq("id", dollId)
                 .abortSignal(signal)
                 .maybeSingle(),
@@ -93,7 +94,7 @@ export function useGameInit(opts: {
           );
           const doll = parsePlayDollLookup(lookup.data, lookup.error);
           if (cancelled) return undefined;
-          setDollRole(doll.role);
+          setDollRole(doll.role, doll.gender);
           // private 버킷 — image_url 은 경로. 서명 API로 signed URL 획득(본인 캐릭터·장기세션 ttl 3600).
           //   텍스처(게임 화면·녹화)는 **원본**, 게임종료 표시(ScoreReport)는 **384px 썸네일**(2개 병렬 서명).
           const sign = async (thumb: boolean): Promise<string> => {

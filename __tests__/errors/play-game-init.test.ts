@@ -12,18 +12,21 @@ const ID = "11111111-1111-4111-8111-111111111111";
 test("play doll lookup rejects dependency failure, no-row, and malformed authority rows", () => {
   assert.deepEqual(
     parsePlayDollLookup(
-      { image_url: "owner/doll.png", role: "teamlead" },
+      { image_url: "owner/doll.png", role: "teamlead", gender: "female" },
       null,
     ),
-    { image_url: "owner/doll.png", role: "teamlead" },
+    { image_url: "owner/doll.png", role: "teamlead", gender: "female" },
   );
 
   for (const [data, error] of [
     [null, new Error("db unavailable")],
     [null, null],
-    [{ image_url: "", role: "boss" }, null],
-    [{ image_url: " padded ", role: "boss" }, null],
-    [{ image_url: "owner/doll.png", role: "unknown" }, null],
+    [{ image_url: "", role: "boss", gender: "male" }, null],
+    [{ image_url: " padded ", role: "boss", gender: "male" }, null],
+    [{ image_url: "owner/doll.png", role: "unknown", gender: "male" }, null],
+    // 성별(v1.26)은 NOT NULL 컬럼 — 누락·미지값은 권위 행 손상으로 닫는다(male 추정 금지).
+    [{ image_url: "owner/doll.png", role: "boss" }, null],
+    [{ image_url: "owner/doll.png", role: "boss", gender: "unknown" }, null],
   ] as const) {
     assert.throws(
       () => parsePlayDollLookup(data, error),

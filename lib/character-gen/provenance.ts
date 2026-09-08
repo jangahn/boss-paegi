@@ -49,6 +49,8 @@ export const provenanceSchema = z.object({
     status: z.enum(["ok", "fail_open"]),
     faceVisible: z.boolean(),
     wearsGlasses: z.boolean(),
+    // v1.26 성별 판정 원문 단계(unknown 포함) — 구 레코드엔 없어 optional. 적용값은 generation.gender.
+    gender: z.enum(["male", "female", "unknown"]).optional(),
     // 신규(2026-07: 체크별 병렬콜) — 구 레코드엔 없어 optional.
     singlePerson: z.boolean().optional(),
     peopleCount: z.number().nullable().optional(),
@@ -71,6 +73,8 @@ export const provenanceSchema = z.object({
     provider: z.string(),
     model: z.string(),
     role: z.string(),
+    // v1.26 프롬프트 조립에 적용한 성별(unknown→male 수렴 후) — 구 레코드엔 없어 optional(=male).
+    gender: z.enum(["male", "female"]).optional(),
     request: z.object({
       imageSize: z.string(),
       numInferenceSteps: z.number(),
@@ -86,8 +90,9 @@ export const provenanceSchema = z.object({
     // 양쪽 다 optional(negative 만 공통 필수). 상세 화면은 있는 필드만 표기.
     snapshot: z.object({
       negative: z.string(),
-      // v2 — 통짜 template + 롤 subject/body + 안경 절.
+      // v2 — 통짜 template + 롤 subject/body + 안경 절. v3(v1.26) — 성별 변주 표기.
       template: z.string().optional(),
+      gender: z.string().optional(),
       roleSubject: z.string().optional(),
       roleBody: z.string().optional(),
       glasses: z.string().optional(),

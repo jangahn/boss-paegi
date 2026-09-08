@@ -2,9 +2,11 @@ import { createHmac } from "node:crypto";
 import {
   FACE_CHECK_KEYS,
   FACE_CHECK_PROMPTS,
+  LEGACY_FACE_CHECK_KEYS,
   MOONDREAM_MODEL,
   MOONDREAM_RAW_MAX,
   type FaceCheckKey,
+  type FaceCheckRawOutputs,
 } from "./face-analysis.ts";
 import {
   hashFalCallbackToken,
@@ -284,19 +286,38 @@ export function parseFaceCheckWebhookPayload(
   }
 }
 
+/**
+ * ready 응답의 raw_outputs → 체크별 원문. 필수 4체크는 전부 string 이어야 하고, gender 는 v1.26 이전에
+ * 준비된(4체크) 예약이면 없을 수 있어 null 로 둔다(배포 경계 ≤2h15m). 그 외 키는 거절.
+ */
 export function parseReadyFaceCheckOutputs(
   value: unknown,
-): Record<FaceCheckKey, string> | null {
+): FaceCheckRawOutputs | null {
   const row = exactObject(value);
   const outputs = exactObject(row?.raw_outputs);
   if (row?.ok !== true || row.outcome !== "ready" || !outputs) return null;
-  const result = {} as Record<FaceCheckKey, string>;
-  for (const key of FACE_CHECK_KEYS) {
+  const keys = Object.keys(outputs);
+  if (
+    keys.length !== FACE_CHECK_KEYS.length &&
+    keys.length !== LEGACY_FACE_CHECK_KEYS.length
+  ) {
+    return null;
+  }
+  if (!keys.every((key) => isFaceCheckKey(key))) return null;
+  const result = { gender: null } as FaceCheckRawOutputs;
+  for (const key of LEGACY_FACE_CHECK_KEYS) {
     const output = outputs[key];
     if (typeof output !== "string" || output.length > MOONDREAM_RAW_MAX) {
       return null;
     }
     result[key] = output;
   }
-  return Object.keys(outputs).length === FACE_CHECK_KEYS.length ? result : null;
+  if (keys.length === FACE_CHECK_KEYS.length) {
+    const output = outputs.gender;
+    if (typeof output !== "string" || output.length > MOONDREAM_RAW_MAX) {
+      return null;
+    }
+    result.gender = output;
+  }
+  return result;
 }

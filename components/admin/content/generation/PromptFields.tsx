@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { GenerationPromptConfig } from "@/lib/config/domains/generation";
 import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { GENDERS, GENDER_LABEL, type Gender } from "@/lib/gender";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 
@@ -50,7 +51,7 @@ function Area({
 
 /**
  * generation_config.prompt v2 편집 — 통짜 template({subject}{role}{glasses}{idGlasses} 각 1회)
- * + 안경 절 + 정장색 + 롤별 변주(subject/body). 프롬프트 텍스트 100% config 소유.
+ * + 안경 절 + 정장색 + 롤 × 성별 변주(subject/body, v1.26). 프롬프트 텍스트 100% config 소유.
  * 검증(placeholder 규칙 등)은 서버 Zod(발행 시 validation_failed).
  */
 export function PromptFields({
@@ -63,10 +64,17 @@ export function PromptFields({
   const roleCfg = useRoleConfig(); // 롤 호칭 = 발행 config(콘솔 호칭과 단일 소스)
   const roleLabel = (r: RoleId) => `${roleFrom(r, roleCfg).label} (${r})`;
   const set = (patch: Partial<GenerationPromptConfig>) => onChange({ ...prompt, ...patch });
-  const setRole = (role: RoleId, patch: Partial<GenerationPromptConfig["roles"][RoleId]>) =>
+  const setVariant = (
+    role: RoleId,
+    gender: Gender,
+    patch: Partial<GenerationPromptConfig["roles"][RoleId][Gender]>,
+  ) =>
     onChange({
       ...prompt,
-      roles: { ...prompt.roles, [role]: { ...prompt.roles[role], ...patch } },
+      roles: {
+        ...prompt.roles,
+        [role]: { ...prompt.roles[role], [gender]: { ...prompt.roles[role][gender], ...patch } },
+      },
     });
 
   return (
@@ -120,24 +128,32 @@ export function PromptFields({
       </div>
 
       <div className="flex flex-col gap-3">
-        <p className="text-sm font-semibold text-zinc-500">롤별 변주 (호칭·복장+표정)</p>
+        <p className="text-sm font-semibold text-zinc-500">
+          롤 × 성별 변주 (호칭·복장+표정)
+          <span className="ml-1 font-normal text-zinc-400">· 성별은 얼굴검사 자동 판정(판정 불가=남)</span>
+        </p>
         {ROLE_IDS.map((role) => (
           <div key={role} className="rounded-xl border border-foreground/10 p-3">
             <p className="mb-2 text-xs font-bold text-foreground">{roleLabel(role)}</p>
-            <div className="flex flex-col gap-2">
-              <Area
-                label="subject (호칭 — 짧은 명사구)"
-                value={prompt.roles[role].subject}
-                onChange={(v) => setRole(role, { subject: v })}
-                minRows={1}
-                mono={false}
-              />
-              <Area
-                label="body (복장+표정 통합, {suitColor} 1회)"
-                value={prompt.roles[role].body}
-                onChange={(v) => setRole(role, { body: v })}
-                minRows={3}
-              />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {GENDERS.map((gender) => (
+                <div key={gender} className="flex min-w-0 flex-col gap-2 rounded-lg bg-foreground/[0.03] p-2">
+                  <p className="text-[11px] font-semibold text-zinc-500">{GENDER_LABEL[gender]} ({gender})</p>
+                  <Area
+                    label="subject (호칭 — 짧은 명사구)"
+                    value={prompt.roles[role][gender].subject}
+                    onChange={(v) => setVariant(role, gender, { subject: v })}
+                    minRows={1}
+                    mono={false}
+                  />
+                  <Area
+                    label="body (복장+표정 통합, {suitColor} 1회)"
+                    value={prompt.roles[role][gender].body}
+                    onChange={(v) => setVariant(role, gender, { body: v })}
+                    minRows={3}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         ))}

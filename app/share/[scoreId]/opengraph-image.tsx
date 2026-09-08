@@ -6,6 +6,7 @@ import { fetchScoreDetail, type Score } from "@/lib/score-detail";
 import { SERVICE_NAME } from "@/lib/policy";
 import { bossReaction, gradeFor, reportNo, weaponLabel } from "@/lib/report";
 import { asRole } from "@/lib/roles";
+import { asGender } from "@/lib/gender";
 import { getRoleConfig, getScoreConfig, getMarketingCopy } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
@@ -69,7 +70,9 @@ export default async function OgImage({
     await signedDollUrl(s?.dolls?.image_url ?? null, 60, { thumb: true })
   );
   const grade = gradeFor(s?.score ?? 0, scoreCfg);
-  const reaction = s ? bossReaction({ score: s.score, seed: s.id, role, roleCfg: cfg, scoreCfg }) : "";
+  const reaction = s
+    ? bossReaction({ score: s.score, seed: s.id, role, gender: asGender(s.dolls?.gender), roleCfg: cfg, scoreCfg })
+    : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";
 
   return new ImageResponse(

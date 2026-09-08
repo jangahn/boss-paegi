@@ -17,6 +17,7 @@ import { setSentryGameContext, setSentryPerfContext } from "@/lib/sentry-context
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
+import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
 import { unlockAudio, isMuted, setMuted } from "@/lib/sound";
 import { log, errInfo } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
@@ -62,8 +63,9 @@ function PlayInner() {
   const [dollImageUrl, setDollImageUrl] = useState<string>(
     "/sprites/boss-default.png"
   );
-  // 맞는 캐릭터의 롤 — useGameInit 가 doll 로드 시 setRole. 기본 플레이(doll 없음)=boss.
+  // 맞는 캐릭터의 롤·성별 — useGameInit 가 doll 로드 시 set. 기본 플레이(doll 없음)=boss·male.
   const [role, setRole] = useState<RoleId>("boss");
+  const [gender, setGender] = useState<Gender>(DEFAULT_GENDER);
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
@@ -161,7 +163,10 @@ function PlayInner() {
     setGameReady,
     setGameInitError,
     setDollImageUrl,
-    setDollRole: setRole,
+    setDollRole: (r, g) => {
+      setRole(r);
+      setGender(g);
+    },
     onInitialBackgroundReady: (key) => {
       appliedBgKeyRef.current = key;
     },
@@ -179,7 +184,7 @@ function PlayInner() {
     });
   }, []);
 
-  const taunt = useTaunts(over, role);
+  const taunt = useTaunts(over, role, gender);
 
   // 점수 timeline 샘플링 — 녹화 지원 무관 항상(카드-only 하이라이트 계산용).
   const { getTimelineHighlight } = useScoreTimeline({
@@ -525,6 +530,7 @@ function PlayInner() {
         weapon={weapon.key}
         dollId={dollId}
         role={role}
+        gender={gender}
         dollImageUrl={dollImageUrl}
         highlightClip={bestClip}
         getCardHighlight={getTimelineHighlight}

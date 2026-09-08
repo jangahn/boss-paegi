@@ -23,6 +23,7 @@ const plan: GenerationPlan = {
   },
   snapshot: {
     template: "",
+    gender: "male",
     roleSubject: "",
     roleBody: "",
     glasses: "",
