@@ -74,7 +74,7 @@ export default async function AdminGenerationDetailPage({
       <div className="mx-auto w-full max-w-2xl">
         <div className="flex items-center justify-between">
           <Link href="/admin/generations" className="text-xs text-zinc-500 hover:text-foreground">
-            ← 생성 기록
+            ← 생성 현황
           </Link>
           {gen.pickedDollId && gen.doll && (
             <Link

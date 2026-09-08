@@ -200,7 +200,11 @@ function toRoute(
   leaf: "page.tsx" | "route.ts",
   prefix = "",
 ): string {
-  const normalized = relative(root, absolute).split(sep).join("/");
+  // 라우트 그룹 "(name)" 세그먼트는 URL 에 나타나지 않는다(Next.js 규약).
+  const normalized = relative(root, absolute)
+    .split(sep)
+    .filter((segment) => !/^\(.+\)$/.test(segment))
+    .join("/");
   const directory =
     normalized === leaf
       ? ""

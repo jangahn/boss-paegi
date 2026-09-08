@@ -3,7 +3,6 @@ import { requireAdmin } from "@/lib/auth-server";
 import { listDolls, DOLL_STATE_FILTERS, type DollStateFilter } from "@/lib/admin-dolls";
 import { DollFilterBar } from "@/components/admin/DollFilterBar";
 import { DollsTable } from "@/components/admin/DollsTable";
-import { CharacterTabs } from "@/components/admin/CharacterTabs";
 import { Pagination } from "@/components/Pagination";
 import { firstParam } from "@/lib/admin-format";
 import { parsePageParam } from "@/lib/pagination";
@@ -52,14 +51,11 @@ export default async function AdminDollsPage({
   const filtered = !!(ownerId || role || gender || state !== "all");
 
   return (
-    <main className="flex flex-1 flex-col px-5 py-8">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="text-2xl font-bold">캐릭터 생성</h1>
-        <CharacterTabs active="dolls" />
+    <>
         <p className="text-xs leading-relaxed text-zinc-500">
           지금 살아 있는 <b>캐릭터(결과물)</b>의 현재 상태입니다. 롤·성별은 <b>현재값</b>이며 캐릭터 상세에서만
           바꿀 수 있어요(생성 뒤 유저는 못 바꿈). <b>숨김</b>=신고 처리로 감춤(복구 가능) · <b>영구삭제</b>=객체 제거.
-          만들던 과정(요청·거부·후보·크레딧)은 「생성 기록」 탭에서 봅니다.
+          만들던 과정(요청·거부·후보·크레딧)은 「생성 현황」 탭에서 봅니다.
         </p>
 
         <DollFilterBar state={state} role={role} gender={gender} ownerId={ownerId} />
@@ -77,7 +73,6 @@ export default async function AdminDollsPage({
         )}
 
         <Pagination page={result.page} totalPages={totalPages} hrefFor={buildHref} />
-      </div>
-    </main>
+    </>
   );
 }
