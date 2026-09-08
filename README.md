@@ -68,6 +68,8 @@ migration을 건너뛰는 성공 응답을 합격으로 해석하면 안 된다.
 
 검증 모델·기능별 범위·실행 증거·외부/실기기 경계는 [`docs/qa-validation-report.md`](docs/qa-validation-report.md)에 기록한다.
 
+- **iPhone SE 375px 무깨짐 전수 검사**(상시 규칙 — 사용자향·어드민 모든 페이지·모달 상태): `scripts/qa/se-audit/`(Playwright chromium+webkit 크롤, 쓰기 요청 차단, 위반 측정·리포트). 실행법·측정 항목·한계는 [scripts/qa/se-audit/README.md](scripts/qa/se-audit/README.md). 새 UI·에디터는 배포 전 `one.mjs` 로 해당 페이지/상태를 375px 실측한다.
+
 ## 기술 스택
 
 | 영역 | 선택 |
@@ -939,6 +941,11 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - 어드민: 롤 대사 에디터 호칭 블록에 한 줄 설명 입력 + 「역할 선택 화면」 도식, 생성 목록/상세의 롤 표기를 호칭으로.
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
+
+v1.27 (2026-09-08, iPhone SE 375px 무깨짐 전수 검사 — 실측 교정 + 하네스 편입; PR #272·#274):
+- **상시 규칙(사용자 명시)**: 모든 페이지(사용자향·어드민)는 iPhone SE(375×667)에서 깨지면 안 된다. 검사 하네스 `scripts/qa/se-audit`(Playwright chromium+webkit, 시드 85 라우트 + 링크 크롤 + 버튼/모달 탐색, 쓰기 요청 네트워크 차단) 로 프로덕션 **443(chromium)·440(webkit) 상태** 전수 측정. 측정 항목: doc/child/content-overflow·out-of-viewport(error), clipped·label-wrapped(warn), truncated·scroll-container(info). 오탐 제외: 변형 요소(rotate 스탬프)·의도된 블리드(`-mx-*`)·sr-only·폼 컨트롤 내부 스크롤·아이콘 버튼.
+- **실제 결함 교정**: ① `datetime-local`(환불 모달·미결 주문 취소·이벤트 노출 윈도우) — iOS WebKit 고유 최소폭이 카드 밖으로(실기기 스크린샷) → `block w-full min-w-0 appearance-none` 규약 ② 법무 문서 에디터 섹션 행(WebKit) — `input.flex-1` 고유폭이 행을 밀어 문서 가로 스크롤 418px → `min-w-0` + 버튼 `shrink-0`·`whitespace-nowrap` ③ 이벤트 에디터 「우선순위」 라벨 2줄 꺾임 → `shrink-0 whitespace-nowrap` ④ 생성 미리보기 롤 알약 7개 찌그러짐(#272) → `flex-wrap` + `whitespace-nowrap`.
+- 한계: Playwright WebKit(데스크톱)은 iOS `datetime-local` 고유폭을 재현하지 못한다 — 폼 컨트롤은 코드 규약으로 막고 실기기로 확인. `/play` 는 캔버스라 DOM 만, 게임 종료 모달은 `/share`·`/history` 카드로 대신.
 
 v1.26 (2026-09-08, 캐릭터 성별 축 — 얼굴검사 판정 → 롤×성별 프롬프트·보이스 분기 + 어드민 후처리; **Migration 0121(expand)·0122(contract)**):
 - **성별 축 단일 소스 `lib/gender.ts`**(import 0 순수 모듈): `GENDERS = male·female`, `asGender`(unknown·미지값→male), 라벨 남/여·기호 ♂/♀. 성별은 롤과 직교하는 캐릭터(doll) 속성 — 판정 1회(얼굴검사) → 저장 `ai_generations.gender`(commit) → `dolls.gender`(pick 복사) → 소비 2곳(생성 프롬프트·보이스). 호칭·인사기록·등급·분석·마케팅 카피는 성별 무관. 레거시·기본 부장님·판정 불가는 전부 male(NOT NULL DEFAULT, 백필 없음).
