@@ -1,25 +1,30 @@
 import { resolveWeapon } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
+import {
+  scoreTier,
+  SCORE_THRESHOLDS_DEFAULT,
+  type ReportGrade,
+  type ScoreTierConfig,
+} from "@/lib/score-tiers";
+
+export {
+  scoreTier,
+  tierBandLabel,
+  TIER_COUNT,
+  SCORE_THRESHOLDS_DEFAULT,
+} from "@/lib/score-tiers";
+export type { ReportGrade, ScoreTierConfig, ScoreThresholds } from "@/lib/score-tiers";
 
 /**
  * 게임 결과 → "스트레스 해소 결과 보고서" 데이터.
  * GameOverModal (클라) 과 /share/[scoreId] (서버) 가 공용.
  *
- * ── 단일 10단계 소스 ──────────────────────────────────────────────
- * 점수 구간은 scoreTier() 한 곳에서만 결정한다 (갭 10000, 0~90000).
- * 판정 등급(=패는 사람의 경지), 부장님 피드백, OG 설명, play 시비 멘트
- * (lib/taunts.ts) 가 모두 동일한 10단계를 공유한다.
+ * ── 단일 5단계 소스 ──────────────────────────────────────────────
+ * 점수 구간은 lib/score-tiers.ts `scoreTier(score, thresholds)` 한 곳에서만 결정한다.
+ * 경계(thresholds)는 score_config(어드민)가 소유 — 판정 등급, 피격자 의견, play 시비 멘트
+ * (lib/taunts.ts), 어드민 「점수 구간 분포」가 모두 같은 5단계·같은 경계를 공유한다.
  */
-
-export const TIER_STEP = 10000;
-export const TIER_COUNT = 10;
-
-/** 점수 → 0~9 단계 인덱스. 갭 10000, 90000+ 는 최상위(9). */
-export function scoreTier(score: number): number {
-  if (!Number.isFinite(score) || score <= 0) return 0;
-  return Math.min(TIER_COUNT - 1, Math.floor(score / TIER_STEP));
-}
 
 /** 문자열 → 안정적 양수 해시 (seed 기반 결정적 선택용) */
 function hashSeed(seed: string): number {
@@ -28,46 +33,42 @@ function hashSeed(seed: string): number {
   return Math.abs(h);
 }
 
-export type ReportGrade = {
-  /** 등급 라벨 — "패는 사람"(직장인)의 스트레스 해소 경지 */
-  label: string;
-  /** 등급 한 줄 평 */
-  comment: string;
-};
-
 /**
- * 판정 등급 — 패는 사람의 경지 10단계 (직장 탈출 서사).
- * index 0(0~9999) → 9(90000+). 최상위 = 전설의 퇴사자.
+ * 판정 등급 — 패는 사람의 경지 5단계 (직장 탈출 서사). index 0(최하 구간) → 4(최상위).
+ * 코드 기본값 = 발행 v10 에서 확정한 마케터 라벨과 동일(폴백이 제품 진실과 어긋나지 않게) — v1.24.
  */
 export const PLAYER_GRADES: ReportGrade[] = [
-  { label: "무급 인턴", comment: "이제 막 손을 풀었습니다" }, // 0
-  { label: "패기의 신입", comment: "스트레스를 알아갑니다" }, // 1
-  { label: "열혈 사원", comment: "손맛이 제법입니다" }, // 2
-  { label: "독기의 대리", comment: "응어리가 풀리기 시작합니다" }, // 3
-  { label: "분노의 과장", comment: "이제 거침이 없습니다" }, // 4
-  { label: "폭주 차장", comment: "이성을 살짝 놓았습니다" }, // 5
-  { label: "광기의 부장", comment: "멈출 수가 없습니다" }, // 6
-  { label: "해탈한 임원", comment: "경지에 올랐습니다" }, // 7
-  { label: "사이다 마스터", comment: "막힌 속이 뻥 뚫립니다" }, // 8
-  { label: "전설의 퇴사자", comment: "사직서와 함께 전설로 남았습니다" }, // 9
+  { label: "눈치보는 신입", comment: "화면보다 눈치를 더 봅니다" }, // 0
+  { label: "마음만 퇴사자", comment: "출근은 했지만 마음은 이미 퇴근했습니다" }, // 1
+  { label: "키보드 워리어", comment: "엔터키에 오늘의 감정이 실렸습니다" }, // 2
+  { label: "빌런 심판관", comment: "빌런들을 향한 참교육이 시작됐습니다" }, // 3
+  { label: "전설의 퇴사자", comment: "사직서와 함께 전설로 남았습니다" }, // 4
 ];
 
-/** 등급 — grades 미지정 시 코드 기본값(score_config 미시드 폴백). tier 매핑(scoreTier)은 코드 고정. */
-export function gradeFor(score: number, grades: ReportGrade[] = PLAYER_GRADES): ReportGrade {
-  return grades[scoreTier(score)];
+/** 코드 기본 단계 config — score_config 미주입 소비자(테스트·폴백)용. */
+export const SCORE_TIER_CONFIG_DEFAULT: ScoreTierConfig = {
+  thresholds: SCORE_THRESHOLDS_DEFAULT,
+  grades: PLAYER_GRADES,
+};
+
+/** 등급 — cfg 미지정 시 코드 기본값(경계·라벨 모두). */
+export function gradeFor(score: number, cfg: ScoreTierConfig = SCORE_TIER_CONFIG_DEFAULT): ReportGrade {
+  return cfg.grades[scoreTier(score, cfg.thresholds)];
 }
 
 /**
- * 피격자 의견 (보고서) — 맞는 캐릭터(롤) 입장. 롤별 콘텐츠는 lib/roles 레지스트리.
- * index 0→9, 점수가 오를수록 굴복/항복 톤. scoreId 시드 결정적(SSR/CSR 일치).
+ * 피격자 의견 (보고서) — 맞는 캐릭터(롤) 입장. 롤별 콘텐츠는 role_content(cfg 미지정 시 코드 기본값).
+ * 단계는 scoreCfg.thresholds 로 결정, 줄 선택은 seed 결정적(SSR/CSR 일치).
  */
-export function bossReaction(
-  score: number,
-  seed: string,
-  role: RoleId = "boss",
-  cfg?: RoleConfig
-): string {
-  const lines = roleFrom(role, cfg).reactions[scoreTier(score)];
+export function bossReaction(opts: {
+  score: number;
+  seed: string;
+  role?: RoleId;
+  roleCfg?: RoleConfig;
+  scoreCfg?: ScoreTierConfig;
+}): string {
+  const { score, seed, role = "boss", roleCfg, scoreCfg = SCORE_TIER_CONFIG_DEFAULT } = opts;
+  const lines = roleFrom(role, roleCfg).reactions[scoreTier(score, scoreCfg.thresholds)];
   return lines[hashSeed(seed) % lines.length];
 }
 

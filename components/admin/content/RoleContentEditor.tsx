@@ -9,21 +9,23 @@ import {
   ROLE_FIELD_SURFACE,
 } from "@/components/admin/content/diagram/SurfaceDiagram";
 import type { RoleConfig, RoleFull } from "@/lib/config/domains/roles";
+import { tierBandLabel, type ScoreThresholds } from "@/lib/score-tiers";
 import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 // 섹션 순서 = 실제 카드 위→아래(캐릭터 공유 카드 본문: 직급·소속·특이사항) +
 // 점수 공유 카드·게임 종료 화면의 피격 반응. 카드에 안 나오는 시비 멘트(플레이 말풍선)는 맨 밑.
 // 라벨 용어는 마케팅 카피 페이지(캐릭터 공유 카드/점수 공유 카드/게임 종료 화면/플레이 화면)와 일치.
 type ArraySec = { kind: "array"; key: "ranks" | "departments" | "traits"; label: string };
-type TieredSec = { kind: "tiered"; key: "reactions" | "taunts"; label: string };
+type TieredSec = { kind: "tiered"; key: "reactions" | "taunts"; label: string; recommended: number };
 type Section = ArraySec | TieredSec;
 
+// 단계당 권장 줄 수(시드 기준) — 강제 아님(스키마 min 1). 반복 체감을 줄이려면 이 수를 유지.
 const SECTIONS: Section[] = [
   { kind: "array", key: "ranks", label: "직급 (캐릭터 공유 카드)" },
   { kind: "array", key: "departments", label: "소속 (캐릭터 공유 카드)" },
   { kind: "array", key: "traits", label: "특이사항 (캐릭터 공유 카드)" },
-  { kind: "tiered", key: "reactions", label: "피격 반응 (점수 공유 카드·게임 종료 화면)" },
-  { kind: "tiered", key: "taunts", label: "시비 멘트 (플레이 화면 말풍선)" },
+  { kind: "tiered", key: "reactions", label: "피격 반응 (점수 공유 카드·게임 종료 화면)", recommended: 6 },
+  { kind: "tiered", key: "taunts", label: "시비 멘트 (플레이 화면 말풍선)", recommended: 8 },
 ];
 
 const ERR_KO: Record<string, string> = {
@@ -31,11 +33,6 @@ const ERR_KO: Record<string, string> = {
   validation_failed: "형식 오류 — 각 점수 칸은 최소 1줄, 특이사항/직급/소속도 1개 이상 필요해요.",
   update_failed: "저장 실패. 잠시 후 다시 시도하세요.",
 };
-
-function band(i: number): string {
-  if (i >= 9) return "90,000+";
-  return `${(i * 10000).toLocaleString()}~${((i + 1) * 10000 - 1).toLocaleString()}`;
-}
 
 // 호칭 파생 조사형 미리보기 — 입력한 호칭으로 을/를·은/는·(으)로가 자동 파생됨을 즉시 확인.
 function josaPreview(label: string): string {
@@ -71,11 +68,14 @@ export function RoleContentEditor({
   version,
   source,
   invalid,
+  thresholds,
 }: {
   initial: RoleConfig;
   version: number;
   source: "db" | "default";
   invalid: boolean;
+  /** 점수 설정(score_config)의 현재 구간 경계 — 칸 캡션용(편집은 점수 설정 페이지에서). */
+  thresholds: ScoreThresholds;
 }) {
   const router = useRouter();
   const submitAdminConfigMutation = useAdminConfigMutation();
@@ -202,11 +202,17 @@ export function RoleContentEditor({
           </label>
         ) : (
           <fieldset key={sec.key} className="min-w-0 flex flex-col gap-2">
-            <legend className="text-sm font-semibold text-zinc-500">{sec.label}</legend>
+            <legend className="text-sm font-semibold text-zinc-500">
+              {sec.label}
+              <span className="ml-1 font-normal text-zinc-400">· 단계당 권장 {sec.recommended}줄</span>
+            </legend>
             {r[sec.key].map((lines, i) => (
               <label key={i} className="flex flex-col gap-0.5">
                 <span className="text-[11px] text-zinc-400">
-                  {i}단계 · {band(i)}점
+                  {i}단계 · {tierBandLabel(i, thresholds)}점
+                  {lines.filter((l) => l.trim()).length < sec.recommended && (
+                    <span className="ml-1 text-amber-600">· {lines.filter((l) => l.trim()).length}줄 (권장 {sec.recommended})</span>
+                  )}
                 </span>
                 <textarea
                   value={lines.join("\n")}

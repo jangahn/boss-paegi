@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { shareGameResult, type ShareResult } from "@/lib/share";
 import { isMobileOS } from "@/lib/device";
 import { scoreTier } from "@/lib/report";
+import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import { trackShare } from "@/lib/acquisition";
 import { isCurrentClientEpoch } from "@/lib/client-lifecycle";
 import {
@@ -36,6 +37,7 @@ export function ShareReportButton({
   /** attached 클립의 public URL — 있으면 모바일에서 영상 첨부 시도 */
   clipUrl?: string | null;
 }) {
+  const scoreCfg = useScoreConfig(); // 단계 경계(라이브) — 공유 분석 score_tier 인덱스용
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const mountedRef = useRef(false);
@@ -75,7 +77,7 @@ export function ShareReportButton({
     setBusy(true);
     setMsg(null);
     // 공유 시도(분석) — 이전기록 상세. (surface×target×session) 3초 디바운스.
-    trackShare({ surface: "history", target: "score", scoreTier: scoreTier(score) });
+    trackShare({ surface: "history", target: "score", scoreTier: scoreTier(score, scoreCfg.thresholds) });
 
     // 모바일 + 하이라이트 영상 있을 때만 영상 첨부(데스크톱은 문구+링크).
     let result: ShareResult = "failed";

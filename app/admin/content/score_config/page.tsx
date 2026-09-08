@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-server";
 import { getScoreConfigWithMeta } from "@/lib/config/getters";
 import { ScoreConfigEditor } from "@/components/admin/content/ScoreConfigEditor";
+import { TIER_COUNT } from "@/lib/score-tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,8 @@ export default async function ScoreConfigPage() {
         </div>
         <h1 className="mt-2 text-2xl font-bold">점수 설정</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          점수 10단계의 등급 라벨·한 줄 평(=&apos;패기 유형&apos;). 점수 구간(0~9,999 … 90,000+)은 고정,
-          칸 안 문구만 편집합니다. (구간 간격 조절은 추후.)
+          점수 {TIER_COUNT}단계의 구간 경계와 등급 라벨·한 줄 평(=&apos;패기 유형&apos;). 단계 개수는 고정이고, 경계와 문구를 편집합니다.
+          같은 단계를 롤 대사(피격 반응·시비 멘트)와 게임 분석의 점수 구간 분포가 공유해요.
         </p>
         <ScoreConfigEditor
           initial={value}

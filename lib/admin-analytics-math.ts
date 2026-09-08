@@ -58,3 +58,34 @@ export function herfindahlOf(hits: Record<string, number>): number | null {
   }
   return h;
 }
+
+/** 점수 구간 분포(v1.24) — 1,000점 버킷 롤업(dim game_score_1k) 1행. games=게임 수, score=점수 합, durationMs=소요시간 합. */
+export type ScoreBucketStat = { bucket: number; games: number; score: number; durationMs: number };
+/** 버킷을 현재 단계 경계로 접은 결과 — tier 0..tierCount-1 전부(빈 단계도 0으로) 순서 보장. */
+export type ScoreBandStat = { tier: number; games: number; score: number; durationMs: number };
+
+/**
+ * 1,000점 버킷 → 현재 경계 기준 단계 합산. tierOf 는 점수→단계 단일 소스(lib/score-tiers scoreTier)를
+ * 호출자가 경계와 함께 바인딩해 넘긴다(순환·중복 회피). 경계가 버킷 폭의 배수이면 버킷 하한의 단계 = 버킷 전체의 단계.
+ */
+export function bandScoreBuckets(
+  buckets: readonly ScoreBucketStat[],
+  tierOf: (score: number) => number,
+  tierCount: number,
+  bucketWidth = 1000,
+): ScoreBandStat[] {
+  const bands: ScoreBandStat[] = Array.from({ length: tierCount }, (_, tier) => ({
+    tier,
+    games: 0,
+    score: 0,
+    durationMs: 0,
+  }));
+  for (const b of buckets) {
+    if (!Number.isFinite(b.bucket) || b.bucket < 0) continue;
+    const tier = Math.max(0, Math.min(tierCount - 1, tierOf(b.bucket * bucketWidth)));
+    bands[tier].games += b.games;
+    bands[tier].score += b.score;
+    bands[tier].durationMs += b.durationMs;
+  }
+  return bands;
+}

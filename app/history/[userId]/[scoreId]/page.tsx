@@ -55,7 +55,7 @@ export default async function HistoryDetailPage({
     getMarketingCopy(),
   ]);
   const rlabel = roleFrom(asRole(score.dolls?.role), roleCfg).label; // DB 발행 호칭(roleFrom)
-  const grade = gradeFor(score.score, scoreCfg.grades);
+  const grade = gradeFor(score.score, scoreCfg);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const hitCount = score.gameplay_stats?.hitCount ?? null;
   // 라벨/영상첨부는 실제 클립(attached·라이브)이 있을 때만 — card(영상 없는 stat 폴백)는 '보고서 공유'.
