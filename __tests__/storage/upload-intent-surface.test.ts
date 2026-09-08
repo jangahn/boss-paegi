@@ -195,7 +195,7 @@ test("server-side doll upload also has an intent and DB-first compensation", () 
     "persisted-doll deletion records the DB outbox before cleanup execution",
   );
   assert.doesNotMatch(body, /\.from\("dolls"\)[\s\S]*?\.delete\(/);
-  assert.match(body, /"request_doll_role_update"/);
+  // v1.29: 유저 롤 변경(PATCH /api/doll → request_doll_role_update) 제거 — 캐릭터 속성은 어드민 전용.
+  assert.doesNotMatch(body, /request_doll_role_update|export async function PATCH/);
   assert.match(body, /if \(!isUuid\(id\)\)/);
-  assert.match(body, /if \(!isUuid\(body\?\.id\)\)/);
 });

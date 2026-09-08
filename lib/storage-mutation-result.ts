@@ -118,20 +118,6 @@ export function parseDollDeleteHttpAck(
   return null;
 }
 
-/** Role mutation is committed only by an exact echoed role. */
-export function parseDollRoleUpdateAck(
-  value: unknown,
-  expectedRole: string,
-): boolean {
-  const row = record(value);
-  return (
-    !!row &&
-    hasExactKeys(row, ["ok", "role"]) &&
-    row.ok === true &&
-    row.role === expectedRole
-  );
-}
-
 export function isCleanupTerminal(status: StorageCleanupStatus): boolean {
   return status === "completed" || status === "canceled";
 }

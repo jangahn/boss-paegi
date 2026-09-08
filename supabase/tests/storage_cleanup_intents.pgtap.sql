@@ -3,7 +3,7 @@
 -- fencing 및 참조 상태의 원자 수렴을 이 disposable transaction에서 검증한다.
 
 begin;
-select plan(82);
+select plan(81);
 
 select has_table(
   'public',
@@ -700,18 +700,6 @@ select is(
   ),
   'attached',
   'doll DB insert atomically attaches its upload intent'
-);
-select is(
-  (
-    select public.request_doll_role_update(
-             user_id,
-             doll_id,
-             'client'
-           )->>'role'
-      from storage_ctx
-  ),
-  'client',
-  'role update goes through the lifecycle-fenced RPC'
 );
 update storage_ctx c
    set doll_job = (

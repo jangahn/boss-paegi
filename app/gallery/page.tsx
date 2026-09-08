@@ -11,7 +11,6 @@ import { PendingGrid } from "@/components/gallery/PendingGrid";
 import { DollCard, type Doll } from "@/components/gallery/DollCard";
 import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
-import type { RoleId } from "@/lib/roles";
 import type { PendingGeneration } from "@/lib/generation";
 import { parseDollSignedUrlResponse } from "@/lib/doll-signed-url-response";
 import { parseDollDeleteHttpAck } from "@/lib/storage-mutation-result";
@@ -326,10 +325,6 @@ export default function GalleryPage() {
     };
   }, [profile?.isLoggedIn, pendingPollRun]);
 
-  const handleRoleChange = useCallback((id: string, role: RoleId) => {
-    setDolls((prev) => prev.map((d) => (d.id === id ? { ...d, role } : d)));
-  }, []);
-
   const handleDelete = async (id: string) => {
     if (deletingIdsRef.current.has(id)) return;
     if (!confirm("이 캐릭터를 삭제할까요?")) return;
@@ -491,7 +486,6 @@ export default function GalleryPage() {
                     doll={d}
                     deleting={deletingIds.has(d.id)}
                     onDelete={() => handleDelete(d.id)}
-                    onRoleChange={handleRoleChange}
                   />
                 ))}
               </div>

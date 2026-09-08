@@ -1,12 +1,12 @@
 -- roles_v2.pgtap.sql — 0120 롤 7종(boss·ceo·exec·teamlead·client·junior·friend) DB 어휘 계약.
 --
 -- 단언: ① 3테이블 CHECK 가 신규 3롤을 받고 coworker 를 거절한다
---       ② request_doll_role_update · claim_generation_preflight allowlist 가 같은 7종(구 coworker 거절)
+--       ② claim_generation_preflight allowlist 가 같은 7종(구 coworker 거절) — 유저 롤 변경 RPC 는 0123 에서 폐기
 --       ③ 리맵 뒤 coworker 행이 남지 않는다(백필 결과)
 -- Run only on a disposable database after applying every migration in order.
 
 begin;
-select plan(12);
+select plan(10);
 
 create temporary table roles_v2_ctx (
   owner_id uuid not null default gen_random_uuid()
@@ -68,18 +68,6 @@ select throws_ok(
 
 -- ── ② 함수 allowlist ─────────────────────────────────────────────────────
 
-select throws_ok(
-  $$select public.request_doll_role_update(gen_random_uuid(), gen_random_uuid(), 'coworker')$$,
-  'P0001',
-  'invalid_role',
-  'request_doll_role_update rejects coworker before any lookup'
-);
-select throws_ok(
-  $$select public.request_doll_role_update(gen_random_uuid(), gen_random_uuid(), 'friend')$$,
-  'P0001',
-  'account_deleted',
-  'request_doll_role_update accepts friend (fails only on the missing account, past the role check)'
-);
 select ok(
   pg_catalog.strpos(
     pg_catalog.pg_get_functiondef('public.claim_generation_preflight(uuid,uuid,text,text,boolean,uuid)'::regprocedure),
@@ -89,14 +77,10 @@ select ok(
 );
 select ok(
   pg_catalog.strpos(
-    pg_catalog.pg_get_functiondef('public.request_doll_role_update(uuid,uuid,text)'::regprocedure),
-    'coworker'
-  ) = 0
-  and pg_catalog.strpos(
     pg_catalog.pg_get_functiondef('public.claim_generation_preflight(uuid,uuid,text,text,boolean,uuid)'::regprocedure),
     'coworker'
   ) = 0,
-  'no role allowlist function still mentions coworker'
+  'the generation role allowlist function no longer mentions coworker'
 );
 
 -- ── ③ 리맵 결과 ───────────────────────────────────────────────────────────

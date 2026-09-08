@@ -30,7 +30,7 @@ export function GenerationsTable({ rows, cfg }: { rows: GenerationRow[]; cfg: Ro
           <tr>
             <th className="px-2 py-1.5">시각(KST)</th>
             <th className="px-2 py-1.5">상태</th>
-            <th className="px-2 py-1.5">롤</th>
+            <th className="px-2 py-1.5">롤 · 성별</th>
             <th className="px-2 py-1.5 text-right">후보</th>
             <th className="px-2 py-1.5">채택 캐릭터</th>
           </tr>
@@ -50,10 +50,35 @@ export function GenerationsTable({ rows, cfg }: { rows: GenerationRow[]; cfg: Ro
               <td className={`px-2 py-1.5 font-semibold ${GEN_COLOR[g.status] ?? ""}`}>
                 {GEN_STATUS[g.status] ?? g.status}
               </td>
-              <td className="px-2 py-1.5">{roleFrom(asRole(g.role), cfg).label}</td>
+              {/* 캐릭터 행이 있으면 현재 롤·성별(+상태 칩), 없으면 생성 시 선택 롤 (v1.29 목록 규약) */}
+              <td className="px-2 py-1.5">
+                {roleFrom(asRole(g.doll?.role ?? g.role), cfg).label}
+                {g.doll ? ` ${GENDER_SYMBOL[asGender(g.doll.gender)]}` : ""}
+                {g.doll && g.doll.state !== "public" && (
+                  <span
+                    className={`ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                      g.doll.state === "purged" ? "bg-red-500/90 text-white" : "bg-yellow-500/90 text-black"
+                    }`}
+                  >
+                    {g.doll.state === "purged" ? "영구삭제" : "숨김"}
+                  </span>
+                )}
+              </td>
               <td className="px-2 py-1.5 text-right tabular-nums">{g.candidate_count}</td>
               <td className="px-2 py-1.5 font-mono text-zinc-400">
-                {g.picked_doll_id ? shortId(g.picked_doll_id) : "—"}
+                {g.picked_doll_id && g.doll ? (
+                  <Link
+                    href={`/admin/dolls/${g.picked_doll_id}`}
+                    className="text-sky-600 underline-offset-2 hover:underline"
+                    title="캐릭터 상세"
+                  >
+                    {shortId(g.picked_doll_id)}
+                  </Link>
+                ) : g.picked_doll_id ? (
+                  shortId(g.picked_doll_id)
+                ) : (
+                  "—"
+                )}
               </td>
             </tr>
           ))}
@@ -64,9 +89,8 @@ export function GenerationsTable({ rows, cfg }: { rows: GenerationRow[]; cfg: Ro
 }
 
 /**
- * 보유 캐릭터(dolls) — 썸네일 그리드. 공개는 클릭→/doll(새 탭, 이미지 표시).
- * 숨김=이미지 보임+노랑 "숨김" 칩, 영구삭제=placeholder+빨강 "영구삭제" 칩 → 둘 다 클릭은
- * 신고 어드민(해당 doll 필터). (탈퇴=하드삭제는 목록서 사라짐.)
+ * 보유 캐릭터(dolls) — 썸네일 그리드. 카드 클릭 → 어드민 캐릭터 상세(현재 상태·롤·성별 제어, v1.29).
+ * 숨김=이미지 보임+노랑 "숨김" 칩, 영구삭제=placeholder+빨강 "영구삭제" 칩. (탈퇴=하드삭제는 목록서 사라짐.)
  */
 export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
   if (!rows.length) return <p className="text-sm text-zinc-400">캐릭터가 없어요.</p>;
@@ -75,9 +99,8 @@ export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
       {rows.map((d) => {
         const purged = !!d.artifacts_purged_at;
         const hidden = !!d.deleted_at && !purged;
-        // 카드 클릭 → 어드민 캐릭터 상세(생성 파라미터·프롬프트). 공개 공유 링크는 상세 페이지에 있음.
-        const src = d.sourceGenerationId ?? null;
-        const href = src ? `/admin/generations/${src}` : null;
+        // 카드 클릭 → 어드민 캐릭터 상세(현재 상태·속성 제어·생성 기록 링크). 기록 없는 캐릭터도 상세는 있다.
+        const href = `/admin/dolls/${d.id}`;
         const cardCls =
           "relative block rounded-xl border border-foreground/10 p-2 text-center text-[11px] transition";
         const inner = (
@@ -114,20 +137,12 @@ export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
         );
         return (
           <li key={d.id}>
-            {href ? (
-              <Link
-                href={href}
-                className={`${cardCls} hover:bg-foreground/5`}
-                title="어드민 캐릭터 상세 (생성 파라미터·프롬프트)"
-              >
-                {inner}
-              </Link>
-            ) : (
-              <div className={`${cardCls} cursor-default`} title="생성 기록 없음(기능 배포 이전)">
-                {inner}
+            <Link href={href} className={`${cardCls} hover:bg-foreground/5`} title="캐릭터 상세 (현재 상태·롤·성별 제어)">
+              {inner}
+              {!d.sourceGenerationId && (
                 <div className="mt-0.5 text-[9px] text-zinc-500">생성 기록 없음</div>
-              </div>
-            )}
+              )}
+            </Link>
           </li>
         );
       })}

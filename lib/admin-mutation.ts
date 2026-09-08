@@ -14,7 +14,9 @@ export const ADMIN_MUTATION_OPERATIONS = [
   "integrity_unban",
   "account_reactivate",
   "order_settle",
+  // 0121 이력 전용 — 앱은 더 이상 만들지 않는다(receipt 읽기 호환).
   "doll_gender_update",
+  "doll_profile_update",
 ] as const;
 
 export type AdminMutationOperation =
@@ -35,6 +37,7 @@ export const GENERIC_ADMIN_MUTATION_RECEIPT_OPERATIONS = [
   "integrity_ban",
   "integrity_unban",
   "doll_gender_update",
+  "doll_profile_update",
 ] as const satisfies readonly AdminMutationOperation[];
 
 export type GenericAdminMutationReceiptOperation =
@@ -158,9 +161,11 @@ export function parseAdminModerationMutationResult(
   return row as AdminModerationMutationResult;
 }
 
-/** 캐릭터 성별 후처리(v1.26) — admin_update_doll_gender_idempotent 결과. version = dolls.version(CAS 기준). */
-export type AdminDollGenderMutationResult = {
+/** 캐릭터 속성(롤·성별) 어드민 변경(v1.29) — admin_update_doll_profile_idempotent 결과. version = dolls.version(CAS 기준). */
+export type AdminDollProfileMutationResult = {
   ok: true;
+  previousRole: string;
+  nextRole: string;
   previousGender: "male" | "female";
   nextGender: "male" | "female";
   version: number;
@@ -168,24 +173,27 @@ export type AdminDollGenderMutationResult = {
   idempotent: boolean;
 };
 
-export function parseAdminDollGenderMutationResult(
+export function parseAdminDollProfileMutationResult(
   value: unknown,
-): AdminDollGenderMutationResult | null {
+): AdminDollProfileMutationResult | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
   if (
     row.ok !== true ||
+    typeof row.previousRole !== "string" ||
+    typeof row.nextRole !== "string" ||
     (row.previousGender !== "male" && row.previousGender !== "female") ||
     (row.nextGender !== "male" && row.nextGender !== "female") ||
     !Number.isSafeInteger(row.version) ||
     (row.version as number) < 0 ||
     typeof row.noOp !== "boolean" ||
     typeof row.idempotent !== "boolean" ||
-    (row.noOp === true && row.previousGender !== row.nextGender)
+    (row.noOp === true &&
+      (row.previousRole !== row.nextRole || row.previousGender !== row.nextGender))
   ) {
     return null;
   }
-  return row as AdminDollGenderMutationResult;
+  return row as AdminDollProfileMutationResult;
 }
 
 export type AdminEventMutationResult = {

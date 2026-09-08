@@ -45,9 +45,15 @@ export type AdminGeneration = {
   ownerName: string | null;
   adminStatus: AdminGenStatus;
   failReason: string | null;
+  /** 생성 시 선택 롤(ai_generations.role) — 캐릭터의 현재 롤은 doll.role. */
   role: string;
-  /** 프롬프트 조립에 적용된 성별(ai_generations.gender, v1.26) — 얼굴검사 판정(unknown→male). */
+  /** 프롬프트 조립에 적용된 성별(ai_generations.gender, v1.26) — 얼굴검사 판정(unknown→male). 캐릭터의 현재 성별은 doll.gender. */
   gender: string;
+  /**
+   * 채택 캐릭터의 **현재** 속성·상태(v1.29 목록 규약: 캐릭터 행이 있으면 현재값, 없으면 생성 시 값). 채택 전·실패·만료·
+   * 탈퇴 정리(하드삭제)면 null. 숨김·영구삭제도 행이 남으므로 현재값 + 상태.
+   */
+  doll: { role: string; gender: string; state: "public" | "hidden" | "purged"; version: number } | null;
   pickedDollId: string | null;
   pickedIndex: number | null;
   candidateThumbs: string[]; // 서명 URL — done:최대3, picked:1, expired/그외:[]
@@ -214,7 +220,7 @@ export async function listGenerations(opts: {
   const pickedIds = [...new Set(raw.filter((r) => r.picked_doll_id).map((r) => r.picked_doll_id!))];
   const [nameMap, dollMap] = await Promise.all([
     fetchOwnerNames(admin, ownerIds),
-    fetchDollImages(admin, pickedIds),
+    fetchPickedDolls(admin, pickedIds),
   ]);
 
   const rows = await Promise.all(
@@ -228,7 +234,7 @@ export async function listGenerations(opts: {
           candPaths.map((p) => signedDollUrl(p, 600, { thumb: true })),
         );
       } else if (thumbnailMode === "picked" && r.picked_doll_id) {
-        const img = dollMap.get(r.picked_doll_id);
+        const img = pickedDollImage(dollMap.get(r.picked_doll_id));
         if (img) {
           const s = await signedDollUrl(img, 600, { thumb: true });
           if (s) thumbs = [s];
@@ -242,6 +248,7 @@ export async function listGenerations(opts: {
         failReason: r.fail_reason,
         role: r.role,
         gender: r.gender,
+        doll: toAdminGenerationDoll(r.picked_doll_id ? dollMap.get(r.picked_doll_id) : undefined),
         pickedDollId: r.picked_doll_id,
         pickedIndex: r.picked_index,
         candidateThumbs: thumbs,
@@ -297,46 +304,62 @@ async function fetchOwnerNames(
   return map;
 }
 
-/** picked_doll_id → image_url (dolls, 미purge만). 썸네일 서명용. */
-async function fetchDollImages(
+type PickedDollRow = {
+  id: string;
+  image_url: string;
+  role: string;
+  gender: string;
+  version: number;
+  deleted_at: string | null;
+  artifacts_purged_at: string | null;
+};
+
+/** picked_doll_id → 채택 캐릭터 행(이미지 경로 + 현재 롤·성별·상태). 썸네일 서명·목록 현재값 규약 공용. */
+async function fetchPickedDolls(
   admin: ReturnType<typeof createAdminClient>,
   dollIds: string[]
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+): Promise<Map<string, PickedDollRow>> {
+  const map = new Map<string, PickedDollRow>();
   if (dollIds.length === 0) return map;
   const data = await requireSupabaseRows(
-    "admin.generations.doll_images",
+    "admin.generations.picked_dolls",
     () =>
       admin
         .from("dolls")
-        .select("id, image_url, artifacts_purged_at")
+        .select("id, image_url, role, gender, version, deleted_at, artifacts_purged_at")
         .in("id", dollIds),
   );
-  const dolls = validateAdminRows<{
-    id: string;
-    image_url: string;
-    artifacts_purged_at: string | null;
-  }>("admin.generations.doll_images", data, {
+  const dolls = validateAdminRows<PickedDollRow>("admin.generations.picked_dolls", data, {
     id: "uuid",
     image_url: "string",
+    role: "string",
+    gender: "string",
+    version: "nonnegativeInteger",
+    deleted_at: "nullableTimestamp",
     artifacts_purged_at: "nullableTimestamp",
   });
-  requireExactAdminIdCoverage(
-    "admin.generations.doll_images",
-    dollIds,
-    dolls.map((doll) => doll.id),
-  );
-  for (const d of dolls) {
-    if (!d.artifacts_purged_at) map.set(d.id, d.image_url); // 영구삭제분은 객체 없음 → 스킵
-  }
+  // 탈퇴(하드삭제)된 캐릭터는 picked_doll_id 만 남을 수 있어 정확 커버리지를 요구하지 않는다 → 목록은 생성 시 값으로 표시.
+  for (const d of dolls) map.set(d.id, d);
   return map;
+}
+
+function dollStateOf(d: PickedDollRow): "public" | "hidden" | "purged" {
+  return d.artifacts_purged_at ? "purged" : d.deleted_at ? "hidden" : "public";
+}
+
+/** 목록·상세 공용: 채택 캐릭터 행 → AdminGeneration.doll (없으면 null). */
+function toAdminGenerationDoll(d: PickedDollRow | undefined): AdminGeneration["doll"] {
+  return d ? { role: d.role, gender: d.gender, state: dollStateOf(d), version: d.version } : null;
+}
+
+/** picked_doll_id → image_url (미purge만). 썸네일 서명용. */
+function pickedDollImage(d: PickedDollRow | undefined): string | null {
+  return d && !d.artifacts_purged_at ? d.image_url : null;
 }
 
 export type AdminGenerationDetail = AdminGeneration & {
   /** gen_params provenance(검증됨) 또는 null(레거시/미지원 — 상세에서 '기록 이전' 표기). */
   provenance: GenProvenance | null;
-  /** 채택 캐릭터의 현재 성별·version(dolls, 후처리 CAS 기준). 미채택·미존재면 null. */
-  pickedDoll: { gender: string; version: number } | null;
   /** 후보 index → 서명 썸네일. done: 남은 후보 / picked: 선택 doll / expired·그 외: 없음. */
   candidateThumbByIndex: Record<number, string>;
 };
@@ -367,29 +390,8 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
 
   const nameMap = await fetchOwnerNames(admin, [r.owner_id]);
   const dollMap = r.picked_doll_id
-    ? await fetchDollImages(admin, [r.picked_doll_id])
-    : new Map<string, string>();
-  // 채택 캐릭터의 성별·version — 어드민 후처리(성별 변경) CAS 기준값. 삭제(탈퇴 하드삭제)면 null.
-  let pickedDoll: { gender: string; version: number } | null = null;
-  if (r.picked_doll_id) {
-    const dollRow = await requireSupabaseOptionalData(
-      "admin.generations.detail_doll",
-      () =>
-        admin
-          .from("dolls")
-          .select("id, gender, version")
-          .eq("id", r.picked_doll_id!)
-          .maybeSingle(),
-    );
-    if (dollRow) {
-      const parsedDoll = validateAdminRows<{ id: string; gender: string; version: number }>(
-        "admin.generations.detail_doll",
-        [dollRow],
-        { id: "uuid", gender: "string", version: "nonnegativeInteger" },
-      )[0];
-      pickedDoll = { gender: parsedDoll.gender, version: parsedDoll.version };
-    }
-  }
+    ? await fetchPickedDolls(admin, [r.picked_doll_id])
+    : new Map<string, PickedDollRow>();
 
   const candPaths = Array.isArray(r.candidate_urls) ? (r.candidate_urls as string[]) : [];
   const idxOf = (p: string): number => {
@@ -407,7 +409,7 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
       })
     );
   } else if (thumbnailMode === "picked" && r.picked_doll_id && r.picked_index != null) {
-    const img = dollMap.get(r.picked_doll_id);
+    const img = pickedDollImage(dollMap.get(r.picked_doll_id));
     if (img) {
       const s = await signedDollUrl(img, 600, { thumb: true });
       if (s) candidateThumbByIndex[r.picked_index] = s;
@@ -422,6 +424,7 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
     failReason: r.fail_reason,
     role: r.role,
     gender: r.gender,
+    doll: toAdminGenerationDoll(r.picked_doll_id ? dollMap.get(r.picked_doll_id) : undefined),
     pickedDollId: r.picked_doll_id,
     pickedIndex: r.picked_index,
     candidateThumbs: Object.values(candidateThumbByIndex),
@@ -433,7 +436,6 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     provenance: parseProvenance(r.gen_params),
-    pickedDoll,
     candidateThumbByIndex,
   };
 }

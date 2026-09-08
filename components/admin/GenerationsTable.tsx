@@ -115,18 +115,29 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
             </Link>
             {row.pickedDollId ? (
               <Link
-                href={`/admin/generations?dollId=${row.pickedDollId}`}
+                href={`/admin/dolls/${row.pickedDollId}`}
                 className="rounded-full border border-foreground/15 px-2 py-0.5 font-mono text-zinc-500 transition hover:bg-foreground/10"
-                title="이 캐릭터 관련만 필터"
+                title="캐릭터 상세"
               >
                 캐릭터 {shortId(row.pickedDollId)}
               </Link>
             ) : (
               <span className="font-mono text-zinc-400">gen {shortId(row.id)}</span>
             )}
+            {/* 캐릭터 행이 있으면 현재 롤·성별(+상태), 없으면 생성 시 선택 롤·판정 성별 (v1.29 목록 규약) */}
             <span className="text-zinc-400">
-              롤 {roleFrom(asRole(row.role), roleCfg).label} {GENDER_SYMBOL[asGender(row.gender)]}
+              롤 {roleFrom(asRole(row.doll?.role ?? row.role), roleCfg).label}{" "}
+              {GENDER_SYMBOL[asGender(row.doll?.gender ?? row.gender)]}
             </span>
+            {row.doll && row.doll.state !== "public" && (
+              <span
+                className={`shrink-0 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                  row.doll.state === "purged" ? "bg-red-500/90 text-white" : "bg-yellow-500/90 text-black"
+                }`}
+              >
+                {row.doll.state === "purged" ? "영구삭제" : "숨김"}
+              </span>
+            )}
           </div>
 
           {open && <GenDetail row={row} />}

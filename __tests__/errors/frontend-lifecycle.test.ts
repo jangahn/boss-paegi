@@ -135,14 +135,13 @@ test("gallery mutations synchronously single-flight before React rerenders", () 
   assert.match(gallery, /deletingIdsRef\.current\.add\(id\)/);
   assert.match(gallery, /deletingIdsRef\.current\.delete\(id\)/);
   assert.match(card, /sharingRef\.current/);
-  assert.match(card, /savingRoleRef\.current/);
-  assert.ok((card.match(/isCurrentClientEpoch\(/g) ?? []).length >= 4);
+  // v1.29: 유저 「역할 변경」 제거 — 카드의 쓰기 액션은 공유·삭제뿐(savingRoleRef/roleAbortRef 없음).
+  assert.doesNotMatch(card, /savingRoleRef|roleAbortRef|\/api\/doll"/);
+  assert.ok((card.match(/isCurrentClientEpoch\(/g) ?? []).length >= 3);
   assert.match(card, /clearTimeout\(flashTimerRef\.current\)/);
-  assert.match(card, /disabled=\{deleting \|\| savingRole \|\| sharing\}/);
+  assert.match(card, /disabled=\{deleting \|\| sharing\}/);
   assert.match(gallery, /catch \(error\) \{\s*if \(requestEpochRef\.current !== epoch\) return;/);
   assert.match(gallery, /mountedRef\.current[\s\S]*?setDolls/);
-  assert.match(card, /roleAbortRef\.current\?\.abort\(\)/);
-  assert.match(card, /signal: controller\.signal/);
 });
 
 test("account, report, login, and consent actions occupy synchronously and fence teardown", () => {

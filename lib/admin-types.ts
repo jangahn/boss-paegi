@@ -189,10 +189,13 @@ export type WithdrawnMatch = {
 export type GenerationRow = {
   id: string;
   status: string;
+  /** 생성 시 선택 롤. 캐릭터 행이 있으면 목록은 doll 의 현재값을 보인다(v1.29 규약). */
   role: string;
   picked_doll_id: string | null;
   created_at: string;
   candidate_count: number;
+  /** 채택 캐릭터의 현재 롤·성별·상태 — 행이 없으면(채택 전·실패·만료·하드삭제) null. */
+  doll: { role: string; gender: string; state: "public" | "hidden" | "purged" } | null;
 };
 
 export type DollRow = {

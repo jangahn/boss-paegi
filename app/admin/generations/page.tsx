@@ -8,6 +8,7 @@ import {
 import { GenStatusFilter as GenStatusFilterBar } from "@/components/admin/GenStatusFilter";
 import { GenerationsTable } from "@/components/admin/GenerationsTable";
 import { Pagination } from "@/components/Pagination";
+import { CharacterTabs } from "@/components/admin/CharacterTabs";
 import { firstParam } from "@/lib/admin-format";
 import { parsePageParam } from "@/lib/pagination";
 
@@ -52,8 +53,9 @@ export default async function AdminGenerationsPage({
     <main className="flex flex-1 flex-col px-5 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         <h1 className="text-2xl font-bold">캐릭터 생성</h1>
+        <CharacterTabs active="generations" />
         <p className="text-xs leading-relaxed text-zinc-500">
-          캐릭터 생성 요청을 <b>상태</b>별로 봅니다. <b>생성요청</b>=진행 중 · <b>선택 전</b>=후보
+          만들던 <b>과정(생성 기록)</b>을 <b>상태</b>별로 봅니다. 살아 있는 결과물의 현재 상태·롤·성별 제어는 「캐릭터」 탭. <b>생성요청</b>=진행 중 · <b>선택 전</b>=후보
           3장 대기 · <b>선택완료</b>=고름 · <b>거부(입력 부적합)</b>=얼굴 없음·여러 명·가림으로 제출 전
           반려 · <b>기타 실패</b>=그 외 실패. 회원/캐릭터 id를 누르면 해당 항목만 필터돼요.
           <b>크레딧</b>은 실제 소비 lot·환급 시각 영수증을 기준으로 표시합니다.

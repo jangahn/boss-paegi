@@ -8,7 +8,6 @@ import { getRoleConfig } from "@/lib/config/getters";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { asRole } from "@/lib/roles";
 import { asGender, GENDER_LABEL } from "@/lib/gender";
-import { DollGenderControl } from "@/components/admin/DollGenderControl";
 
 export const dynamic = "force-dynamic";
 
@@ -75,17 +74,15 @@ export default async function AdminGenerationDetailPage({
       <div className="mx-auto w-full max-w-2xl">
         <div className="flex items-center justify-between">
           <Link href="/admin/generations" className="text-xs text-zinc-500 hover:text-foreground">
-            ← 생성 현황
+            ← 생성 기록
           </Link>
-          {gen.pickedDollId && (
+          {gen.pickedDollId && gen.doll && (
             <Link
-              href={`/doll/${gen.pickedDollId}`}
-              target="_blank"
-              rel="noreferrer"
+              href={`/admin/dolls/${gen.pickedDollId}`}
               className="text-xs text-sky-600 underline-offset-2 hover:underline"
-              title="공개 캐릭터 공유 페이지 (새 탭)"
+              title="캐릭터 상세 (현재 상태·롤·성별 제어·공개 페이지)"
             >
-              공유 페이지 {shortId(gen.pickedDollId)} ↗
+              캐릭터 상세 {shortId(gen.pickedDollId)} →
             </Link>
           )}
         </div>
@@ -99,19 +96,22 @@ export default async function AdminGenerationDetailPage({
               {gen.ownerName ?? shortId(gen.ownerId)}
             </Link>
           </Row>
-          <Row label="롤">{roleFrom(asRole(gen.role), roleCfg).label} <span className="text-zinc-400">({gen.role})</span></Row>
-          <Row label="성별">
-            {GENDER_LABEL[asGender(gen.gender)]} <span className="text-zinc-400">({gen.gender}) · 프롬프트에 적용된 값</span>
-            {gen.pickedDollId && gen.pickedDoll && (
-              <div className="mt-1.5">
-                <DollGenderControl
-                  dollId={gen.pickedDollId}
-                  gender={asGender(gen.pickedDoll.gender)}
-                  version={gen.pickedDoll.version}
-                />
-              </div>
-            )}
+          {/* 생성 당시 값(불변 기록). 캐릭터의 현재 롤·성별과 제어는 캐릭터 상세. */}
+          <Row label="생성 시 선택 롤">{roleFrom(asRole(gen.role), roleCfg).label} <span className="text-zinc-400">({gen.role})</span></Row>
+          <Row label="프롬프트 적용 성별">
+            {GENDER_LABEL[asGender(gen.gender)]} <span className="text-zinc-400">({gen.gender} · 얼굴검사 판정)</span>
           </Row>
+          {gen.doll && (
+            <Row label="현재 캐릭터">
+              {roleFrom(asRole(gen.doll.role), roleCfg).label} {GENDER_LABEL[asGender(gen.doll.gender)]}
+              {gen.doll.state !== "public" && (
+                <span className="text-zinc-400"> · {gen.doll.state === "purged" ? "영구삭제" : "숨김"}</span>
+              )}{" "}
+              <Link href={`/admin/dolls/${gen.pickedDollId}`} className="text-sky-600 underline-offset-2 hover:underline">
+                캐릭터 상세 →
+              </Link>
+            </Row>
+          )}
           <Row label="생성 시각">{fmtKst(gen.createdAt)}</Row>
           <Row label="후보 수">{gen.candidateCount}</Row>
           <Row label="크레딧">

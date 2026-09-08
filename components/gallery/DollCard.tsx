@@ -10,13 +10,8 @@ import { trackShare } from "@/lib/acquisition";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
-import { ROLE_IDS, asRole, josaEuro, type RoleId } from "@/lib/roles";
-import { parseDollRoleUpdateAck } from "@/lib/storage-mutation-result";
+import { asRole } from "@/lib/roles";
 import { isCurrentClientEpoch } from "@/lib/client-lifecycle";
-import {
-  clientMutationResponseNeedsReconciliation,
-  runReplayedJsonMutation,
-} from "@/lib/client-mutation";
 
 export type Doll = {
   id: string;
@@ -25,40 +20,32 @@ export type Doll = {
   role: string;
 };
 
-// 실 캐릭터 카드 — 공유/롤 변경/삭제. (app/gallery/page.tsx 에서 분리·이동, 동작 변경 없음.)
+// 실 캐릭터 카드 — 공유/삭제. 롤·성별은 캐릭터의 속성이지만 생성 뒤엔 어드민만 바꾼다(v1.29 — 유저 「역할 변경」 제거).
 export function DollCard({
   doll,
   deleting,
   onDelete,
-  onRoleChange,
 }: {
   doll: Doll;
   deleting: boolean;
   onDelete: () => void;
-  onRoleChange: (id: string, role: RoleId) => void;
 }) {
   const role = asRole(doll.role);
   const mk = useMarketingCopy();
   const cfg = useRoleConfig(); // DB 발행 호칭(roleFrom) — 마케터 변경이 갤러리칩/메뉴/토스트에 반영
   const [menuOpen, setMenuOpen] = useState(false);
-  const [roleMenu, setRoleMenu] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [savingRole, setSavingRole] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const mountedRef = useRef(false);
   const actionEpochRef = useRef(0);
   const sharingRef = useRef(false);
-  const savingRoleRef = useRef(false);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const roleAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       actionEpochRef.current += 1;
-      roleAbortRef.current?.abort();
-      roleAbortRef.current = null;
       if (flashTimerRef.current !== null) {
         clearTimeout(flashTimerRef.current);
         flashTimerRef.current = null;
@@ -94,7 +81,6 @@ export function DollCard({
 
   const closeMenu = () => {
     setMenuOpen(false);
-    setRoleMenu(false);
   };
 
   const beginAction = () => {
@@ -110,7 +96,7 @@ export function DollCard({
 
   const handleShare = async () => {
     closeMenu();
-    if (sharingRef.current || savingRoleRef.current || deleting) return;
+    if (sharingRef.current || deleting) return;
     sharingRef.current = true;
     const actionEpoch = beginAction();
     setSharing(true);
@@ -136,91 +122,6 @@ export function DollCard({
       ) {
         sharingRef.current = false;
         setSharing(false);
-      }
-    }
-  };
-
-  const handleRole = async (next: RoleId) => {
-    if (savingRoleRef.current || sharingRef.current || deleting) return;
-    if (next === role) {
-      closeMenu();
-      return;
-    }
-    closeMenu(); // 메뉴 닫고 카드 오버레이("변경 중…")로 진행 표시
-    savingRoleRef.current = true;
-    const actionEpoch = beginAction();
-    const controller = new AbortController();
-    roleAbortRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
-    setSavingRole(true);
-    try {
-      const requestBody = JSON.stringify({
-        id: doll.id,
-        role: next,
-      });
-      const outcome = await runReplayedJsonMutation({
-        input: "/api/doll",
-        init: {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: requestBody,
-        },
-        signal: controller.signal,
-        classify: (response, body) => {
-          if (
-            response.ok &&
-            parseDollRoleUpdateAck(body, next)
-          ) {
-            return { kind: "confirmed", value: true };
-          }
-          if (
-            clientMutationResponseNeedsReconciliation(
-              response.status,
-              response.ok,
-            )
-          ) {
-            return {
-              kind: "unconfirmed",
-              reason: "doll_role_response_unconfirmed",
-            };
-          }
-          return {
-            kind: "rejected",
-            error: `doll_role_http_${response.status}`,
-          };
-        },
-      });
-      if (outcome.kind !== "confirmed") {
-        flash("역할 변경 실패", actionEpoch);
-        return;
-      }
-      if (
-        isCurrentClientEpoch(
-          actionEpoch,
-          actionEpochRef.current,
-          mountedRef.current,
-        )
-      ) {
-        onRoleChange(doll.id, next);
-        const nextLabel = roleFrom(next, cfg).label;
-        flash(`${nextLabel}${josaEuro(nextLabel)} 변경`, actionEpoch);
-      }
-    } catch {
-      flash("역할 변경 실패", actionEpoch);
-    } finally {
-      window.clearTimeout(timeoutId);
-      if (roleAbortRef.current === controller) {
-        roleAbortRef.current = null;
-      }
-      if (
-        isCurrentClientEpoch(
-          actionEpoch,
-          actionEpochRef.current,
-          mountedRef.current,
-        )
-      ) {
-        savingRoleRef.current = false;
-        setSavingRole(false);
       }
     }
   };
@@ -262,13 +163,6 @@ export function DollCard({
           </div>
         )}
 
-        {/* 롤 변경 진행 중 — 카드 dim + 스피너 (탭/대기 구분) */}
-        {savingRole && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[2px]">
-            <Spinner className="h-6 w-6 text-white" />
-            <span className="text-xs font-medium text-white/90">변경 중…</span>
-          </div>
-        )}
       </div>
 
       {/* 롤 칩 (좌상단 — ⋯ 버튼/공유 스피너와 안 겹치게) */}
@@ -276,16 +170,15 @@ export function DollCard({
         {roleFrom(role, cfg).label}
       </span>
 
-      {/* ⋯ 옵션 버튼 — 공유/롤 변경/삭제 메뉴 */}
+      {/* ⋯ 옵션 버튼 — 공유/삭제 메뉴 */}
       <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setRoleMenu(false);
           setMenuOpen((v) => !v);
         }}
-        disabled={deleting || savingRole || sharing}
+        disabled={deleting || sharing}
         aria-label="옵션"
         className="absolute right-2 top-2 z-20 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-lg font-bold leading-none text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 active:scale-90 disabled:opacity-40"
       >
@@ -303,28 +196,16 @@ export function DollCard({
             }}
           />
           <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 ui-surface shadow-2xl">
-            {roleMenu ? (
-              ROLE_IDS.map((rid) => (
-                <MenuItem key={rid} onClick={() => void handleRole(rid)}>
-                  {roleFrom(rid, cfg).label}
-                  {rid === role ? " ✓" : ""}
-                </MenuItem>
-              ))
-            ) : (
-              <>
-                <MenuItem onClick={handleShare}>공유</MenuItem>
-                <MenuItem onClick={() => setRoleMenu(true)}>역할 변경</MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    closeMenu();
-                    onDelete();
-                  }}
-                  danger
-                >
-                  삭제
-                </MenuItem>
-              </>
-            )}
+            <MenuItem onClick={handleShare}>공유</MenuItem>
+            <MenuItem
+              onClick={() => {
+                closeMenu();
+                onDelete();
+              }}
+              danger
+            >
+              삭제
+            </MenuItem>
           </div>
         </>
       )}

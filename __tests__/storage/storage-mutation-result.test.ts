@@ -7,7 +7,6 @@ import {
   parseDetachedStorageMutationAck,
   parseDollDeleteAck,
   parseDollDeleteHttpAck,
-  parseDollRoleUpdateAck,
 } from "../../lib/storage-mutation-result.ts";
 
 const JOB_ID = "00000000-0000-4000-8000-000000000001";
@@ -141,22 +140,6 @@ test("completed/canceled만 claim 없이 terminal이고 pending/leased는 재처
   );
 });
 
-test("doll role ack는 exact echoed role 외에는 성공이 아니다", () => {
-  assert.equal(
-    parseDollRoleUpdateAck({ ok: true, role: "teamlead" }, "teamlead"),
-    true,
-  );
-  for (const malformed of [
-    null,
-    { ok: true, role: "boss" },
-    { ok: false, role: "teamlead" },
-    { ok: true },
-    { ok: true, role: "teamlead", extra: true },
-  ]) {
-    assert.equal(parseDollRoleUpdateAck(malformed, "teamlead"), false);
-  }
-});
-
 test("doll delete HTTP ack는 완료와 durable pending만 구분해 승인한다", () => {
   assert.deepEqual(
     parseDollDeleteHttpAck({ ok: true, cleanup: "completed" }),
@@ -188,6 +171,5 @@ test("gallery clients validate exact delete and role acknowledgements", () => {
     "utf8",
   );
   assert.match(gallery, /parseDollDeleteHttpAck\(body\)/);
-  assert.match(card, /parseDollRoleUpdateAck\(body, next\)/);
   assert.doesNotMatch(card, /if \(!r\.ok\) \{/);
 });

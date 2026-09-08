@@ -372,6 +372,13 @@ function ModerationRowItem({ row }: { row: ModerationRow }) {
             >
               캐릭터 {shortId(row.dollId)}
             </Link>
+            <Link
+              href={`/admin/dolls/${row.dollId}`}
+              className="text-sky-600 underline-offset-2 hover:underline"
+              title="캐릭터 상세로 이동"
+            >
+              캐릭터 상세 →
+            </Link>
             {row.owner_id ? (
               <>
                 <Link
