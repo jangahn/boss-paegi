@@ -11,12 +11,17 @@ import {
   getMapStickiness,
   getDevicePerf,
   getPersonaDistribution,
+  getScoreBuckets,
 } from "@/lib/admin-analytics";
+import { bandScoreBuckets } from "@/lib/admin-analytics-math";
+import { getScoreConfig } from "@/lib/config/getters";
+import { scoreTier, tierBandLabel, TIER_COUNT } from "@/lib/score-tiers";
 import { parseStatWindow, statWindowLabel } from "@/lib/admin-period";
 import { PeriodTabs } from "@/components/admin/PeriodTabs";
 import {
   BalanceBars,
   PersonaBars,
+  ScoreBandBars,
   FunnelView,
   WeaponConcentrationCard,
   WeaponThroughputBars,
@@ -38,7 +43,7 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const window = parseStatWindow(sp.days);
 
-  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf, personas] =
+  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf, personas, scoreBuckets, scoreCfg] =
     await Promise.all([
       getWeaponBalance(window),
       getMapBalance(window),
@@ -49,7 +54,14 @@ export default async function AnalyticsPage({
       getMapStickiness(window),
       getDevicePerf(window),
       getPersonaDistribution(window),
+      getScoreBuckets(window),
+      getScoreConfig(),
     ]);
+  // 점수 구간 분포 — 1,000점 버킷을 현재 경계(score_config.thresholds)로 접는다. 라벨 = 구간 + 등급 라벨.
+  const scoreBands = bandScoreBuckets(scoreBuckets, (s) => scoreTier(s, scoreCfg.thresholds), TIER_COUNT);
+  const bandLabels = scoreCfg.grades.map(
+    (g, i) => `${tierBandLabel(i, scoreCfg.thresholds)} · ${g.label}`,
+  );
 
   return (
     <main className="flex flex-1 flex-col px-5 py-8">
@@ -107,6 +119,11 @@ export default async function AnalyticsPage({
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">패기 유형 분포 <span className="font-normal text-zinc-400">(제출 게임 단위 판정)</span></h2>
           <PersonaBars stats={personas} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">점수 구간 분포 <span className="font-normal text-zinc-400">(제출 게임 단위 · 현재 경계 기준)</span></h2>
+          <ScoreBandBars stats={scoreBands} labels={bandLabels} />
         </section>
 
         <section>

@@ -68,8 +68,8 @@ export default async function OgImage({
   const dollSrc = await dollDataUri(
     await signedDollUrl(s?.dolls?.image_url ?? null, 60, { thumb: true })
   );
-  const grade = gradeFor(s?.score ?? 0, scoreCfg.grades);
-  const reaction = s ? bossReaction(s.score, s.id, role, cfg) : "";
+  const grade = gradeFor(s?.score ?? 0, scoreCfg);
+  const reaction = s ? bossReaction({ score: s.score, seed: s.id, role, roleCfg: cfg, scoreCfg }) : "";
   const docNo = s ? reportNo(s.id, s.created_at) : "";
 
   return new ImageResponse(

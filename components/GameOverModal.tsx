@@ -65,7 +65,7 @@ export function GameOverModal({
   const router = useRouter();
   const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
   const roleLabel = roleFrom(role, roleCfg).label;
-  const scoreGrades = useScoreConfig().grades; // 마케터 편집 등급 라벨/코멘트
+  const scoreCfg = useScoreConfig(); // 마케터 편집 등급 라벨/코멘트 + 구간 경계(라이브)
   const mk = useMarketingCopy(); // 마케터 편집 공유/CTA 문구
 
   const score = useGameStore((s) => s.score);
@@ -223,8 +223,8 @@ export function GameOverModal({
   if (!open) return null;
 
   const durationMs = elapsedScoreDurationMs(startedAt, endedAt);
-  const grade = gradeFor(score, scoreGrades);
-  const reaction = bossReaction(score, scoreId ?? String(score), role, roleCfg);
+  const grade = gradeFor(score, scoreCfg);
+  const reaction = bossReaction({ score, seed: scoreId ?? String(score), role, roleCfg, scoreCfg });
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
   // 어뷰징 의심(pending/voided) — 랭킹 미반영·공유 차단·뱃지 미노출·검토 안내.
   const isPending = !!reviewStatus && reviewStatus !== "registered";
@@ -268,7 +268,7 @@ export function GameOverModal({
       trackShare({
         surface: "game_over",
         target: "score",
-        scoreTier: scoreTier(score),
+        scoreTier: scoreTier(score, scoreCfg.thresholds),
         onceKey: sid,
       });
     } catch {

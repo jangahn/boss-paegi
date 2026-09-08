@@ -4,18 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import type { ScoreConfig } from "@/lib/config/domains/score";
+import { isValidThresholds, THRESHOLD_STEP, TIER_COUNT, tierBandLabel } from "@/lib/score-tiers";
+import { MAX_SCORE_HARD } from "@/lib/score-limits";
 import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
-  validation_failed: "형식 오류 — 라벨(1~20자)·한 줄 평(1~40자)을 모두 채워주세요.",
+  validation_failed: `형식 오류 — 구간 경계 ${TIER_COUNT - 1}개(${THRESHOLD_STEP.toLocaleString()}점 단위·오름차순)와 라벨(1~20자)·한 줄 평(1~40자)을 모두 채워주세요.`,
   update_failed: "저장 실패. 잠시 후 다시 시도하세요.",
 };
-
-function band(i: number): string {
-  if (i >= 9) return "90,000+";
-  return `${(i * 10000).toLocaleString()}~${((i + 1) * 10000 - 1).toLocaleString()}`;
-}
 
 export function ScoreConfigEditor({
   initial,
@@ -31,19 +28,33 @@ export function ScoreConfigEditor({
   const router = useRouter();
   const submitAdminConfigMutation = useAdminConfigMutation();
   const [grades, setGrades] = useState(initial.grades);
+  // 경계는 문자열로 편집(빈 칸·타이핑 중 허용) → 발행 시 정수 변환.
+  const [thresholds, setThresholds] = useState<string[]>(initial.thresholds.map((t) => String(t)));
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const setField = (i: number, key: "label" | "comment", v: string) =>
     setGrades((gs) => gs.map((g, gi) => (gi === i ? { ...g, [key]: v } : g)));
+  const setThreshold = (i: number, v: string) =>
+    setThresholds((ts) => ts.map((t, ti) => (ti === i ? v.replace(/[^\d]/g, "") : t)));
+
+  const parsedThresholds = thresholds.map((t) => Number(t));
+  const thresholdsOk = isValidThresholds(parsedThresholds, THRESHOLD_STEP, MAX_SCORE_HARD);
+  // 미리보기 라벨은 유효할 때만 입력값으로, 아니면 발행값으로(입력 중 깨진 라벨 방지).
+  const previewThresholds = thresholdsOk ? parsedThresholds : initial.thresholds;
 
   const submit = async () => {
     if (busy) return;
+    if (!thresholdsOk) {
+      setMsg({ ok: false, text: ERR_KO.validation_failed });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
       const value: ScoreConfig = {
+        thresholds: parsedThresholds,
         grades: grades.map((g) => ({ label: g.label.trim(), comment: g.comment.trim() })),
       };
       const result = await submitAdminConfigMutation({
@@ -64,6 +75,9 @@ export function ScoreConfigEditor({
     }
   };
 
+  const inputCls =
+    "w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40";
+
   return (
     <div className="mt-5 flex flex-col gap-4">
       {(source === "default" || invalid) && (
@@ -74,24 +88,52 @@ export function ScoreConfigEditor({
         </p>
       )}
 
+      {/* 구간 경계 — 단계 개수(5)는 고정, 경계 4개만 편집. 등급 칸 캡션·롤 대사 칸·게임 분석 분포가 이 값을 따른다. */}
+      <fieldset className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
+        <legend className="px-1 text-sm font-semibold text-zinc-500">구간 경계</legend>
+        <p className="text-xs text-zinc-500">
+          {TIER_COUNT}단계의 경계 {TIER_COUNT - 1}개. {THRESHOLD_STEP.toLocaleString()}점 단위·오름차순. 바꾸면 등급·피격 반응·시비 멘트·게임 분석의
+          점수 구간이 <b>과거 판까지</b> 새 경계로 다시 계산돼요(라벨과 같은 라이브 값).
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {thresholds.map((t, i) => (
+            <label key={i} className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-zinc-400">{i + 1}단계 시작 점수</span>
+              <input
+                value={t}
+                inputMode="numeric"
+                onChange={(e) => setThreshold(i, e.target.value)}
+                placeholder={String(initial.thresholds[i] ?? "")}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+          ))}
+        </div>
+        {!thresholdsOk && (
+          <p className="text-xs text-red-400">
+            경계는 {THRESHOLD_STEP.toLocaleString()}점 단위 정수, 오름차순, {THRESHOLD_STEP.toLocaleString()}~{MAX_SCORE_HARD.toLocaleString()}점 사이여야 해요.
+          </p>
+        )}
+      </fieldset>
+
       {grades.map((g, i) => (
         <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 ui-surface p-3">
           <span className="text-[11px] text-zinc-400">
-            {i}단계 · {band(i)}점
+            {i}단계 · {tierBandLabel(i, previewThresholds)}점
           </span>
           <input
             value={g.label}
             maxLength={20}
             onChange={(e) => setField(i, "label", e.target.value)}
-            placeholder="등급 라벨 (예: 폭주 차장)"
-            className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm font-semibold outline-none focus:border-foreground/40"
+            placeholder="등급 라벨 (예: 키보드 워리어)"
+            className={`${inputCls} font-semibold`}
           />
           <input
             value={g.comment}
             maxLength={40}
             onChange={(e) => setField(i, "comment", e.target.value)}
-            placeholder="한 줄 평 (예: 이성을 살짝 놓았습니다)"
-            className="w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40"
+            placeholder="한 줄 평 (예: 엔터키에 오늘의 감정이 실렸습니다)"
+            className={inputCls}
           />
         </div>
       ))}

@@ -10,6 +10,7 @@ import {
   herfindahlOf,
   parseBucketKey,
   type HistBucket,
+  type ScoreBucketStat,
 } from "@/lib/admin-analytics-math";
 import {
   readSupabaseRowsPaginated,
@@ -214,6 +215,27 @@ export async function getPersonaDistribution(window: StatWindow): Promise<Person
   }
   return [...agg.values()].sort((a, b) => b.games - a.games || a.id.localeCompare(b.id));
 }
+/**
+ * 점수 구간 분포(v1.24) — dim game_score_1k: dim_key=floor(score/1000), sessions=게임 수, score=점수 합,
+ * measure_a=duration_ms 합. 공개 제출 게임(registered·cleared) 단위. 경계 무관 히스토그램이라 어드민이
+ * 현재 score_config.thresholds 로 합산(bandScoreBuckets) — 경계를 바꿔도 과거 판이 정확히 재분류된다.
+ */
+export async function getScoreBuckets(window: StatWindow): Promise<ScoreBucketStat[]> {
+  const rows = await fetchDimRows(["game_score_1k"], window);
+  const agg = new Map<number, ScoreBucketStat>();
+  for (const r of rows) {
+    const bucket = Number(r.dimKey);
+    if (!Number.isSafeInteger(bucket) || bucket < 0) continue;
+    const cur = agg.get(bucket) ?? { bucket, games: 0, score: 0, durationMs: 0 };
+    cur.games += r.sessions;
+    cur.score += r.score;
+    cur.durationMs += r.measureA;
+    agg.set(bucket, cur);
+  }
+  return [...agg.values()].sort((a, b) => a.bucket - b.bucket);
+}
+export type { ScoreBucketStat, ScoreBandStat } from "@/lib/admin-analytics-math";
+
 export function getMapBalance(window: StatWindow): Promise<DimStat[]> {
   return dimBalance("map", window);
 }

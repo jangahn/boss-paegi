@@ -1,7 +1,9 @@
 import { RETIRED_WEAPONS, WEAPONS } from "@/lib/weapons";
 import { PERSONA_DEFS, personaById } from "@/lib/persona";
 import { BACKGROUNDS } from "@/lib/backgrounds";
+import { formatDuration } from "@/lib/report";
 import type { PersonaStat,
+  ScoreBandStat,
   DimStat,
   Funnel,
   WeaponConcentration,
@@ -61,6 +63,39 @@ export function PersonaBars({ stats }: { stats: PersonaStat[] }) {
       <p className="mt-1 text-[11px] text-zinc-400">
         게임 수 · 비중 · 평균 점수. 제출 시점에 판정된 유형 기준(공개 제출·통계 유효 게임 {total.toLocaleString()}판). 룰 개정 전
         판은 옛 유형으로 남아 &ldquo;(은퇴)&rdquo; 로 표시.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 점수 구간 분포(v1.24) — 공개 제출 게임을 현재 score_config 경계(5단계)로 나눈 게임 수·비중·평균 소요 시간.
+ * 행은 단계 순서 고정(빈 단계도 0). 라벨 = 구간 표기 + 등급 라벨(둘 다 score_config 라이브).
+ */
+export function ScoreBandBars({ stats, labels }: { stats: ScoreBandStat[]; labels: string[] }) {
+  const total = stats.reduce((s, x) => s + x.games, 0);
+  const max = Math.max(1, ...stats.map((x) => x.games));
+  if (total === 0) {
+    return <p className="text-sm text-zinc-400">아직 데이터가 없어요.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {stats.map((s) => (
+        <div key={s.tier} className={BAR_ROW}>
+          <span className={`${BAR_LABEL} sm:basis-44`}>{labels[s.tier] ?? `${s.tier}단계`}</span>
+          <div className="relative h-4 flex-1 overflow-hidden rounded bg-foreground/5">
+            <div className="h-full rounded bg-amber-400/70" style={{ width: `${Math.max(2, (s.games / max) * 100)}%` }} />
+          </div>
+          <span className="w-14 shrink-0 text-right tabular-nums font-medium" title="게임 수">{s.games.toLocaleString()}</span>
+          <span className="w-12 shrink-0 text-right tabular-nums text-zinc-400" title="비중">{pct(s.games, total)}</span>
+          <span className="w-16 shrink-0 text-right tabular-nums text-zinc-400" title="평균 소요 시간">
+            {s.games > 0 ? formatDuration(s.durationMs / s.games) : "—"}
+          </span>
+        </div>
+      ))}
+      <p className="mt-1 text-[11px] text-zinc-400">
+        게임 수 · 비중 · 평균 소요 시간. 공개 제출 게임 {total.toLocaleString()}판. 구간 경계는 점수 설정(콘텐츠 콘솔)의 현재 값 —
+        경계를 바꾸면 과거 판도 새 경계로 다시 나뉘어요(1,000점 버킷 집계).
       </p>
     </div>
   );

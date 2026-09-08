@@ -91,7 +91,7 @@ export function getRoleContent(role: RoleId): RoleContent {
   return ownRecordValue(CONTENT, role) ?? boss;
 }
 
-// dev assert — 빈 tier / 빈 배열 조기 검출 (10단계 길이는 TieredLines 튜플이 컴파일 강제).
+// dev assert — 빈 tier / 빈 배열 조기 검출 (5단계 길이는 TieredLines 튜플이 컴파일 강제).
 if (process.env.NODE_ENV !== "production") {
   for (const [id, c] of Object.entries(CONTENT)) {
     const bad: string[] = [];

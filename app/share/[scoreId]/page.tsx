@@ -48,7 +48,7 @@ export async function generateMetadata({
     getScoreConfig(),
     getMarketingCopy(),
   ]);
-  const grade = gradeFor(score.score, scoreCfg.grades);
+  const grade = gradeFor(score.score, scoreCfg);
   const title = resolveCopy(mk.share.scoreOgTitle, roleFrom(role, cfg).label, {
     제작자: name,
     점수: score.score.toLocaleString(),
@@ -97,8 +97,8 @@ export default async function SharePage({
     getMarketingCopy(),
   ]);
   const rlabel = roleFrom(role, cfg).label;
-  const grade = gradeFor(score.score, scoreCfg.grades);
-  const reaction = bossReaction(score.score, score.id, role, cfg);
+  const grade = gradeFor(score.score, scoreCfg);
+  const reaction = bossReaction({ score: score.score, seed: score.id, role, roleCfg: cfg, scoreCfg });
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const clipUrl = await clipSignedUrl(score);
   const dollImg = await signedDollUrl(score.dolls?.image_url, 600, { thumb: true }); // 384px 썸네일(삭제/없음=null→기본보스)

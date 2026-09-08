@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { DomainEntry } from "../registry";
 import { ROLE_IDS, ROLE_META, asRole, type RoleId } from "@/lib/roles";
 import type { RoleContent } from "@/lib/roles/types";
+import { TIER_COUNT } from "@/lib/score-tiers";
 import { boss } from "@/lib/roles/boss";
 import { exec } from "@/lib/roles/exec";
 import { teamlead } from "@/lib/roles/teamlead";
@@ -9,10 +10,11 @@ import { client } from "@/lib/roles/client";
 import { coworker } from "@/lib/roles/coworker";
 
 // 롤 tiered 콘텐츠 도메인 — 순수 모듈(client 프로바이더 default + server getter 공용, lib/roles 와 무순환).
-// 점수 10단계 결합 가드: reactions/taunts 는 **정확히 10 tier**(.length(10)), tier 당 ≥1 줄.
-// tier 개수(10)·매핑은 코드 고정(score_config) — 마케터는 내용만.
+// 점수 5단계 결합 가드: reactions/taunts 는 **정확히 TIER_COUNT tier**(.length(5)), tier 당 ≥1 줄
+// (시드는 반응 6줄·멘트 8줄 — 권장치이며 스키마 강제는 아님).
+// tier 개수(5)는 코드 고정, 경계는 score_config.thresholds — 마케터는 내용만.
 const tier = z.array(z.string().trim().min(1).max(120)).min(1);
-const tiered = z.array(tier).length(10);
+const tiered = z.array(tier).length(TIER_COUNT);
 
 const roleFullSchema = z.object({
   reactions: tiered,
@@ -24,7 +26,7 @@ const roleFullSchema = z.object({
 });
 
 // 5롤 고정(엔지니어 전용) — 키 정확히 boss/exec/teamlead/client/coworker.
-export const roleConfigSchema = z.object({
+const roleConfigBaseSchema = z.object({
   boss: roleFullSchema,
   exec: roleFullSchema,
   teamlead: roleFullSchema,
@@ -32,8 +34,45 @@ export const roleConfigSchema = z.object({
   coworker: roleFullSchema,
 });
 
+/**
+ * 구 10단계(v1.23 이전 발행행) → 5단계: 인접 쌍 병합(0+1, 2+3, 4+5, 6+7, 8+9).
+ * 순서(감정선 아크) 기준 전환이라 경계값과 무관하며, 반응 3+3=6줄·멘트 4+4=8줄로 마케터 편집 줄이 전부 보존된다.
+ * 이미 5단계면 그대로. 그 외 모양은 손대지 않고 스키마가 거절하게 둔다.
+ */
+export function mergeLegacyTiers(tiers: unknown): unknown {
+  if (!Array.isArray(tiers) || tiers.length !== TIER_COUNT * 2) return tiers;
+  const merged: unknown[] = [];
+  for (let i = 0; i < tiers.length; i += 2) {
+    const a = Array.isArray(tiers[i]) ? (tiers[i] as unknown[]) : [];
+    const b = Array.isArray(tiers[i + 1]) ? (tiers[i + 1] as unknown[]) : [];
+    merged.push([...a, ...b]);
+  }
+  return merged;
+}
+
+/** 읽기/쓰기 공통 정규화(뱃지 카탈로그 선례) — 발행행이 구 형태여도 첫 읽기부터 valid(codeDefault 폴백 창 0). */
+export function normalizeRoleContentInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const role = value as Record<string, unknown>;
+      out[key] = {
+        ...role,
+        reactions: mergeLegacyTiers(role.reactions),
+        taunts: mergeLegacyTiers(role.taunts),
+      };
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+export const roleConfigSchema = z.preprocess(normalizeRoleContentInput, roleConfigBaseSchema);
+
 export type RoleFull = z.infer<typeof roleFullSchema>;
-export type RoleConfig = z.infer<typeof roleConfigSchema>;
+export type RoleConfig = z.infer<typeof roleConfigBaseSchema>;
 
 // 기존 RoleContent(readonly tuple) + ROLE_META(label) → 편집 가능한 mutable RoleFull 로 복제.
 // 호칭은 label 1개로 통일 — 목적격/조사/칩은 josaEul·josaEun·josaEuro 로 파생(데이터 중복 제거).

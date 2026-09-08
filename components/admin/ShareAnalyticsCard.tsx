@@ -65,8 +65,12 @@ export function ShareAnalyticsCard({ stats, tierLabels }: { stats: ShareStats; t
       <DistBlock title="대상별 공유 시도" rows={stats.byTarget.map((r) => ({ label: TARGET_KO[r.key] ?? r.key, value: r.value }))} />
       <DistBlock
         title="점수대별 공유 시도 (점수 공유 한정)"
-        rows={stats.byScoreTier.map((r) => ({ label: tierLabels[r.tier] ?? `${r.tier}단계`, value: r.value }))}
+        rows={stats.byScoreTier.map((r) => ({ label: tierLabels[r.tier] ?? `구 10단계 ${r.tier}단계`, value: r.value }))}
       />
+      <p className="-mt-1 text-[11px] text-zinc-400">
+        점수대는 <b>공유 시점</b>의 구간 인덱스라 구간 경계를 바꾸면 이전 데이터와 의미가 섞여요. 2026-09-08 5단계 전환 전 데이터는
+        &ldquo;구 10단계 N단계&rdquo;로 표시.
+      </p>
       <DistBlock title="회원여부별 공유 시도" rows={stats.byMemberState.map((r) => ({ label: MEMBER_KO[r.key] ?? r.key, value: r.value }))} />
     </div>
   );
