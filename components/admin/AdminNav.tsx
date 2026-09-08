@@ -8,14 +8,15 @@ import { useRef } from "react";
  * 어드민 서브 네비 — 멀티 라우트(/admin · /admin/orders · …) 이동.
  * 라우트가 추가되는 PR 마다 LINKS 에 항목을 더한다(없는 라우트로의 깨진 링크 방지).
  */
-const LINKS = [
+const LINKS: readonly { href: string; label: string; match?: readonly string[] }[] = [
   { href: "/admin", label: "대시보드" },
   { href: "/admin/orders", label: "주문" },
   { href: "/admin/refunds", label: "환불" },
   { href: "/admin/users", label: "회원" },
   { href: "/admin/ledger", label: "처리내역" },
   { href: "/admin/moderation", label: "신고" },
-  { href: "/admin/generations", label: "캐릭터 생성" },
+  // 「캐릭터」 = 캐릭터 목록(기본) | 생성 현황 — 두 경로 모두 이 메뉴가 활성(v1.30).
+  { href: "/admin/dolls", label: "캐릭터", match: ["/admin/dolls", "/admin/generations"] },
   { href: "/admin/events", label: "이벤트/소식" },
   { href: "/admin/content", label: "콘텐츠" },
   { href: "/admin/analytics", label: "게임 분석" },
@@ -61,8 +62,9 @@ export function AdminNav() {
         className="mx-auto flex w-full max-w-3xl cursor-grab gap-1 overflow-x-auto px-5 py-2 select-none active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {LINKS.map((l) => {
+          const prefixes: readonly string[] = l.match ?? [l.href];
           const active =
-            l.href === "/admin" ? pathname === "/admin" : pathname.startsWith(l.href);
+            l.href === "/admin" ? pathname === "/admin" : prefixes.some((p) => pathname.startsWith(p));
           return (
             <Link
               key={l.href}

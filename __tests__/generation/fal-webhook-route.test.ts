@@ -9,7 +9,7 @@ const route = readFileSync(
 );
 const adminGenerationProjection = [
   "../../lib/character-gen/admin-generation-state.ts",
-  "../../app/admin/generations/page.tsx",
+  "../../app/admin/(characters)/generations/page.tsx",
   "../../app/admin/generations/[id]/page.tsx",
 ]
   .map((relative) =>

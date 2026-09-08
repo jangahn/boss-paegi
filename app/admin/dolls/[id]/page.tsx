@@ -55,7 +55,7 @@ export default async function AdminDollDetailPage({ params }: { params: Promise<
       <div className="mx-auto w-full max-w-2xl">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link href="/admin/dolls" className="text-xs text-zinc-500 hover:text-foreground">
-            ← 캐릭터
+            ← 캐릭터 목록
           </Link>
           {doll.state !== "purged" && (
             <Link
