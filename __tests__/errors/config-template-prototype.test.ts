@@ -13,6 +13,7 @@ test("generation prompt substitution never reads Object.prototype keys", () => {
   prompt.template += " {toString} {constructor} {__proto__}";
 
   const result = assembleGenerationPrompts(prompt, "boss", {
+    gender: "male",
     wearsGlasses: false,
     suitColor: "navy",
   });

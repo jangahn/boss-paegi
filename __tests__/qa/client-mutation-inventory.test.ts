@@ -43,6 +43,7 @@ const CLIENT_MUTATION_SURFACES: readonly Surface[] = [
   { method: "POST", endpoint: "/api/telemetry", source: "lib/telemetry/transport.ts", helper: "runBoundedClientJsonFetch", strategy: "bounded_best_effort" },
   { method: "POST", endpoint: "/api/track", source: "lib/acquisition.ts", helper: "AbortController", strategy: "bounded_best_effort" },
   { method: "POST", endpoint: "/api/admin/config", source: "lib/admin-config-client.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
+  { method: "POST", endpoint: "/api/admin/doll-gender", source: "components/admin/DollGenderControl.tsx", helper: "runClientMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/admin/legal", source: "components/admin/content/LegalDocEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/admin/events", source: "components/admin/EventEditor.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   // 테스트 벤치 제출 = fal 실비 유발이나 세션 일회성·무원장(재시도/복구 없음 — 단일 시도 바운드).
@@ -107,10 +108,10 @@ function key(surface: Pick<Surface, "method" | "endpoint">): string {
   return `${surface.method} ${surface.endpoint}`;
 }
 
-test("all 46 current first-party client-triggered domain mutations are explicit", () => {
+test("all 47 current first-party client-triggered domain mutations are explicit", () => {
   assert.equal(
     CLIENT_MUTATION_SURFACES.length,
-    46,
+    47,
     "mutation count changed; classify the new/removed edge explicitly",
   );
   const unique = new Set(CLIENT_MUTATION_SURFACES.map(key));

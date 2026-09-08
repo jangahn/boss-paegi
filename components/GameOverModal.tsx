@@ -8,6 +8,7 @@ import { shareGameResult, uploadHighlightClip, saveCardHighlight } from "@/lib/s
 import { bossReaction, gradeFor, reportNo, scoreTier } from "@/lib/report";
 import { trackShare } from "@/lib/acquisition";
 import { type RoleId } from "@/lib/roles";
+import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
@@ -35,6 +36,8 @@ type Props = {
   dollId: string | null;
   /** 맞는 캐릭터의 롤 — 피격자 의견·공유 문구 분기. 기본 boss. */
   role?: RoleId;
+  /** 맞는 캐릭터의 성별 — 피격자 의견 보이스 분기. 기본 male(기본 부장님). */
+  gender?: Gender;
   /** 보고서에 표시할 캐릭터 이미지 (커스텀 or 기본) */
   dollImageUrl?: string;
   /** 하이라이트 녹화분 (없으면 카드만 공유) */
@@ -55,6 +58,7 @@ export function GameOverModal({
   weapon,
   dollId,
   role = "boss",
+  gender = DEFAULT_GENDER,
   dollImageUrl,
   highlightClip,
   getCardHighlight,
@@ -224,7 +228,7 @@ export function GameOverModal({
 
   const durationMs = elapsedScoreDurationMs(startedAt, endedAt);
   const grade = gradeFor(score, scoreCfg);
-  const reaction = bossReaction({ score, seed: scoreId ?? String(score), role, roleCfg, scoreCfg });
+  const reaction = bossReaction({ score, seed: scoreId ?? String(score), role, gender, roleCfg, scoreCfg });
   const docNo = scoreId ? reportNo(scoreId, new Date()) : "결재 대기";
   // 어뷰징 의심(pending/voided) — 랭킹 미반영·공유 차단·뱃지 미노출·검토 안내.
   const isPending = !!reviewStatus && reviewStatus !== "registered";

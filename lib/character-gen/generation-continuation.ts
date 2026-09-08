@@ -50,6 +50,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CharacterProvider } from "@/lib/character-gen";
 import { isRoleId, type RoleId } from "@/lib/roles";
+import { asGender } from "@/lib/gender";
 import {
   parseGenerationPreflightClaim,
   type GenerationPreflightClaim,
@@ -138,6 +139,8 @@ export async function runGenerationContinuation(
     preflight.kind === "accepted"
       ? buildGenerationPlan(preflight.config.value, {
           role,
+          // 성별 판정 unknown(모호·레거시 4체크)은 male 로 수렴 — DB(commit_generation_preflight)도 같은 규칙.
+          gender: asGender(preflight.analysis.gender),
           wearsGlasses: preflight.analysis.wearsGlasses,
           numImages: 3,
           seed: requestId,
@@ -346,12 +349,14 @@ export async function runGenerationContinuation(
         peopleCount: analysis.peopleCount,
         faceClear: analysis.faceClear,
         wearsGlasses: analysis.wearsGlasses,
+        gender: analysis.gender,
         checks: analysis.checks,
       },
       generation: {
         provider: FIXED_FLUX.provider,
         model: FIXED_FLUX.model,
         role,
+        gender: plan.snapshot.gender,
         request: plan.request,
         snapshot: plan.snapshot,
         candidates: plan.candidates.map((c) => ({

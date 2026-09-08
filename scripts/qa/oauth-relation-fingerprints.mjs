@@ -29,7 +29,8 @@ export const OAUTH_EXPECTED_RELATION_FINGERPRINTS = Object.freeze({
     "d1fe2eb3eaa86cf99c6824a189017ad84a74bb49c0ce45fedae8373d4ddd186d",
   "public.dolls":
     // 0120(v1.25): dolls_role_check 7롤 재정의 → 릴레이션 지문 갱신(관계 구조·소유자 무변경).
-    "94eeadb74e7366b692729cea8cb516a1b1539604f762dc1c681cb3da041ce6be",
+    // 0121(v1.26): gender 컬럼 + dolls_gender_check 추가 → 지문 갱신(소유자·RLS 무변경).
+    "8e1b34fc5bc574d2fc6444c45bbf4a3feb3ce1d9d05ed9575fcdeff2b6db1248",
   "public.legacy_signup_migration_receipts":
     "79de2351f74efa082562bd89b5946cbe97a746274480478d903afe2cc5602f97",
   "public.member_accounts":

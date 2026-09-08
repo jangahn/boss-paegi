@@ -1,6 +1,7 @@
 import { resolveWeapon } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
-import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
+import { roleFrom, roleVoice, type RoleConfig } from "@/lib/config/domains/roles";
+import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
 import {
   scoreTier,
   SCORE_THRESHOLDS_DEFAULT,
@@ -57,18 +58,19 @@ export function gradeFor(score: number, cfg: ScoreTierConfig = SCORE_TIER_CONFIG
 }
 
 /**
- * 피격자 의견 (보고서) — 맞는 캐릭터(롤) 입장. 롤별 콘텐츠는 role_content(cfg 미지정 시 코드 기본값).
- * 단계는 scoreCfg.thresholds 로 결정, 줄 선택은 seed 결정적(SSR/CSR 일치).
+ * 피격자 의견 (보고서) — 맞는 캐릭터(롤×성별) 입장. 롤별 콘텐츠는 role_content(cfg 미지정 시 코드 기본값).
+ * 단계는 scoreCfg.thresholds 로 결정, 줄 선택은 seed 결정적(SSR/CSR 일치). gender 미지정=male(기본 부장님·레거시).
  */
 export function bossReaction(opts: {
   score: number;
   seed: string;
   role?: RoleId;
+  gender?: Gender;
   roleCfg?: RoleConfig;
   scoreCfg?: ScoreTierConfig;
 }): string {
-  const { score, seed, role = "boss", roleCfg, scoreCfg = SCORE_TIER_CONFIG_DEFAULT } = opts;
-  const lines = roleFrom(role, roleCfg).reactions[scoreTier(score, scoreCfg.thresholds)];
+  const { score, seed, role = "boss", gender = DEFAULT_GENDER, roleCfg, scoreCfg = SCORE_TIER_CONFIG_DEFAULT } = opts;
+  const lines = roleVoice(roleFrom(role, roleCfg), gender).reactions[scoreTier(score, scoreCfg.thresholds)];
   return lines[hashSeed(seed) % lines.length];
 }
 

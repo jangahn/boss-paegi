@@ -138,7 +138,10 @@ function assembleV1(
 
 // 합성 prompt(내용 무관) — v2 조립 로직만 검증. DEFAULT 문구 변경과 디커플.
 function synthPrompt(): GenerationPromptConfig {
-  const role = { subject: "SUBJ", body: "a {suitColor} suit, EXPR," };
+  const role = {
+    male: { subject: "SUBJ", body: "a {suitColor} suit, EXPR," },
+    female: { subject: "F-SUBJ", body: "a {suitColor} dress, F-EXPR," },
+  };
   return {
     template: "HEAD subject={subject} END wearing {role}{glasses} TAIL IDENTITY{idGlasses}",
     negative: "NEG",
@@ -151,7 +154,7 @@ function synthPrompt(): GenerationPromptConfig {
 
 test("assembleGenerationPrompts — 치환·안경 조건·간격 정확 (v2)", () => {
   const p = synthPrompt();
-  const noGlasses = assembleGenerationPrompts(p, "boss", { wearsGlasses: false, suitColor: "red" });
+  const noGlasses = assembleGenerationPrompts(p, "boss", { gender: "male", wearsGlasses: false, suitColor: "red" });
   assert.equal(
     noGlasses.positive,
     "HEAD subject=SUBJ END wearing a red suit, EXPR, TAIL IDENTITY"
@@ -159,7 +162,7 @@ test("assembleGenerationPrompts — 치환·안경 조건·간격 정확 (v2)", 
   assert.equal(noGlasses.negative, "NEG");
 
   // v2 신질서 — 안경 절은 롤 body(복장+표정) 뒤.
-  const glasses = assembleGenerationPrompts(p, "boss", { wearsGlasses: true, suitColor: "red" });
+  const glasses = assembleGenerationPrompts(p, "boss", { gender: "male", wearsGlasses: true, suitColor: "red" });
   assert.equal(
     glasses.positive,
     "HEAD subject=SUBJ END wearing a red suit, EXPR, GLASSES, TAIL IDENTITY IDGLASSES."
@@ -185,6 +188,7 @@ test("② 안경=false 조립 — v1 DEFAULT 조립과 byte-identical (v1 4롤 �
     for (const suitColor of V1_DEFAULT.prompt.suitColors) {
       const v1 = assembleV1(V1_DEFAULT.prompt, role, { wearsGlasses: false, suitColor });
       const v2 = assembleGenerationPrompts(GENERATION_CONFIG_DEFAULT.prompt, role, {
+        gender: "male",
         wearsGlasses: false,
         suitColor,
       });
@@ -196,6 +200,7 @@ test("② 안경=false 조립 — v1 DEFAULT 조립과 byte-identical (v1 4롤 �
 
 test("③ 안경=true 신질서 — 절 이동(롤 body 뒤) 정확 문자열 golden (DEFAULT boss)", () => {
   const { positive } = assembleGenerationPrompts(GENERATION_CONFIG_DEFAULT.prompt, "boss", {
+    gender: "male",
     wearsGlasses: true,
     suitColor: "charcoal grey",
   });
@@ -206,6 +211,7 @@ test("③ 안경=true 신질서 — 절 이동(롤 body 뒤) 정확 문자열 go
   // 신질서 구조 확인(전 롤): 안경 절이 롤 body(표정 꼬리) 뒤·tail 앞.
   for (const role of ROLES) {
     const assembled = assembleGenerationPrompts(GENERATION_CONFIG_DEFAULT.prompt, role, {
+      gender: "male",
       wearsGlasses: true,
       suitColor: "black",
     });
@@ -218,6 +224,7 @@ test("④ 운영 v17 convert 조립 golden — 양안 앵커·사시 negative �
   assert.equal(generationConfigSchema.safeParse(v17).success, true);
 
   const noGlasses = assembleGenerationPrompts(v17.prompt, "boss", {
+    gender: "male",
     wearsGlasses: false,
     suitColor: "charcoal grey",
   });
@@ -229,6 +236,7 @@ test("④ 운영 v17 convert 조립 golden — 양안 앵커·사시 negative �
   for (const role of LEGACY_ROLES) {
     assert.equal(
       assembleGenerationPrompts(v17.prompt, role, {
+        gender: "male",
         wearsGlasses: false,
         suitColor: "navy blue",
       }).positive,
@@ -237,6 +245,7 @@ test("④ 운영 v17 convert 조립 golden — 양안 앵커·사시 negative �
   }
 
   const glasses = assembleGenerationPrompts(v17.prompt, "boss", {
+    gender: "male",
     wearsGlasses: true,
     suitColor: "charcoal grey",
   });
@@ -255,6 +264,7 @@ test("DEFAULT 조립 — 모든 롤×안경에 미치환 placeholder 없음", ()
   for (const role of ROLES) {
     for (const wearsGlasses of [true, false]) {
       const { positive } = assembleGenerationPrompts(GENERATION_CONFIG_DEFAULT.prompt, role, {
+        gender: "male",
         wearsGlasses,
         suitColor: suit,
       });
@@ -285,7 +295,7 @@ test("placeholder 계약: template 토큰 누락/중복/미지원 거부", () =>
 
 test("placeholder 계약: 롤 body {suitColor} 누락 거부", () => {
   const bad = structuredClone(GENERATION_CONFIG_DEFAULT);
-  bad.prompt.roles.boss.body = "a plain business suit, stern expression,";
+  bad.prompt.roles.boss.male.body = "a plain business suit, stern expression,";
   assert.equal(generationConfigSchema.safeParse(bad).success, false);
 });
 
@@ -329,4 +339,41 @@ test("roles: strict 7키 — 추가 키 거부", () => {
   const bad = structuredClone(GENERATION_CONFIG_DEFAULT);
   (bad.prompt.roles as Record<string, unknown>).intern = bad.prompt.roles.boss;
   assert.equal(generationConfigSchema.safeParse(bad).success, false);
+});
+
+test("v1.26 — v2 발행행(롤당 subject/body)은 male 로 승격되고 female 은 코드 기본값으로 충전된다", () => {
+  const v2 = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as {
+    prompt: { roles: Record<string, unknown> };
+  };
+  for (const role of ROLES) {
+    v2.prompt.roles[role] = GENERATION_CONFIG_DEFAULT.prompt.roles[role].male;
+  }
+  const parsed = generationConfigSchema.safeParse(v2);
+  assert.equal(parsed.success, true);
+  assert.deepEqual(parsed.data, GENERATION_CONFIG_DEFAULT);
+});
+
+test("v1.26 — 성별 변주 조립: female 은 female subject/body, male 은 v2 와 byte-identical", () => {
+  const p = synthPrompt();
+  const female = assembleGenerationPrompts(p, "boss", { gender: "female", wearsGlasses: false, suitColor: "red" });
+  assert.equal(female.positive, "HEAD subject=F-SUBJ END wearing a red dress, F-EXPR, TAIL IDENTITY");
+  for (const role of ROLES) {
+    for (const gender of ["male", "female"] as const) {
+      for (const wearsGlasses of [true, false]) {
+        const { positive } = assembleGenerationPrompts(GENERATION_CONFIG_DEFAULT.prompt, role, {
+          gender,
+          wearsGlasses,
+          suitColor: GENERATION_CONFIG_DEFAULT.prompt.suitColors[0],
+        });
+        assert.ok(!/\{[a-zA-Z]+\}/.test(positive), `미치환 placeholder role=${role} gender=${gender}`);
+      }
+    }
+  }
+  // 성별 키는 정확히 male/female — 추가 키·누락은 strict 거절.
+  const extra = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, Record<string, unknown>> } };
+  extra.prompt.roles.boss.other = extra.prompt.roles.boss.male;
+  assert.equal(generationConfigSchema.safeParse(extra).success, false);
+  const missing = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, Record<string, unknown>> } };
+  delete missing.prompt.roles.boss.female;
+  assert.equal(generationConfigSchema.safeParse(missing).success, false);
 });

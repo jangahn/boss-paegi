@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ROLE_IDS } from "../roles/ids.ts";
+import { GENDERS } from "../gender.ts";
 // 상대 .ts 경로 — node --test 에서 별칭 로더 없이 로드(prompt-golden 관례).
 import {
   assembleGenerationPrompts,
@@ -27,6 +28,7 @@ const generationTestSettingSchema = z
   .object({
     value: generationConfigSchema,
     role: testRoleSchema,
+    gender: z.enum(GENDERS),
     wearsGlasses: z.boolean(),
   })
   .strict();
@@ -95,7 +97,7 @@ export function buildGenerationTestSubmissions(
     const { positive, negative } = assembleGenerationPrompts(
       config.prompt,
       setting.role,
-      { wearsGlasses: setting.wearsGlasses, suitColor },
+      { gender: setting.gender, wearsGlasses: setting.wearsGlasses, suitColor },
     );
     return seeds.map((seed, imageIndex) => ({
       settingIndex,

@@ -2,8 +2,9 @@ import { z } from "zod";
 import type { DomainEntry } from "../registry";
 import { ROLE_IDS, ROLE_META, asRole, type RoleId } from "@/lib/roles";
 import { LEGACY_ROLE_ALIASES } from "@/lib/roles/ids";
-import type { RoleContent } from "@/lib/roles/types";
+import type { GenderVoice, RoleContent } from "@/lib/roles/types";
 import { TIER_COUNT } from "@/lib/score-tiers";
+import { type Gender } from "@/lib/gender";
 import { boss } from "@/lib/roles/boss";
 import { ceo } from "@/lib/roles/ceo";
 import { exec } from "@/lib/roles/exec";
@@ -19,11 +20,15 @@ import { friend } from "@/lib/roles/friend";
 const tier = z.array(z.string().trim().min(1).max(120)).min(1);
 const tiered = z.array(tier).length(TIER_COUNT);
 
-// 롤 1개 스키마 — desc(역할 선택 카드 한 줄 설명)는 v1.25 신설이라 발행행에 없으면 롤별 코드 기본값 충전.
+// 성별 보이스 한 벌(피격 반응·시비 멘트) — 루트 reactions/taunts 가 남성(기본), female 블록이 여성(v1.26).
+const genderVoiceSchema = z.object({ reactions: tiered, taunts: tiered });
+
+// 롤 1개 스키마 — desc(v1.25)·female(v1.26)은 신설이라 발행행에 없으면 롤별 코드 기본값 충전(재발행 시 저장됨).
 function roleFullSchema(role: RoleId) {
   return z.object({
     reactions: tiered,
     taunts: tiered,
+    female: genderVoiceSchema.default(() => femaleVoiceDefault(role)),
     traits: z.array(z.string().trim().min(1).max(60)).min(1),
     ranks: z.array(z.string().trim().min(1).max(40)).min(1),
     departments: z.array(z.string().trim().min(1).max(40)).min(1),
@@ -90,6 +95,26 @@ export const roleConfigSchema = z.preprocess(normalizeRoleContentInput, roleConf
 
 export type RoleFull = z.infer<ReturnType<typeof roleFullSchema>>;
 export type RoleConfig = Record<RoleId, RoleFull>;
+export type RoleVoice = { reactions: string[][]; taunts: string[][] };
+
+const CODE_CONTENT: Record<RoleId, RoleContent> = { boss, ceo, exec, teamlead, client, junior, friend };
+
+function copyVoice(v: GenderVoice): RoleVoice {
+  return { reactions: v.reactions.map((t) => [...t]), taunts: v.taunts.map((t) => [...t]) };
+}
+
+/** 롤별 여성 보이스 코드 기본값(mutable 복제) — 발행행에 female 이 없을 때 스키마 default. */
+function femaleVoiceDefault(role: RoleId): RoleVoice {
+  return copyVoice(CODE_CONTENT[role].female);
+}
+
+/**
+ * 성별에 맞는 보이스(피격 반응·시비 멘트) 선택 — 반응/멘트 소비자(report·taunts)의 단일 분기점.
+ * male = 루트 reactions/taunts, female = female 블록. 호칭·인사기록·등급은 성별 무관이라 여기 없다.
+ */
+export function roleVoice(rc: RoleFull, gender: Gender): RoleVoice {
+  return gender === "female" ? rc.female : { reactions: rc.reactions, taunts: rc.taunts };
+}
 
 // 기존 RoleContent(readonly tuple) + ROLE_META(label·desc) → 편집 가능한 mutable RoleFull 로 복제.
 // 호칭은 label 1개로 통일 — 목적격/조사/칩은 josaEul·josaEun·josaEuro 로 파생(데이터 중복 제거).
@@ -97,6 +122,7 @@ function toFull(rc: RoleContent, role: RoleId): RoleFull {
   return {
     reactions: rc.reactions.map((t) => [...t]),
     taunts: rc.taunts.map((t) => [...t]),
+    female: copyVoice(rc.female),
     traits: [...rc.traits],
     ranks: [...rc.ranks],
     departments: [...rc.departments],

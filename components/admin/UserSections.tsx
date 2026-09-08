@@ -3,6 +3,7 @@ import { FadeImg } from "@/components/FadeImg";
 import type { GenerationRow, DollRow } from "@/lib/admin-types";
 import { fmtKst, shortId } from "@/lib/admin-format";
 import { asRole } from "@/lib/roles";
+import { asGender, GENDER_SYMBOL } from "@/lib/gender";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 
 const GEN_STATUS: Record<string, string> = {
@@ -104,7 +105,10 @@ export function DollsList({ rows, cfg }: { rows: DollRow[]; cfg: RoleConfig }) {
                 }`}
               />
             )}
-            <div className="font-medium">{roleFrom(asRole(d.role), cfg).label}</div>
+            <div className="font-medium">
+              {roleFrom(asRole(d.role), cfg).label}{" "}
+              <span className="text-zinc-400" title={`성별 ${d.gender} (보이스)`}>{GENDER_SYMBOL[asGender(d.gender)]}</span>
+            </div>
             <div className="text-zinc-400">{fmtKst(d.created_at)}</div>
           </>
         );

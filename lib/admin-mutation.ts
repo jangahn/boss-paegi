@@ -14,6 +14,7 @@ export const ADMIN_MUTATION_OPERATIONS = [
   "integrity_unban",
   "account_reactivate",
   "order_settle",
+  "doll_gender_update",
 ] as const;
 
 export type AdminMutationOperation =
@@ -33,6 +34,7 @@ export const GENERIC_ADMIN_MUTATION_RECEIPT_OPERATIONS = [
   "integrity_void",
   "integrity_ban",
   "integrity_unban",
+  "doll_gender_update",
 ] as const satisfies readonly AdminMutationOperation[];
 
 export type GenericAdminMutationReceiptOperation =
@@ -154,6 +156,36 @@ export function parseAdminModerationMutationResult(
     return null;
   }
   return row as AdminModerationMutationResult;
+}
+
+/** 캐릭터 성별 후처리(v1.26) — admin_update_doll_gender_idempotent 결과. version = dolls.version(CAS 기준). */
+export type AdminDollGenderMutationResult = {
+  ok: true;
+  previousGender: "male" | "female";
+  nextGender: "male" | "female";
+  version: number;
+  noOp: boolean;
+  idempotent: boolean;
+};
+
+export function parseAdminDollGenderMutationResult(
+  value: unknown,
+): AdminDollGenderMutationResult | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    row.ok !== true ||
+    (row.previousGender !== "male" && row.previousGender !== "female") ||
+    (row.nextGender !== "male" && row.nextGender !== "female") ||
+    !Number.isSafeInteger(row.version) ||
+    (row.version as number) < 0 ||
+    typeof row.noOp !== "boolean" ||
+    typeof row.idempotent !== "boolean" ||
+    (row.noOp === true && row.previousGender !== row.nextGender)
+  ) {
+    return null;
+  }
+  return row as AdminDollGenderMutationResult;
 }
 
 export type AdminEventMutationResult = {

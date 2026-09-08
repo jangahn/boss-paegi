@@ -46,6 +46,8 @@ export type AdminGeneration = {
   adminStatus: AdminGenStatus;
   failReason: string | null;
   role: string;
+  /** 프롬프트 조립에 적용된 성별(ai_generations.gender, v1.26) — 얼굴검사 판정(unknown→male). */
+  gender: string;
   pickedDollId: string | null;
   pickedIndex: number | null;
   candidateThumbs: string[]; // 서명 URL — done:최대3, picked:1, expired/그외:[]
@@ -65,6 +67,7 @@ type GenRow = {
   picked_index: number | null;
   candidate_urls: unknown;
   role: string;
+  gender: string;
   credit_lot_id: string | null;
   refunded_at: string | null;
   created_at: string;
@@ -80,6 +83,7 @@ const GEN_ROW_SCHEMA = {
   picked_index: "nullableNonnegativeInteger",
   candidate_urls: "array",
   role: "string",
+  gender: "string",
   credit_lot_id: "nullableUuid",
   refunded_at: "nullableTimestamp",
   created_at: "timestamp",
@@ -127,9 +131,9 @@ export async function listGenerations(opts: {
   const admin = createAdminClient();
 
   const COLS_FULL =
-    "id, owner_id, status, fail_reason, picked_doll_id, picked_index, candidate_urls, role, credit_lot_id, refunded_at, created_at, updated_at";
+    "id, owner_id, status, fail_reason, picked_doll_id, picked_index, candidate_urls, role, gender, credit_lot_id, refunded_at, created_at, updated_at";
   const COLS_FALLBACK =
-    "id, owner_id, status, picked_doll_id, candidate_urls, role, credit_lot_id, refunded_at, created_at, updated_at";
+    "id, owner_id, status, picked_doll_id, candidate_urls, role, gender, credit_lot_id, refunded_at, created_at, updated_at";
 
   const build = (cols: string) => {
     let q = admin.from("ai_generations").select(cols, { count: "exact" });
@@ -237,6 +241,7 @@ export async function listGenerations(opts: {
         adminStatus,
         failReason: r.fail_reason,
         role: r.role,
+        gender: r.gender,
         pickedDollId: r.picked_doll_id,
         pickedIndex: r.picked_index,
         candidateThumbs: thumbs,
@@ -330,6 +335,8 @@ async function fetchDollImages(
 export type AdminGenerationDetail = AdminGeneration & {
   /** gen_params provenance(검증됨) 또는 null(레거시/미지원 — 상세에서 '기록 이전' 표기). */
   provenance: GenProvenance | null;
+  /** 채택 캐릭터의 현재 성별·version(dolls, 후처리 CAS 기준). 미채택·미존재면 null. */
+  pickedDoll: { gender: string; version: number } | null;
   /** 후보 index → 서명 썸네일. done: 남은 후보 / picked: 선택 doll / expired·그 외: 없음. */
   candidateThumbByIndex: Record<number, string>;
 };
@@ -346,7 +353,7 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
       admin
         .from("ai_generations")
         .select(
-          "id, owner_id, status, fail_reason, picked_doll_id, picked_index, candidate_urls, role, credit_lot_id, refunded_at, gen_params, created_at, updated_at",
+          "id, owner_id, status, fail_reason, picked_doll_id, picked_index, candidate_urls, role, gender, credit_lot_id, refunded_at, gen_params, created_at, updated_at",
         )
         .eq("id", id)
         .maybeSingle(),
@@ -362,6 +369,27 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
   const dollMap = r.picked_doll_id
     ? await fetchDollImages(admin, [r.picked_doll_id])
     : new Map<string, string>();
+  // 채택 캐릭터의 성별·version — 어드민 후처리(성별 변경) CAS 기준값. 삭제(탈퇴 하드삭제)면 null.
+  let pickedDoll: { gender: string; version: number } | null = null;
+  if (r.picked_doll_id) {
+    const dollRow = await requireSupabaseOptionalData(
+      "admin.generations.detail_doll",
+      () =>
+        admin
+          .from("dolls")
+          .select("id, gender, version")
+          .eq("id", r.picked_doll_id!)
+          .maybeSingle(),
+    );
+    if (dollRow) {
+      const parsedDoll = validateAdminRows<{ id: string; gender: string; version: number }>(
+        "admin.generations.detail_doll",
+        [dollRow],
+        { id: "uuid", gender: "string", version: "nonnegativeInteger" },
+      )[0];
+      pickedDoll = { gender: parsedDoll.gender, version: parsedDoll.version };
+    }
+  }
 
   const candPaths = Array.isArray(r.candidate_urls) ? (r.candidate_urls as string[]) : [];
   const idxOf = (p: string): number => {
@@ -393,6 +421,7 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
     adminStatus,
     failReason: r.fail_reason,
     role: r.role,
+    gender: r.gender,
     pickedDollId: r.picked_doll_id,
     pickedIndex: r.picked_index,
     candidateThumbs: Object.values(candidateThumbByIndex),
@@ -404,6 +433,7 @@ export async function getGeneration(id: string): Promise<AdminGenerationDetail |
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     provenance: parseProvenance(r.gen_params),
+    pickedDoll,
     candidateThumbByIndex,
   };
 }
