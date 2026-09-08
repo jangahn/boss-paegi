@@ -433,7 +433,7 @@ function ActionModal({
             value={craLocal}
             onChange={(e) => setCraLocal(e.target.value)}
             disabled={pendingCancel !== null}
-            className="w-full rounded-xl border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40"
+            className="block w-full min-w-0 appearance-none rounded-xl border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40"
           />
           <span className="text-[11px] text-zinc-400">
             결제로 확인되면 이 시각 기준으로 환불 환급률(7일 이내 전액/이후 90%)을 계산해요.

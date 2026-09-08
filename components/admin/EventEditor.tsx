@@ -820,15 +820,15 @@ export function EventEditor({ event }: { event: EventView | null }) {
           </div>
         </div>
 
-        {/* 노출 윈도우 — datetime-local 은 고유 최소폭이 커서 소형 화면에선 세로 스택 */}
+        {/* 노출 윈도우 — datetime-local 은 iOS WebKit 고유 최소폭이 커서 소형 화면에선 세로 스택 + block/min-w-0/appearance-none 으로 폭 종속 */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-zinc-500">노출 시작 <span className="text-zinc-400">· 비우면 즉시</span></span>
-            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputCls} />
+            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={`block min-w-0 appearance-none ${inputCls}`} />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-zinc-500">노출 종료 <span className="text-zinc-400">· 비우면 무기한</span></span>
-            <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={inputCls} />
+            <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={`block min-w-0 appearance-none ${inputCls}`} />
           </label>
         </div>
 
@@ -860,7 +860,7 @@ export function EventEditor({ event }: { event: EventView | null }) {
           </div>
           <div className="flex flex-wrap gap-4">
             <label className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500">우선순위</span>
+              <span className="shrink-0 whitespace-nowrap text-zinc-500">우선순위</span>
               <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value) || 0)} className={`${inputCls} w-24`} />
             </label>
             <label className="flex items-center gap-2 text-sm">

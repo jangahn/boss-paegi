@@ -469,10 +469,10 @@ export function LegalDocEditor({
               <div key={i} className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-zinc-400">#{i + 1}</span>
-                  <input value={s.heading} onChange={(e) => setSec(i, "heading", e.target.value)} placeholder="섹션 제목 (예: 제1조 (목적))" maxLength={120} className="flex-1 rounded-lg border border-foreground/15 ui-field p-2 text-sm font-medium outline-none focus:border-foreground/40" />
-                  <button type="button" onClick={() => moveSec(i, -1)} disabled={i === 0} aria-label="위로" className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▲</button>
-                  <button type="button" onClick={() => moveSec(i, 1)} disabled={i === sections.length - 1} aria-label="아래로" className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▼</button>
-                  <button type="button" onClick={() => removeSec(i)} disabled={sections.length <= 1} className="text-xs text-red-400 hover:underline disabled:opacity-30">삭제</button>
+                  <input value={s.heading} onChange={(e) => setSec(i, "heading", e.target.value)} placeholder="섹션 제목 (예: 제1조 (목적))" maxLength={120} className="min-w-0 flex-1 rounded-lg border border-foreground/15 ui-field p-2 text-sm font-medium outline-none focus:border-foreground/40" />
+                  <button type="button" onClick={() => moveSec(i, -1)} disabled={i === 0} aria-label="위로" className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▲</button>
+                  <button type="button" onClick={() => moveSec(i, 1)} disabled={i === sections.length - 1} aria-label="아래로" className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-foreground/10 disabled:opacity-30">▼</button>
+                  <button type="button" onClick={() => removeSec(i)} disabled={sections.length <= 1} className="shrink-0 whitespace-nowrap text-xs text-red-400 hover:underline disabled:opacity-30">삭제</button>
                 </div>
                 <textarea value={s.body} onChange={(e) => setSec(i, "body", e.target.value)} placeholder="본문 (개행 유지됨)" rows={Math.max(3, s.body.split("\n").length)} maxLength={20000} className={inputCls} />
               </div>
