@@ -937,6 +937,7 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - **coworker → friend 흡수**: DB 0120 이 `dolls`(24)·`ai_generations`(27)·`generation_preflight_reservations` 의 role 을 리맵하고 3테이블 CHECK·`request_doll_role_update`·`claim_generation_preflight` allowlist 를 7종으로 교체(프로드 `pg_get_functiondef` 실측본 기반 한 줄 변경). 생성 프롬프트·롤 대사의 friend 는 **신규 시드**(구 coworker 문구는 `app_settings_audit` 에만 잔존 — 복원은 현행 스키마에서 정규화됨). 생성 프롬프트 신규 3롤은 subject 에 국적 미표기(발행 튜닝 방향), 성별 변주는 PR-C.
 - **발행행 정규화 확장**: role_content(구 alias 키 제거·누락 롤 코드 기본값 충전·desc 충전), generation_config(`normalizeGenerationConfigInput` — 구 alias 제거·누락 롤 기본 프롬프트 충전, 튜닝된 template/numbers 무접촉). 미지 키는 strict 가 계속 거절. v1→v2 변환기도 7롤로 출력(v1 4롤 byte-identity 골든 유지).
 - 어드민: 롤 대사 에디터 호칭 블록에 한 줄 설명 입력 + 「역할 선택 화면」 도식, 생성 목록/상세의 롤 표기를 호칭으로.
+- OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
 v1.24 (2026-09-08, 점수 5단계 + 구간 경계 어드민 제어 + 게임 분석 「점수 구간 분포」; **Migration 0119**):
