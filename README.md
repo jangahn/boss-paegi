@@ -345,7 +345,7 @@ npm run qa:db:reactivation-auth-api # 로컬 GoTrue Admin API의 activate/cancel
 
 - **업로드 이미지**: 정상 흐름은 입력 검증 반려 또는 세 후보의 provider terminal 웹훅 직후 원본을 삭제한다. 요청 프로세스가 강제 종료되면 10분 signed URL 만료 뒤 2분 경계 여유를 둔 `tmp/face` sweep 대상이 되며, scheduler backlog는 비정상 응답으로 노출한다. 결과물(캐릭터화된 이미지)만 장기 저장한다.
 - **동의 다이얼로그**: 생성 직전 3개 체크박스 강제 (본인 또는 사용권 있는 이미지 / 타인 비방 목적 아님 / 캐릭터화 변형 동의).
-- **AI 프롬프트·수치**: `generation_config`(어드민 콘텐츠 콘솔) 소유 — 기본 시드 = 캐릭터화 템플릿(chibi super-deformed·plush felt·흰 배경·identity 보존), 어드민 편집·버전 이력·롤백. 강제 키워드는 코드로 강제하지 않고 이력·롤백·검토로 관리. 조립 단일 소스 `assembleGenerationPrompts(prompt, role, {gender, wearsGlasses, suitColor})`(`lib/config/domains/generation.ts`) — v1.26 부터 롤 × 성별(male/female) subject/body 변주, 성별은 얼굴검사 판정(판정 불가=남).
+- **AI 프롬프트·수치**: `generation_config`(어드민 콘텐츠 콘솔) 소유 — 기본 시드 = 캐릭터화 템플릿(chibi super-deformed·plush felt·흰 배경·identity 보존), 어드민 편집·버전 이력·롤백. 강제 키워드는 코드로 강제하지 않고 이력·롤백·검토로 관리. 조립 단일 소스 `assembleGenerationPrompts(prompt, role, {gender, wearsGlasses, suitColor})`(`lib/config/domains/generation.ts`) — v1.28 부터 롤당 subject 는 성별 공용, body(복장+표정)만 male/female 변주. 성별은 얼굴검사 판정(판정 불가=남).
 - **API 키**: `FAL_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 는 **서버 전용**. 클라이언트 번들 절대 포함 금지.
 - **HTTP 보안 경계**: 모든 응답에 정적/ISR·PortOne/OAuth와 양립하는 CSP(`base-uri`·`frame-ancestors`·`object-src`), HSTS, `nosniff`, `DENY`, referrer/permissions 정책을 적용하고 `X-Powered-By`를 끈다. `/api/**`의 브라우저 캐시는 기본 `private, no-store`이며 공개 read의 짧은 edge 캐시는 별도 `Vercel-CDN-Cache-Control`로만 명시한다. cookie-auth API mutation은 session/DB 조회 전에 exact `Origin`과 Fetch Metadata로 cross-site·sibling-subdomain 요청을 막고, 서명 검증이 권위인 provider webhook만 이 경계를 우회한다. Supabase auth cookie는 production/preview에서 `Secure`, 전 환경 `SameSite=Lax`·`Path=/`이다(`HttpOnly`는 browser SDK가 token cookie를 직접 읽는 현재 구조상 적용 불가).
 - **생성권(크레딧)**: AI 생성은 **회원 전용** — 가입 시 생성권 1개(발행 `growth_levers.signupBonusCredits`), 생성마다 1개 차감(서버 `consume_gen_credit` 원자적, 실패 시 환불). 소진 시 **충전**(`/credits`, 포트원). 전역 fal 잔액 캡($2) 미만이면 service_paused. `OPS_USER_ID` 무제한.
@@ -941,6 +941,12 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - 어드민: 롤 대사 에디터 호칭 블록에 한 줄 설명 입력 + 「역할 선택 화면」 도식, 생성 목록/상세의 롤 표기를 호칭으로.
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
+
+v1.28 (2026-09-09, generation_config v4 — subject 성별 공용, body(복장+표정)만 성별 분기; PR-D1):
+- v3(v1.26)의 롤당 `{male, female} × {subject, body}` 가 과하다는 결정 → **v4 `roles[role] = { subject, body: { male, female } }`**. subject 는 기존 남성값 하나로 되돌리고(성별 신호는 body 의 복장 어휘 + 참조 얼굴), body(복장+표정 통합 1필드, 2026-08-01 결정 유지)만 성별별.
+- 읽기 정규화(`normalizeGenerationConfigInput`): v3 발행행은 `subject = male.subject`(female.subject 는 감사 이력에만 잔존)·body 각각, v2 발행행은 `body.male = body`·`body.female = 코드 기본값`. 재발행 1회로 v4 영속. v1→현행 변환기도 v4 출력(v1 4롤 male·안경=false byte-identity 골든 유지).
+- 조립 `assembleGenerationPrompts(prompt, role, {gender, …})`: `{subject}` 공용, `{role}` = `body[gender]`. plan 스냅샷 `roleSubject`(공용)/`roleBody`(성별 적용값) 기록 불변.
+- 어드민 생성 에디터: 롤 카드 = subject 1칸 + body 남/여 2칸(미리보기·테스트벤치 성별 선택은 그대로). 테스트: prompt-golden(v2→v4·v3→v4 정규화, female 조립, strict 성별 키).
 
 v1.27 (2026-09-08, iPhone SE 375px 무깨짐 전수 검사 — 실측 교정 + 하네스 편입; PR #272·#274):
 - **상시 규칙(사용자 명시)**: 모든 페이지(사용자향·어드민)는 iPhone SE(375×667)에서 깨지면 안 된다. 검사 하네스 `scripts/qa/se-audit`(Playwright chromium+webkit, 시드 85 라우트 + 링크 크롤 + 버튼/모달 탐색, 쓰기 요청 네트워크 차단) 로 프로덕션 **443(chromium)·440(webkit) 상태** 전수 측정. 측정 항목: doc/child/content-overflow·out-of-viewport(error), clipped·label-wrapped(warn), truncated·scroll-container(info). 오탐 제외: 변형 요소(rotate 스탬프)·의도된 블리드(`-mx-*`)·sr-only·폼 컨트롤 내부 스크롤·아이콘 버튼.

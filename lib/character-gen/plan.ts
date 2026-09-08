@@ -264,7 +264,7 @@ export function buildGenerationPlan(
   },
 ): GenerationPlan {
   const { role, gender, wearsGlasses, numImages, seed } = opts;
-  const rv = config.prompt.roles[role][gender];
+  const rv = config.prompt.roles[role];
   const colors = fisherYatesShuffle(
     config.prompt.suitColors,
     seededRandom(seed),
@@ -288,7 +288,7 @@ export function buildGenerationPlan(
       template: config.prompt.template,
       gender,
       roleSubject: rv.subject,
-      roleBody: rv.body,
+      roleBody: rv.body[gender],
       glasses: config.prompt.glasses,
       glassesIdentity: config.prompt.glassesIdentity,
       negative: config.prompt.negative,
