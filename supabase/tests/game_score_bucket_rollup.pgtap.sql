@@ -17,10 +17,12 @@ insert into score_bucket_ctx default values;
 insert into auth.users (id, email)
 select owner_id, 'score-bucket-' || owner_id || '@test.local' from score_bucket_ctx;
 
+-- on_auth_user_created 트리거가 profiles 를 만들 수 있으므로 멱등 upsert.
 insert into public.profiles (id, display_name)
-select owner_id, '점수구간 픽스처' from score_bucket_ctx;
+select owner_id, '점수구간 픽스처' from score_bucket_ctx
+on conflict (id) do update set display_name = excluded.display_name;
 
--- 공개 판정 4판(registered 3 + cleared 1) + 비공개 2판(pending·voided). 버킷: 0(1,200·9,999), 12(12,345), 100(100,000).
+-- 공개 판정 4판(registered 3 + cleared 1) + 비공개 2판(pending·voided). 버킷: 1(1,200)·9(9,999)·12(12,345)·100(100,000).
 insert into public.scores (owner_id, score, weapon, duration_ms, review_status)
 select owner_id, s.score, 'fist', s.duration_ms, s.review_status
 from score_bucket_ctx,
@@ -39,7 +41,7 @@ select is(
     from public.telemetry_rollup_rows_for_day((now() at time zone 'Asia/Seoul')::date)
     where dim_type = 'game_score_1k'
   ),
-  3,
+  4,
   'visible scores fold into exactly their distinct 1,000-point buckets'
 );
 
@@ -48,7 +50,8 @@ select results_eq(
       from public.telemetry_rollup_rows_for_day((now() at time zone 'Asia/Seoul')::date)
      where dim_type = 'game_score_1k'
      order by dim_key::integer$$,
-  $$values ('0'::text, 2, 11199::bigint, 70000::numeric),
+  $$values ('1'::text, 1, 1200::bigint, 30000::numeric),
+           ('9'::text, 1, 9999::bigint, 40000::numeric),
            ('12'::text, 1, 12345::bigint, 90000::numeric),
            ('100'::text, 1, 100000::bigint, 300000::numeric)$$,
   'bucket key is floor(score/1000) and sessions/score/measure_a are count, score sum, duration sum'
