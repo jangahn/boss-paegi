@@ -427,7 +427,7 @@ export function RefundButton({
                   type="datetime-local"
                   value={craLocal}
                   onChange={(e) => setCraLocal(e.target.value)}
-                  className="w-full rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40"
+                  className="block w-full min-w-0 appearance-none rounded-lg border border-foreground/15 ui-field px-3 py-2 text-sm outline-none focus:border-foreground/40"
                 />
                 <span className="text-[11px] text-zinc-400">
                   결제 후 7일 이내 요청이면 전액(100%), 이후면 90% 환급.
