@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ROLE_IDS } from "../roles/ids.ts";
 // 상대 .ts 경로 — node --test 에서 별칭 로더 없이 로드(prompt-golden 관례).
 import {
   assembleGenerationPrompts,
@@ -19,8 +20,8 @@ export const GENERATION_TEST_MAX_IMAGES =
 // settings JSON 원문 상한 — config 3벌(FIELD_MAX 상한 감안) 여유. multipart 캡과 별도 강제.
 export const GENERATION_TEST_SETTINGS_MAX_BYTES = 256 * 1024;
 
-// ROLE_IDS 런타임 import 회피(node --test) — generation.ts 의 strict roles 관례와 동일.
-const testRoleSchema = z.enum(["boss", "exec", "teamlead", "client", "coworker"]);
+// 롤 어휘 단일 소스(순수 모듈, node --test 안전).
+const testRoleSchema = z.enum(ROLE_IDS);
 
 const generationTestSettingSchema = z
   .object({

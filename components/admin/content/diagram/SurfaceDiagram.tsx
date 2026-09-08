@@ -268,9 +268,18 @@ export const FIELD_SURFACE: Record<
  * 마케팅과 같은 화면이지만 본문(직급/소속/특이사항/피격반응/말풍선)이 주역 →
  * 본문 영역을 edit-tone(하이라이트 대상), CTA·동적값은 축약 ctx 로 무게중심 반전.
  * 마케팅 surfaces 와 키가 겹쳐도 별도 맵(타입 분리)이라 충돌 없음. */
-export type RoleSurfaceKey = "doll" | "share" | "gameover" | "play";
+export type RoleSurfaceKey = "select" | "doll" | "share" | "gameover" | "play";
 
 const ROLE_SURFACES: Record<RoleSurfaceKey, { title: string; regions: Region[] }> = {
+  select: {
+    title: "역할 선택 화면 (캐릭터 생성)",
+    regions: [
+      { label: "이모지 (고정)", tone: "ctx" },
+      { id: "label", label: "호칭", tone: "edit" },
+      { id: "desc", label: "한 줄 설명", tone: "edit" },
+      { label: "'이 역할로 캐릭터 만들기' 버튼 (고정)", tone: "ctx" },
+    ],
+  },
   doll: {
     title: "캐릭터 공유 카드",
     regions: [
@@ -325,7 +334,11 @@ export const ROLE_FIELD_SURFACE: Record<
   string,
   ReadonlyArray<{ surface: RoleSurfaceKey; region: string }>
 > = {
-  label: [{ surface: "doll", region: "label" }],
+  label: [
+    { surface: "select", region: "label" },
+    { surface: "doll", region: "label" },
+  ],
+  desc: [{ surface: "select", region: "desc" }],
   ranks: [{ surface: "doll", region: "ranks" }],
   departments: [{ surface: "doll", region: "departments" }],
   traits: [{ surface: "doll", region: "traits" }],

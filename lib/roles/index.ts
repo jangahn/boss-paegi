@@ -1,34 +1,25 @@
 import type { RoleContent } from "./types";
 import { boss } from "./boss";
+import { ceo } from "./ceo";
 import { exec } from "./exec";
 import { teamlead } from "./teamlead";
 import { client } from "./client";
-import { coworker } from "./coworker";
+import { junior } from "./junior";
+import { friend } from "./friend";
 import { ownRecordValue } from "@/lib/own-record";
+import { ROLE_IDS, type RoleId } from "./ids";
 
 /**
- * 캐릭터 롤 레지스트리 — 단일 소스. 셀렉터(lib/report·taunts)가 role 로 인덱싱한다.
- * 렌더는 asRole()(미지값→boss)로 관대하게, 쓰기(PATCH)는 isRoleId()로 엄격하게.
+ * 캐릭터 롤 레지스트리 — 셀렉터(lib/report·taunts)가 role 로 인덱싱한다.
+ * 어휘(ROLE_IDS·asRole·isRoleId·alias)의 단일 소스는 ./ids.ts(순수 모듈) — 여기서 재export.
+ * 렌더는 asRole()(미지값→boss·구 alias→현행)로 관대하게, 쓰기(PATCH)는 isRoleId()로 엄격하게.
  */
-export const ROLE_IDS = ["boss", "exec", "teamlead", "client", "coworker"] as const;
-export type RoleId = (typeof ROLE_IDS)[number];
-export const DEFAULT_ROLE: RoleId = "boss";
-
-const ROLE_SET: ReadonlySet<string> = new Set(ROLE_IDS);
-
-/** 외부 입력(DB/URL/응답) → RoleId 정규화. 미지값은 boss 폴백 (렌더용). */
-export function asRole(v: unknown): RoleId {
-  return typeof v === "string" && ROLE_SET.has(v) ? (v as RoleId) : DEFAULT_ROLE;
-}
-
-/** 엄격 검증 (PATCH 등 쓰기) — 미지값을 boss 로 바꾸지 않는다. */
-export function isRoleId(v: unknown): v is RoleId {
-  return typeof v === "string" && ROLE_SET.has(v);
-}
+export { ROLE_IDS, DEFAULT_ROLE, LEGACY_ROLE_ALIASES, asRole, isRoleId } from "./ids";
+export type { RoleId } from "./ids";
 
 /**
  * 한국어 조사 "(으)로" — 받침 없음 또는 ㄹ받침이면 "로", 그 외 "으로".
- * 예: 부장으로 / 임원으로 / 팀장으로 / 거래처로 / 동료로.
+ * 예: 부장으로 / 임원으로 / 팀장으로 / 거래처로 / 친구로.
  */
 export function josaEuro(word: string): string {
   const code = word.charCodeAt(word.length - 1);
@@ -54,7 +45,7 @@ export function josaEun(word: string): string {
   return hasJong(word) ? "은" : "는";
 }
 
-/** 목적격 완성형: 호칭 + 을/를. 예 "부장님을" / "거래처를" / "동료를". */
+/** 목적격 완성형: 호칭 + 을/를. 예 "부장님을" / "거래처를" / "친구를". */
 export function roleObj(label: string): string {
   return `${label}${josaEul(label)}`;
 }
@@ -68,23 +59,27 @@ export function defaultSafeHook(label: string): string {
 }
 
 /**
- * 표시 메타 — label(호칭/단일 표시) 하나로 통일. 갤러리 칩도 label 을 그대로 쓴다(별도 칩 없음).
- * 을/를·은/는·으로/로 조사는 josaEul/josaEun/josaEuro 로 파생.
+ * 표시 메타 — label(호칭/단일 표시) + desc(역할 선택 카드 한 줄 설명). 둘 다 role_content 발행값이 우선이고
+ * 이 값은 roleFrom 내부 fallback·코드 기본값 시드. 을/를·은/는·으로/로 조사는 josaEul/josaEun/josaEuro 로 파생.
  */
-export const ROLE_META: Record<RoleId, { label: string }> = {
-  boss: { label: "부장님" },
-  exec: { label: "임원" },
-  teamlead: { label: "팀장님" },
-  client: { label: "거래처" },
-  coworker: { label: "동료" },
+export const ROLE_META: Record<RoleId, { label: string; desc: string }> = {
+  boss: { label: "부장님", desc: "라떼·꼰대력 만렙 부장" },
+  ceo: { label: "사장님", desc: "'우리는 가족' 성과급 동결 사장님" },
+  exec: { label: "임원", desc: "골프·법인카드 임원" },
+  teamlead: { label: "팀장님", desc: "메신저 닦달 팀장" },
+  client: { label: "거래처", desc: "'이번 주까지' 거래처" },
+  junior: { label: "신입", desc: "'그걸 제가 왜요?' MZ 신입" },
+  friend: { label: "친구", desc: "쿠쿠루삥뽕 빡치는 친구" },
 };
 
 const CONTENT: Record<RoleId, RoleContent> = {
   boss,
+  ceo,
   exec,
   teamlead,
   client,
-  coworker,
+  junior,
+  friend,
 };
 
 export function getRoleContent(role: RoleId): RoleContent {
@@ -105,4 +100,6 @@ if (process.env.NODE_ENV !== "production") {
     });
     if (bad.length) console.error(`[roles] '${id}' 콘텐츠 이상: ${bad.join(", ")}`);
   }
+  const keys = Object.keys(CONTENT).sort().join(",");
+  if (keys !== [...ROLE_IDS].sort().join(",")) console.error(`[roles] 콘텐츠 키 불일치: ${keys}`);
 }

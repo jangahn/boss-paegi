@@ -27,6 +27,7 @@ const {
   roleConfigSchema,
 } = await import("../../lib/config/domains/roles.ts");
 const { MAX_SCORE_HARD } = await import("../../lib/score-limits.ts");
+const { ROLE_IDS } = await import("../../lib/roles/ids.ts");
 
 test("scoreTier honors injected thresholds and clamps to the last tier", () => {
   const t = [10_000, 30_000, 60_000, 100_000];
@@ -112,8 +113,10 @@ test("role_content: legacy ten-tier rows merge adjacent pairs and keep every edi
     ranks: ["r1"],
     departments: ["d1"],
   });
+  // v18 발행행 모양: 5롤(coworker 포함)·10단계·desc 없음.
+  const LEGACY_KEPT = ["boss", "exec", "teamlead", "client"] as const;
   const legacy = Object.fromEntries(
-    ["boss", "exec", "teamlead", "client", "coworker"].map((r) => [r, legacyRole(r)]),
+    [...LEGACY_KEPT, "coworker"].map((r) => [r, legacyRole(r)]),
   );
   const merged = mergeLegacyTiers(legacy.boss.reactions) as string[][];
   assert.equal(merged.length, TIER_COUNT);
@@ -123,14 +126,23 @@ test("role_content: legacy ten-tier rows merge adjacent pairs and keep every edi
   const parsed = roleConfigSchema.safeParse(normalizeRoleContentInput(legacy));
   assert.equal(parsed.success, true, JSON.stringify(parsed.success ? null : parsed.error.issues.slice(0, 3)));
   if (parsed.success) {
-    for (const r of ["boss", "exec", "teamlead", "client", "coworker"] as const) {
-      assert.equal(parsed.data[r].reactions.length, TIER_COUNT);
-      assert.equal(parsed.data[r].taunts.length, TIER_COUNT);
-      for (const tier of parsed.data[r].reactions) assert.equal(tier.length, 6);
-      for (const tier of parsed.data[r].taunts) assert.equal(tier.length, 8);
+    const data = parsed.data as Record<string, { reactions: string[][]; taunts: string[][]; desc: string; label: string }>;
+    assert.deepEqual(Object.keys(data).sort(), [...ROLE_IDS].sort(), "정확히 7롤");
+    assert.equal("coworker" in data, false, "구 alias 키는 제거");
+    for (const r of LEGACY_KEPT) {
+      assert.equal(data[r].reactions.length, TIER_COUNT);
+      assert.equal(data[r].taunts.length, TIER_COUNT);
+      for (const tier of data[r].reactions) assert.equal(tier.length, 6);
+      for (const tier of data[r].taunts) assert.equal(tier.length, 8);
       // 편집된 줄 전부 보존(합집합 == 원본 전체).
-      assert.deepEqual(parsed.data[r].reactions.flat(), legacy[r].reactions.flat());
-      assert.deepEqual(parsed.data[r].taunts.flat(), legacy[r].taunts.flat());
+      assert.deepEqual(data[r].reactions.flat(), legacy[r].reactions.flat());
+      assert.deepEqual(data[r].taunts.flat(), legacy[r].taunts.flat());
+      // desc 는 발행행에 없으므로 롤별 코드 기본값 충전.
+      assert.equal(data[r].desc, ROLE_CONFIG_DEFAULT[r].desc);
+    }
+    // 신규 3롤은 코드 기본값 시드(friend 는 coworker 문구를 승계하지 않음 — 감사 이력에만 남음).
+    for (const r of ["ceo", "junior", "friend"] as const) {
+      assert.deepEqual(data[r], ROLE_CONFIG_DEFAULT[r]);
     }
   }
   // 스키마는 preprocess 를 내장하므로 raw legacy 도 바로 통과한다(발행행 읽기 경로).
@@ -141,6 +153,8 @@ test("role_content: legacy ten-tier rows merge adjacent pairs and keep every edi
     roleConfigSchema.safeParse({ ...legacy, boss: { ...legacy.boss, reactions: tiers10("x", 1).slice(0, 7) } }).success,
     false,
   );
+  // 미지 롤 키는 정규화가 건드리지 않아 strict 가 거절(API 경계).
+  assert.equal(roleConfigSchema.safeParse({ ...ROLE_CONFIG_DEFAULT, intern: ROLE_CONFIG_DEFAULT.boss }).success, false);
   // 코드 기본값 자체가 스키마를 통과한다.
   assert.equal(roleConfigSchema.safeParse(ROLE_CONFIG_DEFAULT).success, true);
 });

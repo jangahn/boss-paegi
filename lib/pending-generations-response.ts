@@ -1,5 +1,5 @@
 import type { PendingGeneration } from "./generation.ts";
-import type { RoleId } from "./roles/index.ts";
+import { isRoleId, type RoleId } from "./roles/ids.ts";
 
 export class InvalidPendingGenerationsResponseError extends Error {
   constructor(reason: string) {
@@ -9,7 +9,6 @@ export class InvalidPendingGenerationsResponseError extends Error {
 }
 
 const KINDS = new Set(["generating", "ready", "interrupted"]);
-const ROLES = new Set(["boss", "exec", "teamlead", "client", "coworker"]);
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TIMESTAMP_RE =
@@ -91,7 +90,7 @@ export function parsePendingGenerationsResponse(
       !TIMESTAMP_RE.test(row.createdAt) ||
       !Number.isFinite(Date.parse(row.createdAt)) ||
       typeof row.role !== "string" ||
-      !ROLES.has(row.role) ||
+      !isRoleId(row.role) ||
       (row.kind === "ready" &&
         (row.candidateUrls.length < 1 ||
           row.candidateUrls.length > 3 ||

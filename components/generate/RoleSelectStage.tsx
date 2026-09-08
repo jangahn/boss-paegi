@@ -5,20 +5,15 @@ import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { ROLE_IDS, type RoleId } from "@/lib/roles";
 
-/** 역할별 선택 카드 — 이모지 + 한 줄 설명. 호칭은 DB 발행 config(roleFrom), ROLE_META 는 fallback. */
+/** 역할별 선택 카드 — 이모지(코드) + 호칭·한 줄 설명(DB 발행 config `roleFrom`, ROLE_META 는 fallback). */
 const ROLE_EMOJI: Record<RoleId, string> = {
   boss: "💼",
+  ceo: "👑",
   exec: "🏢",
   teamlead: "📋",
   client: "🤝",
-  coworker: "🙄",
-};
-const ROLE_DESC: Record<RoleId, string> = {
-  boss: "라떼·꼰대력 만렙 부장",
-  exec: "골프·법인카드 임원",
-  teamlead: "메신저 닦달 팀장",
-  client: "'이번 주까지' 거래처",
-  coworker: "일 미루는 직장동료",
+  junior: "🎧",
+  friend: "😏",
 };
 
 /**
@@ -33,7 +28,7 @@ export function RoleSelectStage({
   initialRole?: RoleId;
 }) {
   const [selected, setSelected] = useState<RoleId>(initialRole);
-  const cfg = useRoleConfig(); // DB 발행 호칭
+  const cfg = useRoleConfig(); // DB 발행 호칭·설명
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6">
@@ -47,6 +42,7 @@ export function RoleSelectStage({
       <div className="grid w-full grid-cols-2 gap-3">
         {ROLE_IDS.map((rid) => {
           const active = rid === selected;
+          const role = roleFrom(rid, cfg);
           return (
             <button
               key={rid}
@@ -62,9 +58,9 @@ export function RoleSelectStage({
               <span className="text-3xl" aria-hidden>
                 {ROLE_EMOJI[rid]}
               </span>
-              <span className="text-sm font-semibold">{roleFrom(rid, cfg).label}</span>
+              <span className="text-sm font-semibold">{role.label}</span>
               <span className="text-[11px] leading-tight text-zinc-500">
-                {ROLE_DESC[rid]}
+                {role.desc}
               </span>
             </button>
           );

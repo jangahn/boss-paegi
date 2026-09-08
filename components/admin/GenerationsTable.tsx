@@ -5,6 +5,9 @@ import Link from "next/link";
 import { FadeImg } from "@/components/FadeImg";
 import { shortId, fmtKst } from "@/lib/admin-format";
 import type { AdminGeneration, AdminGenStatus } from "@/lib/admin-generations";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
+import { asRole } from "@/lib/roles";
 
 const STATUS_META: Record<AdminGenStatus, { label: string; cls: string; icon: string }> = {
   requested: { label: "생성요청", cls: "bg-sky-500/15 text-sky-600", icon: "⏳" },
@@ -48,6 +51,7 @@ export function GenerationsTable({ rows }: { rows: AdminGeneration[] }) {
 }
 
 function GenRowItem({ row }: { row: AdminGeneration }) {
+  const roleCfg = useRoleConfig(); // 롤 호칭 = 발행 config
   const [open, setOpen] = useState(false);
   const st = STATUS_META[row.adminStatus];
   const credit = CREDIT_META[row.creditNote];
@@ -119,7 +123,7 @@ function GenRowItem({ row }: { row: AdminGeneration }) {
             ) : (
               <span className="font-mono text-zinc-400">gen {shortId(row.id)}</span>
             )}
-            <span className="text-zinc-400">롤 {row.role}</span>
+            <span className="text-zinc-400">롤 {roleFrom(asRole(row.role), roleCfg).label}</span>
           </div>
 
           {open && <GenDetail row={row} />}
