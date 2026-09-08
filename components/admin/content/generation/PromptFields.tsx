@@ -2,16 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import type { GenerationPromptConfig } from "@/lib/config/domains/generation";
-import type { RoleId } from "@/lib/roles";
-
-const ROLE_LABEL: Record<RoleId, string> = {
-  boss: "부장 (boss)",
-  exec: "임원 (exec)",
-  teamlead: "팀장 (teamlead)",
-  client: "거래처 (client)",
-  coworker: "동료 (coworker)",
-};
-const ROLES: RoleId[] = ["boss", "exec", "teamlead", "client", "coworker"];
+import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
 
 // 내용에 맞춰 세로로 자동 확장(잘림 없음) — 값 변경/마운트 시 scrollHeight 로 높이 재설정.
 function Area({
@@ -67,6 +60,8 @@ export function PromptFields({
   prompt: GenerationPromptConfig;
   onChange: (next: GenerationPromptConfig) => void;
 }) {
+  const roleCfg = useRoleConfig(); // 롤 호칭 = 발행 config(콘솔 호칭과 단일 소스)
+  const roleLabel = (r: RoleId) => `${roleFrom(r, roleCfg).label} (${r})`;
   const set = (patch: Partial<GenerationPromptConfig>) => onChange({ ...prompt, ...patch });
   const setRole = (role: RoleId, patch: Partial<GenerationPromptConfig["roles"][RoleId]>) =>
     onChange({
@@ -126,9 +121,9 @@ export function PromptFields({
 
       <div className="flex flex-col gap-3">
         <p className="text-sm font-semibold text-zinc-500">롤별 변주 (호칭·복장+표정)</p>
-        {ROLES.map((role) => (
+        {ROLE_IDS.map((role) => (
           <div key={role} className="rounded-xl border border-foreground/10 p-3">
-            <p className="mb-2 text-xs font-bold text-foreground">{ROLE_LABEL[role]}</p>
+            <p className="mb-2 text-xs font-bold text-foreground">{roleLabel(role)}</p>
             <div className="flex flex-col gap-2">
               <Area
                 label="subject (호칭 — 짧은 명사구)"

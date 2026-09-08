@@ -30,7 +30,7 @@ const SECTIONS: Section[] = [
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
-  validation_failed: "형식 오류 — 각 점수 칸은 최소 1줄, 특이사항/직급/소속도 1개 이상 필요해요.",
+  validation_failed: "형식 오류 — 각 점수 칸은 최소 1줄, 특이사항/직급/소속도 1개 이상, 호칭·한 줄 설명은 비울 수 없어요.",
   update_failed: "저장 실패. 잠시 후 다시 시도하세요.",
 };
 
@@ -58,6 +58,7 @@ function clean(cfg: RoleConfig): RoleConfig {
       ranks: cleanArr(v.ranks),
       departments: cleanArr(v.departments),
       label: v.label.trim(),
+      desc: v.desc.trim(),
     };
   }
   return out;
@@ -182,6 +183,16 @@ export function RoleContentEditor({
         <p className="rounded-lg bg-foreground/5 p-2 text-xs text-zinc-500">
           파생 · <b>{josaPreview(r.label)}</b>
         </p>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-500">한 줄 설명 (역할 선택 카드, 40자)</span>
+          <input
+            value={r.desc}
+            maxLength={40}
+            onFocus={() => setFocused("desc")}
+            onChange={(e) => patch({ desc: e.target.value })}
+            className={inputCls}
+          />
+        </label>
       </fieldset>
 
       {/* 본문/플레이 섹션 — 순서 = 카드 위→아래, 시비 멘트는 맨 밑 */}

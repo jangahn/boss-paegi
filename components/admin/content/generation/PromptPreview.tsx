@@ -5,15 +5,9 @@ import {
   assembleGenerationPrompts,
   type GenerationPromptConfig,
 } from "@/lib/config/domains/generation";
-import type { RoleId } from "@/lib/roles";
-
-const ROLES: { id: RoleId; label: string }[] = [
-  { id: "boss", label: "부장" },
-  { id: "exec", label: "임원" },
-  { id: "teamlead", label: "팀장" },
-  { id: "client", label: "거래처" },
-  { id: "coworker", label: "동료" },
-];
+import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
 
 /**
  * 최종 조립 positive/negative 실시간 미리보기 — fal 호출 없음(assembleGenerationPrompts 순수 함수).
@@ -22,6 +16,8 @@ const ROLES: { id: RoleId; label: string }[] = [
 export function PromptPreview({ prompt }: { prompt: GenerationPromptConfig }) {
   const [role, setRole] = useState<RoleId>("boss");
   const [glasses, setGlasses] = useState(false);
+  const roleCfg = useRoleConfig(); // 롤 호칭 = 발행 config(콘솔 호칭과 단일 소스)
+  const ROLES = ROLE_IDS.map((id) => ({ id, label: roleFrom(id, roleCfg).label }));
   const suitColor = prompt.suitColors[0] ?? "(정장색 없음)";
   const { positive, negative } = assembleGenerationPrompts(prompt, role, {
     wearsGlasses: glasses,

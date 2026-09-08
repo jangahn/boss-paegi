@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { DomainEntry } from "../registry";
-// roles는 type-only(런타임 erase), 공용 own-property guard는 상대 경로로 import해
+// 롤 어휘(순수 모듈)·공용 own-property guard는 상대 경로로 import해
 // node --test golden에서도 Next 별칭 해석 없이 실행 가능하게 유지한다.
-import type { RoleId } from "@/lib/roles";
+import { LEGACY_ROLE_ALIASES, ROLE_IDS, type RoleId } from "../../roles/ids.ts";
 import { ownRecordValue } from "../../own-record.ts";
 
 // 캐릭터 생성(fal-ai/flux-pulid) 파라미터·프롬프트 도메인 — **v2 (2026-08-01 제품 결정)**.
@@ -92,14 +92,14 @@ const promptSchema = z.object({
       },
       { message: "suitColors 는 대소문자 무시 중복 금지" }
     ),
+  // 7롤 고정(키 = ROLE_IDS 정확히). 구 alias(coworker)·누락 롤은 normalizeGenerationConfigInput 이 정리.
   roles: z
-    .object({
-      boss: rolePromptSchema,
-      exec: rolePromptSchema,
-      teamlead: rolePromptSchema,
-      client: rolePromptSchema,
-      coworker: rolePromptSchema,
-    })
+    .object(
+      Object.fromEntries(ROLE_IDS.map((r) => [r, rolePromptSchema])) as Record<
+        RoleId,
+        typeof rolePromptSchema
+      >,
+    )
     .strict(),
 });
 
@@ -140,14 +140,35 @@ const numbersSchema = z.object({
   imageSize: z.enum(GENERATION_IMAGE_SIZES),
 });
 
-export const generationConfigSchema = z
+/**
+ * 읽기/쓰기 공통 정규화(v1.25) — 발행행(v18: 5롤)에 ① 흡수된 구 롤 키(coworker) 제거 ② 없는 롤은 코드 기본값
+ * 프롬프트로 충전. 그 외 미지 키는 건드리지 않아 strict 가 거절한다(API 경계 방어). 튜닝된 template/numbers 는 무접촉.
+ */
+export function normalizeGenerationConfigInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const cfg = input as { prompt?: unknown };
+  if (!cfg.prompt || typeof cfg.prompt !== "object" || Array.isArray(cfg.prompt)) return input;
+  const prompt = cfg.prompt as { roles?: unknown };
+  if (!prompt.roles || typeof prompt.roles !== "object" || Array.isArray(prompt.roles)) return input;
+  const roles: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(prompt.roles as Record<string, unknown>)) {
+    if (Object.hasOwn(LEGACY_ROLE_ALIASES, key)) continue;
+    roles[key] = value;
+  }
+  for (const r of ROLE_IDS) {
+    if (!(r in roles)) roles[r] = GENERATION_CONFIG_DEFAULT.prompt.roles[r];
+  }
+  return { ...cfg, prompt: { ...prompt, roles } };
+}
+
+const generationConfigBaseSchema = z
   .object({
     numbers: numbersSchema,
     prompt: promptSchema,
   })
   .superRefine((cfg, ctx) => {
     // 조립 총 길이 상한 — 모든 role × 안경 T/F, 가장 긴 suitColor 로 실조립 후 검사(절단 방지).
-    // strict roles 라 keys = 정확히 5롤. ROLE_IDS 런타임 import 회피(node --test).
+    // strict roles 라 keys = 정확히 7롤(ROLE_IDS).
     const longest = cfg.prompt.suitColors.reduce((a, b) => (b.length > a.length ? b : a), "");
     for (const role of Object.keys(cfg.prompt.roles) as RoleId[]) {
       for (const wearsGlasses of [true, false]) {
@@ -165,7 +186,12 @@ export const generationConfigSchema = z
     }
   });
 
-export type GenerationConfig = z.infer<typeof generationConfigSchema>;
+export const generationConfigSchema = z.preprocess(
+  normalizeGenerationConfigInput,
+  generationConfigBaseSchema,
+);
+
+export type GenerationConfig = z.infer<typeof generationConfigBaseSchema>;
 
 // ── v1 → v2 변환 (일회성 이관 유틸 — 런타임 v1 파싱 아님) ─────────────────────────────
 // v1 스캐폴드는 이 문자열 하나로 고정 발행돼 왔다(DEFAULT·운영 v17 동일). 변환은 이 순서
@@ -179,6 +205,9 @@ export type GenerationRolePromptV1 = {
   expression: string;
 };
 
+/** v1 발행 시절의 롤 5종(coworker 포함) — 변환 입력 전용. */
+export type LegacyRoleIdV1 = "boss" | "exec" | "teamlead" | "client" | "coworker";
+
 export type GenerationPromptConfigV1 = {
   positiveTemplate: string;
   headTemplate: string;
@@ -188,7 +217,7 @@ export type GenerationPromptConfigV1 = {
   glassesPrompt: string;
   glassesIdentityPrompt: string;
   suitColors: string[];
-  roles: Record<RoleId, GenerationRolePromptV1>;
+  roles: Record<LegacyRoleIdV1, GenerationRolePromptV1>;
 };
 
 export type GenerationConfigV1 = {
@@ -236,12 +265,15 @@ export function convertGenerationConfigV1toV2(
       glasses: p.glassesPrompt,
       glassesIdentity: p.glassesIdentityPrompt,
       suitColors: [...p.suitColors],
+      // v1 의 4롤은 변환, coworker 는 friend 로 흡수(프롬프트는 신규 기본값), ceo/junior/friend 는 코드 기본값(v1.25).
       roles: {
         boss: convertRole(p.roles.boss),
+        ceo: GENERATION_CONFIG_DEFAULT.prompt.roles.ceo,
         exec: convertRole(p.roles.exec),
         teamlead: convertRole(p.roles.teamlead),
         client: convertRole(p.roles.client),
-        coworker: convertRole(p.roles.coworker),
+        junior: GENERATION_CONFIG_DEFAULT.prompt.roles.junior,
+        friend: GENERATION_CONFIG_DEFAULT.prompt.roles.friend,
       },
     },
   };
@@ -299,10 +331,21 @@ export const GENERATION_CONFIG_DEFAULT: GenerationConfig = {
         body:
           "a formal {suitColor} business suit, dress shirt, necktie, a visitor lanyard badge around the neck, dress shoes, cordial but demanding facial expression, polite yet pushy look, rosy cheeks,",
       },
-      coworker: {
-        subject: "Korean office coworker",
+      // v1.25 신규 3롤 — 발행 튜닝(subject 에 국적 미표기) 방향을 따른다. 성별 변주는 PR-C.
+      ceo: {
+        subject: "company president and owner",
         body:
-          "a casual {suitColor} knit cardigan over a collared shirt, no suit jacket, chinos, clean sneakers, friendly easygoing cheeky facial expression, casual grin, rosy cheeks,",
+          "a luxurious {suitColor} double-breasted suit with a gold tie pin and a wristwatch, crisp dress shirt, silk necktie, polished leather shoes, arrogant self-satisfied grin with chin raised, rosy cheeks,",
+      },
+      junior: {
+        subject: "Gen-Z junior office employee",
+        body:
+          "a {suitColor} knit vest over a white shirt with rolled-up sleeves, slim slacks, white sneakers, wireless earbuds in the ears, bored deadpan facial expression with a slight eye-roll, rosy cheeks,",
+      },
+      friend: {
+        subject: "annoying smug best friend",
+        body:
+          "a trendy {suitColor} oversized hoodie, baggy jeans, chunky sneakers, a small crossbody bag, smug teasing grin with one eyebrow raised, rosy cheeks,",
       },
     },
   },

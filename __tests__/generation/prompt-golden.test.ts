@@ -20,7 +20,11 @@ import {
   type GenerationPromptConfigV1,
 } from "../../lib/config/domains/generation.ts";
 
-const ROLES = ["boss", "exec", "teamlead", "client", "coworker"] as const;
+import { ROLE_IDS } from "../../lib/roles/ids.ts";
+
+// 현행 7롤(조립·placeholder 검사) vs v1 발행 시절 롤(byte-identity 비교는 v1 에 존재하는 4롤만 — coworker 는 friend 로 흡수, 프롬프트 신규).
+const ROLES = ROLE_IDS;
+const LEGACY_ROLES = ["boss", "exec", "teamlead", "client"] as const;
 
 // ── v1 golden 입력(변환 전 원문) ─────────────────────────────────────────────────
 // v1 DEFAULT — v2 이관 직전 lib/config/domains/generation.ts 의 GENERATION_CONFIG_DEFAULT 원문.
@@ -117,7 +121,7 @@ function fillRef(template: string, map: Record<string, string>): string {
 }
 function assembleV1(
   prompt: GenerationPromptConfigV1,
-  role: (typeof ROLES)[number],
+  role: (typeof LEGACY_ROLES)[number],
   opts: { wearsGlasses: boolean; suitColor: string },
 ): string {
   const rv = prompt.roles[role];
@@ -141,7 +145,7 @@ function synthPrompt(): GenerationPromptConfig {
     glasses: " GLASSES,",
     glassesIdentity: " IDGLASSES.",
     suitColors: ["red", "blue", "green"],
-    roles: { boss: role, exec: role, teamlead: role, client: role, coworker: role },
+    roles: { boss: role, ceo: role, exec: role, teamlead: role, client: role, junior: role, friend: role },
   };
 }
 
@@ -176,8 +180,8 @@ test("변환기 — v1 스캐폴드가 아닌 positiveTemplate 은 거부(무언
   );
 });
 
-test("② 안경=false 조립 — v1 DEFAULT 조립과 byte-identical (전 롤 × 전 정장색)", () => {
-  for (const role of ROLES) {
+test("② 안경=false 조립 — v1 DEFAULT 조립과 byte-identical (v1 4롤 × 전 정장색)", () => {
+  for (const role of LEGACY_ROLES) {
     for (const suitColor of V1_DEFAULT.prompt.suitColors) {
       const v1 = assembleV1(V1_DEFAULT.prompt, role, { wearsGlasses: false, suitColor });
       const v2 = assembleGenerationPrompts(GENERATION_CONFIG_DEFAULT.prompt, role, {
@@ -221,8 +225,8 @@ test("④ 운영 v17 convert 조립 golden — 양안 앵커·사시 negative �
     noGlasses.positive,
     "A full body chibi character of a Korean office boss, standing straight in a front-facing pose, both eyes aligned and looking straight ahead, the entire body from the very top of the head down to the feet fully visible and centered in frame, consistent super-deformed toy proportions about 2 heads tall, one single oversized round head, short stubby torso and limbs, both hands relaxed hanging down at the sides, wearing a charcoal grey business suit jacket, dress shirt, necktie, dress trousers with belt, dress shoes, slightly grumpy stern facial expression, rosy cheeks, soft plush fabric doll material texture, felt-like surface, plain pure white background, no scene, no objects, no shadows on background, sharp focus, all-in-focus, even soft studio lighting from front, high detail, crisp clean lines, professional product photography of a toy character, 1:1 square aspect ratio, centered composition. Use the reference face with HIGH identity fidelity: preserve exact eye shape, eyelid type, eye spacing, eyebrow thickness and angle, nose bridge height, nose tip shape, lip shape, jaw width, cheekbone prominence, face roundness, skin tone, ethnicity, age appearance. The character face must be strongly and clearly recognizable as the SAME specific reference person, keeping their distinctive unique facial features and proportions intact, reinterpreted in the plush chibi office character style described above."
   );
-  // 안경=false 는 v1 v17 조립과도 byte-identical.
-  for (const role of ROLES) {
+  // 안경=false 는 v1 v17 조립과도 byte-identical(v1 4롤).
+  for (const role of LEGACY_ROLES) {
     assert.equal(
       assembleGenerationPrompts(v17.prompt, role, {
         wearsGlasses: false,
@@ -306,7 +310,22 @@ test("수치 서브레인지: guidance 7(>6)·steps 10(<20)·trueCfg 5(>4) 거�
   }
 });
 
-test("roles: strict 5키 — 추가 키 거부", () => {
+test("roles: 구 alias(coworker) 는 정규화로 제거·누락 롤은 기본값 충전 (발행 v18 5롤 → 7롤)", () => {
+  const legacy = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, unknown> } };
+  delete legacy.prompt.roles.ceo;
+  delete legacy.prompt.roles.junior;
+  delete legacy.prompt.roles.friend;
+  legacy.prompt.roles.coworker = { subject: "old coworker", body: "a {suitColor} cardigan," };
+  const parsed = generationConfigSchema.safeParse(legacy);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.deepEqual(Object.keys(parsed.data.prompt.roles).sort(), [...ROLE_IDS].sort());
+    assert.deepEqual(parsed.data.prompt.roles.friend, GENERATION_CONFIG_DEFAULT.prompt.roles.friend);
+    assert.deepEqual(parsed.data.prompt.roles.boss, GENERATION_CONFIG_DEFAULT.prompt.roles.boss);
+  }
+});
+
+test("roles: strict 7키 — 추가 키 거부", () => {
   const bad = structuredClone(GENERATION_CONFIG_DEFAULT);
   (bad.prompt.roles as Record<string, unknown>).intern = bad.prompt.roles.boss;
   assert.equal(generationConfigSchema.safeParse(bad).success, false);

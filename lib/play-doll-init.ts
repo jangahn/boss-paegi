@@ -2,15 +2,7 @@ import {
   InvalidDollSignedUrlResponseError,
   parseDollSignedUrlResponse,
 } from "./doll-signed-url-response.ts";
-import type { RoleId } from "./roles/index.ts";
-
-const PLAY_ROLE_IDS: ReadonlySet<unknown> = new Set([
-  "boss",
-  "exec",
-  "teamlead",
-  "client",
-  "coworker",
-]);
+import { isRoleId, type RoleId } from "./roles/ids.ts";
 
 export class PlayDollInitError extends Error {
   readonly causeValue: unknown;
@@ -43,7 +35,7 @@ export function parsePlayDollLookup(
     typeof row.image_url !== "string" ||
     row.image_url.length === 0 ||
     row.image_url.trim() !== row.image_url ||
-    !PLAY_ROLE_IDS.has(row.role)
+    !isRoleId(row.role)
   ) {
     throw new PlayDollInitError("invalid_doll_response");
   }

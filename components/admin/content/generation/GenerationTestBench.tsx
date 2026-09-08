@@ -9,15 +9,9 @@ import {
   GENERATION_IMAGE_SIZES,
   type GenerationConfig,
 } from "@/lib/config/domains/generation";
-import type { RoleId } from "@/lib/roles";
-
-const ROLES: { id: RoleId; label: string }[] = [
-  { id: "boss", label: "부장" },
-  { id: "exec", label: "임원" },
-  { id: "teamlead", label: "팀장" },
-  { id: "client", label: "거래처" },
-  { id: "coworker", label: "동료" },
-];
+import { ROLE_IDS, type RoleId } from "@/lib/roles";
+import { useRoleConfig } from "@/components/RoleContentProvider";
+import { roleFrom } from "@/lib/config/domains/roles";
 
 const MAX_SLOTS = 3;
 const POLL_INTERVAL_MS = 3000;
@@ -164,6 +158,8 @@ function SlotNumField({
  * 세션 내 일회성: 어디에도 저장하지 않으며 새로고침 시 소실.
  */
 export function GenerationTestBench({ current }: { current: GenerationConfig }) {
+  const roleCfg = useRoleConfig(); // 롤 호칭 = 발행 config(콘솔 호칭과 단일 소스)
+  const ROLES = ROLE_IDS.map((id) => ({ id, label: roleFrom(id, roleCfg).label }));
   const [file, setFile] = useState<File | null>(null);
   // 유저 서비스와 동일한 크롭 단계 — 원본 선택 → 3:4 크롭 확정 → 제출용 파일.
   const [cropSrc, setCropSrc] = useState<string | null>(null);

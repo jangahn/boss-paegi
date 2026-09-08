@@ -4,6 +4,9 @@ import { requireAdmin } from "@/lib/auth-server";
 import { getGeneration } from "@/lib/admin-generations";
 import { fmtKst, shortId } from "@/lib/admin-format";
 import { FadeImg } from "@/components/FadeImg";
+import { getRoleConfig } from "@/lib/config/getters";
+import { roleFrom } from "@/lib/config/domains/roles";
+import { asRole } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +63,7 @@ export default async function AdminGenerationDetailPage({
 
   const { id } = await params;
   const gen = await getGeneration(id);
+  const roleCfg = await getRoleConfig(); // 롤 호칭 = 발행 config
   if (!gen) notFound();
 
   const p = gen.provenance;
@@ -93,7 +97,7 @@ export default async function AdminGenerationDetailPage({
               {gen.ownerName ?? shortId(gen.ownerId)}
             </Link>
           </Row>
-          <Row label="롤">{gen.role}</Row>
+          <Row label="롤">{roleFrom(asRole(gen.role), roleCfg).label} <span className="text-zinc-400">({gen.role})</span></Row>
           <Row label="생성 시각">{fmtKst(gen.createdAt)}</Row>
           <Row label="후보 수">{gen.candidateCount}</Row>
           <Row label="크레딧">
