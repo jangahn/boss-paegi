@@ -139,8 +139,8 @@ function assembleV1(
 // 합성 prompt(내용 무관) — v2 조립 로직만 검증. DEFAULT 문구 변경과 디커플.
 function synthPrompt(): GenerationPromptConfig {
   const role = {
-    male: { subject: "SUBJ", body: "a {suitColor} suit, EXPR," },
-    female: { subject: "F-SUBJ", body: "a {suitColor} dress, F-EXPR," },
+    subject: "SUBJ",
+    body: { male: "a {suitColor} suit, EXPR,", female: "a {suitColor} dress, F-EXPR," },
   };
   return {
     template: "HEAD subject={subject} END wearing {role}{glasses} TAIL IDENTITY{idGlasses}",
@@ -295,7 +295,7 @@ test("placeholder 계약: template 토큰 누락/중복/미지원 거부", () =>
 
 test("placeholder 계약: 롤 body {suitColor} 누락 거부", () => {
   const bad = structuredClone(GENERATION_CONFIG_DEFAULT);
-  bad.prompt.roles.boss.male.body = "a plain business suit, stern expression,";
+  bad.prompt.roles.boss.body.male = "a plain business suit, stern expression,";
   assert.equal(generationConfigSchema.safeParse(bad).success, false);
 });
 
@@ -341,22 +341,39 @@ test("roles: strict 7키 — 추가 키 거부", () => {
   assert.equal(generationConfigSchema.safeParse(bad).success, false);
 });
 
-test("v1.26 — v2 발행행(롤당 subject/body)은 male 로 승격되고 female 은 코드 기본값으로 충전된다", () => {
+test("v1.28 — v2 발행행(롤당 subject/body)은 body.male 로 승격되고 body.female 은 코드 기본값으로 충전된다", () => {
   const v2 = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as {
     prompt: { roles: Record<string, unknown> };
   };
   for (const role of ROLES) {
-    v2.prompt.roles[role] = GENERATION_CONFIG_DEFAULT.prompt.roles[role].male;
+    const r = GENERATION_CONFIG_DEFAULT.prompt.roles[role];
+    v2.prompt.roles[role] = { subject: r.subject, body: r.body.male };
   }
   const parsed = generationConfigSchema.safeParse(v2);
   assert.equal(parsed.success, true);
   assert.deepEqual(parsed.data, GENERATION_CONFIG_DEFAULT);
 });
 
-test("v1.26 — 성별 변주 조립: female 은 female subject/body, male 은 v2 와 byte-identical", () => {
+test("v1.28 — v3 발행행({male,female} × {subject,body})은 subject=male.subject 로 승격된다(female.subject 폐기)", () => {
+  const v3 = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as {
+    prompt: { roles: Record<string, unknown> };
+  };
+  for (const role of ROLES) {
+    const r = GENERATION_CONFIG_DEFAULT.prompt.roles[role];
+    v3.prompt.roles[role] = {
+      male: { subject: r.subject, body: r.body.male },
+      female: { subject: `female ${r.subject}`, body: r.body.female },
+    };
+  }
+  const parsed = generationConfigSchema.safeParse(v3);
+  assert.equal(parsed.success, true);
+  assert.deepEqual(parsed.data, GENERATION_CONFIG_DEFAULT);
+});
+
+test("v1.28 — 성별 변주 조립: subject 공용, body 만 성별별; male 은 v2 와 byte-identical", () => {
   const p = synthPrompt();
   const female = assembleGenerationPrompts(p, "boss", { gender: "female", wearsGlasses: false, suitColor: "red" });
-  assert.equal(female.positive, "HEAD subject=F-SUBJ END wearing a red dress, F-EXPR, TAIL IDENTITY");
+  assert.equal(female.positive, "HEAD subject=SUBJ END wearing a red dress, F-EXPR, TAIL IDENTITY");
   for (const role of ROLES) {
     for (const gender of ["male", "female"] as const) {
       for (const wearsGlasses of [true, false]) {
@@ -369,11 +386,11 @@ test("v1.26 — 성별 변주 조립: female 은 female subject/body, male 은 v
       }
     }
   }
-  // 성별 키는 정확히 male/female — 추가 키·누락은 strict 거절.
-  const extra = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, Record<string, unknown>> } };
-  extra.prompt.roles.boss.other = extra.prompt.roles.boss.male;
+  // body 의 성별 키는 정확히 male/female — 추가 키·누락은 strict 거절.
+  const extra = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, { body: Record<string, unknown> }> } };
+  extra.prompt.roles.boss.body.other = extra.prompt.roles.boss.body.male;
   assert.equal(generationConfigSchema.safeParse(extra).success, false);
-  const missing = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, Record<string, unknown>> } };
-  delete missing.prompt.roles.boss.female;
+  const missing = structuredClone(GENERATION_CONFIG_DEFAULT) as unknown as { prompt: { roles: Record<string, { body: Record<string, unknown> }> } };
+  delete missing.prompt.roles.boss.body.female;
   assert.equal(generationConfigSchema.safeParse(missing).success, false);
 });
