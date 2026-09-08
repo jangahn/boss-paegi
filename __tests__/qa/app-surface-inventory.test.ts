@@ -37,6 +37,8 @@ const EXPECTED_PAGES = [
   "/admin/content/score_config",
   "/admin/content/session_limits",
   "/admin/content/site_content",
+  "/admin/dolls",
+  "/admin/dolls/[id]",
   "/admin/events",
   "/admin/events/[id]",
   "/admin/generations",
@@ -86,7 +88,7 @@ const EXPECTED_APIS = [
   "/api/admin/adjust",
   "/api/admin/cancel",
   "/api/admin/config",
-  "/api/admin/doll-gender",
+  "/api/admin/doll-profile",
   "/api/admin/event-image",
   "/api/admin/events",
   "/api/admin/generation-test/status",
@@ -230,7 +232,7 @@ test("every page and API route is enrolled in the exact app surface manifest", (
     )
     .sort();
 
-  assert.equal(pages.length, 57, "page count changed; update the exact manifest");
+  assert.equal(pages.length, 59, "page count changed; update the exact manifest");
   assert.equal(apis.length, 70, "API count changed; update the exact manifest");
   assert.equal(
     nonApiRouteHandlers.length,

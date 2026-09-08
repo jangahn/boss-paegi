@@ -347,6 +347,38 @@ export async function getUserGenerations(userId: string, page = 1): Promise<Page
     "admin.user_generations",
     totalRows as unknown as Record<string, unknown>[],
   );
+  // 채택 캐릭터의 현재 롤·성별·상태 배치 조회(N+1 금지) — 목록은 캐릭터 행이 있으면 현재값(v1.29 규약).
+  const pickedIds = [...new Set(raw.filter((r) => r.picked_doll_id).map((r) => r.picked_doll_id!))];
+  const dollMap = new Map<string, GenerationRow["doll"]>();
+  if (pickedIds.length > 0) {
+    const dollRows = await requireSupabaseRows(
+      "admin.user_generations_dolls",
+      () =>
+        admin
+          .from("dolls")
+          .select("id, role, gender, deleted_at, artifacts_purged_at")
+          .in("id", pickedIds),
+    );
+    for (const d of validateAdminRows<{
+      id: string;
+      role: string;
+      gender: string;
+      deleted_at: string | null;
+      artifacts_purged_at: string | null;
+    }>("admin.user_generations_dolls", dollRows, {
+      id: "uuid",
+      role: "string",
+      gender: "string",
+      deleted_at: "nullableTimestamp",
+      artifacts_purged_at: "nullableTimestamp",
+    })) {
+      dollMap.set(d.id, {
+        role: d.role,
+        gender: d.gender,
+        state: d.artifacts_purged_at ? "purged" : d.deleted_at ? "hidden" : "public",
+      });
+    }
+  }
   const rows = raw.map((r) => ({
     id: r.id,
     status: r.status,
@@ -354,6 +386,7 @@ export async function getUserGenerations(userId: string, page = 1): Promise<Page
     picked_doll_id: r.picked_doll_id,
     created_at: r.created_at,
     candidate_count: r.candidate_count,
+    doll: (r.picked_doll_id && dollMap.get(r.picked_doll_id)) || null,
   }));
   return { rows, total, page: p, pageSize: USER_PAGE_SIZE };
 }

@@ -156,7 +156,7 @@ const patternCount = new Map();
 const visited = new Set();
 const queue = [];
 const results = [];
-const enqueue = (href, from) => {
+const enqueue = (href) => {
   let u;
   try { u = new URL(href, BASE); } catch { return; }
   if (u.origin !== baseUrl.origin) return;
@@ -332,7 +332,7 @@ context.on("dialog", (d) => d.dismiss().catch(() => {}));
 const page = await context.newPage();
 page.setDefaultTimeout(15000);
 
-for (const s of seeds) enqueue(s, "seed");
+for (const s of seeds) enqueue(s);
 let count = 0;
 while (queue.length && count < MAX_PAGES) {
   const key = queue.shift();

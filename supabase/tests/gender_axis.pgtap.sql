@@ -1,12 +1,12 @@
--- gender_axis.pgtap.sql — 0121/0122 캐릭터 성별 축 DB 계약.
+-- gender_axis.pgtap.sql — 0121/0122/0123 캐릭터 성별 축 + 어드민 속성 제어 DB 계약.
 --
 -- 단언: ① ai_generations.gender / dolls.gender 컬럼(NOT NULL DEFAULT 'male', male|female CHECK)
 --       ② 얼굴검사 체크 어휘에 gender(intents·cost_attempts CHECK, claim allowlist), prepare 는 정확히 5 intent(0122)
---       ③ admin_update_doll_gender_idempotent — receipt 재생(idempotent)·noOp·dolls.version CAS·어휘·권한
+--       ③ admin_update_doll_profile_idempotent(0123) — 롤+성별 receipt 재생·noOp·dolls.version CAS·어휘·권한·숨김 거절
 -- Run only on a disposable database after applying every migration in order.
 
 begin;
-select plan(23);
+select plan(27);
 
 -- ── 픽스처: 관리자 1 + 소유자 1 + doll 1 ───────────────────────────────────
 create temporary table gender_ctx (
@@ -129,70 +129,87 @@ select ok(
   'commit_generation_pick copies and verifies the generation gender on the doll'
 );
 
--- ── ③ 어드민 후처리 RPC ─────────────────────────────────────────────────────
+-- ── ③ 어드민 속성(롤·성별) RPC — 0123 ────────────────────────────────────
 select is(
   (
-    select (r->>'nextGender', (r->>'noOp')::boolean, (r->>'idempotent')::boolean, (r->>'version')::integer)::text
+    select (r->>'nextRole', r->>'nextGender', (r->>'noOp')::boolean, (r->>'idempotent')::boolean, (r->>'version')::integer)::text
       from gender_ctx c,
-      lateral public.admin_update_doll_gender_idempotent(c.admin_id, c.doll_id, 'female', 1, c.request_id) r
+      lateral public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'ceo', 'female', 1, c.request_id) r
   ),
-  ('female', false, false, 2)::text,
-  'admin gender update flips the doll to female and bumps dolls.version'
+  ('ceo', 'female', false, false, 2)::text,
+  'admin profile update changes role and gender together and bumps dolls.version'
 );
 select is(
-  (select d.gender from public.dolls d join gender_ctx c on c.doll_id = d.id),
-  'female',
-  'dolls.gender persisted'
+  (select (d.role, d.gender)::text from public.dolls d join gender_ctx c on c.doll_id = d.id),
+  ('ceo', 'female')::text,
+  'dolls.role and dolls.gender persisted'
 );
 select is(
   (
     select (r->>'nextGender', (r->>'noOp')::boolean, (r->>'idempotent')::boolean)::text
       from gender_ctx c,
-      lateral public.admin_update_doll_gender_idempotent(c.admin_id, c.doll_id, 'female', 1, c.request_id) r
+      lateral public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'ceo', 'female', 1, c.request_id) r
   ),
   ('female', false, true)::text,
   'replaying the same request id returns the stored receipt as idempotent'
 );
 select throws_ok(
-  $$select public.admin_update_doll_gender_idempotent(c.admin_id, c.doll_id, 'male', 1, c.request_id_2) from gender_ctx c$$,
+  $$select public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'boss', 'male', 1, c.request_id_2) from gender_ctx c$$,
   'P0001',
   'state_conflict',
   'a stale dolls.version is rejected (CAS)'
 );
 select is(
   (
-    select (r->>'nextGender', (r->>'noOp')::boolean, (r->>'version')::integer)::text
+    select ((r->>'noOp')::boolean, (r->>'version')::integer)::text
       from gender_ctx c,
-      lateral public.admin_update_doll_gender_idempotent(c.admin_id, c.doll_id, 'female', 2, c.request_id_3) r
+      lateral public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'ceo', 'female', 2, c.request_id_3) r
   ),
-  ('female', true, 2)::text,
-  'setting the current gender again is a noOp without a version bump'
+  (true, 2)::text,
+  'setting the current role and gender again is a noOp without a version bump'
 );
 select throws_ok(
-  $$select public.admin_update_doll_gender_idempotent(c.admin_id, c.doll_id, 'other', 2, gen_random_uuid()) from gender_ctx c$$,
+  $$select public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'coworker', 'female', 2, gen_random_uuid()) from gender_ctx c$$,
+  'P0001',
+  'invalid_role',
+  'the admin RPC rejects roles outside the seven-role vocabulary'
+);
+select throws_ok(
+  $$select public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'ceo', 'other', 2, gen_random_uuid()) from gender_ctx c$$,
   'P0001',
   'gender_invalid',
   'the admin RPC rejects values outside male/female'
 );
 select throws_ok(
-  $$select public.admin_update_doll_gender_idempotent(c.owner_id, c.doll_id, 'male', 2, gen_random_uuid()) from gender_ctx c$$,
+  $$select public.admin_update_doll_profile_idempotent(c.owner_id, c.doll_id, 'boss', 'male', 2, gen_random_uuid()) from gender_ctx c$$,
   'P0001',
   'not_admin',
   'a non-admin caller is rejected'
 );
+update public.dolls d set deleted_at = now(), deleted_by = c.admin_id, deletion_reason = 'gender axis pgTAP takedown fixture'
+  from gender_ctx c where d.id = c.doll_id;
+select throws_ok(
+  $$select public.admin_update_doll_profile_idempotent(c.admin_id, c.doll_id, 'boss', 'male', 3, gen_random_uuid()) from gender_ctx c$$,
+  'P0001',
+  'doll_unavailable',
+  'a hidden (taken down) doll cannot be re-profiled until restored'
+);
 select ok(
-  not has_function_privilege('anon', 'public.admin_update_doll_gender_idempotent(uuid,uuid,text,integer,uuid)', 'EXECUTE')
-  and not has_function_privilege('authenticated', 'public.admin_update_doll_gender_idempotent(uuid,uuid,text,integer,uuid)', 'EXECUTE')
-  and has_function_privilege('service_role', 'public.admin_update_doll_gender_idempotent(uuid,uuid,text,integer,uuid)', 'EXECUTE'),
-  'admin gender RPC is service_role only'
+  not has_function_privilege('anon', 'public.admin_update_doll_profile_idempotent(uuid,uuid,text,text,integer,uuid)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.admin_update_doll_profile_idempotent(uuid,uuid,text,text,integer,uuid)', 'EXECUTE')
+  and has_function_privilege('service_role', 'public.admin_update_doll_profile_idempotent(uuid,uuid,text,text,integer,uuid)', 'EXECUTE'),
+  'admin profile RPC is service_role only'
 );
 select is(
   (
     select r.operation from public.admin_mutation_requests r join gender_ctx c on c.request_id = r.request_id
   ),
-  'doll_gender_update',
-  'receipt stored under the doll_gender_update operation'
+  'doll_profile_update',
+  'receipt stored under the doll_profile_update operation'
 );
+-- 0123: 유저 롤 변경 RPC·성별 전용 어드민 RPC 는 폐기됐다(캐릭터 속성은 어드민 전용 단일 경로).
+select hasnt_function('public', 'request_doll_role_update', array['uuid', 'uuid', 'text'], 'user-side role update RPC is gone');
+select hasnt_function('public', 'admin_update_doll_gender_idempotent', array['uuid', 'uuid', 'text', 'integer', 'uuid'], 'gender-only admin RPC is absorbed');
 
 select * from finish();
 rollback;

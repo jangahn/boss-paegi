@@ -38,7 +38,8 @@ function assertReadersAuthorized(
 test("all owned member/public JSON routes use the bounded object reader", () => {
   const routes = new Map<string, number>([
     ["app/api/avatar/route.ts", 2],
-    ["app/api/doll/route.ts", 2],
+    // v1.29: PATCH(역할 변경) 제거 → POST(pick) 1개
+    ["app/api/doll/route.ts", 1],
     ["app/api/highlight/route.ts", 2],
     ["app/api/pay/checkout/route.ts", 1],
     ["app/api/account/consent/route.ts", 1],
@@ -58,7 +59,7 @@ test("all owned member/public JSON routes use the bounded object reader", () => 
     assert.equal(readers.length, expectedReaders, path);
     totalReaders += readers.length;
   }
-  assert.equal(totalReaders, 9);
+  assert.equal(totalReaders, 8);
 });
 
 test("authentication/authorization and public rate-limit ordering is unchanged", () => {
@@ -75,7 +76,7 @@ test("authentication/authorization and public rate-limit ordering is unchanged",
     doll,
     "const gate = await requireMember();",
     "await readApiJsonObjectRequest(req)",
-    2,
+    1,
   );
 
   const highlight = source("app/api/highlight/route.ts");
@@ -134,7 +135,8 @@ function countJsonFetches(path: string, endpoint: string): number {
 test("all current browser callers already send application/json", () => {
   assert.equal(countJsonFetches("lib/avatar.ts", "/api/avatar"), 2);
   assert.equal(countJsonFetches("app/generate/page.tsx", "/api/doll"), 1);
-  assert.equal(countJsonFetches("components/gallery/DollCard.tsx", "/api/doll"), 1);
+  // v1.29: 갤러리 카드의 PATCH /api/doll(역할 변경) 제거 — 카드는 /api/doll 을 호출하지 않는다.
+  assert.equal(countJsonFetches("components/gallery/DollCard.tsx", "/api/doll"), 0);
   assert.equal(
     countJsonFetches("app/play/useGameInit.ts", "/api/doll/signed-urls"),
     1,

@@ -16,7 +16,6 @@ import { validateAdminRows } from "@/lib/admin-read-contract";
 import {
   cleanupJobToRun,
   parseDollDeleteAck,
-  parseDollRoleUpdateAck,
 } from "@/lib/storage-mutation-result";
 import { parseDollPickHttpResponse } from "@/lib/character-gen/http-contract";
 import { readApiJsonObjectRequest } from "@/lib/http/api-json-request";
@@ -481,104 +480,4 @@ export async function DELETE(req: NextRequest) {
     alreadyDeleted: started.alreadyDeleted,
   });
   return NextResponse.json({ ok: true, cleanup: "completed" });
-}
-
-/** 캐릭터 롤 변경 (갤러리 점세개 메뉴). 쓰기 API라 unknown role 은 400(렌더의 boss 폴백과 달리 엄격). */
-export async function PATCH(req: NextRequest) {
-  const gate = await requireMember();
-  if (!gate.ok) return memberGateResponse(gate);
-  const { user } = gate;
-
-  const requestBody = await readApiJsonObjectRequest(req);
-  if (!requestBody.ok) {
-    return NextResponse.json(
-      { error: requestBody.error },
-      { status: requestBody.status },
-    );
-  }
-  const body = requestBody.value as {
-    id?: string;
-    role?: string;
-  };
-  if (!isUuid(body?.id)) {
-    return NextResponse.json(
-      { error: body?.id ? "invalid_id" : "id_required" },
-      { status: 400 },
-    );
-  }
-  if (!isRoleId(body.role)) {
-    return NextResponse.json({ error: "invalid_role" }, { status: 400 });
-  }
-
-  const admin = createAdminClient();
-  const { data: updateAck, error: updErr } = await admin.rpc(
-    "request_doll_role_update",
-    {
-    p_user_id: user.id,
-    p_doll_id: body.id,
-    p_role: body.role,
-    },
-  );
-  if (updErr) {
-    const message = updErr.message ?? "";
-    const code = message.includes("doll_not_found")
-      ? "not_found"
-      : message.includes("doll_unavailable")
-        ? "not_found"
-        : message.includes("forbidden")
-          ? "forbidden"
-          : message.includes("account_deleted")
-            ? "account_deleted"
-            : "update_failed";
-    log.error("doll.role_update_fail", {
-      userId: user.id,
-      dollId: body.id,
-      role: body.role,
-      ...errInfo(updErr),
-    });
-    return NextResponse.json(
-      { error: code },
-      {
-        status:
-          code === "not_found"
-            ? 404
-            : code === "forbidden" || code === "account_deleted"
-              ? 403
-              : 500,
-      },
-    );
-  }
-
-  if (!parseDollRoleUpdateAck(updateAck, body.role)) {
-    log.error("doll.role_update_invalid", {
-      userId: user.id,
-      dollId: body.id,
-      role: body.role,
-    });
-    return NextResponse.json({ error: "update_failed" }, { status: 500 });
-  }
-  const { data: updated, error: verifyError } = await admin
-    .from("dolls")
-    .select("id, owner_id, role, deleted_at")
-    .eq("id", body.id)
-    .maybeSingle();
-  if (
-    verifyError ||
-    !updated ||
-    updated.id !== body.id ||
-    updated.owner_id !== user.id ||
-    updated.role !== body.role ||
-    updated.deleted_at !== null
-  ) {
-    log.error("doll.role_update_postcondition_fail", {
-      userId: user.id,
-      dollId: body.id,
-      role: body.role,
-      ...errInfo(verifyError ?? new Error("doll_role_postcondition_failed")),
-    });
-    return NextResponse.json({ error: "update_failed" }, { status: 500 });
-  }
-
-  log.info("doll.role_change", { userId: user.id, dollId: body.id, role: body.role });
-  return NextResponse.json({ ok: true, role: body.role });
 }
