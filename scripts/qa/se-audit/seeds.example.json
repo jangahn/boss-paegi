@@ -26,6 +26,8 @@
 "/admin/acquisition?days=today",
 "/admin/acquisition?days=7",
 "/admin/acquisition?days=all",
+"/admin/acquisition/events",
+"/admin/acquisition/events?kind=visit",
 "/admin/analytics",
 "/admin/analytics?days=today",
 "/admin/analytics?days=7",

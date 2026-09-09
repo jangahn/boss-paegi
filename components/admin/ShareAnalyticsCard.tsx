@@ -1,17 +1,9 @@
 import type { ShareStats } from "@/lib/admin-acquisition";
+import { MEMBER_KO, SURFACE_KO, TARGET_KO } from "@/lib/admin-acquisition-labels";
 
 // 공유 분석 카드 — 게임오버 전환 퍼널(무식별 근사) + 표면/대상/점수대/회원여부 분포.
 // 메인 지표는 '공유 시도'(클릭). 성공/취소는 미집계(MVP).
 
-const SURFACE_KO: Record<string, string> = {
-  game_over: "게임오버",
-  history: "이전기록",
-  highlight_viewer: "하이라이트 뷰어",
-  doll: "캐릭터(/doll)",
-  gallery: "갤러리",
-};
-const TARGET_KO: Record<string, string> = { score: "점수", doll: "캐릭터", highlight: "하이라이트" };
-const MEMBER_KO: Record<string, string> = { anon: "비회원", member: "회원" };
 
 function DistRow({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;

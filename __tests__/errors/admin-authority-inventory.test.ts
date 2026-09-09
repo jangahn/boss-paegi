@@ -218,6 +218,7 @@ test("every admin authority reader has strict dependency and runtime-shape contr
       "readSupabaseRowsPaginated",
       "validateAdminRows",
     ],
+    "lib/admin-acquisition-events.ts": ["requireSupabasePage", "validateAdminRows"],
     "lib/admin-analytics.ts": [
       "readSupabaseRowsPaginated",
       "requireSupabaseRows",
