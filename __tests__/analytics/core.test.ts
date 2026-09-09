@@ -13,6 +13,11 @@ import {
   normalizeSource,
   normalizeToken,
   sanitizeTrackPayload,
+  normalizeReferrerUrl,
+  REFERRER_URL_MAX_LEN,
+  uaForStorage,
+  UA_MAX_LEN,
+  withUserAgent,
 } from "../../lib/analytics/core.ts";
 import {
   TRACK_BODY_MAX_BYTES,
@@ -200,6 +205,8 @@ test("visit sanitizer covers every scope and source validity combination", () =>
           source_scope,
           // payload 에 landing 이 없으면 other 로 강등된다(방문 자체는 유효).
           landing: "other",
+          // referrer_url 이 없으면 null(v1.31) — 행은 유지.
+          referrer_url: null,
           ...normalizeSource(source),
         });
       }
@@ -397,4 +404,48 @@ test("trackable user agent rejects missing and crawler agents exactly like the b
     assert.equal(isBotUserAgent(ua), false, ua);
     assert.equal(isTrackableUserAgent(ua), true, ua);
   }
+});
+
+test("referrer_url 은 http(s)·android-app 절대 URL 만 남기고 fragment 를 지우며, 부적합은 null 로 강등된다(행은 유지)", () => {
+  assert.equal(
+    normalizeReferrerUrl("https://gall.dcinside.com/board/view/?id=lotto2&no=1072095#c1"),
+    "https://gall.dcinside.com/board/view/?id=lotto2&no=1072095",
+    "쿼리는 보존(글 번호가 정보), fragment 만 제거",
+  );
+  assert.equal(normalizeReferrerUrl(" https://m.search.naver.com/ "), "https://m.search.naver.com/");
+  assert.equal(
+    normalizeReferrerUrl("android-app://com.google.android.googlequicksearchbox/"),
+    "android-app://com.google.android.googlequicksearchbox/",
+    "구글 앱(안드로이드) 레퍼러 스킴은 허용",
+  );
+  for (const bad of ["javascript:alert(1)", "not a url", "", "   ", "ftp://x.example/", "//host-only"]) {
+    assert.equal(normalizeReferrerUrl(bad), null, JSON.stringify(bad));
+  }
+  assert.equal(normalizeReferrerUrl(42), null);
+  assert.equal(normalizeReferrerUrl(null), null);
+  assert.equal(normalizeReferrerUrl("https://x.example/" + "a".repeat(REFERRER_URL_MAX_LEN * 2)), null, "과대 입력은 통째로 거절");
+  assert.equal(normalizeReferrerUrl("https://x.example/?q=" + "a".repeat(REFERRER_URL_MAX_LEN + 100))?.length, REFERRER_URL_MAX_LEN);
+
+  const row = sanitizeTrackPayload({
+    kind: "visit",
+    source_scope: "current",
+    source_kind: "direct",
+    landing: "home",
+    referrer_url: "https://www.teamblind.com/kr/post/x-1#top",
+  });
+  assert.equal(row?.kind === "visit" ? row.referrer_url : null, "https://www.teamblind.com/kr/post/x-1");
+  const share = sanitizeTrackPayload({ kind: "share", surface: "gallery", target: "doll", referrer_url: "https://x.example/" });
+  assert.equal(share && "referrer_url" in share, false, "share 행은 referrer_url 을 받지 않는다(kind_shape 와 대칭)");
+});
+
+test("UA 저장형은 서버가 얹고, 빈값은 null·길이는 상한으로 잘린다", () => {
+  assert.equal(uaForStorage("  Mozilla/5.0 " + "x".repeat(UA_MAX_LEN * 2))?.length, UA_MAX_LEN);
+  assert.equal(uaForStorage("Mozilla/5.0 (iPhone) KAKAOTALK 10.0"), "Mozilla/5.0 (iPhone) KAKAOTALK 10.0");
+  assert.equal(uaForStorage(null), null);
+  assert.equal(uaForStorage(undefined), null);
+  assert.equal(uaForStorage(""), null);
+  assert.equal(uaForStorage("   "), null);
+  const stored = withUserAgent({ kind: "share" as const, surface: "gallery" as const }, " UA/1 ");
+  assert.deepEqual(stored, { kind: "share", surface: "gallery", ua: "UA/1" });
+  assert.deepEqual(withUserAgent({ kind: "share" as const }, null), { kind: "share", ua: null });
 });

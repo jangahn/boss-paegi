@@ -2,7 +2,8 @@
 
 // 공유·유입 분석 — 클라 캡처(DOM·localStorage·beacon). 순수 로직은 lib/analytics/core 재사용.
 // current source(현재 진입·매 탭세션)와 first-touch source(획득·90일 sticky)를 분리 추적.
-// 식별자/원본 URL/query 미저장 — 도메인·UTM·차원만. 수집은 상시(별도 opt-in 게이트 없음).
+// 식별자/서비스 내 원본 URL/query 미저장 — 도메인·UTM·차원 + 외부 레퍼러 원문(document.referrer, v1.31: 서버가
+// 검증해 visit 행에 저장, '직접' 유입 특정용). 수집은 상시(별도 opt-in 게이트 없음).
 
 import { PUBLIC_ENV } from "@/lib/env";
 import {
@@ -27,6 +28,7 @@ type StoredFirstTouch = {
   version: 1;
   source: NormSource;
   capturedAt: number;
+  referrer?: string; // 획득 시점의 외부 레퍼러 원문(v1.31) — first_touch 방문 행이 뒤늦게 가도 원래 값을 싣는다
   acquisitionVisitSent?: boolean;
   playConversionSent?: boolean;
 };
@@ -209,6 +211,15 @@ function currentSource(): NormSource {
   return normalizeSource(computeCurrentRaw());
 }
 
+/** 외부 레퍼러 원문 — 검증은 서버(normalizeReferrerUrl). 여기선 길이만 막는다. */
+function currentReferrer(): string {
+  try {
+    return typeof document !== "undefined" ? document.referrer.slice(0, 2048) : "";
+  } catch {
+    return "";
+  }
+}
+
 function readFirstTouch(): StoredFirstTouch | null {
   try {
     const raw = window.localStorage.getItem(FT_KEY);
@@ -237,7 +248,12 @@ function writeFirstTouch(ft: StoredFirstTouch): void {
 function ensureFirstTouch(): StoredFirstTouch {
   const existing = readFirstTouch();
   if (existing) return existing;
-  const ft: StoredFirstTouch = { version: 1, source: currentSource(), capturedAt: Date.now() };
+  const ft: StoredFirstTouch = {
+    version: 1,
+    source: currentSource(),
+    capturedAt: Date.now(),
+    referrer: currentReferrer(),
+  };
   writeFirstTouch(ft);
   return ft;
 }
@@ -255,7 +271,7 @@ export function trackVisit(pathname: string): void {
   try {
     if (!window.sessionStorage.getItem(CURRENT_VISIT_KEY)) {
       gatedSend(
-        { kind: "visit", source_scope: "current", landing, ...currentSource() },
+        { kind: "visit", source_scope: "current", landing, referrer_url: currentReferrer(), ...currentSource() },
         {
           key: "visit:current",
           onSent: () => {
@@ -274,7 +290,7 @@ export function trackVisit(pathname: string): void {
   const ft = ensureFirstTouch();
   if (!ft.acquisitionVisitSent) {
     gatedSend(
-      { kind: "visit", source_scope: "first_touch", landing, ...ft.source },
+      { kind: "visit", source_scope: "first_touch", landing, referrer_url: ft.referrer ?? "", ...ft.source },
       {
         key: "visit:first_touch",
         onSent: () => {

@@ -1,5 +1,6 @@
 // 공유·유입 분석 — 순수 공유 로직(클라/서버 공통, DOM·env·server-only 의존 없음).
-// 식별자/원본 URL/query/IP/UA 무저장 원칙. 토큰 정규화·source 정합·payload sanitize 의 단일 출처.
+// 식별자/서비스 내 원본 URL/query/IP 무저장 원칙. UA 원문·외부 레퍼러 전체 URL 은 raw 행에 저장(v1.31, 2026-09-09 —
+// '직접' 유입의 실체 특정용, 파싱·분류는 저장 시점이 아니라 분석 시점에). 토큰 정규화·source 정합·payload sanitize 의 단일 출처.
 // 클라(lib/acquisition.ts)와 서버(lib/analytics/server.ts·app/api/track) 가 함께 import 한다.
 
 export type AnalyticsKind = "visit" | "share" | "conversion";
@@ -58,6 +59,40 @@ export function normalizeToken(v: unknown): string | null {
   if (/[/?&=]/.test(s)) return null; // query/path-like
   if (!/^[a-z0-9._-]+$/.test(s)) return null; // 공백·기타 → null
   return s;
+}
+
+// ── 유입 원본(v1.31) — 파싱하지 않고 원문을 남긴다. 어떤 앱/브라우저에서 오는지 미리 알 수 없어 버킷을 먼저 정할 수 없다. ──
+export const REFERRER_URL_MAX_LEN = 1024;
+export const UA_MAX_LEN = 512;
+
+/**
+ * 외부 레퍼러 원문(document.referrer) — 클라 값 불신: 절대 URL 로 파싱되고 http(s)·android-app(구글 앱) 스킴만,
+ * fragment 제거, 길이 상한. 부적합·비문자열은 null(방문 자체는 유효 — 행은 유지).
+ */
+export function normalizeReferrerUrl(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s || s.length > REFERRER_URL_MAX_LEN * 2) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:" && u.protocol !== "android-app:") return null;
+    u.hash = "";
+    return u.href.slice(0, REFERRER_URL_MAX_LEN);
+  } catch {
+    return null;
+  }
+}
+
+/** 서버가 요청 헤더에서 읽은 UA 를 저장형으로(trim·상한). 빈값은 null. */
+export function uaForStorage(ua: string | null | undefined): string | null {
+  if (typeof ua !== "string") return null;
+  const s = ua.trim();
+  return s ? s.slice(0, UA_MAX_LEN) : null;
+}
+
+/** 적재 직전 서버가 UA 를 얹는다 — sanitize 된 row 는 클라 payload 유래라 UA 를 담지 않는다(위조 차단). */
+export function withUserAgent<T extends object>(row: T, ua: string | null | undefined): T & { ua: string | null } {
+  return { ...row, ua: uaForStorage(ua) };
 }
 
 // utm 부가 차원(medium·campaign)은 v1.09 에서 하드 제거(소비처 0 실측·source 1차원 운영 확정 — mig 0113).
@@ -120,7 +155,12 @@ export function normalizeSource(raw: RawSource | null | undefined): NormSource {
 }
 
 // /api/track 가 받는 클라 이벤트(visit | share). conversion 은 서버 내부에서만 적재(여기서 거부).
-export type VisitRow = { kind: "visit"; source_scope: SourceScope; landing: Landing } & NormSource;
+export type VisitRow = {
+  kind: "visit";
+  source_scope: SourceScope;
+  landing: Landing;
+  referrer_url: string | null; // 외부 레퍼러 원문(v1.31) — normalizeReferrerUrl 결과
+} & NormSource;
 export type ShareRow = {
   kind: "share";
   surface: Surface;
@@ -142,7 +182,13 @@ export function sanitizeTrackPayload(raw: unknown): TrackRow | null {
     const landing = (LANDING_GROUPS as readonly string[]).includes(o.landing as string)
       ? (o.landing as Landing)
       : "other";
-    return { kind: "visit", source_scope: scope, landing, ...normalizeSource(o as RawSource) };
+    return {
+      kind: "visit",
+      source_scope: scope,
+      landing,
+      referrer_url: normalizeReferrerUrl(o.referrer_url),
+      ...normalizeSource(o as RawSource),
+    };
   }
 
   if (o.kind === "share") {
@@ -171,7 +217,7 @@ export function buildConversionRow(step: ConversionStep, rawSource: RawSource | 
   return { kind: "conversion", conversion_step: step, source_scope: "first_touch", ...normalizeSource(rawSource) };
 }
 
-// ── 봇 판별(v1.08) — 클라 게이트·서버 /api/track 백스톱의 단일 소스. UA 는 판별에만 사용·미저장. ──
+// ── 봇 판별(v1.08) — 클라 게이트·서버 /api/track 백스톱의 단일 소스. UA 저장은 v1.31 부터 서버가 원문으로(withUserAgent). ──
 // lottogen 실증: JS 렌더링 크롤러(Googlebot WRS·Yeti 등)는 비콘을 울린다 — "봇은 JS 못 돌린다" 가정 폐기.
 const BOT_UA_RE =
   /bot|spider|crawl|slurp|headless|lighthouse|preview|yeti|daum|petal|semrush|ahrefs|yandex|baidu|bytespider|gptbot|inspectiontool|googleother|google-extended|facebookexternalhit|kakaotalk-scrap|whatsapp|telegram|skype/i;
@@ -182,7 +228,7 @@ export function isBotUserAgent(ua: string): boolean {
 
 /**
  * 수집 허용 UA — 무UA(비브라우저 클라이언트)·봇 UA 는 거부. `/api/track` 서버 백스톱과 conversion 적재(점수·가입)가
- * 같은 판별을 쓴다(v1.16: 방문·전환 게이트 대칭). UA 는 판별에만 사용·미저장.
+ * 같은 판별을 쓴다(v1.16: 방문·전환 게이트 대칭). 저장은 판별을 통과한 요청의 원문만 서버가 한다(v1.31).
  */
 export function isTrackableUserAgent(ua: string | null | undefined): boolean {
   return typeof ua === "string" && ua.length > 0 && !isBotUserAgent(ua);
