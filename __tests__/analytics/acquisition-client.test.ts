@@ -198,3 +198,22 @@ test("bot gate is symmetric: automation sends neither visit beacons nor conversi
   assert.equal(acq.shouldSendPlayConversion(), false, "first-touch 당 1회");
   assert.equal(storedFirstTouch(human)?.playConversionSent, true);
 });
+
+
+test("visit rows carry the raw external referrer for server-side normalization (v1.31)", async () => {
+  const referrer = "https://gall.dcinside.com/board/view/?id=lotto2&no=1072095#c";
+  const dom = installDom({ href: "http://localhost:3000/generate", referrer });
+  const acq = await freshModule();
+  acq.trackVisit("/generate");
+  dom.interact();
+  assert.deepEqual(
+    dom.sent.map((e) => [e.kind, e.source_scope, e.source_kind, e.referrer_domain ?? null, e.referrer_url]),
+    [
+      ["visit", "current", "referrer", "gall.dcinside.com", referrer],
+      ["visit", "first_touch", "referrer", "gall.dcinside.com", referrer],
+    ],
+    "도메인(정규화)과 원문(검증은 서버)이 함께 간다 — fragment 도 원문 그대로, 서버가 지운다",
+  );
+  const ft = JSON.parse(dom.localStorage.getItem(FT_KEY) ?? "null") as { referrer?: string } | null;
+  assert.equal(ft?.referrer, referrer, "first-touch 저장값에 획득 시점 레퍼러 원문이 남는다");
+});

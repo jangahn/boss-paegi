@@ -7,6 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { log, errInfo } from "@/lib/log";
 import {
   buildConversionRow,
+  withUserAgent,
+  type ConversionRow,
   type TrackRow,
   type ConversionStep,
   type RawSource,
@@ -66,7 +68,7 @@ export function parsePublicTrackAck(value: unknown): PublicTrackAck | null {
 }
 
 async function recordBoundedAnalyticsEvent(
-  row: TrackRow | ReturnType<typeof buildConversionRow>,
+  row: (TrackRow | ConversionRow) & { ua?: string | null },
   memberState: MemberState,
   actorKey: string,
   dependencies?: PublicTrackDependencies,
@@ -118,16 +120,17 @@ export async function recordTrackEvent(
   );
 }
 
-/** 점수제출/가입 conversion도 동일 원자 quota RPC로만 적재한다. */
+/** 점수제출/가입 conversion도 동일 원자 quota RPC로만 적재한다. ua 는 그 요청의 User-Agent(서버가 헤더에서, v1.31). */
 export async function recordConversion(
   step: ConversionStep,
   rawSource: RawSource | null | undefined,
   memberState: MemberState,
   actorKey: string,
   dependencies?: PublicTrackDependencies,
+  ua: string | null = null,
 ): Promise<PublicTrackAck | null> {
   return recordBoundedAnalyticsEvent(
-    buildConversionRow(step, rawSource),
+    withUserAgent(buildConversionRow(step, rawSource), ua),
     memberState,
     actorKey,
     dependencies,

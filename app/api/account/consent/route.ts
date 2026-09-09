@@ -363,6 +363,8 @@ export async function POST(req: NextRequest) {
           body.acqSource as RawSource,
           memberStateFromUser(user),
           actorKey,
+          undefined,
+          req.headers.get("user-agent"),
         );
       }
     }
