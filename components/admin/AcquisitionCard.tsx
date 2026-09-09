@@ -1,34 +1,14 @@
 import type { AcquisitionStats } from "@/lib/admin-acquisition";
+import { SOURCE_KIND_KO, VIRAL_KO, landingLabel, sourceLabel } from "@/lib/admin-acquisition-labels";
 
 // 유입 분석 카드 — 방문 현황(current) + source별 전환(first-touch·무식별 근사) + 바이럴 루프.
 // 전환율은 세션/점수제출/계정 단위가 섞인 근사. 무식별이라 100% 보장/캡 안 함, 분모 0이면 "—".
 
-const KIND_KO: Record<string, string> = { direct: "직접", utm: "UTM", referrer: "referrer", viral: "바이럴", "기타": "기타" };
-const VIRAL_KO: Record<string, string> = { score: "점수 공유 경유", doll: "캐릭터 공유 경유" };
-
-// 랜딩 표시 묶음(가안 A) — 저장은 세분 토큰, 표시만 묶는다(묶음을 바꿔도 재집계 가능).
-const LANDING_GROUP_KO: Record<string, string> = {
-  home: "홈", play: "게임", generate: "캐릭터 생성", gallery: "갤러리", leaderboard: "랭킹",
-  doll: "캐릭터 상세", share: "점수 공유", history: "기록", news: "소식", badges: "배지",
-  account: "계정·결제", credits: "계정·결제", login: "로그인",
-  faq: "약관·안내", terms: "약관·안내", privacy: "약관·안내",
-  other: "기타", "기타": "기타", "": "(수집 전)",
-};
-function landingLabel(v: string): string {
-  return LANDING_GROUP_KO[v] ?? v;
-}
 /** 표시 라벨 기준으로 합쳐 정렬 — 계정·결제/약관·안내처럼 여러 토큰이 한 줄로 묶인다. */
 function groupLandings(rows: { landing: string; visits: number }[]) {
   const m = new Map<string, number>();
   for (const r of rows) m.set(landingLabel(r.landing), (m.get(landingLabel(r.landing)) ?? 0) + r.visits);
   return [...m.entries()].map(([label, visits]) => ({ label, visits })).sort((a, b) => b.visits - a.visits);
-}
-
-function sourceLabel(kind: string, value: string): string {
-  const k = KIND_KO[kind] ?? kind;
-  if (kind === "direct" || kind === "기타" || !value) return k;
-  if (kind === "viral") return `${k} · ${value === "score" ? "점수" : value === "doll" ? "캐릭터" : value}`;
-  return `${k} · ${value}`;
 }
 
 function rate(n: number, d: number): string {
@@ -47,7 +27,7 @@ export function AcquisitionCard({ stats }: { stats: AcquisitionStats }) {
       {/* 방문 유입 현황(current) */}
       <div className="rounded-xl border border-foreground/10 ui-surface p-3">
         <p className="mb-2 text-[11px] font-semibold text-zinc-400">
-          방문 출처 <span className="font-normal">— 탭 세션 단위 · 현재 진입(채널 합계: {currentByKind.map((k) => `${KIND_KO[k.key] ?? k.key} ${k.value}`).join(" · ") || "없음"})</span>
+          방문 출처 <span className="font-normal">— 탭 세션 단위 · 현재 진입(채널 합계: {currentByKind.map((k) => `${SOURCE_KIND_KO[k.key] ?? k.key} ${k.value}`).join(" · ") || "없음"})</span>
         </p>
         {currentBySource.length === 0 ? (
           <p className="text-[11px] text-zinc-400">데이터 없음</p>

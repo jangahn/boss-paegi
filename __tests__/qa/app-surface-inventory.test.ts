@@ -20,6 +20,7 @@ const EXPECTED_PAGES = [
   "/account/payments",
   "/admin",
   "/admin/acquisition",
+  "/admin/acquisition/events",
   "/admin/analytics",
   "/admin/analytics/sessions",
   "/admin/analytics/sessions/[id]",
@@ -236,7 +237,7 @@ test("every page and API route is enrolled in the exact app surface manifest", (
     )
     .sort();
 
-  assert.equal(pages.length, 59, "page count changed; update the exact manifest");
+  assert.equal(pages.length, 60, "page count changed; update the exact manifest");
   assert.equal(apis.length, 70, "API count changed; update the exact manifest");
   assert.equal(
     nonApiRouteHandlers.length,
