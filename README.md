@@ -365,7 +365,7 @@ npm run qa:db:reactivation-auth-api # 로컬 GoTrue Admin API의 activate/cancel
 v0.3 (2026-06-05 라이브, 실기기 1차 QA 반영):
 - 무기 4종 + 효과음 (주먹/싸대기/키보드/종이, Web Audio 합성)
 - 배경 4종 (사무실/탕비실/회의실/회식자리)
-- 부장님 시비 멘트 (5.5s 간격 랜덤)
+- 부장님 시비 멘트 (4.5~7s 지터 간격 · tier 셔플백 · T0~T2 인접 tier 혼합 — v1.32, `lib/taunts.ts`)
 - AI 캐릭터: strength 0.65 + birefnet 누끼 + 사이즈 200
 - 점수 0 종료 시 홈으로 (모달 X)
 
@@ -947,6 +947,12 @@ v1.33 (2026-09-10, 보안 업그레이드 — next 16.2.12→16.3.4 · sharp 0.3
 - **배경**: CI `npm run audit`(moderate 게이트)가 신규 경보 3건으로 모든 PR 을 막음 — next **critical 2**(windows 호스트 RCE GHSA-p293-qw3h-jr36 · AVIF Image Optimization RCE GHSA-2xp9-vwfh-vxw4, 패치 16.3.3+), sharp high(libheif GHSA-rgj7-g3m4-5g8c, 0.35.4+), js-yaml high. 이 레포는 next·sharp 를 정확 고정(exact pin)하므로 `npm audit fix` 만으론 해소 불가 → 명시 업그레이드.
 - **변경**: `package.json` next 16.3.4 · sharp 0.35.4 · eslint-config-next 16.3.4(정확 고정 유지), 잠금파일 갱신. 코드 변경 없음. 16.3.4 = 16.3.3 보안 릴리스 + AVIF 최적화 재활성 후속(백포트 버그픽스 3).
 - **검증**: `npm audit` 0건, lint 0 에러(신규 규칙 `@next/next/no-location-assign-relative-destination` 경고 13 — 기존 코드, 별도 정리 대상), typecheck, node 테스트 전부 pass, goldens·eslint-rule 셀프테스트, `next build`(node22 래퍼). 배포 후 프로드 홈·/play 실브라우저 스모크.
+v1.32 (2026-09-10, 플레이 시비 멘트 반복감 해소 — 셔플백·게임 간 커서·인접 tier 혼합·간격 지터; 마이그레이션 없음):
+- **배경(실측 30일 452판)**: 판 길이 p50 65s → 멘트 ~12개, 최종 tier T0 38%·T1 31%. 종전 `randomTaunt` 는 tier 8줄에서 **복원 추출 + 직전 1개만 제외**라 8회 추출 기대 고유 5.3개, A-B-A 허용, 매 판 T0 같은 8줄부터 시작 — "같은 멘트 연속·일부만 반복" 체감이 구조적이었다. 콘텐츠 증량(권장 8줄)은 사용자 결정으로 하지 않음.
+- **셔플백(`lib/taunts.ts` `nextTaunt`, 순수·DOM 없음)**: 롤×성별×tier 당 백 하나 — 풀을 섞어 순서대로 소진, 다 쓰면 재셔플. 한 사이클 안 반복 0, 뽑은 줄이 직전 줄과 같으면(이음새·풀 간 동일 문구) 다음 줄과 교대. **백 커서는 판 사이에 이어진다**(localStorage `bp_taunt_bags_v1` — 공개 문구만·식별자 없음, 콘솔 발행으로 사라진 줄은 대조해 버리고 새 줄은 다음 사이클부터) → 매 판 첫 멘트가 달라진다. storage 불가면 세션 메모리만.
+- **인접 tier 혼합(`TAUNT_ADJACENT_TIER = [1, 0, 1, null, null]`)**: 무시·짜증 톤을 공유하는 T0↔T1·T2←T1 만 3회 묶음마다 1회(2:1, 묶음 안 위치 무작위) 인접 tier 백에서 뽑는다. 애원(T3)·항복(T4)은 순수. 인접 몫도 그 tier 의 백 커서를 소모하므로 tier 가 오른 직후 같은 줄이 되돌아오지 않는다(T0·T1 합쳐 16줄 한 바퀴 무반복).
+- **간격 지터(`useTaunts`)**: 고정 5.5s → `nextTauntDelayMs` 4.5~7s 균등(setTimeout 체인). 첫 멘트 1.5s·노출 3s 불변, 최소 간격 > 노출 시간이라 말풍선 겹침 없음. 셀렉터 상태는 ref 로 효과 재실행(롤/설정 로딩)·재시작(over 토글)에도 유지.
+- 테스트 `__tests__/game/taunts.test.ts`(9): 인접 규칙 길이=TIER_COUNT, 사이클 무반복·이음새, 40시드 연속 동일 0, 2:1 묶음, 인접 커서 연속, T3·T4 순수, 풀 대조, 영속 포맷 왕복·불량값, 지터 범위. 어드민 롤 대사 에디터 권장 8줄 표기·스키마 불변.
 
 v1.31 (2026-09-09, 유입 원본 저장 — UA 원문·외부 레퍼러 전체 URL + 어드민 「공유·유입」 2차 탭 「원본 이벤트」; **Migration 0124**):
 - **배경(lottogen 조사 이식)**: '직접' 유입을 방문 단위로 특정할 수 없었다 — 레퍼러 도메인·정규화 소스만 저장. 통제할 수 없는 경로(커뮤니티 앱 인앱·카톡·평문 URL 복사)를 분석하려면 UA 를 미리 파싱한 버킷이 아니라 **원문**을 남겨야 한다(어떤 앱이 오는지 미리 알 수 없어 분류표를 먼저 정할 수 없음).
