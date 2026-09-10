@@ -8,7 +8,7 @@
  *   4. 궁극기 능력(triggerUltimate/ultBlow/ultThrow/ultFinish/restoreDoll)
  *   5. 탭/플링 메커닉(doll pointer down/move/up, fling 물리, wall hit)
  *   6~9. 스와이프/스로우/슛/드로우 핸들러
- *   10. 충돌(projectile ↔ doll, 임팩트 데미지)
+ *   10. 피격 판정 — 투척물·비비탄은 캐릭터 실루엣(알파맵) 접촉(v1.34, game/physics/silhouette-hit) / 캐릭터 ↔ 벽 충돌
  *   11. 레이아웃/뷰포트(stage 사이즈, doll scale, 물리 바디 리스케일)
  *   12. 생명주기(constructor/destroy/setWeapon/setDamageScore 등)
  *
@@ -34,6 +34,7 @@ import { DamageLayer } from "@/game/entities/DamageLayer";
 import { TransientDecals } from "@/game/entities/TransientDecals";
 import { DazeFx } from "@/game/effects/DazeFx";
 import { PhysicsWorld } from "@/game/physics/PhysicsWorld";
+import { findProjectileHit } from "@/game/physics/silhouette-hit";
 import { ThrowInput } from "@/game/input/ThrowInput";
 import { SwipeInput } from "@/game/input/SwipeInput";
 import { ShootInput } from "@/game/input/ShootInput";
@@ -1197,47 +1198,59 @@ export class PlayScene extends Container {
     playHitSound("crack", 0.9);
   };
 
-  /** 매 프레임 pellet 전진 + 캐릭터 명중 판정 */
+  /** 매 프레임 pellet 전진 + 캐릭터 명중 판정 — 명중 = 탄 경로가 실루엣(알파맵)에 닿은 프레임(v1.34, 투척과 같은 규칙) */
   private updatePellets(deltaSec: number) {
     if (!this.pellets.length) return;
-    const hitR = this.doll.naturalSize * 0.45 * (this.doll.scale.x || 1);
+    // 넓은 단계: 물리 원 + 여유(탄은 점이라 선분 샘플만으로 정밀 판정)
+    const broadR = this.doll.naturalSize * 0.55 * (this.doll.scale.x || 1) + 40;
+    const toLocal = (pt: { x: number; y: number }) => this.doll.bodyWrap.toLocal(pt, this);
+    const inside = (lx: number, ly: number) => this.doll.isInsideBody(lx, ly);
     for (let i = this.pellets.length - 1; i >= 0; i--) {
       const p = this.pellets[i];
+      const fromX = p.x;
+      const fromY = p.y;
       p.x += p.vx * deltaSec;
       p.y += p.vy * deltaSec;
       p.g.x = p.x;
       p.g.y = p.y;
       const dx = p.x - this.doll.x;
       const dy = p.y - this.doll.y;
+      const ldx = fromX - this.doll.x;
+      const ldy = fromY - this.doll.y;
       const out =
         p.x < -100 ||
         p.x > this.viewW + 100 ||
         p.y < -100 ||
         p.y > this.viewH + 100;
-      if (dx * dx + dy * dy <= hitR * hitR) {
+      const near = dx * dx + dy * dy <= broadR * broadR || ldx * ldx + ldy * ldy <= broadR * broadR;
+      const hit = near
+        ? findProjectileHit({ x: fromX, y: fromY }, { x: p.x, y: p.y }, 0, toLocal, inside)
+        : null;
+      if (hit) {
         const w = p.weapon;
+        const hx = hit.x;
+        const hy = hit.y;
         // 딱콩 — 따끔: 붉은 플래시 + 탄 방향 움찔(강) + 히트스톱 + 스팅 스파이크 + 탄환 튕김 + 넉백 + 자국
         this.doll.triggerHit(w.shake * 1.4);
         this.doll.hitSquash(p.vx, p.vy, 1.0, { freq: 13, damp: 9 });
         this.doll.hitFlash(0xff6b6b, 0.07);
-        this.fx.hitMarker(p.x, p.y);
-        this.fx.impactLines(p.x, p.y, 0xff5a5a, 5);
-        this.fx.ricochet(p.x, p.y, p.vx, p.vy, w.color);
-        this.fx.burst(p.x, p.y, w.particleCount, w.color);
+        this.fx.hitMarker(hx, hy);
+        this.fx.impactLines(hx, hy, 0xff5a5a, 5);
+        this.fx.ricochet(hx, hy, p.vx, p.vy, w.color);
+        this.fx.burst(hx, hy, w.particleCount, w.color);
         const pl = Math.hypot(p.vx, p.vy) || 1;
         Body.applyForce(this.dollBody, this.dollBody.position, {
           x: (p.vx / pl) * 0.006,
           y: (p.vy / pl) * 0.006,
         });
-        const hitLocal = this.doll.bodyWrap.toLocal({ x: p.x, y: p.y }, this);
-        if (this.doll.isInsideBody(hitLocal.x, hitLocal.y)) {
-          this.transientDecals.welt(hitLocal.x, hitLocal.y);
-        }
+        // 타격점은 판정상 실루엣 안 — 자국은 그 자리에
+        const hitLocal = toLocal({ x: hx, y: hy });
+        this.transientDecals.welt(hitLocal.x, hitLocal.y);
         this.registerHitPulse(1);
         this.maybeYelp(0.5, 1);
         playHitSound("knock", 1.15);
-        const gain = this.reportHit(p.x, p.y, w.strength, w.key);
-        this.fx.scorePop(p.x, p.y - 20, gain, w.color);
+        const gain = this.reportHit(hx, hy, w.strength, w.key);
+        this.fx.scorePop(hx, hy - 20, gain, w.color);
       } else if (!out) {
         continue;
       }
@@ -1289,16 +1302,47 @@ export class PlayScene extends Container {
       }
       return;
     }
-    let projBody: Body | null = null;
-    if (a.label === "projectile" && b.label === "doll") projBody = a;
-    else if (b.label === "projectile" && a.label === "doll") projBody = b;
-    if (!projBody) return;
-    const proj = this.projectiles.find((p) => p.body === projBody);
-    if (!proj || proj.hasHit) return;
+    // 투척물 ↔ 캐릭터는 물리 충돌하지 않는다(v1.34) — 피격은 update() 의 checkProjectileHits(실루엣 접촉)가 판정한다.
+  };
+
+  // ── 투척물 실루엣 피격(v1.34) ─────────────────────────────────────
+  /**
+   * 비행 중인 투척물이 캐릭터 그림(알파맵)에 닿았는지 매 프레임 판정. 물리 원(r=0.55·naturalSize)이 아니라
+   * 실제 실루엣 기준이라 허공 피격이 없고, 빗나가면 계속 날아가 화면 밖에서 사라진다.
+   * 넓은 단계(중심 거리 ≤ 물리 반지름 + 이모지 크기, 직전 위치 포함)를 지난 것만 선분 × 중심부 원 샘플로 정밀 검사.
+   */
+  private checkProjectileHits() {
+    if (!this.projectiles.length) return;
+    const broadR = this.doll.naturalSize * 0.55 * (this.doll.scale.x || 1);
+    const toLocal = (pt: { x: number; y: number }) => this.doll.bodyWrap.toLocal(pt, this);
+    const inside = (lx: number, ly: number) => this.doll.isInsideBody(lx, ly);
+    for (const proj of this.projectiles) {
+      if (proj.hasHit) continue;
+      const b = proj.body;
+      const size = proj.weapon.projectileSize ?? 48;
+      const reach = broadR + size;
+      const ddx = b.position.x - this.doll.x;
+      const ddy = b.position.y - this.doll.y;
+      const ldx = proj.lastX - this.doll.x;
+      const ldy = proj.lastY - this.doll.y;
+      if (ddx * ddx + ddy * ddy > reach * reach && ldx * ldx + ldy * ldy > reach * reach) continue;
+      const hit = findProjectileHit(
+        { x: proj.lastX, y: proj.lastY },
+        { x: b.position.x, y: b.position.y },
+        size,
+        toLocal,
+        inside,
+      );
+      if (hit) this.hitDollWithProjectile(proj, hit.x, hit.y);
+    }
+  }
+
+  /** 실루엣에 닿은 투척물 처리 — 효과·점수·밀어내기(종전 collisionStart 블록). 종료 뒤·중복 호출은 무시. */
+  private hitDollWithProjectile(proj: Projectile, hx: number, hy: number) {
+    if (this.lifecycle !== "running" || proj.hasHit) return;
     proj.markHit();
+    const projBody = proj.body;
     const w = proj.weapon;
-    const hx = projBody.position.x;
-    const hy = projBody.position.y;
     // 충돌 속도 비례 데미지 (px/step 기준: 1200px/s ≈ 20)
     const impactSpeed = projBody.speed;
     const factor = Math.min(THROW_FACTOR_MAX, Math.max(0.6, impactSpeed / 18));
@@ -1335,9 +1379,12 @@ export class PlayScene extends Container {
         y: this.dollBody.velocity.y + v.y * k,
       });
     }
+    // 맞은 투척물은 살짝 튕겨 나가며 페이드 — 물리 충돌이 없으니 직접 반사한다.
+    const pv = projBody.velocity;
+    Body.setVelocity(projBody, { x: -pv.x * 0.25, y: -pv.y * 0.25 });
     const gain = this.reportHit(hx, hy, points, w.key);
     this.fx.scorePop(hx, hy - 30, gain, w.color);
-  };
+  }
 
   update(deltaSec: number) {
     if (this.lifecycle !== "running") return;
@@ -1380,6 +1427,9 @@ export class PlayScene extends Container {
     for (const proj of this.projectiles) {
       if (proj.hasHit) continue;
       const b = proj.body;
+      // 실루엣 판정의 선분 시작점 — 이번 step 직전 위치
+      proj.lastX = b.position.x;
+      proj.lastY = b.position.y;
       Body.applyForce(b, b.position, {
         x: 0,
         y: -b.mass * 1.6 * 0.001 * THROW_GRAVITY_CANCEL,
@@ -1434,6 +1484,7 @@ export class PlayScene extends Container {
     this.transientDecals.update(deltaSec);
     this.fx.update(deltaSec);
     this.shootInput.update(deltaSec, this.doll.x, this.doll.y);
+    this.checkProjectileHits();
     this.updatePellets(deltaSec);
 
     for (let i = this.projectiles.length - 1; i >= 0; i--) {

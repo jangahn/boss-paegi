@@ -9,6 +9,7 @@ const { Container } = await import("pixi.js");
 const { ShootInput } = await import("../../game/input/ShootInput.ts");
 const {
   ThrowInput,
+  MAX_CONCURRENT_GRABS,
   MAX_THROW_LAUNCH_SPEED,
 } = await import("../../game/input/ThrowInput.ts");
 const { SwipeInput } = await import("../../game/input/SwipeInput.ts");
@@ -131,6 +132,66 @@ test("ThrowInput enforces speed boundaries, finite cap, identity, and same-categ
     3,
     "book down cannot become a keyboard launch after a category-preserving switch",
   );
+  input.destroy();
+});
+
+test("ThrowInput: 손가락마다 독립 잡기 — 동시 탭은 그 자리마다 발사, 모르는 포인터 무시, 상한·전체 취소", (t) => {
+  let now = 10;
+  t.mock.method(performance, "now", () => now);
+  const stage = new Container();
+  const launches: Array<{ x: number; y: number; power: number }> = [];
+  const input = new ThrowInput(stage, {
+    onLaunch: ({ x, y, power }) => launches.push({ x, y, power }),
+  });
+  input.setActive(true, weapon("book"));
+
+  // 두 손가락 동시 잡기 → 각자 놓기 = 놓은 자리마다 약한 토스(조준 보정은 PlayScene)
+  input.handlePointerDown(pointer(1, 40, 600));
+  input.handlePointerDown(pointer(2, 320, 600));
+  assert.equal(input.pointerId, 2, "가장 최근 손가락이 관측점");
+  now = 30;
+  input.handlePointerUp(pointer(2, 320, 600));
+  assert.equal(launches.length, 1);
+  assert.deepEqual([launches[0].x, launches[0].y, launches[0].power], [320, 600, 0]);
+  assert.equal(input.pointerId, 1, "남은 손가락은 계속 잡고 있다");
+  input.handlePointerUp(pointer(1, 40, 600));
+  assert.equal(launches.length, 2);
+  assert.deepEqual([launches[1].x, launches[1].y], [40, 600]);
+  assert.equal(input.pointerId, null);
+
+  // 한 손가락 휘두르기 중 다른 손가락 탭이 끼어들어도 서로 섞이지 않는다
+  now = 100;
+  input.handlePointerDown(pointer(3, 0, 0));
+  now = 130;
+  input.handlePointerMove(pointer(3, 60, 0));
+  input.handlePointerDown(pointer(4, 300, 500));
+  input.handlePointerUp(pointer(4, 300, 500));
+  assert.equal(launches.length, 3);
+  assert.equal(launches[2].power, 0, "끼어든 탭은 자기 자리의 약한 토스");
+  now = 160;
+  input.handlePointerMove(pointer(3, 120, 0)); // 120px/60ms = 2000px/s → cap
+  input.handlePointerUp(pointer(3, 120, 0));
+  assert.equal(launches.length, 4);
+  assert.equal(launches[3].power, 1, "휘두르던 손가락은 자기 이력으로 발사");
+
+  // 모르는 포인터 up 은 무시, 상한 초과 down 은 무시, cancel 은 전부 해제
+  input.handlePointerUp(pointer(99, 0, 0));
+  assert.equal(launches.length, 4);
+  for (let i = 0; i < MAX_CONCURRENT_GRABS + 2; i++) input.handlePointerDown(pointer(200 + i, i, i));
+  let held = 0;
+  for (let i = 0; i < MAX_CONCURRENT_GRABS + 2; i++) {
+    const before = launches.length;
+    input.handlePointerUp(pointer(200 + i, i, i));
+    if (launches.length > before) held += 1;
+  }
+  assert.equal(held, MAX_CONCURRENT_GRABS, "동시 잡기는 상한까지만");
+  input.handlePointerDown(pointer(300, 0, 0));
+  input.handlePointerDown(pointer(301, 0, 0));
+  input.cancel();
+  assert.equal(input.pointerId, null);
+  input.handlePointerUp(pointer(300, 0, 0));
+  input.handlePointerUp(pointer(301, 0, 0));
+  assert.equal(launches.length, 4 + MAX_CONCURRENT_GRABS, "cancel 뒤 up 은 발사하지 않는다");
   input.destroy();
 });
 
