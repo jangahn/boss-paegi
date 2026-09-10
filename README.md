@@ -943,6 +943,10 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.33 (2026-09-10, 보안 업그레이드 — next 16.2.12→16.3.4 · sharp 0.35.3→0.35.4 · eslint-config-next 16.3.4 · js-yaml 4.3.2; 마이그레이션 없음):
+- **배경**: CI `npm run audit`(moderate 게이트)가 신규 경보 3건으로 모든 PR 을 막음 — next **critical 2**(windows 호스트 RCE GHSA-p293-qw3h-jr36 · AVIF Image Optimization RCE GHSA-2xp9-vwfh-vxw4, 패치 16.3.3+), sharp high(libheif GHSA-rgj7-g3m4-5g8c, 0.35.4+), js-yaml high. 이 레포는 next·sharp 를 정확 고정(exact pin)하므로 `npm audit fix` 만으론 해소 불가 → 명시 업그레이드.
+- **변경**: `package.json` next 16.3.4 · sharp 0.35.4 · eslint-config-next 16.3.4(정확 고정 유지), 잠금파일 갱신. 코드 변경 없음. 16.3.4 = 16.3.3 보안 릴리스 + AVIF 최적화 재활성 후속(백포트 버그픽스 3).
+- **검증**: `npm audit` 0건, lint 0 에러(신규 규칙 `@next/next/no-location-assign-relative-destination` 경고 13 — 기존 코드, 별도 정리 대상), typecheck, node 테스트 전부 pass, goldens·eslint-rule 셀프테스트, `next build`(node22 래퍼). 배포 후 프로드 홈·/play 실브라우저 스모크.
 v1.32 (2026-09-10, 플레이 시비 멘트 반복감 해소 — 셔플백·게임 간 커서·인접 tier 혼합·간격 지터; 마이그레이션 없음):
 - **배경(실측 30일 452판)**: 판 길이 p50 65s → 멘트 ~12개, 최종 tier T0 38%·T1 31%. 종전 `randomTaunt` 는 tier 8줄에서 **복원 추출 + 직전 1개만 제외**라 8회 추출 기대 고유 5.3개, A-B-A 허용, 매 판 T0 같은 8줄부터 시작 — "같은 멘트 연속·일부만 반복" 체감이 구조적이었다. 콘텐츠 증량(권장 8줄)은 사용자 결정으로 하지 않음.
 - **셔플백(`lib/taunts.ts` `nextTaunt`, 순수·DOM 없음)**: 롤×성별×tier 당 백 하나 — 풀을 섞어 순서대로 소진, 다 쓰면 재셔플. 한 사이클 안 반복 0, 뽑은 줄이 직전 줄과 같으면(이음새·풀 간 동일 문구) 다음 줄과 교대. **백 커서는 판 사이에 이어진다**(localStorage `bp_taunt_bags_v1` — 공개 문구만·식별자 없음, 콘솔 발행으로 사라진 줄은 대조해 버리고 새 줄은 다음 사이클부터) → 매 판 첫 멘트가 달라진다. storage 불가면 세션 메모리만.
