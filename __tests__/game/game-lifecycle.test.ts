@@ -240,10 +240,10 @@ test("held fire, in-flight pellets, and throw collisions cannot score after end;
     scene,
     "projectiles",
   )[0];
-  const dollBody = privateValue<object>(scene, "dollBody");
-  privateCall(scene, "handleCollision", firstProjectile.body, dollBody);
-  privateCall(scene, "handleCollision", firstProjectile.body, dollBody);
-  assert.equal(hits.length, 1, "a projectile collision scores at most once");
+  // v1.34: 투척물 피격은 collisionStart 가 아니라 실루엣 접촉 판정 → hitDollWithProjectile 로 직접 진입
+  privateCall(scene, "hitDollWithProjectile", firstProjectile, 400, 330);
+  privateCall(scene, "hitDollWithProjectile", firstProjectile, 400, 330);
+  assert.equal(hits.length, 1, "a projectile hit scores at most once");
   scene.update(0.2);
   assert.equal(privateValue<unknown[]>(scene, "projectiles").length, 0);
 
@@ -255,12 +255,12 @@ test("held fire, in-flight pellets, and throw collisions cannot score after end;
     power: 0.5,
     weapon: weapon("book"),
   });
-  const lateBody = privateValue<Array<{ body: object }>>(
+  const lateProjectile = privateValue<Array<{ body: object }>>(
     scene,
     "projectiles",
-  )[0].body;
+  )[0];
   scene.end();
-  privateCall(scene, "handleCollision", lateBody, dollBody);
+  privateCall(scene, "hitDollWithProjectile", lateProjectile, 400, 330);
   privateCall(scene, "reportHit", 400, 300, 999, "book");
   assert.equal(hits.length, 1, "post-end callbacks are fenced");
 

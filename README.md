@@ -943,6 +943,14 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.34 (2026-09-10, 투척물·비비탄 피격 = 캐릭터 실루엣(알파맵) 접촉 — 허공 피격 제거 + 투척 멀티터치; 마이그레이션 없음):
+- **배경(실측)**: 투척물 피격이 matter 물리의 `collisionStart`(캐릭터 원 r=0.55·naturalSize=110px ↔ 이모지 정사각형 52~56px)로 났다. 원이 스프라이트 상자(150×200)보다 크고 실루엣은 상자보다 좁아, 접촉 시 이모지 중심이 캐릭터 중심에서 136~150px 인데 실루엣 가장자리는 60~75px → **60~90px 허공에서 맞고 멈추던** 구조. 비비탄도 알파맵이 아니라 반지름 0.45 원이었고(자국 위치 판정에만 알파맵 사용), 탄이 점이라 정확해 보였을 뿐.
+- **판정(`game/physics/silhouette-hit.ts`, 순수)**: 매 프레임 비행체마다 ①직전 위치→현재 위치 선분을 20px 간격으로 나누고(관통 방지: 투척 1600px/s·비비탄 2600px/s 모두 커버) ②각 중심점의 이모지 중심부 원(반지름 **0.3 × size**, 중심 + 둘레 8점 — 글리프가 정사각형을 다 채우지 않아 회전 무관 근사; 비비탄은 중심만) ③각 점을 `bodyWrap.toLocal` 로 옮겨 `Doll.isInsideBody`(알파 ≥ 48, 실패 시 도형 근사)에 넣어 **처음 닿은 점 = 타격점**. 젤리 스쿼시·회전은 toLocal 이 반영. 넓은 단계(중심 거리 ≤ 물리 반지름 + 이모지 크기, 직전 위치 포함)를 지난 것만 정밀 검사.
+- **물리**: 투척물 collisionFilter mask 에서 캐릭터(0x0002) 제거 — 원에 닿아도 멈추지 않고, **빗나가면 포물선대로 날아가 화면 밖에서 소멸**(바닥 몸체 없음). 명중 시 효과·점수·밀어내기는 종전 블록 그대로(`hitDollWithProjectile`), 타격점만 실루엣 위로. 맞은 투척물은 속도 −25% 반사 후 기존 0.2s 페이드. 비비탄은 같은 선분 판정으로 통일(`updatePellets`, 자국은 항상 타격점).
+- **점수·봉투 불변**: 점수식·`THROW_FACTOR_MAX`·strength 그대로라 어뷰징 봉투(S1/S3)·RULES_VERSION 변경 없음. 달라지는 건 빗나감이 생겨 명중률이 내려가는 것(의도). 자동 조준은 캐릭터 중심을 노려 탭 발사·비비탄 명중률은 사실상 유지.
+- **투척 멀티터치(`game/input/ThrowInput.ts`)**: 단일 `pointerId` 잠금 → 손가락별 잡기 `Map`(이력 + 이모지 풀, 상한 `MAX_CONCURRENT_GRABS`=5). 빈 곳을 여러 손가락으로 탭하면 그 자리마다 조준 투척, 두 손으로 동시에 휘둘러 던지기도 독립. 무기 변경·비활성화·blur/hidden 은 전부 취소(종전 규칙 유지). `pointerId` 는 가장 최근 손가락을 돌려주는 관측 getter(라이프사이클 검증 공용). 탭 발사 한 발 ≈ 책 14·키보드 18점이라 S3(1,400점/초) 무관, 타격 횟수 봉투 S1 은 멀티터치 주먹과 같은 노출. 비비탄은 손가락별 자동 연사가 발사율을 곱하므로 제외.
+- 테스트 `__tests__/game/silhouette-hit.test.ts`(6: 샘플 규격·선분 분할·순서·허공 빗나감/접촉 명중·고속 관통·toLocal 변환) + `input-boundaries` ThrowInput 멀티 포인터(동시 탭·끼어들기·모르는 포인터·상한·cancel) + `game-lifecycle` 투척 경로를 `hitDollWithProjectile` 로 교체(중복·종료 후 펜스 유지). 실기기: LAN https(자체서명 `_local/certs`, `boss-paegi-lan` 3100) 로 사용자 확인 후 커밋.
+
 v1.33 (2026-09-10, 보안 업그레이드 — next 16.2.12→16.3.4 · sharp 0.35.3→0.35.4 · eslint-config-next 16.3.4 · js-yaml 4.3.2; 마이그레이션 없음):
 - **배경**: CI `npm run audit`(moderate 게이트)가 신규 경보 3건으로 모든 PR 을 막음 — next **critical 2**(windows 호스트 RCE GHSA-p293-qw3h-jr36 · AVIF Image Optimization RCE GHSA-2xp9-vwfh-vxw4, 패치 16.3.3+), sharp high(libheif GHSA-rgj7-g3m4-5g8c, 0.35.4+), js-yaml high. 이 레포는 next·sharp 를 정확 고정(exact pin)하므로 `npm audit fix` 만으론 해소 불가 → 명시 업그레이드.
 - **변경**: `package.json` next 16.3.4 · sharp 0.35.4 · eslint-config-next 16.3.4(정확 고정 유지), 잠금파일 갱신. 코드 변경 없음. 16.3.4 = 16.3.3 보안 릴리스 + AVIF 최적화 재활성 후속(백포트 버그픽스 3).

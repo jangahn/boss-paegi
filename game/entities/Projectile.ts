@@ -17,6 +17,9 @@ export class Projectile extends Container {
   hasHit = false;
   /** 잔상 스폰 누산(초) — PlayScene 이 비행 중 일정 간격으로 ghost 를 남길 때 사용 */
   trailAccum = 0;
+  /** 직전 물리 step 전 위치 — 실루엣 피격 판정의 선분 샘플 시작점(PlayScene 이 step 직전에 갱신) */
+  lastX: number;
+  lastY: number;
   private fadeTime = 0;
   private static readonly FADE_DURATION = 0.2;
 
@@ -24,6 +27,8 @@ export class Projectile extends Container {
     super();
     this.body = body;
     this.weapon = weapon;
+    this.lastX = body.position.x;
+    this.lastY = body.position.y;
 
     const size = weapon.projectileSize ?? 48;
     const shadow = new Graphics();

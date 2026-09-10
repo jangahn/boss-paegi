@@ -137,7 +137,10 @@ export class PhysicsWorld {
       restitution: 0.3,
       label: "projectile",
       angle: Math.random() * Math.PI,
-      collisionFilter: { category: 0x0001, mask: 0x0002 | 0x0004 },
+      // 캐릭터 몸체(0x0002)와는 물리 충돌하지 않는다(v1.34) — 피격은 PlayScene 이 알파맵 실루엣 접촉으로
+      // 판정(game/physics/silhouette-hit). 원에 닿는 순간 허공에서 멈추던 문제의 근본 원인 제거.
+      // 빗나가면 포물선대로 날아가 화면 밖에서 소멸한다(바닥 몸체 없음).
+      collisionFilter: { category: 0x0001, mask: 0x0004 },
     });
     Body.setVelocity(body, { x: vx, y: vy });
     Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.4);
