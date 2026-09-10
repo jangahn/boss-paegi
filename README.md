@@ -943,6 +943,11 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.33 (2026-09-10, 보안 업그레이드 — next 16.2.12→16.3.4 · sharp 0.35.3→0.35.4 · eslint-config-next 16.3.4 · js-yaml 4.3.2; 마이그레이션 없음):
+- **배경**: CI `npm run audit`(moderate 게이트)가 신규 경보 3건으로 모든 PR 을 막음 — next **critical 2**(windows 호스트 RCE GHSA-p293-qw3h-jr36 · AVIF Image Optimization RCE GHSA-2xp9-vwfh-vxw4, 패치 16.3.3+), sharp high(libheif GHSA-rgj7-g3m4-5g8c, 0.35.4+), js-yaml high. 이 레포는 next·sharp 를 정확 고정(exact pin)하므로 `npm audit fix` 만으론 해소 불가 → 명시 업그레이드.
+- **변경**: `package.json` next 16.3.4 · sharp 0.35.4 · eslint-config-next 16.3.4(정확 고정 유지), 잠금파일 갱신. 코드 변경 없음. 16.3.4 = 16.3.3 보안 릴리스 + AVIF 최적화 재활성 후속(백포트 버그픽스 3).
+- **검증**: `npm audit` 0건, lint 0 에러(신규 규칙 `@next/next/no-location-assign-relative-destination` 경고 13 — 기존 코드, 별도 정리 대상), typecheck, node 테스트 전부 pass, goldens·eslint-rule 셀프테스트, `next build`(node22 래퍼). 배포 후 프로드 홈·/play 실브라우저 스모크.
+
 v1.31 (2026-09-09, 유입 원본 저장 — UA 원문·외부 레퍼러 전체 URL + 어드민 「공유·유입」 2차 탭 「원본 이벤트」; **Migration 0124**):
 - **배경(lottogen 조사 이식)**: '직접' 유입을 방문 단위로 특정할 수 없었다 — 레퍼러 도메인·정규화 소스만 저장. 통제할 수 없는 경로(커뮤니티 앱 인앱·카톡·평문 URL 복사)를 분석하려면 UA 를 미리 파싱한 버킷이 아니라 **원문**을 남겨야 한다(어떤 앱이 오는지 미리 알 수 없어 분류표를 먼저 정할 수 없음).
 - **저장(0124)**: `analytics_events.ua`(전 kind — 서버가 요청 헤더에서 `withUserAgent` 로 얹음, 512자)·`referrer_url`(visit 전용 — 클라가 `document.referrer` 원문을 보내고 서버 `normalizeReferrerUrl` 이 http(s)/android-app·fragment 제거·1024자로 검증, 부적합은 null). `kind_shape` 에 "referrer_url 은 visit 전용" 두 항, 적재 RPC 가 두 키를 읽음(jsonb 시그니처 불변 — 구 클라 null). first-touch 저장값에 획득 시점 레퍼러(`referrer`)를 함께 두어 뒤늦은 first_touch 방문 행도 원래 값을 싣는다. 전환(점수·가입)도 그 요청의 UA 를 기록.
