@@ -46,7 +46,6 @@ const GROUPS: Group[] = [
       { sec: "signupBanner", k: "nonmemberTitle", label: "제목", max: 80 },
       { sec: "signupBanner", k: "nonmemberSub", label: "설명", max: 200, multiline: true },
       { sec: "signupBanner", k: "nonmemberCta", label: "버튼", max: 30 },
-      { sec: "signupBanner", k: "lockedCta", label: "추가 캐릭터 잠금 카드 버튼 (비회원 토스트)", max: 30 },
     ],
   },
   {

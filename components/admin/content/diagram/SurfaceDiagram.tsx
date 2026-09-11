@@ -40,7 +40,6 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
       { id: "nonmemberTitle", label: "제목", tone: "edit" },
       { id: "nonmemberSub", label: "설명", tone: "edit" },
       { id: "nonmemberCta", label: "버튼", tone: "edit" },
-      { id: "lockedCta", label: "추가 캐릭터 잠금 카드 버튼 (🔒 카드 탭 토스트)", tone: "edit" },
     ],
   },
   galMemberEmpty: {
@@ -208,7 +207,6 @@ export const FIELD_SURFACE: Record<
   nonmemberTitle: [{ surface: "galNonmember", region: "nonmemberTitle" }],
   nonmemberSub: [{ surface: "galNonmember", region: "nonmemberSub" }],
   nonmemberCta: [{ surface: "galNonmember", region: "nonmemberCta" }],
-  lockedCta: [{ surface: "galNonmember", region: "lockedCta" }],
   memberEmptyTitle: [{ surface: "galMemberEmpty", region: "memberEmptyTitle" }],
   memberEmptySub: [{ surface: "galMemberEmpty", region: "memberEmptySub" }],
   memberEmptyCta: [{ surface: "galMemberEmpty", region: "memberEmptyCta" }],

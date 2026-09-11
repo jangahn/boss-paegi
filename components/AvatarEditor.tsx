@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { PhotoCropper } from "@/components/PhotoCropper";
 import { ModalShell } from "@/components/ModalShell";
-import { uploadAvatar, uploadPresetAvatar, removeAvatar } from "@/lib/avatar";
+import { uploadAvatar, uploadPresetAvatar } from "@/lib/avatar";
 import { AVATAR_PRESET_INDEXES, avatarPresetUrl } from "@/lib/avatar-presets";
 import { Spinner } from "@/components/Spinner";
 import { useClientOperationScope } from "@/lib/use-client-operation-scope";
@@ -11,18 +11,16 @@ import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 /**
  * 프로필 사진 변경/삭제 — 캐릭터 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
  * v1.41: 캐릭터 프리셋 5장 중 골라 그대로 올리는 경로 추가(`uploadPresetAvatar`, 알파 PNG 보존).
- * onSaved(null) = 기본 프사(유저별 고정 프리셋)로 삭제됨.
+ * v1.44: "기본 사진으로 되돌리기"(DELETE) 제거 — 프리셋 5장 중 고르기가 그 역할을 대신한다(기본 프사 = 유저별 고정 프리셋).
  */
 export function AvatarEditor({
   current,
-  hasCustomAvatar,
   onClose,
   onSaved,
 }: {
   current: string;
-  hasCustomAvatar: boolean;
   onClose: () => void;
-  onSaved: (url: string | null) => void;
+  onSaved: (url: string) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null); // 선택된 원본 objectURL (크롭 대상)
   const [busy, setBusy] = useState(false);
@@ -40,21 +38,6 @@ export function AvatarEditor({
     }
     if (src) URL.revokeObjectURL(src);
     setSrc(URL.createObjectURL(f));
-  };
-
-  const onRemove = async () => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    setError(null);
-    try {
-      await runScopedOperation((signal) => removeAvatar({ signal }));
-      onSaved(null);
-    } catch (e) {
-      busyRef.current = false;
-      setError(e instanceof Error ? e.message : "삭제 실패");
-      setBusy(false);
-    }
   };
 
   const onPreset = async (index: number) => {
@@ -184,18 +167,6 @@ export function AvatarEditor({
         >
           사진 선택
         </button>
-        {hasCustomAvatar && (
-          <button
-            key={busy ? "reset-busy" : "reset-idle"}
-            type="button"
-            onClick={() => void onRemove()}
-            disabled={busy}
-            className="flex transform-gpu items-center gap-1.5 text-sm text-red-400 transition hover:text-red-500 disabled:opacity-50"
-          >
-            {busy && <Spinner className="h-3.5 w-3.5" />}
-            기본 사진으로 되돌리기
-          </button>
-        )}
       </div>
       {error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
       <button

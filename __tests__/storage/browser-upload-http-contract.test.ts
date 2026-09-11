@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  parseAvatarClearHttpAck,
   parseAvatarReplaceHttpAck,
   parseAvatarUploadInitAck,
 } from "../../lib/avatar-http-contract.ts";
@@ -92,25 +91,6 @@ test("avatar replace requires an exact committed or durable-pending receipt and 
   }
 });
 
-test("avatar clear accepts only completed or durable-pending exact receipts", () => {
-  assert.deepEqual(
-    parseAvatarClearHttpAck({ ok: true, cleanup: "completed" }),
-    { ok: true, cleanup: "completed" },
-  );
-  assert.deepEqual(
-    parseAvatarClearHttpAck({ accepted: true, cleanup: "pending" }),
-    { accepted: true, cleanup: "pending" },
-  );
-  for (const malformed of [
-    null,
-    { ok: true },
-    { ok: true, cleanup: "pending" },
-    { accepted: true, cleanup: "completed" },
-    { accepted: true, cleanup: "pending", error: "late_failure" },
-  ]) {
-    assert.equal(parseAvatarClearHttpAck(malformed), null);
-  }
-});
 
 test("highlight upload initialization binds score, upload UUID, MIME, path, and token", () => {
   const value = {
@@ -210,7 +190,6 @@ test("avatar and highlight clients reject malformed 2xx acknowledgements", () =>
   );
   assert.match(avatar, /parseAvatarUploadInitAck\(/);
   assert.match(avatar, /parseAvatarReplaceHttpAck\(/);
-  assert.match(avatar, /parseAvatarClearHttpAck\(/);
   assert.doesNotMatch(avatar, /const \{ path, token \} = .*\\.json/);
 
   const share = readFileSync(

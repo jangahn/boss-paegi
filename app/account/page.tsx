@@ -241,7 +241,6 @@ export default function AccountPage() {
       {editingAvatar && (
         <AvatarEditor
           current={avatar}
-          hasCustomAvatar={profile.avatar_url !== null}
           onClose={() => setEditingAvatar(false)}
           onSaved={(url) => {
             setProfile((p) => {
