@@ -156,11 +156,12 @@ const patternCount = new Map();
 const visited = new Set();
 const queue = [];
 const results = [];
-const enqueue = (href) => {
+// force: seeds 는 명시 대상이라 링크 필터(SKIP_HREF)를 우회한다 — /login·/auth/* 화면도 seeds 에 적으면 측정된다(소셜 로그인 버튼 클릭은 SKIP_CLICK 이 막는다).
+const enqueue = (href, force = false) => {
   let u;
   try { u = new URL(href, BASE); } catch { return; }
   if (u.origin !== baseUrl.origin) return;
-  if (SKIP_HREF.test(u.pathname + u.search) || SKIP_HREF.test(href)) return;
+  if (!force && (SKIP_HREF.test(u.pathname + u.search) || SKIP_HREF.test(href))) return;
   u.hash = "";
   const key = u.pathname + u.search;
   if (visited.has(key) || queue.includes(key)) return;
@@ -332,7 +333,7 @@ context.on("dialog", (d) => d.dismiss().catch(() => {}));
 const page = await context.newPage();
 page.setDefaultTimeout(15000);
 
-for (const s of seeds) enqueue(s);
+for (const s of seeds) enqueue(s, true);
 let count = 0;
 while (queue.length && count < MAX_PAGES) {
   const key = queue.shift();
