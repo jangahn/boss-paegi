@@ -51,6 +51,7 @@ import { isVisibleReviewStatus } from "@/lib/score-visibility";
 import { validateAdminRows } from "@/lib/admin-read-contract";
 import { readBoundedJsonRequest } from "@/lib/http/bounded-json-request";
 import { responseContentLengthAllowed } from "@/lib/http/bounded-response";
+import { isBaseDollKey } from "@/lib/base-dolls";
 
 export const runtime = "nodejs";
 export const SCORE_SUBMISSION_MAX_BODY_BYTES = 64 * 1024;
@@ -202,6 +203,8 @@ export async function POST(req: NextRequest) {
     weapon?: string;
     durationMs?: number;
     dollId?: string | null;
+    /** 기본 캐릭터 키(v1.42, lib/base-dolls) — 커스텀 doll 이 없을 때만 저장. 미전송(구 클라)=null=기본 부장님. */
+    baseDoll?: string | null;
     maxCombo?: number;
     gameplayStats?: GameplayStats;
     endReason?: string;
@@ -317,6 +320,8 @@ export async function POST(req: NextRequest) {
       dollId = null;
     }
   }
+  // 기본 캐릭터 키 — 어휘 밖은 null 강등(구 클라·조작). 커스텀 doll 이 붙으면 코어가 null 로 강제.
+  const baseDoll = isBaseDollKey(body.baseDoll) ? body.baseDoll : null;
 
   // ── canonical stats 재구성 (durationMs=서버값, ultScore 클램프, 숫자맵 정제) ──
   const raw = body.gameplayStats;
@@ -490,6 +495,7 @@ export async function POST(req: NextRequest) {
     p_network_actor_key: scoreNetworkActorKey,
     p_owner_id: user.id,
     p_doll_id: dollId,
+    p_base_doll: dollId ? null : baseDoll,
     p_score: score,
     p_weapon: body.weapon,
     p_duration_ms: durationMs,
@@ -595,6 +601,7 @@ export async function POST(req: NextRequest) {
     weapon: body.weapon,
     durationMs,
     hasDoll: !!dollId,
+    baseDoll: dollId ? null : baseDoll,
     reviewStatus,
     abuseScore: decision.abuseScore,
     signals: decision.signals.map((s) => s.id),

@@ -26,6 +26,7 @@ import { getRoleConfig, getScoreConfig, getBadgeCatalog, getMarketingCopy } from
 import { roleFrom } from "@/lib/config/domains/roles";
 import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
+import { baseDollOf } from "@/lib/base-dolls";
 
 // signed doll/clip URL(TTL 600/900)을 HTML에 직접 넣는다. ISR은 revalidate
 // 이후 첫 방문자에게 오래된 결과를 먼저 줄 수 있으므로 TTL보다 짧은 주기도
@@ -43,7 +44,8 @@ export async function generateMetadata({
     return { title: "게임 기록을 찾을 수 없음" };
   }
   const name = score.profiles?.display_name ?? "익명";
-  const role = asRole(score.dolls?.role);
+  const base = baseDollOf(score.base_doll); // doll 없는 플레이의 기본 캐릭터(null = 구 기록 = 기본 부장님)
+  const role = asRole(score.dolls?.role ?? base.role);
   const [cfg, scoreCfg, mk] = await Promise.all([
     getRoleConfig(),
     getScoreConfig(),
@@ -90,7 +92,8 @@ export default async function SharePage({
   if (!score) notFound();
 
   const name = score.profiles?.display_name ?? "익명";
-  const role = asRole(score.dolls?.role);
+  const base = baseDollOf(score.base_doll); // doll 없는 플레이의 기본 캐릭터(null = 구 기록 = 기본 부장님)
+  const role = asRole(score.dolls?.role ?? base.role);
   const [cfg, scoreCfg, badgeCatalog, mk] = await Promise.all([
     getRoleConfig(),
     getScoreConfig(),
@@ -103,7 +106,7 @@ export default async function SharePage({
     score: score.score,
     seed: score.id,
     role,
-    gender: asGender(score.dolls?.gender),
+    gender: asGender(score.dolls?.gender ?? base.gender),
     roleCfg: cfg,
     scoreCfg,
   });
@@ -150,7 +153,7 @@ export default async function SharePage({
           <div className="mt-3 flex items-start justify-between gap-3">
             {/* 커스텀 캐릭터 없으면 기본 부장님 이미지 */}
             <FadeImg
-              src={dollImg ?? "/sprites/boss-default.png"}
+              src={dollImg ?? base.image}
               alt={`맞은 ${rlabel}`}
               className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
               fit="contain"

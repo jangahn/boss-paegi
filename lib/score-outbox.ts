@@ -9,6 +9,7 @@ import {
   runBoundedClientJsonFetch,
   unconfirmedOutcomeError,
 } from "@/lib/client-mutation";
+import { isBaseDollKey } from "./base-dolls";
 
 export const SCORE_OUTBOX_STORAGE_KEY = "boss-paegi:score-outbox:v1";
 export const SCORE_OUTBOX_ENTRY_PREFIX = "boss-paegi:score-outbox:v2:";
@@ -122,11 +123,13 @@ const ENTRY_KEYS = new Set([
   "createdAt",
   "body",
 ]);
+// v1.42: baseDoll 추가. 구 아웃박스 항목(키 부재)도 유효해야 하므로 두 키 집합(현행/구) 중 하나와 정확히 일치하면 통과.
 const BODY_KEYS = new Set([
   "score",
   "weapon",
   "durationMs",
   "dollId",
+  "baseDoll",
   "maxCombo",
   "gameplayStats",
   "endReason",
@@ -135,6 +138,7 @@ const BODY_KEYS = new Set([
   "trackFirstTouchPlay",
   "acqSource",
 ]);
+const BODY_KEYS_LEGACY = new Set([...BODY_KEYS].filter((k) => k !== "baseDoll"));
 const END_REASONS = new Set(["normal", "time_limit", "score_limit"]);
 
 function isBoundedJsonValue(
@@ -182,7 +186,7 @@ function isSubmissionBody(
   submissionId: string,
 ): boolean {
   return (
-    hasExactKeys(value, BODY_KEYS) &&
+    (hasExactKeys(value, BODY_KEYS) || hasExactKeys(value, BODY_KEYS_LEGACY)) &&
     Number.isSafeInteger(value.score) &&
     (value.score as number) >= 0 &&
     (value.score as number) <= 5_000_000 &&
@@ -194,6 +198,8 @@ function isSubmissionBody(
     (value.durationMs as number) <= 30 * 60 * 1_000 &&
     (value.dollId === null ||
       (typeof value.dollId === "string" && UUID_RE.test(value.dollId))) &&
+    // baseDoll 은 v1.42 추가 — 구 아웃박스 항목(키 부재)도 유효.
+    (value.baseDoll === undefined || value.baseDoll === null || isBaseDollKey(value.baseDoll)) &&
     Number.isSafeInteger(value.maxCombo) &&
     (value.maxCombo as number) >= 0 &&
     (value.maxCombo as number) <= 99_999 &&

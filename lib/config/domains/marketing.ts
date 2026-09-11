@@ -43,6 +43,8 @@ export const marketingCopySchema = z.object({
     nonmemberCta: button.default("가입하고 만들기"),
     memberEmptyCta: button.default("캐릭터 만들기"),
     memberHeaderCta: button.default("+ 새로 만들기"),
+    // 갤러리 추가 캐릭터 잠금 카드(비회원) 토스트 버튼(v1.42). 발행행 무중단 .default().
+    lockedCta: button.default("가입하고 열기"),
   }),
   // 공유/CTA 문구 — {호칭}(조사 자동) + 값 토큰(코드 합성). 수치·이름은 토큰 위치에 코드가 채움.
   share: z.object({
@@ -63,10 +65,11 @@ export const marketingCopySchema = z.object({
     // 점수 공유 OG 설명 — 롤 무관 단일 값(구 롤 ogLines 대체). 발행된 행엔 없을 수 있어 .default().
     scoreOgDesc: tpl(160).default("{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?"),
     // 게임오버 — 1차 '다음 플레이' 버튼: 회원=갤러리("다른 캐릭터로 패기") / 비회원=가입 후 생성
-    // ("내 {호칭} 만들어서 패기", 홈 주 버튼과 같은 결). 비회원 부제는 signupBanner.nonmemberTitle 을
-    // 그대로 재사용(가입 혜택 문구 단일 소스). 발행행 무중단 .default().
+    // ("다른 캐릭터 더 열고 패기" → 가입 후 갤러리, v1.42). 비회원 부제는 gameoverNonmemberSub(종료 화면 전용). 발행행 무중단 .default().
     gameoverPlayBtnMember: tpl(30).default("다른 캐릭터로 패기"),
-    gameoverPlayBtnNonmember: tpl(30).default("내 {호칭} 만들어서 패기"),
+    gameoverPlayBtnNonmember: tpl(30).default("다른 캐릭터 더 열고 패기"),
+    // 게임오버 — 비회원 1차 버튼 아래 부제(v1.42, 종료 화면 전용 키 — 갤러리 배너 제목과 분리). 발행행 무중단 .default().
+    gameoverNonmemberSub: tpl(80).default("가입하면 사장님·부장님·팀장님·신입 캐릭터 4명이 더 열려요"),
     // 게임오버 — 공유 버튼(하이라이트 없을 때/있을 때, 2차) + 다시 패기 링크(하단 텍스트 행). 발행행 무중단 .default().
     gameoverShareBtn: tpl(30),
     gameoverShareBtnHighlight: tpl(30).default("🔥 하이라이트 공유하기"),
@@ -105,6 +108,7 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     nonmemberCta: "가입하고 만들기",
     memberEmptyCta: "캐릭터 만들기",
     memberHeaderCta: "+ 새로 만들기",
+    lockedCta: "가입하고 열기",
   },
   share: {
     dollHook: "당신의 {호칭은} 무사하십니까?",
@@ -120,7 +124,8 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     scoreOgTitle: "[결재완료] {제작자} — {점수}점 ({등급})",
     scoreOgDesc: "{점수}점만큼 스트레스 해소 완료. 당신의 {호칭은} 무사하십니까?",
     gameoverPlayBtnMember: "다른 캐릭터로 패기",
-    gameoverPlayBtnNonmember: "내 {호칭} 만들어서 패기",
+    gameoverPlayBtnNonmember: "다른 캐릭터 더 열고 패기",
+    gameoverNonmemberSub: "가입하면 사장님·부장님·팀장님·신입 캐릭터 4명이 더 열려요",
     gameoverShareBtn: "보고서 공유하기",
     gameoverShareBtnHighlight: "🔥 하이라이트 공유하기",
     gameoverRetryBtn: "다시 패기",

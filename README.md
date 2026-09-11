@@ -943,6 +943,14 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.42 (2026-09-12, 기본 캐릭터 5종 — 회원 추가 캐릭터 4종·링크 플레이·가입 후킹 교체; **Migration 0127**):
+- **기본 캐릭터 어휘** `lib/base-dolls.ts`: 기본 부장님 `boss-m`(종전 `/sprites/boss-default.png`) + 추가 4종 `ceo-m`(사장님·남)·`boss-f`(부장님·여)·`teamlead-f`(팀장님·여)·`junior-m`(신입·남) — `public/sprites/base/<key>.png`, 사용자 제공 원본(1086×1448 알파)을 기본 부장님과 같은 규격(768×1024, 캐릭터 높이 82%, 폭 ≤94%, 256색 팔레트 124~167KB)으로 정규화. DB 행 없는 정적 자산(Vercel CDN, 기본 부장님과 같은 이유). 롤·성별은 시비 멘트·보고서 보이스·{호칭} 을 정한다.
+- **플레이 URL** `/play?doll=<key>`(기본 부장님은 `/play`): 링크만 있으면 **비회원도** 추가 캐릭터를 플레이할 수 있고, 갤러리 노출은 회원. `useGameInit` 는 키면 정적 스프라이트·롤·성별을 어휘에서 취하고, uuid 면 종전 커스텀 경로(본인 소유만).
+- **점수 기록** `scores.base_doll`(0127, CHECK 5종, doll_id 있으면 null 강제): 제출 RPC `submit_score_with_review`/`..._core` 에 `p_base_doll DEFAULT NULL` 추가(새 오버로드 생성 후 종전 시그니처 drop — PostgREST named-arg 모호성 방지, 구 클라는 DEFAULT 로 매핑). 클라 `useScoreSubmission`·아웃박스(`baseDoll`, 구 항목 호환)·`/api/score`(어휘 밖 null 강등). 공유 카드·히스토리·OG 는 `baseDollOf(score.base_doll)` 로 이미지·롤·성별 폴백(null = 구 기록 = 기본 부장님). 텔레메트리 dollId 는 기본 부장님 `default`(롤업 호환)·추가 캐릭터는 키.
+- **갤러리**: 기본 부장님 카드 뒤에 `BaseDollCard` 4장(청록 '추가' 뱃지 + 롤 칩, 탭 → 플레이). 비회원은 🔒 "가입하면 열림" 잠금 티저(흐림) → 토스트(`signupBanner.lockedCta` "가입하고 열기" → `/login?next=/gallery`). **기본 캐릭터 카드는 ⋯ 메뉴 없음**(기본 부장님 카드의 [공유·역할 변경] 가짜 후킹 항목 제거 — 공유·삭제·역할 변경은 커스텀 캐릭터 전용, 어떤 상태에서도 일관).
+- **가입 후킹(게임 종료 화면, 비회원)**: 1차 버튼 `gameoverPlayBtnNonmember` 기본값 "내 {호칭} 만들어서 패기" → **"다른 캐릭터 더 열고 패기"**(가입 후 갤러리로), 부제는 새 키 `share.gameoverNonmemberSub`("가입하면 사장님·부장님·팀장님·신입 캐릭터 4명이 더 열려요")로 분리 — 갤러리 배너 제목(`nonmemberTitle`, "가입하면 생성권 1개 지급")은 그대로. 가입 보너스 생성권 지급도 그대로. 어드민 마케팅 문구 편집기·도식에 두 키 추가. 어드민 캐릭터 목록·모더레이션에는 기본 캐릭터가 나오지 않는다(DB 행 없음).
+- 테스트 `__tests__/game/base-dolls.test.ts`(어휘·URL·자산 규약·0127 어휘 일치), `gameover-next-play-cta.test.ts` 갱신.
+
 v1.41 (2026-09-11, 캐릭터 프사 프리셋 5종 — 유저별 고정 기본 프사 + 캐릭터로 고르기; 마이그레이션 없음):
 - **자산**: `public/avatars/preset-1..5.png` — 사용자 제공 캐릭터 머리 5장(504~845px 원본)을 투명 여백 제거 → 정사각 캔버스에 머리 **90%** 배치(원형 크롭에서 머리카락·귀 보호) → **256×256 팔레트 PNG(알파, 22~28KB)**. 표시 최대가 계정 페이지 96px 라 2배 DPR 까지 선명. 고정 `default.png`(128px, 크롭 안 된 배경 잔존) 삭제.
 - **유저별 고정 기본 프사**(`lib/avatar-presets.ts`): 커스텀 프사가 없으면 유저 id 의 FNV-1a 해시로 5장 중 하나를 배정(`defaultAvatarPreset`·`avatarSrc`). 같은 유저는 헤더·계정·랭킹·히스토리 어디서나 같은 캐릭터, 서버·클라 동일 계산, DB 변경 없음. 이미지 로드 실패 폴백도 같은 값. 랭킹의 익명 플레이어도 owner_id 로 고정 배정.

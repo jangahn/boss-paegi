@@ -19,7 +19,7 @@ import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { resolveCopy } from "@/lib/config/template";
 import { getMyProfile } from "@/lib/profile";
-import { ctaFor } from "@/lib/gallery-cta";
+import { LOGIN_THEN_GALLERY } from "@/lib/gallery-cta";
 import { log } from "@/lib/log";
 import type { HighlightClip } from "@/lib/highlight";
 import { elapsedScoreDurationMs } from "@/lib/score-retry";
@@ -28,12 +28,15 @@ import { isCurrentClientEpoch } from "@/lib/client-lifecycle";
 import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 import { useScoreSubmission } from "./useScoreSubmission";
 import { ScoreReport } from "./ScoreReport";
+import { telemetryBaseDollLabel, type BaseDollKey } from "@/lib/base-dolls";
 
 type Props = {
   open: boolean;
   onRestart: () => void;
   weapon: string;
   dollId: string | null;
+  /** 기본 캐릭터 키(v1.42) — 커스텀 doll 이 없을 때(scores.base_doll). 기본 부장님 = boss-m. */
+  baseDoll: BaseDollKey | null;
   /** 맞는 캐릭터의 롤 — 피격자 의견·공유 문구 분기. 기본 boss. */
   role?: RoleId;
   /** 맞는 캐릭터의 성별 — 피격자 의견 보이스 분기. 기본 male(기본 부장님). */
@@ -57,6 +60,7 @@ export function GameOverModal({
   onRestart,
   weapon,
   dollId,
+  baseDoll,
   role = "boss",
   gender = DEFAULT_GENDER,
   dollImageUrl,
@@ -186,6 +190,7 @@ export function GameOverModal({
       startedAt,
       weapon: mainWeapon,
       dollId,
+      baseDoll,
       maxCombo,
       gameplayStats,
       endReason,
@@ -236,13 +241,13 @@ export function GameOverModal({
     ? { notice: mk.share.pendingReviewNotice, warning: mk.share.pendingReviewWarning }
     : null;
 
-  // 1차 '다음 플레이' — 회원은 갤러리에서 다른 캐릭터 선택, 비회원은 가입 후 생성(갤러리 CTA 와
-  // 같은 목적지 helper). 비회원은 항상 기본 부장님 플레이라 {호칭}=부장님 으로 풀린다.
+  // 1차 '다음 플레이' — 회원은 갤러리에서 다른 캐릭터 선택, 비회원은 가입 후 갤러리(추가 캐릭터 4종이 열리는 곳, v1.42).
+  // 비회원 {호칭}은 플레이한 기본 캐릭터의 롤(기본 부장님 또는 링크로 온 추가 캐릭터).
   const nextPlay = isLoggedIn
     ? { kind: "member" as const, href: "/gallery", label: mk.share.gameoverPlayBtnMember }
     : {
         kind: "nonmember" as const,
-        href: ctaFor("nonmember").href,
+        href: LOGIN_THEN_GALLERY,
         label: resolveCopy(mk.share.gameoverPlayBtnNonmember, roleLabel),
       };
   const handleNextPlayClick = () => {
@@ -250,7 +255,7 @@ export function GameOverModal({
     try {
       log.info("gameover.cta_click", {
         kind: nextPlay.kind,
-        dollId: dollId ?? "default",
+        dollId: dollId ?? telemetryBaseDollLabel(baseDoll),
         score,
       });
     } catch {
@@ -484,7 +489,7 @@ export function GameOverModal({
           </Link>
           {nextPlay.kind === "nonmember" && (
             <p className="-mt-1 text-center text-xs text-zinc-300">
-              {mk.signupBanner.nonmemberTitle}
+              {mk.share.gameoverNonmemberSub}
             </p>
           )}
           {/* 2차: 공유 — 검토 중(pending) 점수는 숨김 */}

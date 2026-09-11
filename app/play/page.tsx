@@ -31,11 +31,15 @@ import { useBadgeChallenge } from "./useBadgeChallenge";
 import { useTelemetry } from "./useTelemetry";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
+import { baseDollKeyFromParam, telemetryBaseDollLabel } from "@/lib/base-dolls";
 
 function PlayInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dollId = searchParams.get("doll");
+  const dollParam = searchParams.get("doll");
+  // 기본 캐릭터 키(boss-m·ceo-m·…)면 정적 스프라이트 플레이(비회원 링크 가능), 그 외(uuid)는 커스텀 캐릭터.
+  const baseDollKey = baseDollKeyFromParam(dollParam);
+  const dollId = baseDollKey ? null : dollParam;
   const bgParam = searchParams.get("bg");
   // 배경은 게임 도중 자유 전환 — local state 로만 관리, 게임 재생성 X (점수/낙서 유지).
   // SSR/첫 렌더 초기값은 결정적: bg 파라미터 있으면 그 키, 없으면 BACKGROUNDS[0]("office").
@@ -145,7 +149,7 @@ function PlayInner() {
       telemetry.registerPerfSource(() => gameRef.current?.getPerfStats() ?? null);
     }
     log.info("game.start", {
-      dollId: dollId ?? "default",
+      dollId: dollId ?? telemetryBaseDollLabel(baseDollKey),
       weapon: weaponRef.current.key,
       bg: bgKeyRef.current,
     });
@@ -155,11 +159,12 @@ function PlayInner() {
       bg: bgKeyRef.current,
       gamePhase: "playing",
     });
-  }, [start, configureJuggle, noteMap, scoreCfg, dollId, telemetry]);
+  }, [start, configureJuggle, noteMap, scoreCfg, dollId, baseDollKey, telemetry]);
 
   // Pixi 게임 인스턴스 생성/해제 (캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
   useGameInit({
     dollId,
+    baseDollKey,
     initAttempt: gameInitAttempt,
     stageRef,
     gameRef,
@@ -217,7 +222,7 @@ function PlayInner() {
     const s = useGameStore.getState();
     if (!s.ultReady) return;
     log.info("game.ultimate_fire", {
-      dollId: dollId ?? "default",
+      dollId: dollId ?? telemetryBaseDollLabel(baseDollKey),
       weapon: weapon.key,
       score: s.score,
       combo: s.combo,
@@ -294,7 +299,7 @@ function PlayInner() {
           gamePhase: "playing",
         });
         const sp = new URLSearchParams();
-        if (dollId) sp.set("doll", dollId);
+        if (dollParam) sp.set("doll", dollParam);
         sp.set("bg", bgKey);
         window.history.replaceState(null, "", `/play?${sp.toString()}`);
       }
@@ -315,7 +320,7 @@ function PlayInner() {
       cancelled = true;
       controller.abort(new Error("background_switch_inactive"));
     };
-  }, [bgKey, dollId, gameReady, telemetry]);
+  }, [bgKey, dollId, dollParam, gameReady, telemetry]);
 
   // 페이지 진입 후 첫 user gesture 시 AudioContext unlock (iOS Safari autoplay 우회).
   useEffect(() => {
@@ -345,7 +350,7 @@ function PlayInner() {
       end();
       // 게임 세션 종료 요약 — Logs/Discover 에서 weapon·점수대·플레이타임 분석.
       log.info("game.end", {
-        dollId: dollId ?? "default",
+        dollId: dollId ?? telemetryBaseDollLabel(baseDollKey),
         bg: bgKeyRef.current,
         score: s.score,
         maxCombo: s.maxCombo,
@@ -378,7 +383,7 @@ function PlayInner() {
       await finalizeHighlight();
       setOver(true);
     },
-    [dollId, end, finalizeHighlight, router, telemetry]
+    [dollId, baseDollKey, end, finalizeHighlight, router, telemetry]
   );
 
   // 최신 handleEnd 를 ref 로 — 폴링 인터벌이 handleEnd 재생성에 재구독되지 않게(인터벌 리셋 방지).
@@ -551,6 +556,7 @@ function PlayInner() {
         onRestart={handleRestart}
         weapon={weapon.key}
         dollId={dollId}
+        baseDoll={baseDollKey}
         role={role}
         gender={gender}
         dollImageUrl={dollImageUrl}

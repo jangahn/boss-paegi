@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { getMyProfile, formatCredits, type MyProfile } from "@/lib/profile";
 import { DefaultBossCard } from "@/components/gallery/DefaultBossCard";
+import { BaseDollCard } from "@/components/gallery/BaseDollCard";
+import { EXTRA_BASE_DOLLS } from "@/lib/base-dolls";
 import { SignupBanner } from "@/components/gallery/SignupBanner";
 import { EventBanner } from "@/components/events/EventBanner";
 import { PendingGrid } from "@/components/gallery/PendingGrid";
@@ -480,6 +482,10 @@ export default function GalleryPage() {
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <DefaultBossCard state={state} />
+                {/* 추가 기본 캐릭터 4종(v1.42) — 회원은 플레이, 비회원은 🔒 잠금 티저 */}
+                {EXTRA_BASE_DOLLS.map((d) => (
+                  <BaseDollCard key={d.key} doll={d} state={state} />
+                ))}
                 {dolls.map((d) => (
                   <DollCard
                     key={d.id}

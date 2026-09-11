@@ -1,46 +1,24 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { FadeImg } from "@/components/FadeImg";
-import { MenuItem } from "@/components/gallery/MenuItem";
-import { HookToast } from "@/components/gallery/HookToast";
-import { ctaFor, type ViewerState } from "@/lib/gallery-cta";
-import { useMarketingCopy } from "@/components/MarketingCopyProvider";
+import type { ViewerState } from "@/lib/gallery-cta";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { asRole } from "@/lib/roles";
 
 const DEFAULT_BOSS_SRC = "/sprites/boss-default.png";
 
-// 후킹 토스트 문구 — 공유/역할 변경 시도 시. 실제 액션 대신 가입/생성 유도.
-const SHARE_HOOK = "나만의 캐릭터를 만들면 공유할 수 있어요!";
-const ROLE_HOOK = "다른 역할은 캐릭터를 만들어야 바꿀 수 있어요!";
 
 /**
  * 기본부장님 카드 — 갤러리 맨 앞 상시 노출, '기본' 뱃지로 내 캐릭터와 구분.
  * - 이미지 클릭 → /play (doll 파라미터 없음 = 기본부장님 플레이).
- * - state==="member"(캐릭터 보유 회원): ⋯ 메뉴 없음(play 전용).
- * - 그 외(nonmember·member-empty): ⋯ → [공유, 롤 변경]만 → 후킹 토스트(실 액션 호출 안 함).
- *   삭제 메뉴는 절대 없음. DB row 가 아니므로 shareDoll/PATCH/DELETE 호출 금지.
+ * - ⋯ 메뉴 없음(v1.42): 기본 캐릭터(기본 부장님·추가 4종)는 공유·삭제·역할 변경 기능이 없고 어떤 뷰어 상태에서도 일관되게
+ *   비활성. 종전의 [공유, 역할 변경] 가짜 후킹 항목은 제거(역할 변경은 v1.29 에 사용자 기능에서 사라짐). 후킹은 배너·잠금 카드가 맡는다.
+ *   DB row 가 아니므로 shareDoll/PATCH/DELETE 호출 금지.
  */
-export function DefaultBossCard({ state }: { state: ViewerState }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-
-  const hasMenu = state !== "member"; // 캐릭터 보유 회원에겐 후킹 불필요 → play 전용
+export function DefaultBossCard({ state: _state }: { state: ViewerState }) {
   const bossChip = roleFrom(asRole("boss"), useRoleConfig()).label; // DB 발행 호칭(기본 "부장님")
-  const banner = useMarketingCopy().signupBanner;
-  const cta = {
-    label: state === "nonmember" ? banner.nonmemberCta : banner.memberEmptyCta,
-    href: ctaFor(state).href,
-  };
-
-  const hook = (msg: string) => {
-    setMenuOpen(false);
-    setToastMsg(msg);
-  };
-
   return (
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
@@ -67,49 +45,6 @@ export function DefaultBossCard({ state }: { state: ViewerState }) {
         </span>
       </div>
 
-      {hasMenu && (
-        <>
-          {/* ⋯ 옵션 버튼 — Link 밖 absolute button (공유/롤 변경만, 삭제 없음) */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setMenuOpen((v) => !v);
-            }}
-            aria-label="옵션"
-            className="absolute right-2 top-2 z-20 flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-black/65 text-lg font-bold leading-none text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 active:scale-90"
-          >
-            ⋯
-          </button>
-
-          {menuOpen && (
-            <>
-              {/* 바깥 탭으로 닫기 */}
-              <div
-                className="fixed inset-0 z-20"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                }}
-              />
-              <div className="absolute right-2 top-12 z-30 w-36 overflow-hidden rounded-xl border border-foreground/10 ui-surface shadow-2xl">
-                <MenuItem onClick={() => hook(SHARE_HOOK)}>공유</MenuItem>
-                <MenuItem onClick={() => hook(ROLE_HOOK)}>역할 변경</MenuItem>
-              </div>
-            </>
-          )}
-        </>
-      )}
-
-      {toastMsg && (
-        <HookToast
-          message={toastMsg}
-          cta={cta}
-          onClose={() => setToastMsg(null)}
-        />
-      )}
     </div>
   );
 }
