@@ -109,3 +109,16 @@ test("폴백·카탈로그: 은퇴 유형은 판정 불가·표시 정의만, �
   ]);
   assert.deepEqual([...reached].sort(), [...ids].sort());
 });
+
+test("결과 카드 한 줄 규칙(v1.40): 유형 설명은 31자·한글 22자 이내(375px 카드 폭 275px 실측), 투어리스트 문구 교체", async () => {
+  const { PERSONA_DEFS, RETIRED_PERSONA_DEFS, PERSONA_BLURB_MAX_CHARS, PERSONA_BLURB_MAX_HANGUL } = await import("../../lib/persona.ts");
+  assert.equal(PERSONA_BLURB_MAX_CHARS, 31);
+  assert.equal(PERSONA_BLURB_MAX_HANGUL, 22);
+  for (const d of [...PERSONA_DEFS, ...RETIRED_PERSONA_DEFS]) {
+    const hangul = (d.blurb.match(/[가-힣]/g) ?? []).length;
+    assert.ok(d.blurb.length <= PERSONA_BLURB_MAX_CHARS, `${d.id}: ${d.blurb.length}자 > ${PERSONA_BLURB_MAX_CHARS}`);
+    assert.ok(hangul <= PERSONA_BLURB_MAX_HANGUL, `${d.id}: 한글 ${hangul}자 > ${PERSONA_BLURB_MAX_HANGUL}`);
+    assert.ok(!/\s{2,}|\n/.test(d.blurb), `${d.id}: 연속 공백/개행`);
+  }
+  assert.equal(personaById("tourist")?.blurb, "사무실이든 회식자리든 어디서든 패고 보는 방랑자.");
+});

@@ -31,6 +31,14 @@ export type PersonaDef = {
   blurb: string;
 };
 
+/**
+ * 결과 카드 한 줄 규칙(v1.40, 2026-09-11 실측): `PersonaCard` 설명은 text-xs, iPhone SE(375px) 카드 안 폭 275px 에서
+ * 공백·문장부호 포함 31자·한글 22자까지 한 줄(가장 긴 현행 문구 264px). 320px(SE 1세대)는 두 줄 허용.
+ * `__tests__/score/persona.test.ts` 가 전 유형(은퇴 포함)에 강제한다.
+ */
+export const PERSONA_BLURB_MAX_CHARS = 31;
+export const PERSONA_BLURB_MAX_HANGUL = 22;
+
 export const PERSONA_ULT_MIN = 10;
 /** 웨폰 마스터 — 한 맵 로스터(9칸)를 넘는 10종: 맵을 옮겨 투척 무기를 바꿔야 도달(v3). 의도적으로 상수. */
 export const PERSONA_WEAPON_MASTER_MIN = 10;
@@ -51,7 +59,7 @@ const DEFS = {
     id: "tourist",
     label: "사내 투어리스트",
     emoji: "🧳",
-    blurb: "사무실부터 회식자리까지 층층이 돌며 팬, 회사 곳곳의 방랑자.",
+    blurb: "사무실이든 회식자리든 어디서든 패고 보는 방랑자.",
   },
   carpet: {
     id: "carpet",
