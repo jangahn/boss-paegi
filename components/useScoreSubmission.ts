@@ -23,6 +23,7 @@ import {
   shouldSendPlayConversion,
   markPlayConversionSent,
 } from "@/lib/acquisition";
+import type { BaseDollKey } from "@/lib/base-dolls";
 
 export type ScoreSubmissionHookDependencies = {
   resolveOwnerId: () => Promise<string>;
@@ -50,6 +51,8 @@ export function useScoreSubmission(opts: {
   startedAt: number;
   weapon: string;
   dollId: string | null;
+  /** 기본 캐릭터 키(v1.42) — 커스텀 doll 이 없을 때 어떤 기본 캐릭터였는지(scores.base_doll). */
+  baseDoll: BaseDollKey | null;
   maxCombo: number;
   /** 플레이 해석 리포트용 상세 스탯 (best-effort 저장) */
   gameplayStats: GameplayStats | null;
@@ -80,6 +83,7 @@ export function useScoreSubmission(opts: {
     startedAt,
     weapon,
     dollId,
+    baseDoll,
     maxCombo,
     gameplayStats,
     endReason = "normal",
@@ -197,6 +201,7 @@ export function useScoreSubmission(opts: {
       weapon,
       durationMs: clamped.durationMs,
       dollId,
+      baseDoll,
       maxCombo,
       gameplayStats,
       endReason,
@@ -289,6 +294,7 @@ export function useScoreSubmission(opts: {
     startedAt,
     weapon,
     dollId,
+    baseDoll,
     maxCombo,
     gameplayStats,
     endReason,

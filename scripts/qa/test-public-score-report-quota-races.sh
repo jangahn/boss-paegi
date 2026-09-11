@@ -214,7 +214,7 @@ catalog_ok="$(
   db_value "
     select (
       pg_catalog.to_regprocedure(
-        'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text)'
+        'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text,text)'
       ) is not null
       and pg_catalog.to_regprocedure(
         'public.reserve_score_write_attempt(uuid,uuid,integer,text,integer,integer,text,uuid,jsonb,text)'

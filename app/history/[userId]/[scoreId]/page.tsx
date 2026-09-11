@@ -14,6 +14,7 @@ import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { ReportButton } from "@/components/ReportButton";
+import { baseDollOf } from "@/lib/base-dolls";
 
 // private Storage signed URL을 HTML에 넣으므로 ISR stale 결과를 사용할 수 없다.
 // 장기간 무방문 뒤 첫 요청도 요청 시점에 새 URL을 발급한다.
@@ -54,7 +55,8 @@ export default async function HistoryDetailPage({
     getRoleConfig(),
     getMarketingCopy(),
   ]);
-  const rlabel = roleFrom(asRole(score.dolls?.role), roleCfg).label; // DB 발행 호칭(roleFrom)
+  const base = baseDollOf(score.base_doll); // doll 없는 플레이의 기본 캐릭터(null = 구 기록 = 기본 부장님)
+  const rlabel = roleFrom(asRole(score.dolls?.role ?? base.role), roleCfg).label; // DB 발행 호칭(roleFrom)
   const grade = gradeFor(score.score, scoreCfg);
   const persona = score.gameplay_stats ? matchPersona(score.gameplay_stats) : null;
   const hitCount = score.gameplay_stats?.hitCount ?? null;
@@ -101,7 +103,7 @@ export default async function HistoryDetailPage({
 
             <div className="mt-3 flex items-start justify-between gap-3">
               <FadeImg
-                src={dollImg ?? "/sprites/boss-default.png"}
+                src={dollImg ?? base.image}
                 alt={`맞은 ${rlabel}`}
                 className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
                 fit="contain"

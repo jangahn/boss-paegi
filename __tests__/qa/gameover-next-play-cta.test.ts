@@ -17,28 +17,28 @@ test("game-over next-play copy keys carry the decided defaults and backfill publ
   );
   assert.match(
     marketing,
-    /gameoverPlayBtnNonmember: tpl\(30\)\.default\("내 \{호칭\} 만들어서 패기"\),/,
+    /gameoverPlayBtnNonmember: tpl\(30\)\.default\("다른 캐릭터 더 열고 패기"\),/,
   );
   // 다시 패기 키는 이름·검증 불변(발행값 보존).
   assert.match(marketing, /gameoverRetryBtn: tpl\(20\),/);
 
   // 코드 기본값(폴백)도 같은 문구.
   assert.match(marketing, /gameoverPlayBtnMember: "다른 캐릭터로 패기",/);
-  assert.match(marketing, /gameoverPlayBtnNonmember: "내 \{호칭\} 만들어서 패기",/);
+  assert.match(marketing, /gameoverPlayBtnNonmember: "다른 캐릭터 더 열고 패기",/);
   assert.match(marketing, /gameoverRetryBtn: "다시 패기",/);
 });
 
 test("game-over modal routes the primary CTA by login state and demotes retry to the text row", () => {
   const modal = source("components/GameOverModal.tsx");
 
-  // 1차 버튼: 회원=갤러리, 비회원=가입 후 생성(갤러리 CTA 와 같은 목적지 helper).
+  // 1차 버튼: 회원=갤러리, 비회원=가입 후 갤러리(추가 캐릭터 4종이 열리는 곳, v1.42).
   assert.match(modal, /href: "\/gallery", label: mk\.share\.gameoverPlayBtnMember/);
-  assert.match(modal, /href: ctaFor\("nonmember"\)\.href/);
+  assert.match(modal, /href: LOGIN_THEN_GALLERY,/);
   assert.match(modal, /resolveCopy\(mk\.share\.gameoverPlayBtnNonmember, roleLabel\)/);
-  // 비회원 부제 = 갤러리 비회원 배너 제목(가입 혜택 문구 단일 소스).
+  // 비회원 부제 = 종료 화면 전용 키(v1.42, 갤러리 배너 제목과 분리).
   assert.match(
     modal,
-    /nextPlay\.kind === "nonmember" &&[\s\S]*?mk\.signupBanner\.nonmemberTitle/,
+    /nextPlay\.kind === "nonmember" &&[\s\S]*?mk\.share\.gameoverNonmemberSub/,
   );
   // 로그인 상태는 홈과 같은 fail-closed 기본(비회원) → 프로필 응답으로 갱신.
   assert.match(modal, /const \[isLoggedIn, setIsLoggedIn\] = useState\(false\);/);
@@ -81,7 +81,7 @@ test("marketing surface diagram field map and editable regions stay in lockstep"
   for (const key of [
     "gameoverPlayBtnMember",
     "gameoverPlayBtnNonmember",
-    "nonmemberTitle",
+    "gameoverNonmemberSub",
     "scoreShareText",
     "gameoverRetryBtn",
   ]) {

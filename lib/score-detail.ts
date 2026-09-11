@@ -31,6 +31,8 @@ export type Score = {
   created_at: string;
   /** 공개 가시성 — 어뷰징 판정(0050). registered|cleared 만 공개면 노출. */
   review_status: ReviewStatus;
+  /** 기본 캐릭터 키(v1.42, scores.base_doll) — doll 없는 플레이. null = 구 기록 = 기본 부장님. */
+  base_doll: string | null;
   profiles: { display_name: string } | null;
   dolls: { id: string; image_url: string | null; role: string | null; gender: string | null } | null;
   highlight_clip_path: string | null;
@@ -163,7 +165,7 @@ export async function fetchScoreDetail(
   const { data, error } = await admin
     .from("scores")
     .select(
-      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, review_status, profiles(display_name), dolls(id, image_url, role, gender, deleted_at), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
+      `id, owner_id, score, weapon, duration_ms, max_combo, created_at, review_status, base_doll, profiles(display_name), dolls(id, image_url, role, gender, deleted_at), score_highlights(${HL_COLS}), score_stats(gameplay_stats, badge_ids, percentile)`
     )
     .eq("id", scoreId)
     .single();
@@ -245,6 +247,7 @@ export async function fetchScoreDetail(
         ...legacy,
         max_combo: null,
         review_status: fallbackReviewStatus,
+        base_doll: null,
         dolls: null,
         highlight_clip_path: null,
         highlight_status: null,

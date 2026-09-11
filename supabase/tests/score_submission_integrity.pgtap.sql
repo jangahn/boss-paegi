@@ -185,7 +185,7 @@ select is(
 select ok(
   has_function_privilege(
     'service_role',
-    'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text)',
+    'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text,text)',
     'EXECUTE'
   )
   and not has_function_privilege(
@@ -195,7 +195,7 @@ select ok(
   )
   and not has_function_privilege(
     'service_role',
-    'public.bp_submit_score_with_review_core(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text)',
+    'public.bp_submit_score_with_review_core(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text)',
     'EXECUTE'
   ),
   'service role can submit only through the network-bounded score RPC'
@@ -203,7 +203,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'anon',
-    'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text)',
+    'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text,text)',
     'EXECUTE'
   )
   and not has_function_privilege(
@@ -1483,7 +1483,7 @@ select ok(
     select p.prosecdef
       from pg_catalog.pg_proc p
      where p.oid =
-       'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text)'::regprocedure
+       'public.submit_score_with_review(uuid,uuid,integer,text,integer,integer,text,uuid,text,jsonb,jsonb,integer,text,text,text)'::regprocedure
   )
   and (
     select p.prosecdef

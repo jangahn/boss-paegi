@@ -74,7 +74,23 @@ cleanup() {
   set +e
   cleanup_failed=0
 
+  # 실패 경로에서는 holder 의 fifo 쓰기 fd(3)가 열린 채라 psql 이 stdin 에서 영원히 대기 → wait 가 매달려
+  # CI 잡이 60분 타임아웃까지 소모됐다(2026-09-11). fd 를 닫고 자식을 유계로 끝낸 뒤에만 wait 한다.
+  exec 3>&- 2>/dev/null || true
+  rm -f "$qa_tmp_dir"/*.fifo
   terminate_run_sessions
+  local child
+  for child in "$holder_pid" "$waiter_pid"; do
+    if [[ -n "$child" ]] && kill -0 "$child" 2>/dev/null; then
+      kill -TERM "$child" 2>/dev/null || true
+      local _t
+      for _t in $(seq 1 100); do
+        kill -0 "$child" 2>/dev/null || break
+        sleep 0.05
+      done
+      kill -KILL "$child" 2>/dev/null || true
+    fi
+  done
   if [[ -n "$holder_pid" ]]; then
     wait "$holder_pid" >/dev/null 2>&1 || true
     holder_pid=""
@@ -115,6 +131,20 @@ trap 'exit 143' TERM
 
 fail() {
   echo "analytics maintenance lock-race QA failed: $*" >&2
+  # 진단: 이 실행의 세션 상태 + telemetry/analytics advisory lock 보유·대기(로그만으로 원인 판독)
+  db_psql -v run_prefix="$run_prefix" -Atq <<'SQL' 2>/dev/null | sed 's/^/--- activity: /' >&2 || true
+select pg_catalog.concat_ws(' | ', activity.application_name, activity.state, activity.wait_event_type,
+         activity.wait_event, pg_catalog.left(activity.query, 60))
+  from pg_catalog.pg_stat_activity activity
+ where activity.application_name like :'run_prefix' || '%'
+ order by activity.application_name;
+SQL
+  db_psql -Atq <<'SQL' 2>/dev/null | sed 's/^/--- advisory: /' >&2 || true
+select pg_catalog.concat_ws(' | ', activity.application_name, locks.granted::text, locks.objid::text)
+  from pg_catalog.pg_locks locks
+  join pg_catalog.pg_stat_activity activity on activity.pid = locks.pid
+ where locks.locktype = 'advisory';
+SQL
   for output in "$qa_tmp_dir"/*.out; do
     if [[ -s "$output" ]]; then
       echo "--- $(basename "$output")" >&2
@@ -305,9 +335,15 @@ SQL
     if [[ "$waiter_state" == "false|true|true" ]]; then
       fail "waiter reached a non-advisory lock instead of the maintenance fence ($waiter_app)"
     fi
+    # 세션 부재 판정은 **프로세스 종료**로만 한다. 활동 스냅샷(docker exec 안, 이른 시점)과 파일 검사(exec 반환 뒤)
+    # 사이에 느린 러너에서는 waiter 가 접속해 set_config 출력을 남기고 락에 막혀 있을 수 있어, 종전의
+    # "세션 없음 + 출력 있음 → 완료" 판정이 정상 블록을 실패로 오판했다(CI 플레이크 원인, 2026-09-11 3회).
     if [[ "$waiter_state" == "false|false|false" ]] \
-      && [[ -s "$waiter_output" ]]; then
-      fail "waiter completed without observing an advisory lock ($waiter_app)"
+      && ! kill -0 "$waiter_pid" 2>/dev/null; then
+      if grep -Fq "analytics_maintenance_lock_waiter_done" "$waiter_output" 2>/dev/null; then
+        fail "waiter completed without observing an advisory lock ($waiter_app)"
+      fi
+      fail "waiter exited before observing an advisory lock ($waiter_app)"
     fi
     sleep 0.05
   done

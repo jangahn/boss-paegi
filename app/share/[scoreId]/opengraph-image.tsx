@@ -14,6 +14,7 @@ import {
   fetchMediaBlob,
   OG_DOLL_IMAGE_DOWNLOAD_MAX_BYTES,
 } from "@/lib/media-download";
+import { baseDollOf } from "@/lib/base-dolls";
 
 export const runtime = "nodejs";
 // 작성자 격리·탈퇴/하이라이트 숨김이 기존 OG 캐시에 남지 않게 매 요청 재검증.
@@ -28,7 +29,7 @@ export const contentType = "image/png";
  * 특정 PNG 에서 조용히 실패함 (영역이 빈 채 렌더). 서버에서 미리 받아 embed.
  * 커스텀 캐릭터 없으면 기본 부장님 (public/sprites).
  */
-async function dollDataUri(dollUrl: string | null): Promise<string> {
+async function dollDataUri(dollUrl: string | null, fallbackImage: string): Promise<string> {
   if (dollUrl) {
     const downloaded = await fetchMediaBlob(dollUrl, {
       kind: "ogImage",
@@ -39,9 +40,8 @@ async function dollDataUri(dollUrl: string | null): Promise<string> {
     const buf = Buffer.from(await downloaded.blob.arrayBuffer());
     return `data:${downloaded.type};base64,${buf.toString("base64")}`;
   }
-  const buf = await readFile(
-    join(process.cwd(), "public/sprites/boss-default.png")
-  );
+  // 기본 캐릭터(정적 스프라이트) — public 경로를 파일로 읽는다(기본 부장님·추가 4종).
+  const buf = await readFile(join(process.cwd(), "public", fallbackImage));
   return `data:image/png;base64,${buf.toString("base64")}`;
 }
 
@@ -57,7 +57,8 @@ export default async function OgImage({
   const percentile = s?.percentile ?? null;
 
   const name = s?.profiles?.display_name ?? "익명";
-  const role = asRole(s?.dolls?.role);
+  const base = baseDollOf(s?.base_doll);
+  const role = asRole(s?.dolls?.role ?? base.role);
   const [cfg, scoreCfg, mk] = await Promise.all([
     getRoleConfig(),
     getScoreConfig(),
@@ -67,7 +68,8 @@ export default async function OgImage({
   const score = (s?.score ?? 0).toLocaleString();
   // takedown(0034): 삭제된 캐릭터 얼굴은 OG 에서도 숨김 → 기본 카드 fallback.
   const dollSrc = await dollDataUri(
-    await signedDollUrl(s?.dolls?.image_url ?? null, 60, { thumb: true })
+    await signedDollUrl(s?.dolls?.image_url ?? null, 60, { thumb: true }),
+    base.image,
   );
   const grade = gradeFor(s?.score ?? 0, scoreCfg);
   const reaction = s

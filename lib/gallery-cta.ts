@@ -7,6 +7,8 @@ export type ViewerState = "nonmember" | "member-empty" | "member";
 
 /** 로그인 후 곧장 생성 페이지로(safeNext 가 "/generate" 허용). */
 const LOGIN_THEN_GENERATE = "/login?next=%2Fgenerate";
+/** 로그인 후 갤러리로 — 추가 캐릭터 4종이 열리는 곳(v1.42: 게임 종료 화면 비회원 1차 버튼·잠금 카드 토스트). */
+export const LOGIN_THEN_GALLERY = "/login?next=%2Fgallery";
 
 export type CtaTarget = { label: string; href: string };
 

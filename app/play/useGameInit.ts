@@ -16,6 +16,7 @@ import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
 import { runBoundedClientOperation } from "@/lib/client-operation";
 import { isTransportFailure } from "@/lib/transport-failure";
+import { baseDollOf, telemetryBaseDollLabel, type BaseDollKey } from "@/lib/base-dolls";
 
 /**
  * Pixi 게임 인스턴스 생성/해제 — 캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy.
@@ -26,6 +27,8 @@ import { isTransportFailure } from "@/lib/transport-failure";
  */
 export function useGameInit(opts: {
   dollId: string | null;
+  /** 기본 캐릭터 키(정적 스프라이트) — dollId 와 배타. null 이면 커스텀 doll(dollId) 로드. */
+  baseDollKey: BaseDollKey | null;
   initAttempt: number;
   stageRef: RefObject<HTMLDivElement | null>;
   gameRef: MutableRefObject<GameHandle | null>;
@@ -43,6 +46,7 @@ export function useGameInit(opts: {
 }): void {
   const {
     dollId,
+    baseDollKey,
     initAttempt,
     stageRef,
     gameRef,
@@ -76,9 +80,13 @@ export function useGameInit(opts: {
         (async () => {
           // 기본 플레이만 public 기본 이미지를 사용한다. 커스텀 캐릭터의 조회·
           // 서명·텍스처 오류를 기본 이미지로 위장하지 않는다.
-          if (!dollId) {
+          if (baseDollKey || !dollId) {
+            // 기본 캐릭터(정적 스프라이트) — 서명 없음. 롤·성별·보고서 이미지는 어휘에서.
+            const base = baseDollOf(baseDollKey);
+            setDollRole(base.role, base.gender);
+            setDollImageUrl(base.image);
             return loadClientAssetWithDeadline(
-              () => Assets.load("/sprites/boss-default.png"),
+              () => Assets.load(base.image),
               { signal: operationAbort.signal },
             );
           }
@@ -166,7 +174,7 @@ export function useGameInit(opts: {
       gameRef.current = created;
       onInitialBackgroundReady(initialBackgroundKey);
       setGameReady(true);
-      log.info("play.game_ready", { dollId: dollId ?? "default" });
+      log.info("play.game_ready", { dollId: dollId ?? telemetryBaseDollLabel(baseDollKey) });
 
       // 생성하는 동안 사용자가 바꾼 무기는 즉시 재적용한다. 배경은 페이지의
       // 성공-확정 hot-swap effect가 처리해 로드 실패 시 상태를 롤백한다.
@@ -184,9 +192,9 @@ export function useGameInit(opts: {
       // Logs 로만(sentry-bridge CAPTURE_SKIP). 조회 장애·계약 위반·텍스처/게임 생성
       // 실패 등 서버가 응답한 진짜 실패만 error 이슈로 승격.
       if (deterministicUnavailable || isTransportFailure(e)) {
-        log.warn("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
+        log.warn("play.game_init_fail", { dollId: dollId ?? telemetryBaseDollLabel(baseDollKey), ...errInfo(e) });
       } else {
-        log.error("play.game_init_fail", { dollId: dollId ?? "default", ...errInfo(e) });
+        log.error("play.game_init_fail", { dollId: dollId ?? telemetryBaseDollLabel(baseDollKey), ...errInfo(e) });
       }
       setGameReady(false);
       setGameInitError(
@@ -206,5 +214,5 @@ export function useGameInit(opts: {
     };
     // weapon/bg 변경은 별도 effect 에서 hot-swap (재마운트 X)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dollId, initAttempt]);
+  }, [dollId, baseDollKey, initAttempt]);
 }
