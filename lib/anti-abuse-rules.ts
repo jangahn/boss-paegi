@@ -60,7 +60,7 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * 게이지 식(첫 타 +0.01, 이후 매 타 최대 +0.11)에서 유도해 0~9타로 1~2회
  * 궁극기를 위조하던 여유치를 제거한다.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-09-anti-abuse-v8"; // v8: gun strength 4→7 튜닝(봉투 유도값 변경)
+export const ANTI_ABUSE_RULES_VERSION = "2026-09-anti-abuse-v9"; // v9: 맵별 투척 무기 12종 로스터(경 16·중 20 = 책·키보드 수치, 봉투 유도값 불변) · v8: gun strength 4→7
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;

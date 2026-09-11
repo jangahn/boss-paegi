@@ -15,7 +15,7 @@ const {
   VARIETY_FULL_AT,
   VARIETY_WINDOW_SIZE,
 } = await import("../../lib/game-tuning.ts");
-const { WEAPONS } = await import("../../lib/weapons.ts");
+const { WEAPONS, weaponsForMap } = await import("../../lib/weapons.ts");
 const {
   MAX_COMBO_MULTIPLIER,
   MAX_DURATION_MS,
@@ -41,7 +41,9 @@ test("combo multiplier is monotone and capped at every integer boundary", () => 
 
 test("all 9^1..9^4 weapon sequences conserve score/count and match an independent model", () => {
   type WeaponKey = (typeof WEAPONS)[number]["key"];
-  const keys = WEAPONS.map((weapon) => weapon.key);
+  // 한 맵의 피커 로스터 9종(v1.35: 전체 19종은 19^4 로 폭증 — 저글링 식은 무기 키에 무관)
+  const keys = weaponsForMap("office").map((weapon) => weapon.key);
+  assert.equal(keys.length, 9);
   const byKey = new Map(WEAPONS.map((weapon) => [weapon.key, weapon]));
 
   const verify = (sequence: WeaponKey[]) => {

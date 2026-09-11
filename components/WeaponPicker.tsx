@@ -1,8 +1,10 @@
 "use client";
 
-import { WEAPONS, Weapon, WeaponKey } from "@/lib/weapons";
+import { Weapon, WeaponKey } from "@/lib/weapons";
 
 type Props = {
+  /** 이 맵의 로스터 9칸(lib/weapons weaponsForMap) — 공통 7종 + 현재 맵 투척 2종 */
+  weapons: readonly Weapon[];
   active: WeaponKey;
   onChange: (w: Weapon) => void;
   /** 캐릭터에 낙서가 있는지 — 있으면 펜 슬롯이 지우개(🧽)로 변함 */
@@ -12,11 +14,12 @@ type Props = {
 };
 
 /**
- * 무기 9종 한 줄 — 카테고리 전환 지점에 얇은 구분선.
+ * 무기 9칸 한 줄(공통 7 + 현재 맵 투척 2, v1.35) — 카테고리 전환 지점에 얇은 구분선.
  * 펜 슬롯: 낙서가 있으면 🧽 지우개로 변하고, 터치하면 낙서만 삭제
  * (모드는 그대로). 지워지면 다시 🖊️ 로 복귀.
  */
 export function WeaponPicker({
+  weapons,
   active,
   onChange,
   hasDrawing = false,
@@ -28,8 +31,8 @@ export function WeaponPicker({
       aria-label="무기 선택"
       className="pointer-events-auto absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-black/55 p-1 backdrop-blur-sm sm:bottom-14 sm:gap-1.5 sm:p-2"
     >
-      {WEAPONS.map((w, i) => {
-        const prev = WEAPONS[i - 1];
+      {weapons.map((w, i) => {
+        const prev = weapons[i - 1];
         const newGroup = prev && prev.group !== w.group;
         const isEraser = w.key === "pen" && hasDrawing;
         return (

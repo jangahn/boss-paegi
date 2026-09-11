@@ -1349,8 +1349,9 @@ export class PlayScene extends Container {
     const points = Math.round(w.strength * factor);
 
     if (w.impact === "scatter") {
-      // (은퇴 무기 잔존 경로) — 흩뿌려지며 타격
+      // 종이(v1.35 복사실 경으로 복귀) — 흩뿌려지며 타격 + 종이컷 흰 선
       this.fx.paperScatter(hx, hy, 12);
+      this.fx.impactLines(hx, hy, 0xffffff, 4);
       this.fx.burst(hx, hy, w.particleCount, w.color);
       this.doll.triggerHit(w.shake * factor);
       playHitSound("rustle", 0.8 + factor * 0.4);
@@ -1363,12 +1364,10 @@ export class PlayScene extends Container {
       this.fx.shockwave(hx, hy, 30, 110 + 50 * factor, w.color);
       this.addShake(3 + 3 * factor);
       this.addHitStop(0.035 + 0.02 * Math.min(1, factor / THROW_FACTOR_MAX));
-      if (w.key === "book") this.fx.paperScatter(hx, hy, 8, 0xf1e3c2);
-      if (w.key === "keyboard") this.fx.letterDebris(hx, hy, 8);
+      this.playThrowSignature(w, hx, hy);
       this.registerHitPulse(2);
       this.maybeYelp(0.65, factor > 1.5 ? 1 : 0);
       playHitSound("thud", 0.7 + factor * 0.5);
-      if (w.key === "keyboard") playHitSound("clack", 0.8);
       // projectile momentum 으로 캐릭터 밀어내기.
       // collisionStart 안의 applyForce 는 matter 의 step 순서상 적분 전에
       // 클리어되어 no-op — setVelocity 로 직접 임펄스 적용.
@@ -1384,6 +1383,84 @@ export class PlayScene extends Container {
     Body.setVelocity(projBody, { x: -pv.x * 0.25, y: -pv.y * 0.25 });
     const gain = this.reportHit(hx, hy, points, w.key);
     this.fx.scorePop(hx, hy - 30, gain, w.color);
+  }
+
+  /**
+   * 투척 무기 피격 시그니처(v1.35) — 무기 정의의 `signature` 로 표 구동. 공통 둔탁 연출(스쿼시·플래시·파편·충격파·
+   * 히트스톱·thud)은 호출부가 먼저 하고, 여기서는 무기 개성만 얹는다(파편 종류·튀김·자국·전용 소리).
+   */
+  private playThrowSignature(w: Weapon, hx: number, hy: number) {
+    const local = () => this.doll.bodyWrap.toLocal({ x: hx, y: hy }, this);
+    switch (w.signature) {
+      case "pages":
+        this.fx.paperScatter(hx, hy, 8, 0xf1e3c2);
+        break;
+      case "keys":
+        this.fx.letterDebris(hx, hy, 8);
+        playHitSound("clack", 0.8);
+        break;
+      case "splash": {
+        this.fx.splash(hx, hy, 0x6f4e37, 12);
+        const l = local();
+        this.transientDecals.stain(l.x, l.y, 0x6f4e37);
+        playHitSound("splash", 0.9);
+        break;
+      }
+      case "broth": {
+        // 컵라면 — 뜨거운 국물 튀김(주황) + 면발 파편(노랑 가닥) + 김 + 국물 얼룩. 뜨거워서 비명 확률↑
+        this.fx.splash(hx, hy, 0xf28c28, 12);
+        this.fx.paperScatter(hx, hy, 6, 0xf5d76e);
+        this.fx.cloud(hx, hy, 0xffffff, 5);
+        const l = local();
+        this.transientDecals.stain(l.x, l.y, 0xf28c28);
+        playHitSound("splash", 1.0);
+        this.maybeYelp(0.85, 1);
+        break;
+      }
+      case "toner": {
+        this.fx.cloud(hx, hy, 0x2b2b2b, 8);
+        this.fx.paperScatter(hx, hy, 4, 0xffffff);
+        const l = local();
+        this.transientDecals.stain(l.x, l.y, 0x222222);
+        playHitSound("puff", 0.9);
+        break;
+      }
+      case "spiral":
+        this.fx.burst(hx, hy, 6, 0xb8b8b8);
+        this.fx.paperScatter(hx, hy, 6, 0xffffff);
+        playHitSound("clack", 0.5);
+        break;
+      case "screen":
+        this.fx.flash(this.viewW, this.viewH, 0x2f6fff, 0.22, 0.25);
+        this.fx.shards(hx, hy, 0x9fd3ff, 10);
+        playHitSound("glass", 0.9);
+        break;
+      case "crack":
+        this.fx.shards(hx, hy, 0xcfe8ff, 6);
+        this.fx.hitMarker(hx, hy, 0xffffff);
+        playHitSound("buzz", 0.8);
+        break;
+      case "umbrella":
+        this.fx.emojiPop(hx, hy - 10, w.emoji, { size: 72, swing: true });
+        this.fx.splash(hx, hy, 0x8fc8ff, 8);
+        playHitSound("pop", 0.7);
+        break;
+      case "foam": {
+        this.fx.splash(hx, hy, 0xf7d774, 12);
+        this.fx.cloud(hx, hy, 0xffffff, 5);
+        const l = local();
+        this.transientDecals.stain(l.x, l.y, 0xf7d774);
+        playHitSound("splash", 0.8);
+        break;
+      }
+      case "grease":
+        this.fx.splash(hx, hy, 0xd9a441, 10);
+        this.fx.emojiPop(hx, hy - 10, w.emoji, { size: 52, swing: true });
+        playHitSound("crunch", 0.9);
+        break;
+      default:
+        break;
+    }
   }
 
   update(deltaSec: number) {
