@@ -19,8 +19,8 @@ import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { runClientMutation } from "@/lib/client-mutation";
+import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
 
-const DEFAULT_AVATAR = "/avatars/default.png";
 
 /**
  * 계정 메뉴 — 익명/멤버 공통으로 **아바타+닉네임 버튼 → 드롭다운** (UI 일관).
@@ -193,7 +193,7 @@ export function AccountMenu() {
   }
 
   const isLoggedIn = profile.isLoggedIn;
-  const avatar = profile.avatar_url ?? DEFAULT_AVATAR;
+  const avatar = avatarSrc(profile.avatar_url, profile.id);
   const handleSignOut = async () => {
     if (signingOutRef.current) return;
     signingOutRef.current = true;
@@ -282,7 +282,7 @@ export function AccountMenu() {
           src={avatar}
           className="h-6 w-6 shrink-0 rounded-full border border-foreground/10"
           loading="eager"
-          fallbackSrc={DEFAULT_AVATAR}
+          fallbackSrc={defaultAvatarUrl(profile.id)}
         />
         <span className="truncate">{profile.display_name}</span>
         <span aria-hidden className="text-xs text-zinc-500">

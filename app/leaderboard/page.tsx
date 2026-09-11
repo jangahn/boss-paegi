@@ -11,6 +11,7 @@ import {
   type LeaderboardRow as RankRow,
 } from "@/lib/leaderboard-response";
 import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
+import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
 
 type Period = "daily" | "weekly" | "monthly";
 
@@ -21,7 +22,6 @@ function parsePeriod(value: string | null): Period {
   return PERIODS.includes(value as Period) ? (value as Period) : DEFAULT_PERIOD;
 }
 
-const DEFAULT_AVATAR = "/avatars/default.png";
 
 /**
  * 랭킹 — 클라 컴포넌트. 진입 즉시 셸+스켈레톤(서버 await 차단 없음), 오늘/이번주는 클라 상태(풀네비 X).
@@ -153,9 +153,9 @@ function LeaderboardPageInner() {
                       {i + 1}
                     </span>
                     <FadeImg
-                      src={r.avatar_url ?? DEFAULT_AVATAR}
+                      src={avatarSrc(r.avatar_url, r.owner_id)}
                       className="h-9 w-9 shrink-0 rounded-full border border-foreground/10"
-                      fallbackSrc={DEFAULT_AVATAR}
+                      fallbackSrc={defaultAvatarUrl(r.owner_id)}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="truncate font-medium">
