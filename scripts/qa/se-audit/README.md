@@ -30,6 +30,8 @@ BASE=https://boss-paegi.vercel.app ENGINE=webkit   node audit.mjs   # iOS 계열
 # 4) 단일 페이지/상태 즉시 측정
 ENGINE=webkit node one.mjs /admin/content/legal/terms "새 버전으로 개정"
 ```
+seeds 는 링크 필터(`SKIP_HREF`: /api·/auth·/login·로그아웃 등)를 **우회**한다 — `/login`·`/auth/*` 화면도 seeds 에 적으면 측정된다(소셜 로그인·로그아웃 버튼 클릭은 `SKIP_CLICK` 이 막는다). 비회원 상태 화면(`/login`, `/consent` 는 비회원이면 `/login` 으로 리다이렉트)은 `cookies.json` 이 없는 디렉토리에서 `one.mjs` 로 따로 측정한다.
+
 환경변수: `MAX_PAGES`(기본 400) · `MAX_CLICKS`(페이지당 30) · `PER_PATTERN`(같은 라우트 패턴당 2) · `CLICK=0`(버튼 탐색 끄기) · `ONLY=<regex>`.
 
 ## 한계
