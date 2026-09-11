@@ -36,6 +36,13 @@ test("함수 계약: 30회 재추첨·활성 프로필 충돌 검사·ACL revoke
   assert.equal(legacy![1].split("|").length, 15);
   assert.match(sql, /enable row level security/);
   assert.match(sql, /revoke all on table public\.nickname_backfill_2026_09 from public, anon, authenticated;/);
+  // 백업 테이블은 profiles 에 FK 를 걸지 않는다 — FK 는 profiles 쪽 내부 RI 트리거로 OAuth 릴레이션 지문
+  // (scripts/qa/oauth-relation-fingerprints.mjs)·삭제 계보를 바꾼다(0128 주석). 순수 백업이므로 매핑만 보관.
+  assert.match(
+    sql,
+    /create table if not exists public\.nickname_backfill_2026_09 \(\n  profile_id uuid primary key,\n/,
+  );
+  assert.doesNotMatch(sql, /nickname_backfill_2026_09[\s\S]{0,400}references public\.profiles/);
 });
 
 test("커스텀 닉네임 상한 10자(랜덤 닉네임 최대 길이와 동일)", () => {

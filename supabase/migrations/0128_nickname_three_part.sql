@@ -52,8 +52,11 @@ revoke all on function public.random_nickname()
   from public, anon, authenticated;
 
 -- ── 백필 매핑(되돌리기용) — 앱 표면 노출 금지 ────────────────────────────────
+-- profiles 에 FK 를 걸지 않는다(의도): FK 는 참조 대상 profiles 쪽에 내부 RI 트리거를 만들어 OAuth 릴레이션 지문
+-- (scripts/qa/oauth-relation-fingerprints.mjs)과 프로필 삭제 계보(락 순서·cascade)에 편입된다. 순수 백업/롤백 보관용이므로
+-- 매핑만 보관하고, 삭제된 프로필의 행이 남아도 무해하다(자동 생성 닉네임만 담김 — 사용자 입력 없음).
 create table if not exists public.nickname_backfill_2026_09 (
-  profile_id uuid primary key references public.profiles(id) on delete cascade,
+  profile_id uuid primary key,
   old_name text not null,
   new_name text not null,
   backfilled_at timestamptz not null default now()
