@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
@@ -15,7 +15,7 @@ import { useSessionLimits } from "@/components/SessionLimitsProvider";
 import { FORCE_END_GRACE_MS } from "@/lib/score-limits";
 import { setSentryGameContext, setSentryPerfContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
-import { WEAPONS, Weapon, weaponHint } from "@/lib/weapons";
+import { WEAPONS, Weapon, weaponHint, weaponsForMap, remapWeaponForMap } from "@/lib/weapons";
 import type { RoleId } from "@/lib/roles";
 import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
 import { unlockAudio, isMuted, setMuted } from "@/lib/sound";
@@ -91,6 +91,8 @@ function PlayInner() {
     "normal"
   );
   const [weapon, setWeapon] = useState<Weapon>(WEAPONS[0]);
+  // 맵별 투척 로스터(v1.35) — 공통 7종 + 현재 맵의 투척 2종(피커 9칸, 순서 불변).
+  const roster = useMemo(() => weaponsForMap(bgKey), [bgKey]);
   // 게임 생성(비동기) 중 바뀐 무기/배경을 생성 완료 시점에 재적용하기 위한 미러(latest-ref).
   // 렌더 중 동기 갱신은 **의도적** — 아래 세션시작(120·127)·bg확정(110)·game-init effect 보다 먼저,
   // 렌더 시점에 최신값이어야 한다("먼저 채워야" 불변식, :103). effect 로 미루면 순서가 깨져 규칙을 국소 해제.
@@ -264,6 +266,15 @@ function PlayInner() {
       game.setBackground(tex);
       appliedBgKeyRef.current = bgKey;
       setBgSwitchError(null);
+      // 맵별 투척 로스터(v1.35): 다른 맵의 투척 무기를 들고 있었으면 새 맵의 같은 칸(경↔경·중↔중)으로 자동 교체.
+      const held = weaponRef.current;
+      const remapped = remapWeaponForMap(held, bgKey);
+      if (remapped.key !== held.key) {
+        const next = remapped;
+        telemetry.onWeaponSelect(held.key, next.key);
+        log.info("game.weapon_switch", { from: held.key, to: next.key, category: next.category, reason: "map" });
+        setWeapon(next);
+      }
       if (userChangedBgRef.current) {
         telemetry.onMapSelect(previousKey, bgKey);
         bgVisitsRef.current.add(bgKey);
@@ -518,6 +529,7 @@ function PlayInner() {
       </div>
       <UltimateButton ready={ultReady} onFire={handleUltimate} />
       <WeaponPicker
+        weapons={roster}
         active={weapon.key}
         onChange={handleWeapon}
         hasDrawing={hasDrawing}

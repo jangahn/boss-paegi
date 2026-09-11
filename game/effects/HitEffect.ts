@@ -30,6 +30,8 @@ const DEBRIS_SIZES = [16, 20, 24];
 const SHARED = {
   /** 반경 6 흰 원 — burst 파티클(tint=팔레트, scale=r/6) */
   circle: new GraphicsContext().circle(0, 0, 6).fill(0xffffff),
+  /** 날카로운 삼각 파편(유리·액정, v1.35 투척 시그니처) — tint=색, scale=크기 */
+  shard: new GraphicsContext().poly([-7, -4, 8, -2, -2, 7]).fill(0xffffff),
   /** 외경 12 별(노랑+연노랑 코어 베이크) — scale=r/12 */
   star: new GraphicsContext()
     .poly(starPoints(12))
@@ -86,6 +88,16 @@ type Particle = {
   ttl: number;
 };
 
+/** 가루·김 구름 퍼프 — 커지며 떠오르다 사라짐(중력 없음). 토너·김·거품 */
+type Cloud = {
+  g: Graphics;
+  vx: number;
+  vy: number;
+  life: number;
+  ttl: number;
+  s0: number;
+  s1: number;
+};
 type Shockwave = {
   g: Graphics;
   life: number;
@@ -158,6 +170,7 @@ const DEFAULT_COLORS = [0xffd166, 0xef476f, 0xff9f1c, 0xfdf6e3];
  */
 export class HitEffect extends Container {
   private particles: Particle[] = [];
+  private clouds: Cloud[] = [];
   private shockwaves: Shockwave[] = [];
   private scorePops: ScorePop[] = [];
   private paperPieces: PaperPiece[] = [];
@@ -195,6 +208,7 @@ export class HitEffect extends Container {
     };
     fill("circle", 64, () => this.makeShared(SHARED.circle));
     fill("star", 16, () => this.makeShared(SHARED.star));
+    fill("shard", 12, () => this.makeShared(SHARED.shard));
     fill("tear", 8, () => this.makeShared(SHARED.tear));
     fill("sweat", 4, () => this.makeShared(SHARED.sweat));
     fill("rico", 4, () => this.makeShared(SHARED.rico));
@@ -346,6 +360,74 @@ export class HitEffect extends Container {
         wobblePhase: Math.random() * Math.PI * 2,
         life: 0,
         ttl: 0.9 + Math.random() * 0.6,
+      });
+    }
+  }
+
+  /** 액체 튀김(v1.35 투척 시그니처) — 색 물방울이 위쪽 부채꼴로 튀고 얕은 파문 링. 머그컵·주전자·맥주잔·치킨 기름·우산 공용. */
+  splash(x: number, y: number, color: number, count = 12) {
+    for (let i = 0; i < count; i++) {
+      const g = this.acquire("circle", () => this.makeShared(SHARED.circle));
+      const r = 2.5 + Math.random() * 4;
+      g.scale.set(r / 6);
+      g.tint = color;
+      g.x = x;
+      g.y = y;
+      const angle = -Math.PI * (0.15 + Math.random() * 0.7);
+      const speed = 140 + Math.random() * 260;
+      this.particles.push({
+        g,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0,
+        ttl: 0.45 + Math.random() * 0.3,
+      });
+    }
+    this.shockwave(x, y, 6, 64, color);
+  }
+
+  /** 가루·김 구름 — 부드러운 원이 퍼지며 떠오르다 사라짐. 토너(검정)·김(흰색)·거품(흰색). */
+  cloud(x: number, y: number, color: number, count = 6) {
+    for (let i = 0; i < count; i++) {
+      const g = this.acquire("circle", () => this.makeShared(SHARED.circle));
+      const r = 9 + Math.random() * 9;
+      const s0 = r / 6;
+      g.tint = color;
+      g.alpha = 0.55;
+      g.scale.set(s0);
+      g.x = x + (Math.random() - 0.5) * 18;
+      g.y = y + (Math.random() - 0.5) * 12;
+      this.clouds.push({
+        g,
+        vx: (Math.random() - 0.5) * 90,
+        vy: -30 - Math.random() * 70,
+        life: 0,
+        ttl: 0.7 + Math.random() * 0.4,
+        s0,
+        s1: s0 * 2.4,
+      });
+    }
+  }
+
+  /** 유리·액정 파편 — 날카로운 삼각형이 튀어 회전하며 낙하. 노트북·스마트폰. */
+  shards(x: number, y: number, color: number, count = 8) {
+    for (let i = 0; i < count; i++) {
+      const g = this.acquire("shard", () => this.makeShared(SHARED.shard));
+      g.tint = color;
+      g.scale.set(0.7 + Math.random() * 0.8);
+      g.x = x;
+      g.y = y;
+      const a = Math.random() * Math.PI * 2;
+      const speed = 180 + Math.random() * 220;
+      this.debris.push({
+        node: g,
+        key: "shard",
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed - 200,
+        spin: (Math.random() - 0.5) * 14,
+        grav: 1100,
+        life: 0,
+        ttl: 0.5 + Math.random() * 0.3,
       });
     }
   }
@@ -712,6 +794,22 @@ export class HitEffect extends Container {
       p.g.x += p.vx * deltaSec;
       p.g.y += p.vy * deltaSec;
       p.g.alpha = 1 - p.life / p.ttl;
+    }
+
+    for (let i = this.clouds.length - 1; i >= 0; i--) {
+      const c = this.clouds[i];
+      c.life += deltaSec;
+      const t = c.life / c.ttl;
+      if (t >= 1) {
+        this.release("circle", c.g);
+        this.clouds.splice(i, 1);
+        continue;
+      }
+      c.vx *= 0.97;
+      c.g.x += c.vx * deltaSec;
+      c.g.y += c.vy * deltaSec;
+      c.g.scale.set(c.s0 + (c.s1 - c.s0) * t);
+      c.g.alpha = 0.55 * (1 - t * t);
     }
 
     for (let i = this.shockwaves.length - 1; i >= 0; i--) {

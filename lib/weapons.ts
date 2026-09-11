@@ -1,13 +1,14 @@
 import { roleObj, type RoleId } from "@/lib/roles";
 import { roleFrom, type RoleConfig } from "@/lib/config/domains/roles";
 import type { WeaponKey } from "@/lib/weapon-keys";
+import { BACKGROUNDS, findBackground, type BgKey } from "@/lib/backgrounds";
 
 export type { WeaponKey } from "@/lib/weapon-keys";
 
 /**
  * tap   — 캐릭터 탭 한 번 = 타격 1회 (주먹/뿅망치)
  * swipe — 드래그 중 손바닥이 따라다니고, 캐릭터 위를 빠르게 문지르면 속도 비례 타격 (싸대기)
- * throw — 무기를 잡고 휘둘러 놓으면 드래그 방향·속도로 날아가 캐릭터에 충돌 (책/키보드/종이)
+ * throw — 무기를 잡고 휘둘러 놓으면 드래그 방향·속도로 날아가 캐릭터 실루엣에 닿으면 피격 (맵별 경·중 2종, v1.35)
  * shoot — 빈 곳을 꾹 누르고 있으면 캐릭터를 자동 조준해 연사 (비비탄총)
  * grab  — 캐릭터 자체를 잡고 드래그해 내던지기 (이 모드에서만 캐릭터 fling 가능)
  * pinch — 캐릭터를 꾹 잡고 끌어 늘렸다 놓기 (늘린 거리 비례 데미지)
@@ -24,6 +25,22 @@ export type WeaponCategory =
 
 /** 피커 묶음(구분선 기준) — 카테고리와 별개의 UX 그룹. tap | hands(캐릭터 직접 조작) | projectile(날아가는 것) | draw */
 export type WeaponGroup = "tap" | "hands" | "projectile" | "draw";
+/** 투척 무기 칸 — 맵마다 경(책급 16점)·중(키보드급 20점) 하나씩. */
+export type ThrowTier = "light" | "heavy";
+/** 투척 피격 시그니처 — 무기별 파편·튀김·자국 조합(PlayScene 표). 신규 투척 무기는 여기에 키를 더한다. */
+export type ThrowSignature =
+  | "pages" // 책 — 책장 파편
+  | "keys" // 키보드 — 자모 파편 + 딸깍
+  | "sheets" // 종이 — 흩뿌려짐 + 종이컷
+  | "splash" // 머그컵 — 커피 튀김 + 얼룩
+  | "broth" // 컵라면 — 뜨거운 국물 튀김 + 면발 파편 + 김 + 국물 얼룩
+  | "toner" // 프린터 — 토너 가루 구름 + 검댕 자국
+  | "spiral" // 노트 — 스프링 링 파편 + 흰 줄노트 낱장
+  | "screen" // 노트북 — 블루스크린 플래시 + 액정 파편
+  | "crack" // 스마트폰 — 액정 파편 + 진동
+  | "umbrella" // 우산 — 펼쳐지며 회전 + 물방울
+  | "foam" // 맥주잔 — 거품·액체 튀김 + 얼룩
+  | "grease"; // 치킨 — 기름 튀김 + 닭다리 회전 + 바삭
 
 export type Weapon = {
   key: WeaponKey;
@@ -60,6 +77,12 @@ export type Weapon = {
   projectileSize?: number;
   /** 던지기 전용 — 충돌 연출. blunt = 둔탁, scatter = 흩뿌려짐 (종이) */
   impact?: "blunt" | "scatter";
+  /** 던지기 전용 — 이 맵에서만 피커에 노출(v1.35 맵별 투척 2종). 없으면 공통 무기. */
+  map?: BgKey;
+  /** 던지기 전용 — 경(16)·중(20). 맵 전환 시 같은 칸(경↔경·중↔중)으로 자동 교체. */
+  tier?: ThrowTier;
+  /** 던지기 전용 — 피격 시그니처(PlayScene.playThrowSignature 표 구동). */
+  signature?: ThrowSignature;
   /** 낙서 전용 — stroke 두께 (화면 px) */
   strokeWidth?: number;
 };
@@ -149,7 +172,9 @@ export const WEAPONS: readonly Weapon[] = [
     particleCount: 8,
     sound: "squeak",
   },
-  // ── projectile: 날아가는 것 — 책·키보드·비비탄 ───────────────────
+  // ── projectile: 날아가는 것 — 맵별 투척 2종(경 16·중 20, v1.35) + 비비탄 ─────────────
+  // 순서 = BACKGROUNDS 순서(사무실·탕비실·복사실·회의실·엘리베이터·회식자리) × [경, 중]. 피커는 weaponsForMap 이 현재 맵 2종만 노출.
+  // 수치는 책(경)·키보드(중)와 동일 → 무기별 어뷰징 봉투(effectiveMaxBase) 불변. 종이만 가볍게(질량 1.2·48px·흩뿌려짐 복귀).
   {
     key: "book",
     category: "throw",
@@ -165,6 +190,9 @@ export const WEAPONS: readonly Weapon[] = [
     mass: 1.6,
     projectileSize: 52,
     impact: "blunt",
+    map: "office",
+    tier: "light",
+    signature: "pages",
   },
   {
     key: "keyboard",
@@ -181,6 +209,199 @@ export const WEAPONS: readonly Weapon[] = [
     mass: 2.4,
     projectileSize: 56,
     impact: "blunt",
+    map: "office",
+    tier: "heavy",
+    signature: "keys",
+  },
+  {
+    key: "mug",
+    category: "throw",
+    group: "projectile",
+    label: "머그컵",
+    emoji: "☕",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 16,
+    shake: 1.6,
+    color: 0x6f4e37,
+    particleCount: 10,
+    sound: "thud",
+    mass: 1.6,
+    projectileSize: 52,
+    impact: "blunt",
+    map: "pantry",
+    tier: "light",
+    signature: "splash",
+  },
+  {
+    key: "ramen",
+    category: "throw",
+    group: "projectile",
+    label: "컵라면",
+    emoji: "🍜",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 20,
+    shake: 1.8,
+    color: 0xf28c28,
+    particleCount: 12,
+    sound: "thud",
+    mass: 2.4,
+    projectileSize: 56,
+    impact: "blunt",
+    map: "pantry",
+    tier: "heavy",
+    signature: "broth",
+  },
+  {
+    key: "paper",
+    category: "throw",
+    group: "projectile",
+    label: "종이",
+    emoji: "📄",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 16,
+    shake: 1.6,
+    color: 0xffffff,
+    particleCount: 10,
+    sound: "rustle",
+    mass: 1.2,
+    projectileSize: 48,
+    impact: "scatter",
+    map: "copy",
+    tier: "light",
+    signature: "sheets",
+  },
+  {
+    key: "printer",
+    category: "throw",
+    group: "projectile",
+    label: "프린터",
+    emoji: "🖨️",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 20,
+    shake: 1.8,
+    color: 0x3a3a3a,
+    particleCount: 12,
+    sound: "thud",
+    mass: 2.4,
+    projectileSize: 56,
+    impact: "blunt",
+    map: "copy",
+    tier: "heavy",
+    signature: "toner",
+  },
+  {
+    key: "note",
+    category: "throw",
+    group: "projectile",
+    label: "노트",
+    emoji: "🗒️",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 16,
+    shake: 1.6,
+    color: 0xf2f2ee,
+    particleCount: 10,
+    sound: "thud",
+    mass: 1.6,
+    projectileSize: 52,
+    impact: "blunt",
+    map: "meeting",
+    tier: "light",
+    signature: "spiral",
+  },
+  {
+    key: "laptop",
+    category: "throw",
+    group: "projectile",
+    label: "노트북",
+    emoji: "💻",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 20,
+    shake: 1.8,
+    color: 0x9fd3ff,
+    particleCount: 12,
+    sound: "thud",
+    mass: 2.4,
+    projectileSize: 56,
+    impact: "blunt",
+    map: "meeting",
+    tier: "heavy",
+    signature: "screen",
+  },
+  {
+    key: "phone",
+    category: "throw",
+    group: "projectile",
+    label: "스마트폰",
+    emoji: "📱",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 16,
+    shake: 1.6,
+    color: 0xcfe8ff,
+    particleCount: 10,
+    sound: "thud",
+    mass: 1.6,
+    projectileSize: 52,
+    impact: "blunt",
+    map: "elevator",
+    tier: "light",
+    signature: "crack",
+  },
+  {
+    key: "umbrella",
+    category: "throw",
+    group: "projectile",
+    label: "우산",
+    emoji: "☂️",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 20,
+    shake: 1.8,
+    color: 0x8fc8ff,
+    particleCount: 12,
+    sound: "thud",
+    mass: 2.4,
+    projectileSize: 56,
+    impact: "blunt",
+    map: "elevator",
+    tier: "heavy",
+    signature: "umbrella",
+  },
+  {
+    key: "beer",
+    category: "throw",
+    group: "projectile",
+    label: "맥주잔",
+    emoji: "🍺",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 16,
+    shake: 1.6,
+    color: 0xf7d774,
+    particleCount: 10,
+    sound: "thud",
+    mass: 1.6,
+    projectileSize: 52,
+    impact: "blunt",
+    map: "hwesik",
+    tier: "light",
+    signature: "foam",
+  },
+  {
+    key: "chicken",
+    category: "throw",
+    group: "projectile",
+    label: "치킨",
+    emoji: "🍗",
+    hint: "무기를 잡고 휘둘러 던지기",
+    strength: 20,
+    shake: 1.8,
+    color: 0xd9a441,
+    particleCount: 12,
+    sound: "thud",
+    mass: 2.4,
+    projectileSize: 56,
+    impact: "blunt",
+    map: "hwesik",
+    tier: "heavy",
+    signature: "grease",
   },
   {
     key: "gun",
@@ -213,27 +434,40 @@ export const WEAPONS: readonly Weapon[] = [
 ] as const;
 
 /**
- * 은퇴 무기 — 표시 전용(과거 scores/weapon_summary 행 라벨·집계 라벨).
- * 선택·신규 제출 로스터(WEAPONS)에서 빠졌지만 역사 데이터가 남아 있어 판독은 유지한다.
+ * 은퇴 무기 — 표시 전용(과거 scores/weapon_summary 행 라벨·집계 라벨). 선택·신규 제출 로스터(WEAPONS)에서
+ * 빠졌지만 역사 데이터가 남아 있으면 판독을 유지한다. 2026-09 종이(paper)가 복사실 투척으로 복귀해 현재는 비어 있다.
  */
-export const RETIRED_WEAPONS: readonly Weapon[] = [
-  {
-    key: "paper",
-    category: "throw",
-    group: "projectile",
-    label: "종이",
-    emoji: "📄",
-    hint: "무기를 잡고 휘둘러 던지기",
-    strength: 8,
-    shake: 0.5,
-    color: 0xffffff,
-    particleCount: 18,
-    sound: "rustle",
-    mass: 0.4,
-    projectileSize: 44,
-    impact: "scatter",
-  },
-] as const;
+export const RETIRED_WEAPONS: readonly Weapon[] = [];
+
+/** 투척 로스터 전체(12종) — WEAPONS 정의 순서(맵 순 × 경→중). */
+export const THROW_WEAPONS: readonly Weapon[] = WEAPONS.filter((w) => w.category === "throw");
+
+function mapKeyOf(map: string | null | undefined): BgKey {
+  return findBackground(map)?.key ?? BACKGROUNDS[0].key;
+}
+
+/** 현재 맵의 투척 2종 [경, 중]. 미지 맵 키는 첫 맵(사무실)으로. */
+export function throwWeaponsForMap(map: string | null | undefined): Weapon[] {
+  const key = mapKeyOf(map);
+  return THROW_WEAPONS.filter((w) => w.map === key);
+}
+
+/**
+ * 피커 로스터(9칸) — 공통 7종 + 현재 맵의 투척 2종. 칸 순서는 WEAPONS 정의 순서 그대로
+ * (탭 2 | 손 3 | 투척 2 + 비비탄 | 펜)라 맵이 바뀌어도 레이아웃은 불변, 투척 두 칸의 내용만 바뀐다.
+ */
+export function weaponsForMap(map: string | null | undefined): Weapon[] {
+  const key = mapKeyOf(map);
+  return WEAPONS.filter((w) => w.category !== "throw" || w.map === key);
+}
+
+/** 맵 전환 시 든 무기 보정 — 다른 맵의 투척 무기면 새 맵의 같은 칸(tier) 무기로, 아니면 그대로. */
+export function remapWeaponForMap(weapon: Weapon, map: string | null | undefined): Weapon {
+  if (weapon.category !== "throw") return weapon;
+  const key = mapKeyOf(map);
+  if (weapon.map === key) return weapon;
+  return throwWeaponsForMap(key).find((w) => w.tier === weapon.tier) ?? weapon;
+}
 
 export function resolveWeapon(key?: string | null): Weapon {
   return (

@@ -22,6 +22,8 @@ export class TransientDecals extends Container {
   private base: number;
   /** 모양별 공유 지오메트리(2026-09 성능) — 그라데이션 텍스처를 데칼마다가 아니라 인스턴스당 1회만 생성 */
   private ctx: Partial<Record<"bump" | "blush" | "welt" | "hand", GraphicsContext>> = {};
+  /** 얼룩 지오메트리 — 색별 공유(커피·토너·맥주 등, v1.35 투척 시그니처) */
+  private stainCtx = new Map<number, GraphicsContext>();
 
   constructor(naturalSize: number) {
     super();
@@ -120,6 +122,28 @@ export class TransientDecals extends Container {
       this.ctx.welt = new GraphicsContext().circle(0, 0, r).fill(grad);
     }
     this.push(new Graphics({ context: this.ctx.welt }), x, y, 2.6, 0.9);
+  }
+
+  /** 얼룩 — 커피·토너·맥주 등 색 있는 액체·가루 자국(투척 시그니처, v1.35). 색별 지오메트리 공유, 살짝 기울여 찍힘. */
+  stain(x: number, y: number, color: number) {
+    let ctx = this.stainCtx.get(color);
+    if (!ctx) {
+      const r = this.base * 0.07;
+      const cr = (color >> 16) & 0xff;
+      const cg = (color >> 8) & 0xff;
+      const cb = color & 0xff;
+      const grad = new FillGradient({
+        type: "radial",
+        colorStops: [
+          { offset: 0, color: `rgba(${cr},${cg},${cb},0.7)` },
+          { offset: 0.7, color: `rgba(${cr},${cg},${cb},0.35)` },
+          { offset: 1, color: `rgba(${cr},${cg},${cb},0)` },
+        ],
+      });
+      ctx = new GraphicsContext().circle(0, 0, r).fill(grad);
+      this.stainCtx.set(color, ctx);
+    }
+    this.push(new Graphics({ context: ctx }), x, y, 2.4, 0.9, (Math.random() - 0.5) * 0.6);
   }
 
   clear() {

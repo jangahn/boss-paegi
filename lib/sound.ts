@@ -19,7 +19,13 @@ type SoundPreset =
   | "twinkle"
   | "crack"
   | "knock"
-  | "scribble";
+  | "scribble"
+  // v1.35 투척 시그니처
+  | "splash"
+  | "glass"
+  | "buzz"
+  | "crunch"
+  | "puff";
 
 let ctx: AudioContext | null = null;
 let unlocked = false;
@@ -502,6 +508,119 @@ export function playHitSound(preset: SoundPreset, volume = 1) {
     gain.gain.exponentialRampToValueAtTime(0.35 * v, t + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
     src.connect(filter).connect(gain).connect(out(c));
+    src.start(t);
+    return;
+  }
+
+  if (preset === "splash") {
+    // 액체 튀김 "철벅" — 로우패스 스윕 노이즈 + 잔물방울 블립 3개(시간차·피치 랜덤)
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.18, 0.9);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(1800, t);
+    lp.frequency.exponentialRampToValueAtTime(300, t + 0.16);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.5 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    src.connect(lp).connect(g).connect(out(c));
+    src.start(t);
+    for (let i = 0; i < 3; i++) {
+      const at = t + 0.05 + i * 0.045 + Math.random() * 0.02;
+      const o = c.createOscillator();
+      o.type = "sine";
+      const f = 900 + Math.random() * 900;
+      o.frequency.setValueAtTime(f, at);
+      o.frequency.exponentialRampToValueAtTime(f * 1.8, at + 0.04);
+      const og = c.createGain();
+      og.gain.setValueAtTime(0.12 * v, at);
+      og.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
+      o.connect(og).connect(out(c));
+      o.start(at);
+      o.stop(at + 0.06);
+    }
+    return;
+  }
+
+  if (preset === "glass") {
+    // 유리·액정 깨짐 — 고역 노이즈 크래시 + 금속성 배음 링 2개
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.12, 1);
+    const hp = c.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 3200;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.45 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    src.connect(hp).connect(g).connect(out(c));
+    src.start(t);
+    for (const f of [4200, 6100]) {
+      const o = c.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = f * (0.96 + Math.random() * 0.08);
+      const og = c.createGain();
+      og.gain.setValueAtTime(0.08 * v, t);
+      og.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      o.connect(og).connect(out(c));
+      o.start(t);
+      o.stop(t + 0.24);
+    }
+    return;
+  }
+
+  if (preset === "buzz") {
+    // 스마트폰 진동 "지잉" — 낮은 사각파 3펄스
+    for (let i = 0; i < 3; i++) {
+      const at = t + i * 0.07;
+      const o = c.createOscillator();
+      o.type = "square";
+      o.frequency.value = 130;
+      const lp = c.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 420;
+      const og = c.createGain();
+      og.gain.setValueAtTime(0.0001, at);
+      og.gain.linearRampToValueAtTime(0.22 * v, at + 0.008);
+      og.gain.setValueAtTime(0.22 * v, at + 0.04);
+      og.gain.exponentialRampToValueAtTime(0.001, at + 0.055);
+      o.connect(lp).connect(og).connect(out(c));
+      o.start(at);
+      o.stop(at + 0.06);
+    }
+    return;
+  }
+
+  if (preset === "crunch") {
+    // 치킨 바삭 — 밴드패스 노이즈 크랙 4연(간격·크기 랜덤)
+    for (let i = 0; i < 4; i++) {
+      const at = t + i * 0.035 + Math.random() * 0.015;
+      const src = c.createBufferSource();
+      src.buffer = noiseBuffer(c, 0.03, 1);
+      const bp = c.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 1800 + Math.random() * 1400;
+      bp.Q.value = 1.4;
+      const g = c.createGain();
+      g.gain.setValueAtTime((0.3 + Math.random() * 0.2) * v, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + 0.03);
+      src.connect(bp).connect(g).connect(out(c));
+      src.start(at);
+    }
+    return;
+  }
+
+  if (preset === "puff") {
+    // 토너 가루 "푸슉" — 로우패스 노이즈 롱 디케이
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c, 0.3, 0.8);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2200, t);
+    lp.frequency.exponentialRampToValueAtTime(500, t + 0.28);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.4 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    src.connect(lp).connect(g).connect(out(c));
     src.start(t);
     return;
   }
