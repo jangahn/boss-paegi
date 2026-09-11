@@ -10,6 +10,7 @@ import {
   unconfirmedOutcomeError,
 } from "@/lib/client-mutation";
 import { isBaseDollKey } from "./base-dolls";
+import { MAX_DURATION_MS, MAX_SCORE_HARD } from "@/lib/score-limits";
 
 export const SCORE_OUTBOX_STORAGE_KEY = "boss-paegi:score-outbox:v1";
 export const SCORE_OUTBOX_ENTRY_PREFIX = "boss-paegi:score-outbox:v2:";
@@ -189,13 +190,13 @@ function isSubmissionBody(
     (hasExactKeys(value, BODY_KEYS) || hasExactKeys(value, BODY_KEYS_LEGACY)) &&
     Number.isSafeInteger(value.score) &&
     (value.score as number) >= 0 &&
-    (value.score as number) <= 5_000_000 &&
+    (value.score as number) <= MAX_SCORE_HARD &&
     typeof value.weapon === "string" &&
     value.weapon.length >= 1 &&
     value.weapon.length <= 64 &&
     Number.isSafeInteger(value.durationMs) &&
     (value.durationMs as number) >= 1 &&
-    (value.durationMs as number) <= 30 * 60 * 1_000 &&
+    (value.durationMs as number) <= MAX_DURATION_MS &&
     (value.dollId === null ||
       (typeof value.dollId === "string" && UUID_RE.test(value.dollId))) &&
     // baseDoll 은 v1.42 추가 — 구 아웃박스 항목(키 부재)도 유효.

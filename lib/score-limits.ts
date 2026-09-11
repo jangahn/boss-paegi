@@ -7,11 +7,12 @@
 /** 평균 점수/sec **저장 하드상한**(클라 클램프 + 서버 400 거부 + DB 함수 리터럴(0126)의 기준). v0.5 무기 최대 효율
  *  (싸대기 연타 × 속도 2× × 콤보 4× ≈ 750/sec, fling+벽콤보 spike 포함) × 저글링 합산 최대 ×4(무기 ×2 × 맵 ×2, v1.36)
  *  = 3000 에 안전 마진. (v1.35 까지 2000 = 750 × 무기 ×2 + 마진.)
- *  ⚠ 봉투 계층 불변식: 이 값(4000, 저장 상한) ≥ `SCORE_PER_SEC_MAX`(2800, anti-abuse-rules S3 의심
- *  플래그) ≥ 인간 max(재측정 예정 — ×2 시절 1267). 상한은 정상 플레이를 절대 거부하지 않게 넉넉히, S3 는 그보다
+ *  ⚠ 봉투 계층 불변식: 이 값(4000, 저장 상한) ≥ `SCORE_PER_SEC_MAX`(3400, anti-abuse-rules S3 의심
+ *  플래그) ≥ 인간 max(`HUMAN_SCORE_PER_SEC_OBSERVED` 2947, 2026-09-11 멀티터치 실측). 상한은 정상 플레이를 절대 거부하지 않게 넉넉히, S3 는 그보다
  *  아래에서 리뷰 플래그. 두 값은 다른 계층이라 일부러 다르다 — 같게 맞추지 말 것(상한↓=정상 거부, S3↑=봇 누락).
  *  텔레메트리는 이 클램프 전 raw 를 저장 → cron C1 이 완주 텔레에서 tscore(raw) ≥ 제출(clamp)을 보고
- *  오탐하지 않도록 one-sided(0055). DB `bp_submit_score_with_review_core` 도 같은 값을 리터럴로 검사한다(0126).*/
+ *  오탐하지 않도록 one-sided(0055). DB `bp_submit_score_with_review_core`(0126)와 텔레메트리 적재 `bp_ingest_telemetry_delta_core`
+ *  의 suspicious 비율 임계(0130)도 같은 값을 리터럴로 쓴다 — 계약 테스트 telemetry-ingest-envelope.test.ts.*/
 export const MAX_AVG_SCORE_PER_SEC = 4000;
 /** 30분 — 한 판 최대 플레이타임 캡(제출 클램프). DB check(1h=3,600,000)보다 타이트 = 앱이 더 빡센 캡.
  *  ⚠ 캡 도달 제출은 clampForSubmit 이 정확히 이 값으로 안착시키고 route 400 은 strict `>` 라 통과

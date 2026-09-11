@@ -250,6 +250,39 @@ fail() {
 # 세션 동기화는 공용 lib — 상한 120s(러너 속도 무관)·타임아웃 시 세션 스냅샷 덤프.
 source scripts/qa/lib/wait-sync.sh
 
+# 소유자 세션이 **서버 안에서** 대기자의 Lock 대기를 관찰한 뒤 즉시 commit 하는 SQL 조각(fifo 로 전송).
+# submit_content_report 는 함수 레벨 lock_timeout 250ms 라(lock_not_available → report_write_quota_busy),
+# 하네스가 docker exec 폴링으로 대기자의 Lock 을 확인한 뒤 fifo 로 commit 을 보내는 사이가 느린 CI 러너에서
+# 250ms 를 넘으면 대기자가 busy 로 죽는 flake 가 있었다(2026-09-11 CI, 시나리오 D). 소유자 트랜잭션 안에서
+# 10ms 폴링으로 관찰→commit 하면 창이 수십 ms 로 줄어 러너 속도와 무관하다. 대기자가 끝내 Lock 대기에
+# 들어가지 않으면(직렬화 부재) 예외로 소유자 세션이 실패해 하네스가 즉시 잡는다(상한 15s = statement_timeout).
+owner_commit_when_waiter_blocked_sql() {
+  local waiter_app="$1"
+  printf "%s\n" "
+  do \$\$
+  begin
+    for i in 1 .. 1500 loop
+      perform pg_catalog.pg_stat_clear_snapshot();
+      if exists (
+        select 1
+          from pg_catalog.pg_stat_activity
+         where application_name = '$waiter_app'
+           and backend_type = 'client backend'
+           and state = 'active'
+           and wait_event_type = 'Lock'
+      ) then
+        return;
+      end if;
+      perform pg_catalog.pg_sleep(0.01);
+    end loop;
+    raise exception 'waiter $waiter_app never blocked on a lock';
+  end
+  \$\$;
+  commit;
+  \\q
+"
+}
+
 catalog_ok="$(
   db_value "
     select (
@@ -365,12 +398,8 @@ db_psql -qAt -c "
   );
 " >"$qa_tmp_dir/receipt-waiter.out" 2>&1 &
 waiter_pid="$!"
-wait_for_activity \
-  "$waiter_app" \
-  "state = 'active' and wait_event_type = 'Lock'" \
-  "response-loss retry to block on the submission receipt"
-
-printf "commit;\n\\q\n" >&3
+# response-loss retry to block on the submission receipt — 관찰과 commit 을 소유자 세션이 서버 안에서 수행(250ms lock_timeout 창 제거)
+owner_commit_when_waiter_blocked_sql "$waiter_app" >&3
 exec 3>&-
 wait "$owner_pid" || fail "first receipt transaction failed"
 owner_pid=""
@@ -440,12 +469,8 @@ db_psql -qAt -c "
   );
 " >"$qa_tmp_dir/report-waiter.out" 2>&1 &
 waiter_pid="$!"
-wait_for_activity \
-  "$waiter_app" \
-  "state = 'active' and wait_event_type = 'Lock'" \
-  "second report to block on the first-pending election"
-
-printf "commit;\n\\q\n" >&3
+# second report to block on the first-pending election — 관찰과 commit 을 소유자 세션이 서버 안에서 수행(250ms lock_timeout 창 제거)
+owner_commit_when_waiter_blocked_sql "$waiter_app" >&3
 exec 3>&-
 wait "$owner_pid" || fail "first report transaction failed"
 owner_pid=""
@@ -571,12 +596,8 @@ db_psql -qAt -c "
   );
 " >"$qa_tmp_dir/report-after-takedown.out" 2>&1 &
 waiter_pid="$!"
-wait_for_activity \
-  "$waiter_app" \
-  "state = 'active' and wait_event_type = 'Lock'" \
-  "report to block behind takedown"
-
-printf "commit;\n\\q\n" >&3
+# report to block behind takedown — 관찰과 commit 을 소유자 세션이 서버 안에서 수행(250ms lock_timeout 창 제거)
+owner_commit_when_waiter_blocked_sql "$waiter_app" >&3
 exec 3>&-
 wait "$owner_pid" || fail "takedown-first owner transaction failed"
 owner_pid=""
