@@ -66,7 +66,7 @@ const badgeSchema = z.object({
   active: z.boolean(),
 });
 
-type RawBadge = { slug?: unknown; familyKey?: unknown; active?: unknown };
+type RawBadge = { slug?: unknown; familyKey?: unknown; active?: unknown; threshold?: unknown };
 
 /** 유형 뱃지 고정 행 — 라벨·설명은 유형 정의를 그대로 비춤(단일 소스), active 만 저장값 존중 */
 function personaBadgeRows(stored: RawBadge[]): CatalogBadge[] {
@@ -101,10 +101,23 @@ export function normalizeBadgeCatalogInput(input: unknown): unknown {
   );
   const stored = (c.badges as RawBadge[]).filter((b) => b?.familyKey !== PERSONA_FAMILY_KEY);
   const storedPersona = (c.badges as RawBadge[]).filter((b) => b?.familyKey === PERSONA_FAMILY_KEY);
-  // v1.37: 코드 시드에 새로 생긴 tier(weapon_10~19)는 저장본에 편입(additive), 코드 은퇴 tier(weapon_9)는 비활성 고정.
+  // v1.37: 코드 신설 tier(weapon_10·13·16·19)만 저장본에 편입(additive), 코드 은퇴 tier(weapon_9)는 비활성 고정.
+  // 그 외 저장본에 없는 시드(어드민이 뺀 tier)는 되살리지 않는다 — 발행본이 정본(v1.38 교정: 종전엔 전부 편입해 14개가 되살아났다).
   const storedSlugs = new Set(stored.map((b) => (typeof b.slug === "string" ? b.slug : "")));
-  const added = SEED_BADGES.filter((b) => !storedSlugs.has(b.slug));
-  const others = [...stored, ...added].map((b) =>
+  const added = SEED_BADGES.filter((b) => CODE_ADDED_BADGE_SLUGS.has(b.slug) && !storedSlugs.has(b.slug));
+  // 편입 행은 같은 패밀리 블록 안, threshold 가 더 낮은 마지막 저장 행 바로 뒤에 끼운다(없으면 블록 맨 앞, 패밀리 저장
+  // 행이 없으면 맨 끝). 패밀리 행이 배열에서 흩어지면 어드민 순서 화살표·공개 /badges 순서(둘 다 배열 순서)가 어긋난다.
+  const merged: RawBadge[] = stored.slice();
+  for (const b of added) {
+    const famIdx = merged.flatMap((r, i) => (r?.familyKey === b.familyKey ? [i] : []));
+    if (famIdx.length === 0) {
+      merged.push(b);
+      continue;
+    }
+    const below = famIdx.filter((i) => Number(merged[i]?.threshold) < b.threshold);
+    merged.splice(below.length ? below[below.length - 1] + 1 : famIdx[0], 0, b);
+  }
+  const others = merged.map((b) =>
     typeof b.slug === "string" && CODE_RETIRED_BADGE_SLUGS.has(b.slug) ? { ...b, active: false } : b
   );
   return {
@@ -156,6 +169,11 @@ type Seed = {
   tiers: number[];
   /** 코드 은퇴 tier — slug 는 동결 유지(획득 표시 보존), 디폴트·정규화에서 active=false 고정 */
   retired?: number[];
+  /**
+   * 카탈로그가 어드민 소유가 된 뒤 코드에 신설된 tier — 저장 카탈로그에 없으면 정규화가 편입한다(additive).
+   * 여기 없는 시드 tier 는 어드민이 뺀 것일 수 있으므로 편입하지 않는다(발행본 = 정본).
+   */
+  added?: number[];
   label: (t: number) => string;
   desc: (t: number) => string;
 };
@@ -164,13 +182,13 @@ const SEED: Seed[] = [
   { key: "combo", name: "콤보", emoji: "🔥", tiers: [100, 200, 300, 500, 1000, 1500, 2000, 3000, 5000, 10000], label: (t) => `콤보 ${t.toLocaleString()}`, desc: (t) => `최대 콤보 ${t.toLocaleString()} 달성` },
   { key: "hits", name: "타격", emoji: "👊", tiers: [150, 400, 700, 1200, 2500, 4000, 7000, 12000, 20000, 30000], label: (t) => `${t.toLocaleString()}타`, desc: (t) => `한 판에 ${t.toLocaleString()}타 (궁극기 제외)` },
   // v1.37: 로스터 19종(맵별 투척 12종) — 9종 tier 는 은퇴(10종 = 맵을 옮겨야 도달) + 13·16·19 신설
-  { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9, 10, 13, 16, 19], retired: [9], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
+  { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9, 10, 13, 16, 19], retired: [9], added: [10, 13, 16, 19], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
   { key: "ult", name: "궁극기", emoji: "💥", tiers: [1, 2, 3, 5, 10, 15, 20, 30, 40, 50], label: (t) => `궁극기 ${t}회`, desc: (t) => `한 판에 궁극기 ${t}회 발동` },
   { key: "time", name: "플레이", emoji: "⏱️", tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], label: (t) => `${t}분`, desc: (t) => `${t}분 이상 플레이` },
   { key: "map", name: "맵", emoji: "🗺️", tiers: [2, 3, 4, 5, 6], label: (t) => `맵 ${t}곳`, desc: (t) => `한 판에 맵 ${t}곳 순회` },
 ];
 
-/** 코드 시드 뱃지(유형 제외) — 저장 카탈로그에 없는 slug 는 정규화가 편입한다(additive). */
+/** 코드 시드 뱃지(유형 제외) — 디폴트 카탈로그의 원천. 저장 카탈로그에는 `added` 로 표시된 slug 만 편입한다. */
 const SEED_BADGES: CatalogBadge[] = SEED.flatMap((f) =>
   f.tiers.map((t) => ({
     slug: `${f.key}_${t}`,
@@ -184,6 +202,10 @@ const SEED_BADGES: CatalogBadge[] = SEED.flatMap((f) =>
 /** 코드 은퇴 slug — 저장값과 무관하게 active=false 로 고정(획득 표시는 보존). */
 export const CODE_RETIRED_BADGE_SLUGS: ReadonlySet<string> = new Set(
   SEED.flatMap((f) => (f.retired ?? []).map((t) => `${f.key}_${t}`))
+);
+/** 코드 신설 slug — 저장 카탈로그에 없으면 편입. 그 외 시드는 어드민이 뺀 것으로 보고 되살리지 않는다. */
+export const CODE_ADDED_BADGE_SLUGS: ReadonlySet<string> = new Set(
+  SEED.flatMap((f) => (f.added ?? []).map((t) => `${f.key}_${t}`))
 );
 
 export const BADGE_CATALOG_DEFAULT: BadgeCatalog = {
