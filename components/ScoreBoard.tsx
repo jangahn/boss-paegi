@@ -9,6 +9,7 @@ export function ScoreBoard() {
   const ultProgress = useGameStore((s) => s.ultProgress);
   const ultReady = useGameStore((s) => s.ultReady);
   const varietyMult = useGameStore((s) => s.varietyMult);
+  const mapMult = useGameStore((s) => s.mapMult);
   const lastFreshWeaponBonus = useGameStore((s) => s.lastFreshWeaponBonus);
   const multiplier = comboMultiplier(combo);
 
@@ -42,6 +43,11 @@ export function ScoreBoard() {
           {varietyMult > 0 && (
             <span className="text-[10px] text-fuchsia-300 sm:text-xs">
               · 무기변경 ×{(1 + varietyMult).toFixed(2)}
+            </span>
+          )}
+          {mapMult > 0 && (
+            <span className="text-[10px] text-sky-300 sm:text-xs">
+              · 맵변경 ×{(1 + mapMult).toFixed(2)}
             </span>
           )}
         </div>

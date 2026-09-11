@@ -16,6 +16,8 @@ import { FORCE_END_GRACE_MS } from "@/lib/score-limits";
 import { setSentryGameContext, setSentryPerfContext } from "@/lib/sentry-context";
 import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon, weaponHint, weaponsForMap, remapWeaponForMap } from "@/lib/weapons";
+import { juggleConfigFromSeconds } from "@/lib/game-tuning";
+import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import type { RoleId } from "@/lib/roles";
 import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
 import { unlockAudio, isMuted, setMuted } from "@/lib/sound";
@@ -107,6 +109,9 @@ function PlayInner() {
   const appliedBgKeyRef = useRef(bgKey);
   const [bgSwitchError, setBgSwitchError] = useState<string | null>(null);
   const start = useGameStore((s) => s.start);
+  const configureJuggle = useGameStore((s) => s.configureJuggle);
+  const noteMap = useGameStore((s) => s.noteMap);
+  const scoreCfg = useScoreConfig(); // 변경 보너스·콤보 창 초수(라이브) — 게임 시작 시 한 판 값으로 고정
   const end = useGameStore((s) => s.end);
   const hit = useGameStore((s) => s.hit);
   const consumeUlt = useGameStore((s) => s.consumeUlt);
@@ -130,7 +135,9 @@ function PlayInner() {
 
   // 게임 세션 시작 — 스토어 리셋 + 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 event/replay 에 부착).
   useEffect(() => {
+    configureJuggle(juggleConfigFromSeconds(scoreCfg.juggle));
     start();
+    noteMap(bgKeyRef.current); // 맵변경 배율의 시작 맵 체류 기록
     if (!telemetryStartedRef.current) {
       telemetryStartedRef.current = true;
       telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
@@ -148,7 +155,7 @@ function PlayInner() {
       bg: bgKeyRef.current,
       gamePhase: "playing",
     });
-  }, [start, dollId, telemetry]);
+  }, [start, configureJuggle, noteMap, scoreCfg, dollId, telemetry]);
 
   // Pixi 게임 인스턴스 생성/해제 (캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
   useGameInit({
@@ -278,6 +285,7 @@ function PlayInner() {
       if (userChangedBgRef.current) {
         telemetry.onMapSelect(previousKey, bgKey);
         bgVisitsRef.current.add(bgKey);
+        useGameStore.getState().noteMap(bgKey); // 맵변경 배율 창 기록
         log.info("game.bg_switch", { from: previousKey, to: bgKey });
         setSentryGameContext({
           dollId,
@@ -423,7 +431,9 @@ function PlayInner() {
       graceTimerRef.current = null;
     }
     bgVisitsRef.current = new Set([bgKeyRef.current]); // 새 세션 — 현재 배경만
+    configureJuggle(juggleConfigFromSeconds(scoreCfg.juggle));
     start();
+    noteMap(bgKeyRef.current);
     gameRef.current?.start();
     telemetry.startSession(bgKeyRef.current, weaponRef.current.key);
   };

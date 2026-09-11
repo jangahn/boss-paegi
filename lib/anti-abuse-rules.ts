@@ -10,6 +10,7 @@ import {
 import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
 import {
   VARIETY_CAP,
+  MAP_VARIETY_CAP,
   ULT_HITS,
   FRESH_WEAPON_BONUS,
   SWITCH_ULT_BONUS_RATIO,
@@ -60,7 +61,7 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * 게이지 식(첫 타 +0.01, 이후 매 타 최대 +0.11)에서 유도해 0~9타로 1~2회
  * 궁극기를 위조하던 여유치를 제거한다.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-09-anti-abuse-v9"; // v9: 맵별 투척 무기 12종 로스터(경 16·중 20 = 책·키보드 수치, 봉투 유도값 불변) · v8: gun strength 4→7
+export const ANTI_ABUSE_RULES_VERSION = "2026-09-anti-abuse-v10"; // v10: 맵변경 배율 ×2 곱(합산 ×4) → S2 이론상한 ×2·S3 2800·S7 252만·하드캡 4000/초 · v9: 맵별 투척 12종 · v8: gun 4→7
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
@@ -76,18 +77,19 @@ export const MAX_ULT_SCORE_PER_USE = 8_000;
 export const HITS_PER_SEC_SUSTAINED = 18;
 /** 임의 길이 최대 타격속도(/초). 인간 버스트 19.1. */
 export const HITS_PER_SEC_BURST = 25;
-/** 최대 평균 score/초(S3 의심 플래그). 인간 검증 최대 1,267 + 마진.
- *  ⚠ 봉투 계층 불변식: `MAX_AVG_SCORE_PER_SEC`(2000, score-limits.ts 저장 하드상한) ≥ 이 값(1400, 의심
- *  플래그) ≥ 인간 max(1267). 상한은 "저장 거부"용(정상 안 막게 넉넉), S3 는 "의심→리뷰"용이라 서로 다른
+/** 최대 평균 score/초(S3 의심 플래그). v1.36 저글링 합산 최대가 ×2→×4 로 두 배가 되어 1,400→2,800(비례 상향).
+ *  인간 검증 최대 1,267 은 ×2 시절 값 — 배포 2주 뒤 실데이터로 재측정해 재조정한다.
+ *  ⚠ 봉투 계층 불변식: `MAX_AVG_SCORE_PER_SEC`(4000, score-limits.ts 저장 하드상한) ≥ 이 값(2800, 의심
+ *  플래그) ≥ 인간 max. 상한은 "저장 거부"용(정상 안 막게 넉넉), S3 는 "의심→리뷰"용이라 서로 다른
  *  계층 — 같게 두지 말 것. 상한을 낮추면 정상 고득점을 거부하고, S3 를 올리면 봇을 놓친다. */
-export const SCORE_PER_SEC_MAX = 1_400;
-/** S7 점수 하한 = S3 의 15분 봉투 상수(SCORE_PER_SEC_MAX × 900s = 1,260,000).
+export const SCORE_PER_SEC_MAX = 2_800;
+/** S7 점수 하한 = S3 의 15분 봉투 상수(SCORE_PER_SEC_MAX × 900s = 2,520,000; v1.35 까지 1,260,000).
  *  S3 는 score/초 비율이라 duration 에 비례해 봉투가 늘어난다 — 15분 초과 구간에선 이 상수를
  *  하한으로 걸어야 무플래그 위조 상한(126만)이 duration 과 무관하게 불변이다. 두 신호는 상보적:
  *  ≤15분 & >126만은 산술상 반드시 S3(126만/900s=1,400/s 초과), >15분 & >126만은 S7.
  *  인간이 이 하한을 넘으려면 700/s+ 를 15분 이상 지속해야 함(검증 최대: 버스트 1,267/s·최장 12.2분). */
 export const S7_LONG_SESSION_SCORE_FLOOR =
-  SCORE_PER_SEC_MAX * (MAX_REASONABLE_DURATION_MS / 1000); // 1,260,000
+  SCORE_PER_SEC_MAX * (MAX_REASONABLE_DURATION_MS / 1000); // 2,520,000
 /** S2 무기별 타당성 최소 타격수. 점수/타격은 exact integer이고 fresh도 정확 차감되므로
  *  1타부터 이론 상한을 적용해 소량 타격 분산 우회를 남기지 않는다. */
 export const S2_MIN_HITS = 1;
@@ -154,9 +156,9 @@ function effectiveMaxBase(weaponKey: string): number {
   }
 }
 
-/** 무기 1타 이론 최대 점수 = 실효 max base × 콤보캡 × 다양성캡. */
+/** 무기 1타 이론 최대 점수 = 실효 max base × 콤보캡 × 무기변경캡 × 맵변경캡(v1.36: ×4×2×2 = base × 16). */
 function theoreticalMaxPerHit(weaponKey: string): number {
-  return effectiveMaxBase(weaponKey) * MAX_COMBO_MULTIPLIER * (1 + VARIETY_CAP);
+  return effectiveMaxBase(weaponKey) * MAX_COMBO_MULTIPLIER * (1 + VARIETY_CAP) * (1 + MAP_VARIETY_CAP);
 }
 
 /**
