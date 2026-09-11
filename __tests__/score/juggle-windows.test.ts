@@ -22,7 +22,7 @@ const {
 } = await import("../../lib/game-tuning.ts");
 const { scoreConfigSchema, SCORE_CONFIG_DEFAULT } = await import("../../lib/config/domains/score.ts");
 const { MAX_AVG_SCORE_PER_SEC, MAX_SCORE_HARD, MAX_DURATION_MS } = await import("../../lib/score-limits.ts");
-const { SCORE_PER_SEC_MAX, S7_LONG_SESSION_SCORE_FLOOR } = await import("../../lib/anti-abuse-rules.ts");
+const { HUMAN_SCORE_PER_SEC_OBSERVED, SCORE_PER_SEC_MAX, S7_LONG_SESSION_SCORE_FLOOR } = await import("../../lib/anti-abuse-rules.ts");
 
 function withClock<T>(t: { mock: { method: (obj: object, name: string, impl: () => number) => unknown } }, run: (set: (ms: number) => void) => T): T {
   let now = 1_000;
@@ -141,11 +141,14 @@ test("score_config.juggle 스키마: 기본값 충전·범위 검사, start 는 
   assert.deepEqual(useGameStore.getState().juggle, { weaponWindowMs: 5_000, mapWindowMs: 7_000, comboWindowMs: 1_500 });
 });
 
-test("봉투 계층: 저장 상한 4000/초 ≥ S3 2800 · S7 = S3 × 900초 · 30분 × 4000 ≤ 점수 하드캡 800만", () => {
+test("봉투 계층: 저장 상한 4000/초 ≥ S3 3400 ≥ 인간 실측 2947 · S7 = S3 × 900초 · 30분 × 4000 ≤ 점수 하드캡 800만", () => {
   assert.equal(MAX_AVG_SCORE_PER_SEC, 4000);
-  assert.equal(SCORE_PER_SEC_MAX, 2800);
+  assert.equal(SCORE_PER_SEC_MAX, 3400);
+  assert.equal(HUMAN_SCORE_PER_SEC_OBSERVED, 2947);
   assert.ok(MAX_AVG_SCORE_PER_SEC >= SCORE_PER_SEC_MAX);
-  assert.equal(S7_LONG_SESSION_SCORE_FLOOR, 2_520_000);
+  // v11: S3 = 인간 실측 × 1.15 여유(2,947 × 1.15 ≈ 3,389 → 3,400), 저장 상한 아래
+  assert.ok(SCORE_PER_SEC_MAX >= Math.round(HUMAN_SCORE_PER_SEC_OBSERVED * 1.1) && SCORE_PER_SEC_MAX < MAX_AVG_SCORE_PER_SEC);
+  assert.equal(S7_LONG_SESSION_SCORE_FLOOR, 3_060_000);
   assert.equal(MAX_SCORE_HARD, 8_000_000);
   assert.ok((MAX_DURATION_MS / 1000) * MAX_AVG_SCORE_PER_SEC <= MAX_SCORE_HARD);
 });

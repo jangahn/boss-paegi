@@ -5,6 +5,14 @@ import { getIntegrityDetail } from "@/lib/admin-integrity";
 import { IntegrityActions } from "@/components/admin/IntegrityActions";
 import { formatDuration, weaponLabel } from "@/lib/report";
 import { fmtKst } from "@/lib/admin-format";
+import {
+  HITS_PER_SEC_SUSTAINED,
+  HUMAN_APM_SUSTAINED_OBSERVED,
+  HUMAN_SCORE_PER_SEC_OBSERVED,
+  INTERVAL_CV_MIN,
+  MAX_REASONABLE_DURATION_MS,
+  SCORE_PER_SEC_MAX,
+} from "@/lib/anti-abuse-rules";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,8 +24,9 @@ const STATUS_LABEL: Record<string, string> = {
   voided: "무효",
 };
 
-/** 인간 지속 apm 상한(실측 ≥60s ~879) 참조선 — 봇(≈3600 고정)과 육안 대비. */
-const HUMAN_APM_CEILING = 880;
+/** 인간 지속 apm 상한 참조선(anti-abuse-rules HUMAN_APM_SUSTAINED_OBSERVED, 실측 ≥60s ~879) — 봇(≈3600 고정)과 육안 대비.
+ *  임계·기준선은 전부 규칙 모듈 상수에서 온다(v11: 하드코딩 1,267·1,400·18×60·0.08·900000 제거). */
+const HUMAN_APM_CEILING = HUMAN_APM_SUSTAINED_OBSERVED;
 
 export default async function AdminIntegrityDetailPage({
   params,
@@ -72,9 +81,13 @@ export default async function AdminIntegrityDetailPage({
       {/* 종합 지표 */}
       <Section title="점수 지표">
         <Grid>
-          <Field label="점수/초" value={`${scorePerSec.toLocaleString()} (인간 ≤1,267)`} warn={scorePerSec > 1400} />
-          <Field label="지속 타격속도" value={apmToRate(t?.apm)} warn={(t?.apm ?? 0) > 18 * 60} />
-          <Field label="소요 시간" value={formatDuration(d.durationMs)} warn={d.durationMs > 900000} />
+          <Field
+            label="점수/초"
+            value={`${scorePerSec.toLocaleString()} (인간 실측 ≤${HUMAN_SCORE_PER_SEC_OBSERVED.toLocaleString()} · S3 >${SCORE_PER_SEC_MAX.toLocaleString()})`}
+            warn={scorePerSec > SCORE_PER_SEC_MAX}
+          />
+          <Field label="지속 타격속도" value={apmToRate(t?.apm)} warn={(t?.apm ?? 0) > HITS_PER_SEC_SUSTAINED * 60} />
+          <Field label="소요 시간" value={formatDuration(d.durationMs)} warn={d.durationMs > MAX_REASONABLE_DURATION_MS} />
           <Field label="최대 콤보" value={d.maxCombo?.toLocaleString() ?? "—"} />
           <Field label="주력 무기" value={weaponLabel(d.weapon)} />
           <Field label="rules" value={d.flag?.rulesVersion ?? "—"} />
@@ -110,7 +123,7 @@ export default async function AdminIntegrityDetailPage({
               <Field label="tap 비율" value={t.tapShare != null ? t.tapShare.toFixed(2) : "—"} />
               <Field label="max touch" value={t.maxTouch?.toString() ?? "—"} />
               <Field label="무기 종류" value={t.distinctWeapons?.toString() ?? "—"} />
-              <Field label="간격 CV" value={t.intervalCv != null ? t.intervalCv.toFixed(3) : "—"} warn={t.intervalCv != null && t.intervalCv < 0.08} />
+              <Field label="간격 CV" value={t.intervalCv != null ? t.intervalCv.toFixed(3) : "—"} warn={t.intervalCv != null && t.intervalCv < INTERVAL_CV_MIN} />
               <Field label="기기/주사율" value={`${t.deviceClass ?? "—"} / ${t.refreshHz ?? "—"}Hz`} />
               <Field
                 label="텔레↔점수 정합"
@@ -158,7 +171,7 @@ export default async function AdminIntegrityDetailPage({
 
 function apmToRate(apm: number | null | undefined): string {
   if (apm == null) return "—";
-  return `${(apm / 60).toFixed(1)}타/초 (인간 지속 ≤~15)`;
+  return `${(apm / 60).toFixed(1)}타/초 (인간 지속 ≤~${Math.round(HUMAN_APM_SUSTAINED_OBSERVED / 60)} · S1 >${HITS_PER_SEC_SUSTAINED})`;
 }
 
 /** 버킷별 apm 스파크라인 — 봇=천장 고정 직선 / 인간=들쭉날쭉. 인간 상한 참조선 포함. */
