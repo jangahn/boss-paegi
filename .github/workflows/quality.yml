@@ -41,7 +41,8 @@ jobs:
 
   database:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 정상 실행 ~5분. 잡 30분 + 스텝별 6~10분 상한 — 어떤 스텝이 매달려도 분 단위로 실패(2026-09-11 lock-race 60분 행 재발 방지).
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # releases/v4
@@ -55,99 +56,130 @@ jobs:
           version: 2.107.0
 
       - name: Start disposable Supabase
+        timeout-minutes: 10
         run: supabase start -x logflare,studio,imgproxy,realtime,edge-runtime,vector
 
       # 최신 스키마 단일 검증(v0.91 재설계): 전체 마이그레이션을 한 번에 적용하고
       # 그 위에서 pgTAP 전량·영구 표면 계약·race 스위트를 돌린다. 배포 순서 계약
       # (additive 마이그레이션 → 코드 배포)은 docs/checkout-rework.md 참조.
       - name: Apply all migrations
+        timeout-minutes: 10
         run: npm run qa:db:apply
 
       - name: Run pgTAP integration suites
+        timeout-minutes: 10
         run: npm run test:db
 
       - name: Verify permanent app surfaces on the latest schema
+        timeout-minutes: 6
         run: npm run qa:db:permanent-surface
 
       - name: Verify OAuth target-generation fences
+        timeout-minutes: 6
         run: npm run qa:db:oauth-target-fence
 
       - name: Prove OAuth relation fingerprints reject catalog tampering
+        timeout-minutes: 6
         run: npm run qa:db:oauth-relation-fingerprint-tamper
 
       - name: Prove OAuth rollout catalog mutations are transaction-fenced
+        timeout-minutes: 6
         run: npm run qa:db:oauth-catalog-mutation-locks
 
       - name: Prove a locked terminal OAuth row remains non-green
+        timeout-minutes: 6
         run: npm run qa:db:oauth-prune-lock-race
 
       - name: Prove OAuth migration and member creation serialize to no-transfer
+        timeout-minutes: 6
         run: npm run qa:db:oauth-migration-member-race
 
       - name: Prove superseded RPC closure reconverges over later ACL drift
+        timeout-minutes: 6
         run: npm run qa:db:analytics-maintenance-acl-upgrade
 
       - name: Prove analytics maintenance rebuilds and pruning serialize
+        timeout-minutes: 6
         run: npm run qa:db:analytics-maintenance-lock-race
 
       - name: Run atomic checkout concurrency races
+        timeout-minutes: 6
         run: npm run qa:db:checkout-concurrency-race
 
 
       - name: Run checkout-account deletion lock race
+        timeout-minutes: 6
         run: npm run qa:db:race
 
       - name: Run child-write account deletion lock races
+        timeout-minutes: 6
         run: npm run qa:db:account-child-delete-race
 
       - name: Run anonymous-data reassignment winner race
+        timeout-minutes: 6
         run: npm run qa:db:anon-reassign-race
 
       - name: Run anonymous-data reassignment write races
+        timeout-minutes: 6
         run: npm run qa:db:anon-reassign-write-race
 
       - name: Run score submission-ban lock races
+        timeout-minutes: 6
         run: npm run qa:db:score-ban-race
 
       - name: Run content-report lock races
+        timeout-minutes: 6
         run: npm run qa:db:report-race
 
       - name: Run legal document state-machine lock races
+        timeout-minutes: 6
         run: npm run qa:db:legal-race
 
       - name: Run moderation restore-purge lock races
+        timeout-minutes: 6
         run: npm run qa:db:moderation-purge-race
 
       - name: Run consent-profile-account deletion lock races
+        timeout-minutes: 6
         run: npm run qa:db:consent-delete-race
 
       - name: Run admin credit adjustment response-loss races
+        timeout-minutes: 6
         run: npm run qa:db:admin-adjust-race
 
       - name: Run remaining admin mutation receipt and state races
+        timeout-minutes: 6
         run: npm run qa:db:admin-mutation-race
 
       - name: Run reactivation against the real local GoTrue Admin API
+        timeout-minutes: 10
         run: npm run qa:db:reactivation-auth-api
 
       - name: Run global user-mutation lock graph races
+        timeout-minutes: 6
         run: npm run qa:db:user-mutation-lock-race
 
       - name: Run FAL submit acknowledgement-timeout races
+        timeout-minutes: 6
         run: npm run qa:db:fal-submit-race
 
       - name: Run legacy signed-upload orphan lock races
+        timeout-minutes: 6
         run: npm run qa:db:legacy-upload-race
 
       - name: Run public write quota concurrency races
+        timeout-minutes: 6
         run: npm run qa:db:public-write-race
 
       - name: Run public score and report quota concurrency races
+        timeout-minutes: 6
         run: npm run qa:db:score-report-quota-race
 
       - name: Run payment observation-finalizer races
+        timeout-minutes: 6
         run: npm run qa:db:order-observation-race
 
       - name: Stop disposable Supabase
+        timeout-minutes: 6
         if: always()
         run: supabase stop --no-backup
