@@ -2,7 +2,7 @@ import type { User } from "@supabase/supabase-js";
 
 // 순수 함수 모듈 (server-only 아님) — safeNext 는 client(login page)·server(callback)·proxy 공용.
 
-const NICKNAME_MAX = 12;
+const NICKNAME_MAX = 10;
 
 // 탈퇴(soft-delete) 시 auth.users.email 을 스크럽하는 marker. `.invalid` 는 예약 TLD(실제 도메인 아님).
 // 단일 소스 — delete 라우트(쓰기)·extractOAuthProfile/백필(판별)이 공유.
@@ -23,7 +23,7 @@ export const SCRUBBED_PROFILE_DISPLAY_NAME = "탈퇴한 사용자";
 
 export type OAuthProfile = {
   /**
-   * OAuth 제공 닉네임 (12자 클램프). 없으면 null.
+   * OAuth 제공 닉네임 (10자 클램프, v1.45 — 랜덤 닉네임 최대 길이와 동일). 없으면 null.
    * 신규 가입 시드에만 그대로 쓰이고, 기존 회원 sync/재동의에서는 프로필을 덮어쓰지
    * 않는다(0103 — 탈퇴 스크럽 플레이스홀더 재시드 제외). 사용자가 마이페이지에서 바꾼
    * 닉네임·프사가 재로그인에 되돌아가지 않게 하는 결정.

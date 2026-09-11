@@ -87,7 +87,7 @@ export default function Home() {
                   href="/gallery"
                   className="font-semibold text-steel underline-offset-4 transition hover:text-stamp hover:underline"
                 >
-                  내 부장님 갤러리 →
+                  내 캐릭터 갤러리 →
                 </Link>
                 <Link
                   href="/leaderboard"

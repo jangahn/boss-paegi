@@ -17,6 +17,8 @@ import {
   runClientMutation,
   runReplayedJsonMutation,
 } from "@/lib/client-mutation";
+import { MARKETING_COPY_DEFAULT } from "@/lib/config/domains/marketing";
+import { resolveCopy } from "@/lib/config/template";
 
 export type ShareResult = "shared" | "copied" | "cancelled" | "failed";
 
@@ -310,9 +312,14 @@ export async function runShare({
 export async function shareGameResult(
   scoreId: string,
   score: number,
-  opts?: { text?: string; file?: File | null }
+  opts?: { text?: string; file?: File | null; roleLabel?: string }
 ): Promise<ShareResult> {
   const url = `${PUBLIC_ENV.SITE_URL}/share/${scoreId}`;
-  const brandText = opts?.text ?? `부장님 ${score.toLocaleString()}점 패고 옴 🥊`;
+  // 폴백은 어드민 문구의 코드 기본값(scoreShareText)과 같은 템플릿을 쓴다(v1.45 — 별도 하드코딩 금지). 호출처는 보통 발행 문구를 넘긴다.
+  const brandText =
+    opts?.text ??
+    resolveCopy(MARKETING_COPY_DEFAULT.share.scoreShareText, opts?.roleLabel ?? "부장님", {
+      점수: score.toLocaleString(),
+    });
   return runShare({ brandText, url, title: SERVICE_NAME, file: opts?.file });
 }

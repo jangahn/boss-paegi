@@ -27,7 +27,7 @@ export type MyProfile = {
   isAdmin: boolean;
 };
 
-const NICKNAME_MAX = 12;
+const NICKNAME_MAX = 10;
 const UNLIMITED_THRESHOLD = 9999;
 
 export function formatCredits(n: number): string {
