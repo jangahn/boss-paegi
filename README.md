@@ -469,7 +469,7 @@ v0.12 (2026-06-20, OAuth 회원 + 생성권 크레딧):
 v0.13 (2026-06-20, OAuth 후속 폴리시):
 - **매끄러운 재로그인**: 이미 가입된 계정으로 로그인 시 거부 바운스 제거. `startOAuth` 가 `redirectTo` 에 `p=provider` 를 실어보내고, 콜백이 `identity_already_exists` 면 `/login?auto=<provider>` 로 → `LoginForm` 이 스피너 보이며 `signInWithOAuth` 자동 재개(allowlist + `useRef` 1회 guard, 루프 없음). 신규 가입(linkIdentity)은 그대로.
 - **생성권 노출/가드**: `getMyProfile` 가 멤버면 `member_accounts.gen_credits` 도 반환(`formatCredits`: ≥9999 "무제한"). 계정 메뉴·갤러리에 "생성권 N개", `/generate` 는 `checking`→`no_credits` stage 로 0 이면 진입 차단(우측하단 의견 위젯 안내). 클라는 UX 가드일 뿐 — 최종 차단은 `/api/fal`(조회 실패 시 consent 로 진행).
-- **프로필 사진 삭제**: `/api/avatar` DELETE가 `request_avatar_clear`로 DB reference 제거와 Storage cleanup outbox 생성을 한 트랜잭션에 고정한다. 즉시 물리삭제가 실패하면 202를 반환하고 `content-maintain`이 fenced lease로 재시도한다(외부 URL은 Storage 삭제 대상에서 제외). `AvatarEditor` "기본 사진으로 되돌리기".
+- **프로필 사진 삭제(v1.44 제거)**: 종전 `/api/avatar` DELETE(`request_avatar_clear` 로 DB reference 제거 + Storage cleanup outbox)는 v1.44 에서 제거됐다 — 기본 프사가 유저별 고정 프리셋(v1.41)이 되어 되돌리기가 무의미. 교체는 사진 업로드·프리셋 고르기(PATCH 경로)로만.
 - 익명 dolls→운영계정(f81c8a92) **이관 실행**(0011 전, `doll_owner_migration_log` 백업). `member_accounts` 에 감사 컬럼(updated_at/version), `daily_gen_limit` 컬럼 제거(0011).
 
 v0.14 (2026-06-21, 플레이 해석 리포트 — 페르소나, PR1/4):
@@ -943,6 +943,10 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.44 (2026-09-12, 잠금 카드 무상호작용 + 프로필 사진 '기본 사진으로 되돌리기' 제거; 마이그레이션 없음):
+- **갤러리 잠금 카드(비회원)**: 탭 토스트·"가입하고 열기" 버튼 제거 — 🔒 "가입하면 열림" 칩만 있는 무상호작용 티저(사용자 결정). 가입 유도는 갤러리 배너·게임 종료 화면이 맡는다. 어드민 마케팅 문구 키 `signupBanner.lockedCta`(편집기 필드·도식 영역) 삭제 — 발행행(v24)에 남은 값은 스키마가 무시(strip).
+- **프로필 사진 되돌리기 제거**: 기본 프사가 유저별 고정 프리셋이 되고 프리셋 5장을 직접 고를 수 있어 무의미해짐(사용자 결정). `AvatarEditor` 버튼·`hasCustomAvatar`·`lib/avatar.removeAvatar`·`/api/avatar` DELETE·`AvatarClearHttpAck` 계약·인벤토리 테스트 행 삭제. DB RPC `request_avatar_clear` 는 pgTAP(storage_cleanup_intents·user_mutation_lock_order)이 고정하고 있어 그대로 둔다(호출 경로 없음).
+
 v1.43 (2026-09-12, 핫픽스 — 점수 제출 500(예약 RPC 인자 공유) + 헤더 계정 버튼 375 WebKit 넘침; 마이그레이션 없음):
 - **사고**: v1.42 배포 직후 모든 점수 제출이 500(`insert_failed`) — `/api/score` 가 `reserve_score_write_attempt`(quota 예약)와 `submit_score_with_review` 에 같은 인자 객체를 쓰는데 `p_base_doll` 을 거기 넣어 예약 RPC 의 PostgREST 함수 해석이 실패했다(`score.reserve_fail: Could not find the function …`). 프로드 검증에서 즉시 발견 → Vercel 롤백(60acc3c, 구 번들은 0127 스키마와 호환 — Phase A 실측)으로 복구 후 교정. 배포 순서 계약(additive 마이그레이션 → 코드) 자체는 지켜졌고, 결함은 라우트의 인자 객체 공유였다.
 - **교정**: `p_base_doll` 은 저장 RPC 호출에만 전달. 소스 계약 테스트(`base-dolls.test.ts`)로 예약 인자에 `p_base_doll` 이 다시 들어가지 못하게 고정. 교훈: 공유 인자 객체에 파라미터를 더할 땐 그 객체를 받는 **모든** RPC 의 시그니처를 확인한다(프로드 검증 시 실제 제출 1회를 반드시 포함).
@@ -952,7 +956,7 @@ v1.42 (2026-09-12, 기본 캐릭터 5종 — 회원 추가 캐릭터 4종·링�
 - **기본 캐릭터 어휘** `lib/base-dolls.ts`: 기본 부장님 `boss-m`(종전 `/sprites/boss-default.png`) + 추가 4종 `ceo-m`(사장님·남)·`boss-f`(부장님·여)·`teamlead-f`(팀장님·여)·`junior-m`(신입·남) — `public/sprites/base/<key>.png`, 사용자 제공 원본(1086×1448 알파)을 기본 부장님과 같은 규격(768×1024, 캐릭터 높이 82%, 폭 ≤94%, 256색 팔레트 124~167KB)으로 정규화. DB 행 없는 정적 자산(Vercel CDN, 기본 부장님과 같은 이유). 롤·성별은 시비 멘트·보고서 보이스·{호칭} 을 정한다.
 - **플레이 URL** `/play?doll=<key>`(기본 부장님은 `/play`): 링크만 있으면 **비회원도** 추가 캐릭터를 플레이할 수 있고, 갤러리 노출은 회원. `useGameInit` 는 키면 정적 스프라이트·롤·성별을 어휘에서 취하고, uuid 면 종전 커스텀 경로(본인 소유만).
 - **점수 기록** `scores.base_doll`(0127, CHECK 5종, doll_id 있으면 null 강제): 제출 RPC `submit_score_with_review`/`..._core` 에 `p_base_doll DEFAULT NULL` 추가(새 오버로드 생성 후 종전 시그니처 drop — PostgREST named-arg 모호성 방지, 구 클라는 DEFAULT 로 매핑). 클라 `useScoreSubmission`·아웃박스(`baseDoll`, 구 항목 호환)·`/api/score`(어휘 밖 null 강등). 공유 카드·히스토리·OG 는 `baseDollOf(score.base_doll)` 로 이미지·롤·성별 폴백(null = 구 기록 = 기본 부장님). 텔레메트리 dollId 는 기본 부장님 `default`(롤업 호환)·추가 캐릭터는 키.
-- **갤러리**: 기본 부장님 카드 뒤에 `BaseDollCard` 4장(청록 '추가' 뱃지 + 롤 칩, 탭 → 플레이). 비회원은 🔒 "가입하면 열림" 잠금 티저(흐림) → 토스트(`signupBanner.lockedCta` "가입하고 열기" → `/login?next=/gallery`). **기본 캐릭터 카드는 ⋯ 메뉴 없음**(기본 부장님 카드의 [공유·역할 변경] 가짜 후킹 항목 제거 — 공유·삭제·역할 변경은 커스텀 캐릭터 전용, 어떤 상태에서도 일관).
+- **갤러리**: 기본 부장님 카드 뒤에 `BaseDollCard` 4장(청록 '추가' 뱃지 + 롤 칩, 탭 → 플레이). 비회원은 🔒 "가입하면 열림" 잠금 티저(흐림, v1.44 부터 무상호작용). **기본 캐릭터 카드는 ⋯ 메뉴 없음**(기본 부장님 카드의 [공유·역할 변경] 가짜 후킹 항목 제거 — 공유·삭제·역할 변경은 커스텀 캐릭터 전용, 어떤 상태에서도 일관).
 - **가입 후킹(게임 종료 화면, 비회원)**: 1차 버튼 `gameoverPlayBtnNonmember` 기본값 "내 {호칭} 만들어서 패기" → **"다른 캐릭터 더 열고 패기"**(가입 후 갤러리로), 부제는 새 키 `share.gameoverNonmemberSub`("가입하면 사장님·부장님·팀장님·신입 캐릭터 4명이 더 열려요")로 분리 — 갤러리 배너 제목(`nonmemberTitle`, "가입하면 생성권 1개 지급")은 그대로. 가입 보너스 생성권 지급도 그대로. 어드민 마케팅 문구 편집기·도식에 두 키 추가. 어드민 캐릭터 목록·모더레이션에는 기본 캐릭터가 나오지 않는다(DB 행 없음).
 - 테스트 `__tests__/game/base-dolls.test.ts`(어휘·URL·자산 규약·0127 어휘 일치), `gameover-next-play-cta.test.ts` 갱신.
 

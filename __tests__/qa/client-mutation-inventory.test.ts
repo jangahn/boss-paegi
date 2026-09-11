@@ -36,7 +36,6 @@ const CLIENT_MUTATION_SURFACES: readonly Surface[] = [
   { method: "DELETE", endpoint: "/api/doll", source: "app/gallery/page.tsx", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/avatar", source: "lib/avatar.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "PATCH", endpoint: "/api/avatar", source: "lib/avatar.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
-  { method: "DELETE", endpoint: "/api/avatar", source: "lib/avatar.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/highlight", source: "lib/share.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "PATCH", endpoint: "/api/highlight", source: "lib/share.ts", helper: "runReplayedJsonMutation", strategy: "exact_replay" },
   { method: "POST", endpoint: "/api/telemetry", source: "lib/telemetry/transport.ts", helper: "runBoundedClientJsonFetch", strategy: "bounded_best_effort" },
@@ -107,10 +106,11 @@ function key(surface: Pick<Surface, "method" | "endpoint">): string {
   return `${surface.method} ${surface.endpoint}`;
 }
 
-test("all 46 current first-party client-triggered domain mutations are explicit", () => {
+// v1.44: DELETE /api/avatar(기본 사진으로 되돌리기) 제거 → 46 → 45.
+test("all 45 current first-party client-triggered domain mutations are explicit", () => {
   assert.equal(
     CLIENT_MUTATION_SURFACES.length,
-    46,
+    45,
     "mutation count changed; classify the new/removed edge explicitly",
   );
   const unique = new Set(CLIENT_MUTATION_SURFACES.map(key));

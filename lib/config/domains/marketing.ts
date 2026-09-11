@@ -43,8 +43,6 @@ export const marketingCopySchema = z.object({
     nonmemberCta: button.default("가입하고 만들기"),
     memberEmptyCta: button.default("캐릭터 만들기"),
     memberHeaderCta: button.default("+ 새로 만들기"),
-    // 갤러리 추가 캐릭터 잠금 카드(비회원) 토스트 버튼(v1.42). 발행행 무중단 .default().
-    lockedCta: button.default("가입하고 열기"),
   }),
   // 공유/CTA 문구 — {호칭}(조사 자동) + 값 토큰(코드 합성). 수치·이름은 토큰 위치에 코드가 채움.
   share: z.object({
@@ -108,7 +106,6 @@ export const MARKETING_COPY_DEFAULT: MarketingCopy = {
     nonmemberCta: "가입하고 만들기",
     memberEmptyCta: "캐릭터 만들기",
     memberHeaderCta: "+ 새로 만들기",
-    lockedCta: "가입하고 열기",
   },
   share: {
     dollHook: "당신의 {호칭은} 무사하십니까?",

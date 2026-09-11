@@ -135,29 +135,3 @@ export function parseAvatarReplaceHttpAck(
   }
   return null;
 }
-
-export type AvatarClearHttpAck =
-  | { ok: true; cleanup: "completed" }
-  | { accepted: true; cleanup: "pending" };
-
-export function parseAvatarClearHttpAck(
-  value: unknown,
-): AvatarClearHttpAck | null {
-  const row = record(value);
-  if (!row) return null;
-  if (
-    hasExactKeys(row, ["ok", "cleanup"]) &&
-    row.ok === true &&
-    row.cleanup === "completed"
-  ) {
-    return { ok: true, cleanup: "completed" };
-  }
-  if (
-    hasExactKeys(row, ["accepted", "cleanup"]) &&
-    row.accepted === true &&
-    row.cleanup === "pending"
-  ) {
-    return { accepted: true, cleanup: "pending" };
-  }
-  return null;
-}

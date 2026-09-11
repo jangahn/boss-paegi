@@ -5,7 +5,6 @@ import { notifyProfileChanged } from "@/lib/profile";
 import { PUBLIC_ENV } from "@/lib/env";
 import { avatarPresetUrl } from "@/lib/avatar-presets";
 import {
-  parseAvatarClearHttpAck,
   parseAvatarReplaceHttpAck,
   parseAvatarUploadInitAck,
 } from "@/lib/avatar-http-contract";
@@ -85,7 +84,7 @@ export async function uploadAvatar(
 /**
  * 캐릭터 프리셋(`public/avatars/preset-N.png`, 256px 알파 PNG)을 그대로 프사로 업로드(v1.41, A 방식).
  * JPEG 정규화를 거치지 않아 알파가 보존된다(원형 크롭 뒤 흰 원 방지). 이후는 일반 커스텀 프사와 동일
- * (검증·정리·immutable 캐시·"기본 사진으로 되돌리기").
+ * (검증·정리·immutable 캐시).
  */
 export async function uploadPresetAvatar(
   index: number,
@@ -223,42 +222,4 @@ async function uploadAvatarBlob(
   clearClientUploadOperation("avatar", operation.requestId);
   notifyProfileChanged(); // 헤더 계정 정보 즉시 반영(새로고침 불필요)
   return acknowledgement.avatarUrl;
-}
-
-/** 프로필 사진 삭제 → 기본 프사로 복귀. */
-export async function removeAvatar(
-  options: { signal?: AbortSignal } = {},
-): Promise<void> {
-  const outcome = await runReplayedJsonMutation({
-    input: "/api/avatar",
-    init: { method: "DELETE" },
-    signal: options.signal,
-    classify: (response, body) => {
-      const acknowledgement = response.ok
-        ? parseAvatarClearHttpAck(body)
-        : null;
-      if (acknowledgement) {
-        return { kind: "confirmed", value: true };
-      }
-      if (
-        clientMutationResponseNeedsReconciliation(
-          response.status,
-          response.ok,
-        )
-      ) {
-        return {
-          kind: "unconfirmed",
-          reason: "avatar_clear_unconfirmed",
-        };
-      }
-      return {
-        kind: "rejected",
-        error: `avatar_clear_http_${response.status}`,
-      };
-    },
-  });
-  if (outcome.kind !== "confirmed") {
-    throw new Error("프로필 삭제 응답을 확인하지 못했어요");
-  }
-  notifyProfileChanged(); // 헤더 계정 정보 즉시 반영(새로고침 불필요)
 }
