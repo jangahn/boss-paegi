@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { ModalShell } from "@/components/ModalShell";
-import { moveItem } from "@/lib/reorder";
+import { moveWithinGroup } from "@/lib/reorder";
 import type { BadgeCatalog } from "@/lib/config/domains/badges";
 import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
@@ -67,9 +67,9 @@ export function BadgeCatalogEditor({
     let n = 1;
     let slug = `${familyKey}_c${n}`;
     while (taken.has(slug)) slug = `${familyKey}_c${++n}`;
-    setBadges((bs) => [
-      ...bs,
-      {
+    // 같은 패밀리 블록 바로 뒤에 끼운다(패밀리 행이 배열에서 흩어지지 않게 — 공개 /badges 순서도 배열 순서).
+    setBadges((bs) => {
+      const row: BadgeD = {
         uid: `n${uidc.current++}`,
         slug,
         slugLocked: false,
@@ -78,23 +78,24 @@ export function BadgeCatalogEditor({
         label: "",
         desc: "",
         active: true,
-      },
-    ]);
+      };
+      const last = bs.map((b) => b.familyKey).lastIndexOf(familyKey);
+      const next = bs.slice();
+      next.splice(last < 0 ? next.length : last + 1, 0, row);
+      return next;
+    });
   };
   const removeBadge = (uid: string) =>
     setBadges((bs) => bs.filter((b) => b.uid !== uid));
-  // family 내 인접 스왑(전체 배열에서 같은 family 이웃과 교환) — 표시 순서 = 배열 순서.
+  // family 내 인접 스왑 — 표시 순서 = 배열 순서. 패밀리 이웃이 전체 배열에서 떨어져 있어도(과거 추가·편입 행은
+  // 뒤에 붙어 있을 수 있다) 두 이웃의 자리를 맞바꾼다.
   const moveBadge = (uid: string, dir: -1 | 1) =>
     setBadges((bs) => {
       const target = bs.find((b) => b.uid === uid);
       if (!target) return bs;
-      const fam = bs.filter((b) => b.familyKey === target.familyKey);
-      const fi = fam.findIndex((b) => b.uid === uid);
-      const tj = fi + dir;
-      if (tj < 0 || tj >= fam.length) return bs;
-      const a = bs.findIndex((b) => b.uid === fam[fi].uid);
-      const c = bs.findIndex((b) => b.uid === fam[tj].uid);
-      return moveItem(bs, a, (c - a) as -1 | 1);
+      const inFamily = (b: BadgeD) => b.familyKey === target.familyKey;
+      const fi = bs.filter(inFamily).findIndex((b) => b.uid === uid);
+      return moveWithinGroup(bs, inFamily, fi, dir);
     });
 
   const askDelete = (b: BadgeD) => {
