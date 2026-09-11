@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import type { ScoreConfig } from "@/lib/config/domains/score";
 import { isValidThresholds, THRESHOLD_STEP, TIER_COUNT, tierBandLabel } from "@/lib/score-tiers";
+import {
+  COMBO_WINDOW_SEC_MAX,
+  COMBO_WINDOW_SEC_MIN,
+  JUGGLE_WINDOW_SEC_MAX,
+  JUGGLE_WINDOW_SEC_MIN,
+  type JuggleSeconds,
+} from "@/lib/game-tuning";
 import { MAX_SCORE_HARD } from "@/lib/score-limits";
 import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
@@ -30,6 +37,26 @@ export function ScoreConfigEditor({
   const [grades, setGrades] = useState(initial.grades);
   // 경계는 문자열로 편집(빈 칸·타이핑 중 허용) → 발행 시 정수 변환.
   const [thresholds, setThresholds] = useState<string[]>(initial.thresholds.map((t) => String(t)));
+  // 변경 보너스·콤보 창 초수(v1.36) — 문자열로 편집, 발행 시 숫자 변환(창은 정수 초, 콤보는 0.1초 단위).
+  const [juggle, setJuggle] = useState<Record<keyof JuggleSeconds, string>>({
+    weaponWindowSec: String(initial.juggle.weaponWindowSec),
+    mapWindowSec: String(initial.juggle.mapWindowSec),
+    comboWindowSec: String(initial.juggle.comboWindowSec),
+  });
+  const setJuggleField = (key: keyof JuggleSeconds, v: string) =>
+    setJuggle((j) => ({ ...j, [key]: v.replace(/[^\d.]/g, "") }));
+  const parsedJuggle: JuggleSeconds = {
+    weaponWindowSec: Number(juggle.weaponWindowSec),
+    mapWindowSec: Number(juggle.mapWindowSec),
+    comboWindowSec: Math.round(Number(juggle.comboWindowSec) * 10) / 10,
+  };
+  const windowOk = (v: number) => Number.isInteger(v) && v >= JUGGLE_WINDOW_SEC_MIN && v <= JUGGLE_WINDOW_SEC_MAX;
+  const juggleOk =
+    windowOk(parsedJuggle.weaponWindowSec) &&
+    windowOk(parsedJuggle.mapWindowSec) &&
+    Number.isFinite(parsedJuggle.comboWindowSec) &&
+    parsedJuggle.comboWindowSec >= COMBO_WINDOW_SEC_MIN &&
+    parsedJuggle.comboWindowSec <= COMBO_WINDOW_SEC_MAX;
   const [baseVersion, setBaseVersion] = useState(version);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -46,7 +73,7 @@ export function ScoreConfigEditor({
 
   const submit = async () => {
     if (busy) return;
-    if (!thresholdsOk) {
+    if (!thresholdsOk || !juggleOk) {
       setMsg({ ok: false, text: ERR_KO.validation_failed });
       return;
     }
@@ -56,6 +83,7 @@ export function ScoreConfigEditor({
       const value: ScoreConfig = {
         thresholds: parsedThresholds,
         grades: grades.map((g) => ({ label: g.label.trim(), comment: g.comment.trim() })),
+        juggle: parsedJuggle,
       };
       const result = await submitAdminConfigMutation({
         body: { key: "score_config", value, baseVersion },
@@ -112,6 +140,41 @@ export function ScoreConfigEditor({
         {!thresholdsOk && (
           <p className="text-xs text-red-400">
             경계는 {THRESHOLD_STEP.toLocaleString()}점 단위 정수, 오름차순, {THRESHOLD_STEP.toLocaleString()}~{MAX_SCORE_HARD.toLocaleString()}점 사이여야 해요.
+          </p>
+        )}
+      </fieldset>
+
+      {/* 변경 보너스·콤보 창(v1.36) — 배율 표(무기 2~5종 ×1.25~2.0 · 맵 2곳 ×1.5·3곳 ×2.0)는 코드, 여기선 창 초수만. */}
+      <fieldset className="flex flex-col gap-2 rounded-xl border border-foreground/10 ui-surface p-3">
+        <legend className="px-1 text-sm font-semibold text-zinc-500">변경 보너스 · 콤보 창</legend>
+        <p className="text-xs text-zinc-500">
+          최근 몇 초 안에 돌린 무기 수·맵 수로 배율을 매겨요(무기 2~5종 ×1.25~2.0, 맵 2곳 ×1.5·3곳 ×2.0, 둘은 곱).
+          콤보 창은 다음 타격까지 콤보가 유지되는 시간이에요. 발행 후 <b>새로 시작하는 판</b>부터 적용됩니다.
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {(
+            [
+              ["weaponWindowSec", "무기변경 창 (초)", `${JUGGLE_WINDOW_SEC_MIN}~${JUGGLE_WINDOW_SEC_MAX}, 정수`],
+              ["mapWindowSec", "맵변경 창 (초)", `${JUGGLE_WINDOW_SEC_MIN}~${JUGGLE_WINDOW_SEC_MAX}, 정수`],
+              ["comboWindowSec", "콤보 유지 창 (초)", `${COMBO_WINDOW_SEC_MIN.toFixed(1)}~${COMBO_WINDOW_SEC_MAX.toFixed(1)}, 0.1 단위`],
+            ] as const
+          ).map(([key, label, hint]) => (
+            <label key={key} className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-zinc-400">{label}</span>
+              <input
+                value={juggle[key]}
+                inputMode="decimal"
+                onChange={(e) => setJuggleField(key, e.target.value)}
+                placeholder={String(initial.juggle[key])}
+                className={`${inputCls} tabular-nums`}
+              />
+              <span className="text-[10px] text-zinc-500">{hint}</span>
+            </label>
+          ))}
+        </div>
+        {!juggleOk && (
+          <p className="text-xs text-red-400">
+            창은 {JUGGLE_WINDOW_SEC_MIN}~{JUGGLE_WINDOW_SEC_MAX}초 정수, 콤보 창은 {COMBO_WINDOW_SEC_MIN.toFixed(1)}~{COMBO_WINDOW_SEC_MAX.toFixed(1)}초여야 해요.
           </p>
         )}
       </fieldset>

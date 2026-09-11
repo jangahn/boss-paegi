@@ -8,6 +8,13 @@ import {
   TIER_COUNT,
 } from "@/lib/score-tiers";
 import { MAX_SCORE_HARD } from "@/lib/score-limits";
+import {
+  COMBO_WINDOW_SEC_MAX,
+  COMBO_WINDOW_SEC_MIN,
+  JUGGLE_SECONDS_DEFAULT,
+  JUGGLE_WINDOW_SEC_MAX,
+  JUGGLE_WINDOW_SEC_MIN,
+} from "@/lib/game-tuning";
 
 // 점수 설정 도메인 — 5단계 구간 **경계(thresholds)** + 등급 라벨/한 줄 평(=마케팅 '패기 유형') 라이브 편집.
 // 단계 개수(5)는 코드 고정(lib/score-tiers TIER_COUNT). 경계는 라벨과 같은 **라이브** 값 — 바꾸면 과거 판의
@@ -41,10 +48,19 @@ const thresholds = z
   // 발행된 행(v10)엔 없던 키 — 자동 충전(additive 무중단 패턴).
   .default([...SCORE_THRESHOLDS_DEFAULT]);
 
+/** 변경 보너스·콤보 창 초수(v1.36) — 배율 표는 코드(lib/game-tuning), 어드민은 초수만. 발행행에 없던 키는 기본값 충전(additive). */
+const juggle = z
+  .object({
+    weaponWindowSec: z.number().int().min(JUGGLE_WINDOW_SEC_MIN).max(JUGGLE_WINDOW_SEC_MAX),
+    mapWindowSec: z.number().int().min(JUGGLE_WINDOW_SEC_MIN).max(JUGGLE_WINDOW_SEC_MAX),
+    comboWindowSec: z.number().min(COMBO_WINDOW_SEC_MIN).max(COMBO_WINDOW_SEC_MAX),
+  })
+  .default({ ...JUGGLE_SECONDS_DEFAULT });
 const scoreConfigBaseSchema = z.object({
   thresholds,
   // 정확히 5단계. 라벨 텍스트는 라이브, tier 인덱스는 고정.
   grades: z.array(grade).length(TIER_COUNT),
+  juggle,
 });
 
 export const scoreConfigSchema = z.preprocess(normalizeScoreConfigInput, scoreConfigBaseSchema);
@@ -55,6 +71,7 @@ export type ScoreConfig = z.infer<typeof scoreConfigBaseSchema>;
 export const SCORE_CONFIG_DEFAULT: ScoreConfig = {
   thresholds: [...SCORE_THRESHOLDS_DEFAULT],
   grades: PLAYER_GRADES.map((g) => ({ label: g.label, comment: g.comment })),
+  juggle: { ...JUGGLE_SECONDS_DEFAULT },
 };
 
 // 클라(GameOverModal·플레이 말풍선)+서버(share/history/OG·어드민 분포) 소비 → 라이브 주입(루트 레이아웃). 공개 API 미노출.

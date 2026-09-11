@@ -13,7 +13,6 @@ const {
   FRESH_WEAPON_BONUS,
   VARIETY_CAP,
   VARIETY_FULL_AT,
-  VARIETY_WINDOW_SIZE,
 } = await import("../../lib/game-tuning.ts");
 const { WEAPONS, weaponsForMap } = await import("../../lib/weapons.ts");
 const {
@@ -58,8 +57,8 @@ test("all 9^1..9^4 weapon sequences conserve score/count and match an independen
       const weapon = byKey.get(key);
       assert.ok(weapon);
       const fresh = (counts[key] ?? 0) === 0;
+      // v1.36 시간 창: 같은 순간의 타격은 전부 창 안 → 지금까지의 고유 무기 수(맵 기록 없음 → 맵변경 ×1)
       window.push(key);
-      if (window.length > VARIETY_WINDOW_SIZE) window.shift();
       const distinct = new Set(window).size;
       const variety = Math.min(
         VARIETY_CAP,
@@ -118,7 +117,8 @@ test("ultimate hits mutate score only and preserve every manual-play statistic",
     weaponScores: before.weaponScores,
     firstHitMs: before.firstHitMs,
     ultProgress: before.ultProgress,
-    weaponWindow: before.weaponWindow,
+    hitLog: before.hitLog,
+    mapMult: before.mapMult,
     varietyMult: before.varietyMult,
   };
   const gain = useGameStore.getState().hit(41, "keyboard", false);
@@ -132,7 +132,8 @@ test("ultimate hits mutate score only and preserve every manual-play statistic",
       weaponScores: after.weaponScores,
       firstHitMs: after.firstHitMs,
       ultProgress: after.ultProgress,
-      weaponWindow: after.weaponWindow,
+      hitLog: after.hitLog,
+      mapMult: after.mapMult,
       varietyMult: after.varietyMult,
     },
     manualSnapshot,

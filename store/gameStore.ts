@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { MAX_COMBO_MULTIPLIER } from "@/lib/score-limits";
 import type { ScoreSample } from "@/lib/highlight";
 import {
-  VARIETY_WINDOW_SIZE,
   VARIETY_FULL_AT,
   VARIETY_CAP,
   FRESH_WEAPON_BONUS,
@@ -10,12 +9,19 @@ import {
   SWITCH_ULT_COOLDOWN_MS,
   SWITCH_COMBO_GRACE_MS,
   JUGGLE_INITIAL_STATE,
+  JUGGLE_CONFIG_DEFAULT,
   ULT_HITS,
+  varietyMultiplier,
+  mapVarietyMultiplier,
   type FreshWeaponBonus,
+  type HitLogEntry,
+  type JuggleConfig,
+  type MapLogEntry,
 } from "@/lib/game-tuning";
 import { firstHitElapsedMs } from "@/lib/game-clock";
 
-const COMBO_DECAY_MS = 1500;
+/** 맵 체류 기록 상한 — 창 산정엔 최근 것만 필요(창 시작 시점 맵 포함). 한 판 전환 수는 이보다 훨씬 적다. */
+const MAP_LOG_MAX = 200;
 /** 궁극기 게이지 풀 충전에 필요한 명중 횟수 — 단일 출처는 game-tuning. */
 export { ULT_HITS };
 /** score timeline ring buffer 상한 (100ms 샘플 → 60s≈600) */
@@ -73,11 +79,19 @@ type GameState = {
   /** 하이라이트 검출용 score timeline (100ms 샘플, 절대 performance.now()) */
   scoreSamples: ScoreSample[];
 
-  // ── 저글링(무기 다양성) — lib/game-tuning 상수 소비 ──
-  /** 최근 N charge 타격 무기(다양성 배율 산정용, 불변 교체) */
-  weaponWindow: string[];
-  /** 다양성 배율(0~VARIETY_CAP). gain 에 (1+varietyMult) 곱해짐. */
+  // ── 저글링(무기·맵 다양성, v1.36 시간 창) — lib/game-tuning 상수 소비 ──
+  /** 창 초수 설정(ms) — 어드민 score_config.juggle. 판 사이 유지(start 가 리셋하지 않음). configureJuggle 로 주입. */
+  juggle: JuggleConfig;
+  /** 최근 창 안 charge 타격 기록(무기변경 배율 산정용, 불변 교체) */
+  hitLog: HitLogEntry[];
+  /** 무기변경 배율(0~VARIETY_CAP). gain 에 (1+varietyMult) 곱해짐. */
   varietyMult: number;
+  /** 맵 체류 기록(시작 맵 + 전환마다) — 맵변경 배율 산정용 */
+  mapLog: MapLogEntry[];
+  /** 현재 맵 키 */
+  currentMap: string | null;
+  /** 맵변경 배율(0~MAP_VARIETY_CAP). gain 에 (1+mapMult) 곱해짐. */
+  mapMult: number;
   /** 직전 charge 타격 무기 — 전환 감지 기준(이전 상태) */
   lastChargeWeaponKey: string | null;
   /** 전환 궁극보너스 쿨다운 기준 시각(performance.now) */
@@ -90,6 +104,10 @@ type GameState = {
    * **반환값 = 화면 데미지 팝업에 찍을 값**(콤보×무기변경 배율 적용된 baseGain, fresh 보너스 제외 — 별도 토스트).
    */
   hit: (strength: number, weaponKey?: string, charge?: boolean) => number;
+  /** 창 초수 설정 주입 — 게임 시작 전(라이브 score_config). */
+  configureJuggle: (cfg: JuggleConfig) => void;
+  /** 맵 체류 기록 — 게임 시작 맵과 전환마다 호출(맵변경 배율은 즉시 재계산). */
+  noteMap: (map: string) => void;
   /** 현재 점수를 timeline 에 1샘플 추가 (recorder 가 100ms 마다 호출) */
   pushScoreSample: () => void;
   /** 궁극기 발동 — 게이지 소진 */
@@ -132,7 +150,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   startedAt: 0,
   endedAt: null,
   scoreSamples: [],
+  juggle: JUGGLE_CONFIG_DEFAULT,
   ...JUGGLE_INITIAL_STATE,
+  configureJuggle: (cfg) => set({ juggle: cfg }),
+  noteMap: (map) => {
+    const now = performance.now();
+    const s = get();
+    const mapLog = [...s.mapLog, { t: now, map }].slice(-MAP_LOG_MAX);
+    set({ mapLog, currentMap: map, mapMult: mapVarietyMultiplier(mapLog, now, s.juggle.mapWindowMs) });
+  },
 
   hit: (strength, weaponKey, charge = true) => {
     const state = get();
@@ -163,8 +189,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       firstHitMs,
       ultProgress,
       ultReady,
-      weaponWindow,
+      juggle,
+      hitLog,
       varietyMult: prevVarietyMult,
+      mapLog,
       lastChargeWeaponKey,
       lastSwitchBonusAt,
       lastFreshWeaponBonus,
@@ -175,7 +203,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 타격 간격 CV(어뷰징 jitter) — 연속 간격(idle/decay 제외)만 러닝 누적. 봇=거의 등간격(CV≈0).
     const iv = lastHitAt > 0 ? now - lastHitAt : -1;
-    const ivHit = iv > 0 && iv < COMBO_DECAY_MS;
+    const ivHit = iv > 0 && iv < juggle.comboWindowMs;
 
     // 1~4: fresh/switch 판정은 전부 *이전 상태* 기준 (weaponCounts 증가·lastChargeWeaponKey 변경 전).
     const prevCount = weaponKey ? weaponCounts[weaponKey] ?? 0 : 0;
@@ -185,25 +213,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastChargeWeaponKey !== null &&
       lastChargeWeaponKey !== weaponKey;
 
-    // 5~6: 콤보 — 전환 타격에만 grace 윈도우(느린무기 마찰 보정). lastHitAt 조작 X, 판정식만.
+    // 5~6: 콤보 — 유지 창은 어드민 설정(기본 2.0초, v1.36), 전환 타격에만 grace 윈도우(느린무기 마찰 보정). lastHitAt 조작 X.
     const comboWindowMs = isSwitch
-      ? COMBO_DECAY_MS + SWITCH_COMBO_GRACE_MS
-      : COMBO_DECAY_MS;
+      ? juggle.comboWindowMs + SWITCH_COMBO_GRACE_MS
+      : juggle.comboWindowMs;
     const continued = now - lastHitAt < comboWindowMs;
     const nextCombo = continued ? combo + 1 : 1;
 
-    // 7: 다양성 배율 — 최근 N charge 타격 distinct (불변 교체). 동일무기 반복 시 윈도우 따라 점진 감쇠.
-    const nextWindow = weaponKey
-      ? [...weaponWindow, weaponKey].slice(-VARIETY_WINDOW_SIZE)
-      : weaponWindow;
-    const distinct = new Set(nextWindow).size;
+    // 7: 무기변경 배율 — 최근 juggle.weaponWindowMs 안 charge 타격의 고유 무기 수(시간 창, v1.36). 창 밖 기록은 버린다.
+    const weaponCutoff = now - juggle.weaponWindowMs;
+    const keptHits = hitLog.filter((e) => e.t >= weaponCutoff);
+    const nextLog = weaponKey ? [...keptHits, { t: now, weaponKey }] : keptHits;
     const nextVarietyMult = weaponKey
-      ? Math.min(VARIETY_CAP, ((distinct - 1) / (VARIETY_FULL_AT - 1)) * VARIETY_CAP)
+      ? varietyMultiplier(new Set(nextLog.map((e) => e.weaponKey)).size, VARIETY_FULL_AT, VARIETY_CAP)
       : prevVarietyMult;
+    // 8: 맵변경 배율 — 최근 juggle.mapWindowMs 안에 머문 고유 맵 수(창 시작 시점에 머물던 맵 포함).
+    const nextMapMult = mapVarietyMultiplier(mapLog, now, juggle.mapWindowMs);
 
-    // 8~10: 점수 — base(콤보×다양성) + fresh 플랫(배율 미적용).
+    // 9~10: 점수 — base(콤보 × 무기변경 × 맵변경) + fresh 플랫(배율 미적용).
     const baseGain = Math.round(
-      strength * comboMultiplier(nextCombo) * (1 + nextVarietyMult)
+      strength * comboMultiplier(nextCombo) * (1 + nextVarietyMult) * (1 + nextMapMult)
     );
     const freshBonus = isFresh ? FRESH_WEAPON_BONUS : 0;
     const totalGain = baseGain + freshBonus;
@@ -249,8 +278,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ivN: ivHit ? ivN + 1 : ivN,
       ivSum: ivHit ? ivSum + iv : ivSum,
       ivSumSq: ivHit ? ivSumSq + iv * iv : ivSumSq,
-      weaponWindow: nextWindow,
+      hitLog: nextLog,
       varietyMult: nextVarietyMult,
+      mapMult: nextMapMult,
       lastChargeWeaponKey: weaponKey ?? lastChargeWeaponKey,
       // switchBonus 가 실제 적용된 경우에만 쿨다운 타임스탬프 갱신(미적용 전환은 쿨다운 유지).
       lastSwitchBonusAt: switchBonus > 0 ? now : lastSwitchBonusAt,
@@ -259,7 +289,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? { weaponKey, amount: FRESH_WEAPON_BONUS, at: now }
           : lastFreshWeaponBonus,
     });
-    return baseGain; // 화면 데미지 팝업용(콤보×무기변경 적용, fresh 제외)
+    return baseGain; // 화면 데미지 팝업용(콤보×무기변경×맵변경 적용, fresh 제외)
   },
 
   // 궁극기 발동 — 게이지 소진 + 발동 횟수 누적
@@ -335,4 +365,5 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 }));
 
-export const COMBO_DECAY_MS_EXPORT = COMBO_DECAY_MS;
+/** 콤보 유지 창 코드 기본값(ms) — 라이브 값은 스토어 `juggle.comboWindowMs`(어드민 설정). */
+export const COMBO_DECAY_MS_EXPORT = JUGGLE_CONFIG_DEFAULT.comboWindowMs;

@@ -31,6 +31,8 @@ const { buildGameplayStats, validateGameplayStats } = await import(
 );
 const {
   FRESH_WEAPON_BONUS,
+  MAP_VARIETY_CAP,
+  VARIETY_CAP,
   GRAB_FLING_POWER_BONUS,
   PINCH_STRETCH_BONUS,
   SWITCH_ULT_BONUS_RATIO,
@@ -526,11 +528,12 @@ function effectiveMaxBase(weapon: (typeof WEAPONS)[number]): number {
 
 test("S2 checks every 1..19-hit weapon payload instead of leaving the old split bypass", () => {
   assert.equal(S2_MIN_HITS, 1);
-  assert.match(ANTI_ABUSE_RULES_VERSION, /v9$/);
+  assert.match(ANTI_ABUSE_RULES_VERSION, /v10$/);
 
   for (const weapon of WEAPONS) {
+    // v1.36: 무기변경 ×2 × 맵변경 ×2 = ×4 (콤보 ×4 와 곱해 base × 16)
     const perHitCap =
-      effectiveMaxBase(weapon) * MAX_COMBO_MULTIPLIER * 2;
+      effectiveMaxBase(weapon) * MAX_COMBO_MULTIPLIER * (1 + VARIETY_CAP) * (1 + MAP_VARIETY_CAP);
     for (let count = 1; count < 20; count += 1) {
       const physicalMax =
         FRESH_WEAPON_BONUS + count * perHitCap;
