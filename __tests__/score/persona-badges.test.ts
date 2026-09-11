@@ -6,7 +6,7 @@ register("../telemetry/node-loader.mjs", import.meta.url);
 
 const { buildGameplayStats } = await import("../../lib/stats.ts");
 const { PERSONA_DEFS, PERSONA_FALLBACK_ID, personaBadgeSlug } = await import("../../lib/persona.ts");
-const { BADGE_CATALOG_DEFAULT, badgeCatalogSchema, evaluateBadges, knownSlugs } = await import(
+const { BADGE_CATALOG_DEFAULT, CODE_RETIRED_BADGE_SLUGS, badgeCatalogSchema, evaluateBadges, knownSlugs } = await import(
   "../../lib/config/domains/badges.ts"
 );
 
@@ -94,10 +94,11 @@ test("evaluateBadges: 이 판의 유형과 일치하는 활성 유형 뱃지 1�
   );
 });
 
-test("v1.37 무기 tier: 저장 카탈로그에 없는 10·13·16·19 는 편입되고 weapon_9 는 코드 은퇴로 비활성 고정, 디폴트도 동일", () => {
+test("v1.37 무기 tier: 저장 카탈로그에 없는 10·13·16·19 는 편입, weapon_9 는 v1.39 부터 은퇴 아님(저장 active 존중), 코드 은퇴 slug 없음", () => {
   const NEW = ["weapon_10", "weapon_13", "weapon_16", "weapon_19"];
   for (const slug of NEW) assert.equal(BADGE_CATALOG_DEFAULT.badges.find((b) => b.slug === slug)?.active, true, slug);
-  assert.equal(BADGE_CATALOG_DEFAULT.badges.find((b) => b.slug === "weapon_9")?.active, false);
+  assert.equal(BADGE_CATALOG_DEFAULT.badges.find((b) => b.slug === "weapon_9")?.active, true, "디폴트 weapon_9 활성");
+  assert.equal(CODE_RETIRED_BADGE_SLUGS.size, 0, "v1.39: 코드 은퇴 slug 없음(어드민 활성 체크가 정본)");
   // 발행본(v1.36 이전): 무기 tier [2,4,6,8,9] 전부 활성, 유형 행 없음
   const stored = {
     families: BADGE_CATALOG_DEFAULT.families.filter((f) => f.key !== "persona"),
@@ -107,7 +108,7 @@ test("v1.37 무기 tier: 저장 카탈로그에 없는 10·13·16·19 는 편입
   };
   const parsed = badgeCatalogSchema.parse(stored);
   for (const slug of NEW) assert.equal(parsed.badges.find((b) => b.slug === slug)?.active, true, slug);
-  assert.equal(parsed.badges.find((b) => b.slug === "weapon_9")?.active, false, "코드 은퇴는 저장값(true)보다 우선");
+  assert.equal(parsed.badges.find((b) => b.slug === "weapon_9")?.active, true, "저장값(true) 존중 — 어드민이 켠 9종은 켜진다");
   assert.equal(parsed.badges.find((b) => b.slug === "weapon_4")?.active, false, "어드민이 끈 다른 tier 는 보존");
   const weaponSlugs = parsed.badges.filter((b) => b.familyKey === "weapon").map((b) => b.threshold);
   assert.deepEqual(weaponSlugs, [2, 4, 6, 8, 9, 10, 13, 16, 19], "저장 순서 뒤에 신규 tier 오름차순 편입");
@@ -144,9 +145,11 @@ test("v1.38 편입 교정: 어드민이 뺀 시드 tier 는 되살리지 않고,
   assert.deepEqual(thresholds("combo"), [100, 200, 500, 1000, 15000], "combo_300 은 되살리지 않고 어드민 행 보존");
   assert.deepEqual(thresholds("ult"), [40], "ult 시드 tier 는 편입하지 않는다");
   assert.deepEqual(thresholds("weapon"), [3, 6, 9, 10, 13, 16, 19], "신설 4종은 threshold 순 자리(9 뒤)에 편입");
-  assert.equal(parsed.badges.find((b) => b.slug === "weapon_9")?.active, false);
+  assert.equal(parsed.badges.find((b) => b.slug === "weapon_9")?.active, true, "저장 active 존중");
   const weaponIdx = parsed.badges.flatMap((b, i) => (b.familyKey === "weapon" ? [i] : []));
   assert.deepEqual(weaponIdx, [4, 5, 6, 7, 8, 9, 10], "무기 행은 저장 블록 자리에 연속 — 맨 뒤(combo_15000·ult_40 뒤)에 붙지 않는다");
+  const off = { ...stored, badges: stored.badges.map((b) => (b.slug === "weapon_9" ? { ...b, active: false } : b)) };
+  assert.equal(badgeCatalogSchema.parse(off).badges.find((b) => b.slug === "weapon_9")?.active, false, "어드민이 끈 값도 그대로");
   // 저장 무기 순서가 커스텀(내림차순)이어도 편입은 threshold 가 더 낮은 마지막 행 뒤
   const custom = { ...stored, badges: [row("weapon", 8), row("weapon", 4), row("weapon", 2)] };
   assert.deepEqual(

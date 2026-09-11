@@ -101,7 +101,7 @@ export function normalizeBadgeCatalogInput(input: unknown): unknown {
   );
   const stored = (c.badges as RawBadge[]).filter((b) => b?.familyKey !== PERSONA_FAMILY_KEY);
   const storedPersona = (c.badges as RawBadge[]).filter((b) => b?.familyKey === PERSONA_FAMILY_KEY);
-  // v1.37: 코드 신설 tier(weapon_10·13·16·19)만 저장본에 편입(additive), 코드 은퇴 tier(weapon_9)는 비활성 고정.
+  // v1.37: 코드 신설 tier(weapon_10·13·16·19)만 저장본에 편입(additive). 코드 은퇴 tier 는 비활성 고정(v1.39 현재 없음 — weapon_9 은퇴 철회).
   // 그 외 저장본에 없는 시드(어드민이 뺀 tier)는 되살리지 않는다 — 발행본이 정본(v1.38 교정: 종전엔 전부 편입해 14개가 되살아났다).
   const storedSlugs = new Set(stored.map((b) => (typeof b.slug === "string" ? b.slug : "")));
   const added = SEED_BADGES.filter((b) => CODE_ADDED_BADGE_SLUGS.has(b.slug) && !storedSlugs.has(b.slug));
@@ -181,8 +181,8 @@ const SEED: Seed[] = [
   { key: "score", name: "점수", emoji: "🏆", tiers: [1000, 3000, 5000, 10000, 30000, 50000, 100000, 300000, 500000, 1000000], label: (t) => `${t.toLocaleString()}점`, desc: (t) => `총 정산 점수 ${t.toLocaleString()}점 달성` },
   { key: "combo", name: "콤보", emoji: "🔥", tiers: [100, 200, 300, 500, 1000, 1500, 2000, 3000, 5000, 10000], label: (t) => `콤보 ${t.toLocaleString()}`, desc: (t) => `최대 콤보 ${t.toLocaleString()} 달성` },
   { key: "hits", name: "타격", emoji: "👊", tiers: [150, 400, 700, 1200, 2500, 4000, 7000, 12000, 20000, 30000], label: (t) => `${t.toLocaleString()}타`, desc: (t) => `한 판에 ${t.toLocaleString()}타 (궁극기 제외)` },
-  // v1.37: 로스터 19종(맵별 투척 12종) — 9종 tier 는 은퇴(10종 = 맵을 옮겨야 도달) + 13·16·19 신설
-  { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9, 10, 13, 16, 19], retired: [9], added: [10, 13, 16, 19], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
+  // v1.37: 로스터 19종(맵별 투척 12종) — 10·13·16·19 신설. v1.39: 9종 tier 코드 은퇴 철회(어드민 활성 체크가 정본 — 발행본은 3·6·9·12·15 를 쓴다)
+  { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9, 10, 13, 16, 19], added: [10, 13, 16, 19], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
   { key: "ult", name: "궁극기", emoji: "💥", tiers: [1, 2, 3, 5, 10, 15, 20, 30, 40, 50], label: (t) => `궁극기 ${t}회`, desc: (t) => `한 판에 궁극기 ${t}회 발동` },
   { key: "time", name: "플레이", emoji: "⏱️", tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], label: (t) => `${t}분`, desc: (t) => `${t}분 이상 플레이` },
   { key: "map", name: "맵", emoji: "🗺️", tiers: [2, 3, 4, 5, 6], label: (t) => `맵 ${t}곳`, desc: (t) => `한 판에 맵 ${t}곳 순회` },
