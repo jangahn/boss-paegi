@@ -283,7 +283,7 @@ export function LoginForm({ supportEmail }: { supportEmail?: string }) {
           />
         </Link>
         <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-          로그인하고 나만의 부장님을
+          로그인하고 나만의 캐릭터를
           <br />
           만들어보세요.
         </p>
