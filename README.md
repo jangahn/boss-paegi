@@ -139,7 +139,7 @@ boss-paegi/
 └── public/
     ├── manifest.webmanifest
     ├── icons/              # PWA 아이콘
-    ├── avatars/            # 기본 프로필 사진 (default.png — 교체 가능)
+    ├── avatars/            # 캐릭터 프사 프리셋 preset-1..5.png (유저별 고정 기본 프사·캐릭터로 고르기, v1.41)
     ├── sprites/            # 기본 캐릭터 + 무기 sprite
     └── bg/                 # 배경
 ```
@@ -463,7 +463,7 @@ v0.12 (2026-06-20, OAuth 회원 + 생성권 크레딧):
 - **공개/멤버십 분리** (migration 0010): 공개 프로필 `profiles`(+`avatar_url`, public read; 컬럼레벨 grant 로 클라는 `display_name` 만 수정) / private `member_accounts`(`gen_credits`·`member_since`·`email`, self-read만, write 는 service-role/`SECURITY DEFINER` RPC) — 익명 변조·노출 차단. `email`(0014)은 이벤트/연락용 — `auth.users.email` 복제본(콜백서 변경 시 최신화), **public 노출 금지라 여기 비공개 저장**, 추출은 admin/대시보드 전용(클라 프로필·캐시 미반영).
 - **생성권 크레딧**(일일 한도 대체): 가입 시 1개(이후 `growth_levers` 발행값이 권위), 생성마다 1개 차감(`consume_gen_credit`, fal 제출 직전 원자적·실패 시 `refund_gen_credit`). `OPS_USER_ID` 무제한.
 - **콜백/게이트**: `/auth/callback`(code 교환 + **이메일 필수 게이트**(verified-email linking 안전성) + 멤버 1회성 초기화 — `member_accounts` 신규 insert 시만 OAuth 닉/프사 반영, 재로그인 보존), `lib/auth-server.ts` `requireMember`(401/member_only/member_setup_required), `safeNext`(open redirect 차단).
-- **계정 UI**: `AppNav`/`AccountMenu` 익명(닉네임+로그인) vs 멤버(아바타+드롭다운: 닉네임/프사 변경·로그아웃). `/api/avatar`(서명 업로드 → admin 검증 → `profiles.avatar_url`), 랭킹에 프로필 아바타(없으면 `/avatars/default.png`).
+- **계정 UI**: `AppNav`/`AccountMenu` 익명(닉네임+로그인) vs 멤버(아바타+드롭다운: 닉네임/프사 변경·로그아웃). `/api/avatar`(서명 업로드 → admin 검증 → `profiles.avatar_url`), 랭킹에 프로필 아바타(없으면 유저 id 해시로 고정 배정되는 `/avatars/preset-N.png`, v1.41).
 - 계정 정책: Supabase 자동 linking 수용(동일 verified 이메일 Kakao/Google = 같은 계정), 멀티연동 UI 없음. Provider 키는 앱 env 가 아니라 Supabase Auth config. 이 버전에서 적었던 익명 dolls 후속 정리는 현재 blanket 계정삭제로 구현하지 않는다. 신규 회원의 서명된 익명이전만 exact receipt로 수행하고, 미승격 익명 점수·원본 소유 namespace는 무결성 증거로 보존하며 telemetry와 미attach Storage 객체만 각 보존기한·fenced cleanup 정책으로 정리한다.
 
 v0.13 (2026-06-20, OAuth 후속 폴리시):
@@ -942,6 +942,12 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - 어드민: 롤 대사 에디터 호칭 블록에 한 줄 설명 입력 + 「역할 선택 화면」 도식, 생성 목록/상세의 롤 표기를 호칭으로.
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
+
+v1.41 (2026-09-11, 캐릭터 프사 프리셋 5종 — 유저별 고정 기본 프사 + 캐릭터로 고르기; 마이그레이션 없음):
+- **자산**: `public/avatars/preset-1..5.png` — 사용자 제공 캐릭터 머리 5장(504~845px 원본)을 투명 여백 제거 → 정사각 캔버스에 머리 **90%** 배치(원형 크롭에서 머리카락·귀 보호) → **256×256 팔레트 PNG(알파, 22~28KB)**. 표시 최대가 계정 페이지 96px 라 2배 DPR 까지 선명. 고정 `default.png`(128px, 크롭 안 된 배경 잔존) 삭제.
+- **유저별 고정 기본 프사**(`lib/avatar-presets.ts`): 커스텀 프사가 없으면 유저 id 의 FNV-1a 해시로 5장 중 하나를 배정(`defaultAvatarPreset`·`avatarSrc`). 같은 유저는 헤더·계정·랭킹·히스토리 어디서나 같은 캐릭터, 서버·클라 동일 계산, DB 변경 없음. 이미지 로드 실패 폴백도 같은 값. 랭킹의 익명 플레이어도 owner_id 로 고정 배정.
+- **캐릭터로 고르기(A 방식)**: 프로필 사진 변경 모달에 프리셋 5장 행 추가 — 탭하면 그 PNG 를 기존 업로드 경로(`uploadPresetAvatar` → 서명 URL → 검증 → `profiles.avatar_url`)로 그대로 올려 커스텀 프사로 저장(JPEG 정규화 생략, 알파 보존). 스키마·API·RPC 변경 없음, "기본 사진으로 되돌리기"는 그대로.
+- 테스트 `__tests__/account/avatar-presets.test.ts`(결정성·범위·분포·커스텀 우선·자산 규격 256px PNG 알파).
 
 v1.40 (2026-09-11, 유형 설명 한 줄 규칙 + 🧳 사내 투어리스트 문구 교체; 마이그레이션 없음):
 - **한 줄 규칙**: 결과 카드(종료 모달·공유·히스토리 공용 `PersonaCard`)의 유형 설명은 `text-xs` 이고 iPhone SE(375px) 카드 안 폭 275px 실측으로 **공백·문장부호 포함 31자·한글 22자 이내**면 한 줄(가장 긴 현행 문구 264px). 상수 `PERSONA_BLURB_MAX_CHARS/MAX_HANGUL`(`lib/persona.ts`) + `persona.test.ts` 가드(은퇴 유형 포함). 320px(SE 1세대)는 두 줄 허용(카드가 늘어날 뿐 깨지지 않음).

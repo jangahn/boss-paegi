@@ -3,13 +3,15 @@
 import { useRef, useState } from "react";
 import { PhotoCropper } from "@/components/PhotoCropper";
 import { ModalShell } from "@/components/ModalShell";
-import { uploadAvatar, removeAvatar } from "@/lib/avatar";
+import { uploadAvatar, uploadPresetAvatar, removeAvatar } from "@/lib/avatar";
+import { AVATAR_PRESET_INDEXES, avatarPresetUrl } from "@/lib/avatar-presets";
 import { Spinner } from "@/components/Spinner";
 import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 /**
  * 프로필 사진 변경/삭제 — 캐릭터 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
- * onSaved(null) = 기본 프사로 삭제됨.
+ * v1.41: 캐릭터 프리셋 5장 중 골라 그대로 올리는 경로 추가(`uploadPresetAvatar`, 알파 PNG 보존).
+ * onSaved(null) = 기본 프사(유저별 고정 프리셋)로 삭제됨.
  */
 export function AvatarEditor({
   current,
@@ -24,6 +26,7 @@ export function AvatarEditor({
 }) {
   const [src, setSrc] = useState<string | null>(null); // 선택된 원본 objectURL (크롭 대상)
   const [busy, setBusy] = useState(false);
+  const [presetBusy, setPresetBusy] = useState<number | null>(null); // 업로드 중인 프리셋 번호
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const busyRef = useRef(false);
@@ -51,6 +54,25 @@ export function AvatarEditor({
       busyRef.current = false;
       setError(e instanceof Error ? e.message : "삭제 실패");
       setBusy(false);
+    }
+  };
+
+  const onPreset = async (index: number) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setPresetBusy(index);
+    setError(null);
+    try {
+      const url = await runScopedOperation((signal) =>
+        uploadPresetAvatar(index, { signal }),
+      );
+      onSaved(url);
+    } catch (e) {
+      busyRef.current = false;
+      setError(e instanceof Error ? e.message : "업로드 실패");
+      setBusy(false);
+      setPresetBusy(null);
     }
   };
 
@@ -107,7 +129,7 @@ export function AvatarEditor({
     <ModalShell ariaLabel="프로필 사진 변경" onClose={onClose}>
       <h2 className="text-lg font-bold">프로필 사진 변경</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        랭킹에 표시되는 사진이에요. 정사각형으로 잘려요.
+        랭킹에 표시되는 사진이에요. 캐릭터 중에서 고르거나 사진을 올려요(정사각형으로 잘려요).
       </p>
       <div className="mt-4 flex flex-col items-center gap-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -116,6 +138,30 @@ export function AvatarEditor({
           alt=""
           className="h-28 w-28 rounded-full border border-foreground/15 object-cover"
         />
+        {/* 캐릭터 프리셋 고르기 — 탭하면 바로 그 캐릭터로 저장(A 방식: 프리셋 PNG 를 커스텀 프사로 업로드) */}
+        <div className="w-full">
+          <p className="text-center text-xs text-zinc-500">캐릭터로 고르기</p>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            {AVATAR_PRESET_INDEXES.map((i) => (
+              <button
+                key={`${i}-${busy ? "busy" : "idle"}`}
+                type="button"
+                onClick={() => void onPreset(i)}
+                disabled={busy}
+                aria-label={`캐릭터 ${i}번으로 지정`}
+                className="relative h-12 w-12 shrink-0 transform-gpu overflow-hidden rounded-full border border-foreground/15 transition hover:border-foreground/40 disabled:opacity-50"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={avatarPresetUrl(i)} alt="" className="h-full w-full object-cover" />
+                {presetBusy === i && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <Spinner className="h-4 w-4" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
         <input
           ref={inputRef}
           type="file"

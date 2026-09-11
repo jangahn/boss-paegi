@@ -18,8 +18,8 @@ import {
   parsePublicHistoryProfile,
   type PublicHistoryGame,
 } from "@/lib/history-read";
+import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
 
-const DEFAULT_AVATAR = "/avatars/default.png";
 const PAGE_SIZE = 10;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -104,10 +104,10 @@ export default async function HistoryPage({
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center gap-3">
             <FadeImg
-              src={profile.avatar_url ?? DEFAULT_AVATAR}
+              src={avatarSrc(profile.avatar_url, userId)}
               className="h-11 w-11 shrink-0 rounded-full border border-foreground/10"
               loading="eager"
-              fallbackSrc={DEFAULT_AVATAR}
+              fallbackSrc={defaultAvatarUrl(userId)}
             />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">{name}님의 기록</h1>

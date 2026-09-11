@@ -20,8 +20,8 @@ import {
   runClientMutation,
   type ClientMutationEvidence,
 } from "@/lib/client-mutation";
+import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
 
-const DEFAULT_AVATAR = "/avatars/default.png";
 
 /**
  * 마이페이지(회원정보) — 회원 전용(proxy 게이트). 닉네임·프로필 사진·회원탈퇴.
@@ -114,7 +114,7 @@ export default function AccountPage() {
   }
 
   // 법적 동의는 서버 proxy 가 /account 진입 전 게이트 → 여기 도달 = 동의완료. 별도 폴백 불필요.
-  const avatar = profile.avatar_url ?? DEFAULT_AVATAR;
+  const avatar = avatarSrc(profile.avatar_url, profile.id);
 
   const saveNick = async () => {
     if (savingNickRef.current || nick.trim().length < 2) return;
@@ -181,7 +181,7 @@ export default function AccountPage() {
                 alt="내 프로필 사진"
                 className="h-24 w-24 shrink-0 rounded-full border border-foreground/10 object-cover"
                 loading="eager"
-                fallbackSrc={DEFAULT_AVATAR}
+                fallbackSrc={defaultAvatarUrl(profile.id)}
               />
               <button
                 type="button"

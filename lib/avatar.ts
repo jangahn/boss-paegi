@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { notifyProfileChanged } from "@/lib/profile";
 import { PUBLIC_ENV } from "@/lib/env";
+import { avatarPresetUrl } from "@/lib/avatar-presets";
 import {
   parseAvatarClearHttpAck,
   parseAvatarReplaceHttpAck,
@@ -78,6 +79,30 @@ export async function uploadAvatar(
   options: { signal?: AbortSignal } = {},
 ): Promise<string> {
   const blob = await normalizeSquare(cropped);
+  return uploadAvatarBlob(blob, options);
+}
+
+/**
+ * 캐릭터 프리셋(`public/avatars/preset-N.png`, 256px 알파 PNG)을 그대로 프사로 업로드(v1.41, A 방식).
+ * JPEG 정규화를 거치지 않아 알파가 보존된다(원형 크롭 뒤 흰 원 방지). 이후는 일반 커스텀 프사와 동일
+ * (검증·정리·immutable 캐시·"기본 사진으로 되돌리기").
+ */
+export async function uploadPresetAvatar(
+  index: number,
+  options: { signal?: AbortSignal } = {},
+): Promise<string> {
+  const res = await fetch(avatarPresetUrl(index), { signal: options.signal });
+  if (!res.ok) throw new Error("캐릭터 이미지를 불러오지 못했어요");
+  const raw = await res.blob();
+  const blob = raw.type === "image/png" ? raw : new Blob([await raw.arrayBuffer()], { type: "image/png" });
+  return uploadAvatarBlob(blob, options);
+}
+
+/** 정규화된 정사각 blob(JPEG/PNG/WebP) → 서명 URL → 직접 업로드 → 검증/반영. */
+async function uploadAvatarBlob(
+  blob: Blob,
+  options: { signal?: AbortSignal } = {},
+): Promise<string> {
   const mime = blob.type || "image/webp";
   const operation = await stableClientUploadOperation({
     scope: "avatar",
