@@ -79,3 +79,12 @@ test("DB CHECK 어휘(0127)와 코드 어휘가 같다", () => {
   assert.match(sql, /p_base_doll text DEFAULT NULL\)/);
   assert.match(sql, /case when p_doll_id is null then p_base_doll else null end/);
 });
+
+test("점수 라우트 계약(v1.43): p_base_doll 은 저장 RPC 에만, 예약 RPC 공유 인자엔 없다", () => {
+  const route = fs.readFileSync(path.resolve(process.cwd(), "app/api/score/route.ts"), "utf8");
+  const attemptArgs = route.slice(route.indexOf("const scoreAttemptArgs = {"), route.indexOf("};", route.indexOf("const scoreAttemptArgs = {")));
+  assert.doesNotMatch(attemptArgs, /p_base_doll/, "reserve_score_write_attempt 에는 p_base_doll 파라미터가 없다(공유 인자에 넣으면 PostgREST 해석 실패 → 전 제출 500)");
+  const submitCall = route.slice(route.indexOf('admin.rpc("submit_score_with_review"'), route.indexOf("});", route.indexOf('admin.rpc("submit_score_with_review"')));
+  assert.match(submitCall, /\.\.\.scoreAttemptArgs,\s*p_base_doll: dollId \? null : baseDoll,/);
+  assert.match(route, /const baseDoll = isBaseDollKey\(body\.baseDoll\) \? body\.baseDoll : null;/);
+});

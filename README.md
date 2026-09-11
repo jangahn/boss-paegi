@@ -943,6 +943,11 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.43 (2026-09-12, 핫픽스 — 점수 제출 500(예약 RPC 인자 공유) + 헤더 계정 버튼 375 WebKit 넘침; 마이그레이션 없음):
+- **사고**: v1.42 배포 직후 모든 점수 제출이 500(`insert_failed`) — `/api/score` 가 `reserve_score_write_attempt`(quota 예약)와 `submit_score_with_review` 에 같은 인자 객체를 쓰는데 `p_base_doll` 을 거기 넣어 예약 RPC 의 PostgREST 함수 해석이 실패했다(`score.reserve_fail: Could not find the function …`). 프로드 검증에서 즉시 발견 → Vercel 롤백(60acc3c, 구 번들은 0127 스키마와 호환 — Phase A 실측)으로 복구 후 교정. 배포 순서 계약(additive 마이그레이션 → 코드) 자체는 지켜졌고, 결함은 라우트의 인자 객체 공유였다.
+- **교정**: `p_base_doll` 은 저장 RPC 호출에만 전달. 소스 계약 테스트(`base-dolls.test.ts`)로 예약 인자에 `p_base_doll` 이 다시 들어가지 못하게 고정. 교훈: 공유 인자 객체에 파라미터를 더할 땐 그 객체를 받는 **모든** RPC 의 시그니처를 확인한다(프로드 검증 시 실제 제출 1회를 반드시 포함).
+- **헤더 계정 버튼**: 익명 긴 닉네임(예: "단톡방잠수부 2348")일 때 375px WebKit 에서 헤더 행이 4px 넘침 — `AccountMenu` 래퍼에 `min-w-0`(flex 행에서 버튼 max-w 48vw 아래로 줄어들며 닉네임은 truncate). 비회원 갤러리 375 감사(WebKit)에서 발견, 회원(짧은 닉)·Chromium 에선 미발현이라 종전 전수 감사가 놓쳤던 케이스.
+
 v1.42 (2026-09-12, 기본 캐릭터 5종 — 회원 추가 캐릭터 4종·링크 플레이·가입 후킹 교체; **Migration 0127**):
 - **기본 캐릭터 어휘** `lib/base-dolls.ts`: 기본 부장님 `boss-m`(종전 `/sprites/boss-default.png`) + 추가 4종 `ceo-m`(사장님·남)·`boss-f`(부장님·여)·`teamlead-f`(팀장님·여)·`junior-m`(신입·남) — `public/sprites/base/<key>.png`, 사용자 제공 원본(1086×1448 알파)을 기본 부장님과 같은 규격(768×1024, 캐릭터 높이 82%, 폭 ≤94%, 256색 팔레트 124~167KB)으로 정규화. DB 행 없는 정적 자산(Vercel CDN, 기본 부장님과 같은 이유). 롤·성별은 시비 멘트·보고서 보이스·{호칭} 을 정한다.
 - **플레이 URL** `/play?doll=<key>`(기본 부장님은 `/play`): 링크만 있으면 **비회원도** 추가 캐릭터를 플레이할 수 있고, 갤러리 노출은 회원. `useGameInit` 는 키면 정적 스프라이트·롤·성별을 어휘에서 취하고, uuid 면 종전 커스텀 경로(본인 소유만).
