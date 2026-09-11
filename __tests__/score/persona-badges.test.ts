@@ -93,3 +93,23 @@ test("evaluateBadges: 이 판의 유형과 일치하는 활성 유형 뱃지 1�
     [personaBadgeSlug(PERSONA_FALLBACK_ID)],
   );
 });
+
+test("v1.37 무기 tier: 저장 카탈로그에 없는 10·13·16·19 는 편입되고 weapon_9 는 코드 은퇴로 비활성 고정, 디폴트도 동일", () => {
+  const NEW = ["weapon_10", "weapon_13", "weapon_16", "weapon_19"];
+  for (const slug of NEW) assert.equal(BADGE_CATALOG_DEFAULT.badges.find((b) => b.slug === slug)?.active, true, slug);
+  assert.equal(BADGE_CATALOG_DEFAULT.badges.find((b) => b.slug === "weapon_9")?.active, false);
+  // 발행본(v1.36 이전): 무기 tier [2,4,6,8,9] 전부 활성, 유형 행 없음
+  const stored = {
+    families: BADGE_CATALOG_DEFAULT.families.filter((f) => f.key !== "persona"),
+    badges: BADGE_CATALOG_DEFAULT.badges
+      .filter((b) => b.familyKey !== "persona" && !NEW.includes(b.slug))
+      .map((b) => (b.slug === "weapon_9" ? { ...b, active: true } : b.slug === "weapon_4" ? { ...b, active: false } : b)),
+  };
+  const parsed = badgeCatalogSchema.parse(stored);
+  for (const slug of NEW) assert.equal(parsed.badges.find((b) => b.slug === slug)?.active, true, slug);
+  assert.equal(parsed.badges.find((b) => b.slug === "weapon_9")?.active, false, "코드 은퇴는 저장값(true)보다 우선");
+  assert.equal(parsed.badges.find((b) => b.slug === "weapon_4")?.active, false, "어드민이 끈 다른 tier 는 보존");
+  const weaponSlugs = parsed.badges.filter((b) => b.familyKey === "weapon").map((b) => b.threshold);
+  assert.deepEqual(weaponSlugs, [2, 4, 6, 8, 9, 10, 13, 16, 19], "저장 순서 뒤에 신규 tier 오름차순 편입");
+  assert.equal(new Set(parsed.badges.map((b) => b.slug)).size, parsed.badges.length, "slug 중복 없음");
+});

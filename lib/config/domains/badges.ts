@@ -99,8 +99,14 @@ export function normalizeBadgeCatalogInput(input: unknown): unknown {
   const storedPersonaFamily = (c.families as { key?: unknown; name?: unknown; emoji?: unknown }[]).find(
     (f) => f?.key === PERSONA_FAMILY_KEY
   );
-  const others = (c.badges as RawBadge[]).filter((b) => b?.familyKey !== PERSONA_FAMILY_KEY);
+  const stored = (c.badges as RawBadge[]).filter((b) => b?.familyKey !== PERSONA_FAMILY_KEY);
   const storedPersona = (c.badges as RawBadge[]).filter((b) => b?.familyKey === PERSONA_FAMILY_KEY);
+  // v1.37: 코드 시드에 새로 생긴 tier(weapon_10~19)는 저장본에 편입(additive), 코드 은퇴 tier(weapon_9)는 비활성 고정.
+  const storedSlugs = new Set(stored.map((b) => (typeof b.slug === "string" ? b.slug : "")));
+  const added = SEED_BADGES.filter((b) => !storedSlugs.has(b.slug));
+  const others = [...stored, ...added].map((b) =>
+    typeof b.slug === "string" && CODE_RETIRED_BADGE_SLUGS.has(b.slug) ? { ...b, active: false } : b
+  );
   return {
     ...c,
     families: [...families, storedPersonaFamily ?? PERSONA_FAMILY_DEFAULT],
@@ -143,32 +149,46 @@ export type CatalogBadge = z.infer<typeof badgeSchema>;
 export type CatalogFamily = z.infer<typeof familySchema>;
 
 // ── 코드 기본값(현 lib/badges 와 byte-identical) — slug = 현 id(`family_threshold`) 그대로 동결. ──
-type Seed = { key: BadgeFamilyKey; name: string; emoji: string; tiers: number[]; label: (t: number) => string; desc: (t: number) => string };
+type Seed = {
+  key: BadgeFamilyKey;
+  name: string;
+  emoji: string;
+  tiers: number[];
+  /** 코드 은퇴 tier — slug 는 동결 유지(획득 표시 보존), 디폴트·정규화에서 active=false 고정 */
+  retired?: number[];
+  label: (t: number) => string;
+  desc: (t: number) => string;
+};
 const SEED: Seed[] = [
   { key: "score", name: "점수", emoji: "🏆", tiers: [1000, 3000, 5000, 10000, 30000, 50000, 100000, 300000, 500000, 1000000], label: (t) => `${t.toLocaleString()}점`, desc: (t) => `총 정산 점수 ${t.toLocaleString()}점 달성` },
   { key: "combo", name: "콤보", emoji: "🔥", tiers: [100, 200, 300, 500, 1000, 1500, 2000, 3000, 5000, 10000], label: (t) => `콤보 ${t.toLocaleString()}`, desc: (t) => `최대 콤보 ${t.toLocaleString()} 달성` },
   { key: "hits", name: "타격", emoji: "👊", tiers: [150, 400, 700, 1200, 2500, 4000, 7000, 12000, 20000, 30000], label: (t) => `${t.toLocaleString()}타`, desc: (t) => `한 판에 ${t.toLocaleString()}타 (궁극기 제외)` },
-  { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
+  // v1.37: 로스터 19종(맵별 투척 12종) — 9종 tier 는 은퇴(10종 = 맵을 옮겨야 도달) + 13·16·19 신설
+  { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9, 10, 13, 16, 19], retired: [9], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
   { key: "ult", name: "궁극기", emoji: "💥", tiers: [1, 2, 3, 5, 10, 15, 20, 30, 40, 50], label: (t) => `궁극기 ${t}회`, desc: (t) => `한 판에 궁극기 ${t}회 발동` },
   { key: "time", name: "플레이", emoji: "⏱️", tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], label: (t) => `${t}분`, desc: (t) => `${t}분 이상 플레이` },
   { key: "map", name: "맵", emoji: "🗺️", tiers: [2, 3, 4, 5, 6], label: (t) => `맵 ${t}곳`, desc: (t) => `한 판에 맵 ${t}곳 순회` },
 ];
 
+/** 코드 시드 뱃지(유형 제외) — 저장 카탈로그에 없는 slug 는 정규화가 편입한다(additive). */
+const SEED_BADGES: CatalogBadge[] = SEED.flatMap((f) =>
+  f.tiers.map((t) => ({
+    slug: `${f.key}_${t}`,
+    familyKey: f.key,
+    threshold: t,
+    label: f.label(t),
+    desc: f.desc(t),
+    active: !(f.retired ?? []).includes(t),
+  }))
+);
+/** 코드 은퇴 slug — 저장값과 무관하게 active=false 로 고정(획득 표시는 보존). */
+export const CODE_RETIRED_BADGE_SLUGS: ReadonlySet<string> = new Set(
+  SEED.flatMap((f) => (f.retired ?? []).map((t) => `${f.key}_${t}`))
+);
+
 export const BADGE_CATALOG_DEFAULT: BadgeCatalog = {
   families: [...SEED.map((f) => ({ key: f.key, name: f.name, emoji: f.emoji })), PERSONA_FAMILY_DEFAULT],
-  badges: [
-    ...SEED.flatMap((f) =>
-      f.tiers.map((t) => ({
-        slug: `${f.key}_${t}`,
-        familyKey: f.key,
-        threshold: t,
-        label: f.label(t),
-        desc: f.desc(t),
-        active: true,
-      }))
-    ),
-    ...personaBadgeRows([]),
-  ],
+  badges: [...SEED_BADGES, ...personaBadgeRows([])],
 };
 
 export const badgeEntry: DomainEntry<BadgeCatalog> = {
