@@ -255,7 +255,9 @@ export function AccountMenu() {
 
   return (
     <div
-      className="relative"
+      // min-w-0: 헤더 flex 행에서 이 래퍼가 내용 폭(버튼 max-w 48vw) 아래로 줄어들 수 있어야 긴 익명 닉네임이
+      // 375px WebKit 에서 4px 넘치지 않는다(v1.43, 닉네임은 truncate 로 더 잘린다).
+      className="relative min-w-0"
       ref={ref}
     >
       <button

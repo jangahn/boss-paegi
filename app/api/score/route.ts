@@ -495,7 +495,6 @@ export async function POST(req: NextRequest) {
     p_network_actor_key: scoreNetworkActorKey,
     p_owner_id: user.id,
     p_doll_id: dollId,
-    p_base_doll: dollId ? null : baseDoll,
     p_score: score,
     p_weapon: body.weapon,
     p_duration_ms: durationMs,
@@ -545,8 +544,11 @@ export async function POST(req: NextRequest) {
     rpcData = reservation.result;
   } else {
     // ── 원자 저장 + 리뷰(fail-closed) ──
+    // p_base_doll 은 저장 RPC 전용(0127) — 예약 RPC(reserve_score_write_attempt)는 이 인자가 없어
+    // 공유 인자 객체에 넣으면 PostgREST 함수 해석이 실패한다(v1.42 배포 직후 전 제출 500 → 롤백, v1.43 교정).
     const submissionRpc = await admin.rpc("submit_score_with_review", {
       ...scoreAttemptArgs,
+      p_base_doll: dollId ? null : baseDoll,
       p_review_status: decision.reviewStatus,
       p_signals: decision.signals,
       p_abuse_score: decision.abuseScore,
