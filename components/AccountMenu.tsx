@@ -255,8 +255,8 @@ export function AccountMenu() {
 
   return (
     <div
-      // min-w-0: 헤더 flex 행에서 이 래퍼가 내용 폭(버튼 max-w 48vw) 아래로 줄어들 수 있어야 긴 익명 닉네임이
-      // 375px WebKit 에서 4px 넘치지 않는다(v1.43, 닉네임은 truncate 로 더 잘린다).
+      // min-w-0: 헤더 flex 행에서 이 래퍼가 내용 폭 아래로 줄어들 수 있어야 긴 익명 닉네임이 375px 에서 넘치지 않는다
+      // (v1.43). 버튼은 fit-content 폭이라 max-w 를 min(48vw, 100%) 로 두어 래퍼와 함께 줄고 닉네임은 truncate 된다.
       className="relative min-w-0"
       ref={ref}
     >
@@ -274,7 +274,7 @@ export function AccountMenu() {
             event.key === "ArrowUp" ? "last" : "first";
           setOpen(true);
         }}
-        className="flex max-w-[48vw] items-center gap-1.5 rounded-full border border-foreground/15 ui-surface py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
+        className="flex max-w-[min(48vw,100%)] items-center gap-1.5 rounded-full border border-foreground/15 ui-surface py-1 pl-1 pr-2.5 text-sm transition hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
