@@ -15,7 +15,9 @@ test("header keeps the pre-QA original geometry (2026-08-01 product decision)", 
   assert.match(nav, /rounded-full px-2\.5 py-1\.5 text-sm font-medium/);
   assert.doesNotMatch(nav, /\bw-14\b|\bh-11\b|\btext-xs\b/);
   assert.match(account, /py-1 pl-1 pr-2\.5 text-sm/);
-  assert.match(account, /className="relative"/);
+  // v1.43: 래퍼 min-w-0 — 헤더 flex 행에서 계정 pill 이 max-w 48vw 아래로 줄어들 수 있게(375px WebKit 익명 긴 닉네임 4px
+  // 넘침 방지, 사용자 SE 상시 규칙). 크기·간격·폰트는 그대로(pill 지오메트리 불변, 닉네임 truncate 만 더 일찍).
+  assert.match(account, /className="relative min-w-0"/);
   assert.doesNotMatch(account, /\bh-11\b/);
 });
 
