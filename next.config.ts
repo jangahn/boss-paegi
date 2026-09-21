@@ -7,6 +7,15 @@ import {
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    // Turbopack 빌드 파일 캐시(.next/cache/turbopack, Next 16.3 부터 기본 켜짐)를 끈다 — **낡은 CSS 가 배포되는 사고 방지**.
+    // 2026-09-21 v1.51: globals.css 에 `@custom-variant` 를 더하고 TSX 에서 그 변형을 쓴 변경을, 이전 배포의 빌드 캐시를 복원한
+    // Vercel 빌드가 **이전 CSS 그대로** 내보냈다(HTML·JS 는 새것, CSS 에 새 유틸 규칙 0개 → 회원에게 비회원 홈이 고정 노출).
+    // 로컬 재현: v1.50 을 빌드해 캐시를 만든 뒤 v1.51 을 빌드하면 같은 낡은 CSS, 이 옵션을 끄면 같은 순서에서 정상 CSS.
+    // 캐시 없는 빌드(CI)는 항상 정상이라 CI 로는 못 잡는다. dev 캐시(turbopackFileSystemCacheForDev)는 그대로 둔다 —
+    // dev 에서 CSS 가 낡아 보이면 `.next/dev/cache/turbopack` 을 지운다.
+    turbopackFileSystemCacheForBuild: false,
+  },
   images: {
     // next/image 최적화 결과 캐시 하한(기본 60s 라 /_next/image 가 max-age=0 처럼 재검증) — 31일.
     minimumCacheTTL: 2678400,
