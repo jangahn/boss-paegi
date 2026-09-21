@@ -536,8 +536,9 @@ function PlayInner() {
           </div>
         </div>
       )}
-      {/* 무기 조작 안내 — picker 바로 위. 반투명 캡슐로 배경 무관 가독 */}
-      <div className="pointer-events-none absolute bottom-[5.75rem] left-1/2 z-10 -translate-x-1/2 sm:bottom-28">
+      {/* 무기 조작 안내 — picker 바로 위. 반투명 캡슐로 배경 무관 가독.
+          하단 HUD 세로 간격 8px: 피커 윗변 = 모바일 88px(bottom-12 + 40) · sm 116px(bottom-14 + 60) → 캡슐 96 · 124px. */}
+      <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 -translate-x-1/2 sm:bottom-31">
         <span className="whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm sm:text-sm">
           {weaponHint(weapon.key, role)}
         </span>
