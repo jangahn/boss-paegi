@@ -10,7 +10,8 @@ import { applyMemberHint, memberHintCookieName, memberHintFromCookie } from "@/l
  */
 export function MemberHintSync() {
   useLayoutEffect(() => {
-    applyMemberHint(memberHintFromCookie(document.cookie, memberHintCookieName()));
+    const cookieName = memberHintCookieName();
+    if (cookieName !== null) applyMemberHint(memberHintFromCookie(document.cookie, cookieName));
   }, []);
   return null;
 }

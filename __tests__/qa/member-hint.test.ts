@@ -10,7 +10,9 @@ import { createChunks, stringToBase64URL } from "@supabase/ssr";
 
 register("../telemetry/node-loader.mjs", import.meta.url);
 
-const { MEMBER_HINT_ATTRIBUTE, memberHintFromCookie, memberHintInlineScript } = await import("../../lib/member-hint.ts");
+const { MEMBER_HINT_ATTRIBUTE, memberHintCookieName, memberHintFromCookie, memberHintInlineScript } = await import(
+  "../../lib/member-hint.ts"
+);
 
 const NAME = "sb-testprojectref-auth-token";
 const source = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -98,16 +100,29 @@ test("인라인 스크립트: 한 줄 ES5(브라우저 호환) · 스크립트 �
   assert.doesNotThrow(() => vm.runInNewContext(script, {}));
 });
 
+test("쿠키 이름: 공개 env 가 없거나 URL 이 아니면 null — 루트 레이아웃 prerender 에서 던지지 않는다(CI 빌드는 env 없이 돈다)", () => {
+  assert.equal(memberHintCookieName("https://abcdefghijklmnop.supabase.co"), "sb-abcdefghijklmnop-auth-token");
+  assert.equal(memberHintCookieName(undefined), null);
+  assert.equal(memberHintCookieName(""), null);
+  assert.equal(memberHintCookieName("not a url"), null);
+  // 이 테스트 프로세스에도 NEXT_PUBLIC_SUPABASE_URL 이 없다 — 기본 인자 경로가 던지지 않아야 한다.
+  assert.doesNotThrow(() => memberHintCookieName());
+});
+
 test("루트 레이아웃: <head> 인라인 스크립트 + <html suppressHydrationWarning> + 개발 모드 재적용 컴포넌트", () => {
   const layout = source("app/layout.tsx");
   assert.match(layout, /<html lang="ko" className="h-full antialiased" suppressHydrationWarning>/);
+  assert.match(layout, /const memberHintCookie = memberHintCookieName\(\);/);
   assert.match(
     layout,
-    /<head>[\s\S]*<script dangerouslySetInnerHTML=\{\{ __html: memberHintInlineScript\(memberHintCookieName\(\)\) \}\} \/>\s*<\/head>/,
+    /<head>[\s\S]*\{memberHintCookie !== null && \(\s*<script dangerouslySetInnerHTML=\{\{ __html: memberHintInlineScript\(memberHintCookie\) \}\} \/>\s*\)\}\s*<\/head>/,
   );
   assert.match(layout, /<body className="min-h-full flex flex-col">\s*<MemberHintSync \/>/);
   const sync = source("components/MemberHintSync.tsx");
-  assert.match(sync, /useLayoutEffect\(\(\) => \{\s*applyMemberHint\(memberHintFromCookie\(document\.cookie, memberHintCookieName\(\)\)\);/);
+  assert.match(
+    sync,
+    /useLayoutEffect\(\(\) => \{\s*const cookieName = memberHintCookieName\(\);\s*if \(cookieName !== null\) applyMemberHint\(memberHintFromCookie\(document\.cookie, cookieName\)\);/,
+  );
   assert.match(source("app/globals.css"), /@custom-variant member-hint \(&:where\(\[data-member-hint\] \*\)\);/);
   // 홈은 정적 페이지로 남는다 — 서버에서 쿠키를 읽지 않는다.
   assert.doesNotMatch(layout, /cookies\(\)|headers\(\)/);

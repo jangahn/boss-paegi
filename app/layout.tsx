@@ -107,12 +107,16 @@ export default async function RootLayout({
       offers: { "@type": "Offer", price: "0", priceCurrency: "KRW" },
     },
   ];
+  // 공개 env 가 없는 빌드(CI)에서는 null — 힌트 스크립트 없이 렌더한다.
+  const memberHintCookie = memberHintCookieName();
   return (
     // suppressHydrationWarning: 아래 인라인 스크립트가 hydrate 전에 <html data-member-hint> 를 달 수 있다(이 요소의 속성만 해당).
     <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/* 회원 힌트(v1.51) — 첫 페인트 전에 세션 쿠키로 회원 여부를 판별해 정적 HTML 의 두 상태 중 맞는 쪽을 보이게 한다(lib/member-hint.ts). */}
-        <script dangerouslySetInnerHTML={{ __html: memberHintInlineScript(memberHintCookieName()) }} />
+        {memberHintCookie !== null && (
+          <script dangerouslySetInnerHTML={{ __html: memberHintInlineScript(memberHintCookie) }} />
+        )}
       </head>
       <body className="min-h-full flex flex-col">
         <MemberHintSync />

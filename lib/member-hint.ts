@@ -15,9 +15,18 @@ import { supabaseAuthCookieName } from "@/lib/supabase/session-cookie";
 
 export const MEMBER_HINT_ATTRIBUTE = "data-member-hint";
 
-/** 세션 쿠키 이름 — `sb-<프로젝트 ref>-auth-token`(쿠키 이름을 바꾸는 옵션은 쓰지 않는다, lib/supabase/auth-cookie-options.ts). */
-export function memberHintCookieName(): string {
-  return supabaseAuthCookieName(PUBLIC_ENV.SUPABASE_URL);
+/**
+ * 세션 쿠키 이름 — `sb-<프로젝트 ref>-auth-token`(쿠키 이름을 바꾸는 옵션은 쓰지 않는다, lib/supabase/auth-cookie-options.ts).
+ * 공개 env 가 없거나 URL 이 아니면 null — 루트 레이아웃이 전 페이지 prerender 에서 부르므로 **던지면 안 된다**
+ * (CI 의 `next build` 는 NEXT_PUBLIC_SUPABASE_URL 없이 돈다 — v1.51 1차 CI 가 이 때문에 전 페이지 prerender 실패).
+ * null 이면 힌트 없이 동작한다(= 종전처럼 hydrate 뒤 교체).
+ */
+export function memberHintCookieName(supabaseUrl: string | undefined = PUBLIC_ENV.SUPABASE_URL): string | null {
+  try {
+    return supabaseUrl ? supabaseAuthCookieName(supabaseUrl) : null;
+  } catch {
+    return null;
+  }
 }
 
 function decodeBase64Url(value: string): string {
