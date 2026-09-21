@@ -14,6 +14,11 @@
  * dark: 유틸은 .dark 조상이 있을 때만 적용(우리는 절대 안 붙임) → OS 다크에서도 라이트 고정. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* 회원 힌트(v1.51) — <head> 인라인 스크립트가 첫 페인트 전에 <html data-member-hint> 를 단다(lib/member-hint.ts).
+ * 로그인 상태에 따라 달라지는 영역은 두 상태를 정적 HTML 에 같이 넣고 하나만 보인다:
+ *   비회원용 = `member-hint:hidden` · 회원용 = `hidden member-hint:flex`(또는 block). display:none 은 접근성 트리·탭 순서에서도 빠진다. */
+@custom-variant member-hint (&:where([data-member-hint] *));
+
 :root {
   --background: #f7ebdb; /* 마닐라 크림 종이 */
   --foreground: #11233a; /* 네이비-차콜 잉크 */

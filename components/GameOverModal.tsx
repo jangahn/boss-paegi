@@ -21,6 +21,7 @@ import { resolveCopy } from "@/lib/config/template";
 import { getMyProfile } from "@/lib/profile";
 import { LOGIN_THEN_GALLERY } from "@/lib/gallery-cta";
 import { log } from "@/lib/log";
+import { applyMemberHint, readMemberHint } from "@/lib/member-hint";
 import type { HighlightClip } from "@/lib/highlight";
 import { elapsedScoreDurationMs } from "@/lib/score-retry";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
@@ -136,7 +137,9 @@ export function GameOverModal({
   // 로그인 여부 — 1차 '다음 플레이' 버튼 분기(회원=갤러리 / 비회원=가입 후 생성). 홈과 같은
   // fail-closed 기본값(비회원): 프로필 조회 전·실패 시 비회원 CTA. 판이 바뀌어도 로그인 상태는
   // 유지되므로 open 리셋 대상이 아니다(재조회가 갱신).
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // 로그인 상태 — 프로필 확인 전(null)에는 회원 힌트(첫 페인트 전 쿠키 판별, lib/member-hint.ts)를 따른다.
+  // 기본값을 비회원으로 두면 회원에게 비회원 1차 버튼과 부제가 잠깐 보였다가 바뀐다(v1.51).
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   // 하이라이트 업로드(백그라운드) 진행/완료 표시 + 1회 가드(중복 업로드 차단).
   const [uploading, setUploading] = useState(false);
   const [attached, setAttached] = useState(false);
@@ -212,6 +215,7 @@ export function GameOverModal({
         ) {
           setNickname(p.display_name);
           setIsLoggedIn(p.isLoggedIn);
+          applyMemberHint(p.isLoggedIn);
         }
       })
       .catch(() => {});
@@ -243,7 +247,7 @@ export function GameOverModal({
 
   // 1차 '다음 플레이' — 회원은 갤러리에서 다른 캐릭터 선택, 비회원은 가입 후 갤러리(추가 캐릭터 4종이 열리는 곳, v1.42).
   // 비회원 {호칭}은 플레이한 기본 캐릭터의 롤(기본 부장님 또는 링크로 온 추가 캐릭터).
-  const nextPlay = isLoggedIn
+  const nextPlay = (isLoggedIn ?? readMemberHint())
     ? { kind: "member" as const, href: "/gallery", label: mk.share.gameoverPlayBtnMember }
     : {
         kind: "nonmember" as const,
