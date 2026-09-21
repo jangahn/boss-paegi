@@ -45,6 +45,7 @@ function telemetryPayload() {
         apm: 60,
         tapShare: 1,
         maxTouch: 1,
+        keyActions: 0,
         dpr: 1,
         refreshHz: 60,
         avgFrameMs: 16,

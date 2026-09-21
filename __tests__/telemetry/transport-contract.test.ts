@@ -51,6 +51,7 @@ function fakeCollector(eventReads: number[]): TelemetryCollector {
         apm: 0,
         tapShare: 0,
         maxTouch: 0,
+        keyActions: 0,
         dpr: 1,
         refreshHz: 60,
         avgFrameMs: 16,

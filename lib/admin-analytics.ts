@@ -56,6 +56,7 @@ export type SessionDetail = {
   apm: number | null;
   tap_share: number | null;
   max_touch: number | null;
+  key_actions: number | null;
   weapon_summary: Record<string, unknown>;
   map_summary: Record<string, unknown>;
   first_hit_ms: number | null;
@@ -382,6 +383,7 @@ export async function getSessionDetail(
       apm: "nullableNonnegativeInteger",
       tap_share: "nullableNonnegativeNumeric",
       max_touch: "nullableNonnegativeInteger",
+      key_actions: "nullableNonnegativeInteger",
       weapon_summary: "jsonObject",
       map_summary: "jsonObject",
       first_hit_ms: "nullableNonnegativeInteger",
@@ -667,6 +669,50 @@ export async function getMapStickiness(window: StatWindow): Promise<MapStickines
     avgDistinctMaps: valid > 0 ? stat("distinct_maps_sum") / valid : 0,
     mapSwitchRate: valid > 0 ? stat("map_switch_sum") / valid : 0,
     startMapDist,
+  };
+}
+
+// ── 키보드 사용(v1.50) — sess_keyboard 차원(mig 0131): device_class 별 플레이 세션수·키보드 사용 세션수·키보드 동작 수 ──
+
+export type KeyboardUsageRow = {
+  deviceClass: string;
+  /** 타격이 있었던 세션 수(분모) */
+  sessions: number;
+  /** 그중 키보드 공격 동작이 1회 이상 있었던 세션 수 */
+  keyboardSessions: number;
+  /** 키보드 공격 동작 수 합 */
+  keyActions: number;
+};
+export type KeyboardUsage = {
+  byDevice: KeyboardUsageRow[];
+  sessions: number;
+  keyboardSessions: number;
+  /** PC(마우스 환경) 세션만 — 키보드 조작의 실질 모수 */
+  desktopSessions: number;
+  desktopKeyboardSessions: number;
+};
+
+/** 키보드 조작이 쓰이는 환경(마우스 기본 입력) — 비율의 실질 분모. */
+export const KEYBOARD_DEVICE_CLASS = "desktop-pointer";
+
+export async function getKeyboardUsage(window: StatWindow): Promise<KeyboardUsage> {
+  const rows = await fetchDimRows(["sess_keyboard"], window);
+  const byClass = new Map<string, KeyboardUsageRow>();
+  for (const r of rows) {
+    const cur = byClass.get(r.dimKey) ?? { deviceClass: r.dimKey, sessions: 0, keyboardSessions: 0, keyActions: 0 };
+    cur.sessions += r.sessions;
+    cur.keyboardSessions += r.measureA;
+    cur.keyActions += r.hits;
+    byClass.set(r.dimKey, cur);
+  }
+  const byDevice = [...byClass.values()].sort((a, b) => b.sessions - a.sessions);
+  const desktop = byClass.get(KEYBOARD_DEVICE_CLASS);
+  return {
+    byDevice,
+    sessions: byDevice.reduce((n, d) => n + d.sessions, 0),
+    keyboardSessions: byDevice.reduce((n, d) => n + d.keyboardSessions, 0),
+    desktopSessions: desktop?.sessions ?? 0,
+    desktopKeyboardSessions: desktop?.keyboardSessions ?? 0,
   };
 }
 

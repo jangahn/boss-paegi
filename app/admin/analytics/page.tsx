@@ -10,6 +10,7 @@ import {
   getWeaponThroughput,
   getMapStickiness,
   getDevicePerf,
+  getKeyboardUsage,
   getPersonaDistribution,
   getScoreBuckets,
 } from "@/lib/admin-analytics";
@@ -28,6 +29,7 @@ import {
   MapStickinessCard,
 } from "@/components/admin/analytics/AnalyticsViews";
 import { DevicePerfPanel } from "@/components/admin/DevicePerfPanel";
+import { KeyboardUsagePanel } from "@/components/admin/KeyboardUsagePanel";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -43,7 +45,7 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const window = parseStatWindow(sp.days);
 
-  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf, personas, scoreBuckets, scoreCfg] =
+  const [weapons, maps, funnel, member, weaponConc, throughput, mapStick, devicePerf, keyboardUsage, personas, scoreBuckets, scoreCfg] =
     await Promise.all([
       getWeaponBalance(window),
       getMapBalance(window),
@@ -53,6 +55,7 @@ export default async function AnalyticsPage({
       getWeaponThroughput(window),
       getMapStickiness(window),
       getDevicePerf(window),
+      getKeyboardUsage(window),
       getPersonaDistribution(window),
       getScoreBuckets(window),
       getScoreConfig(),
@@ -89,6 +92,13 @@ export default async function AnalyticsPage({
             렌더 퍼포먼스 <span className="font-normal text-zinc-400">(프레임타임·렉 — device_class별)</span>
           </h2>
           <DevicePerfPanel data={devicePerf} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-zinc-500">
+            키보드 사용 <span className="font-normal text-zinc-400">(PC 스페이스·방향키 조작 — device_class별)</span>
+          </h2>
+          <KeyboardUsagePanel data={keyboardUsage} />
         </section>
 
         <section>

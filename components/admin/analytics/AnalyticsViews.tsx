@@ -338,7 +338,7 @@ export function MapStickinessCard({ data }: { data: MapStickiness }) {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+export function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-foreground/10 ui-surface p-2 text-center">
       <p className="text-[10px] text-zinc-500">{label}</p>
@@ -347,6 +347,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function pct01(v: number): string {
+export function pct01(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
 }

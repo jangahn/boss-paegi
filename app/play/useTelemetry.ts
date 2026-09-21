@@ -39,6 +39,8 @@ export type TelemetryApi = {
   onWeaponSelect: (from: string, to: string) => void;
   onMapSelect: (from: string, to: string) => void;
   onUltFire: (score: number) => void;
+  /** PC 키보드 공격 동작 1회(쿨다운 통과분) — 세션 totals.keyActions. */
+  onKeyAction: () => void;
   /** 종료 직전 — 게임 ticker 프레임타임 통계(렉 진단) 주입. */
   setPerf: (p: PerfStats) => void;
   /**
@@ -166,6 +168,7 @@ export function useTelemetry(): TelemetryApi {
       onWeaponSelect: (from, to) => colRef.current?.onWeaponSelect(from, to),
       onMapSelect: (from, to) => colRef.current?.onMapSelect(from, to),
       onUltFire: (score) => colRef.current?.onUltFire(score),
+      onKeyAction: () => colRef.current?.noteKeyAction(),
       setPerf: (p) => colRef.current?.setPerf(p),
       registerPerfSource: (getPerf) => {
         perfSourceRef.current = getPerf;

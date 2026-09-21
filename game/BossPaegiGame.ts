@@ -1,11 +1,14 @@
 import { Application, Texture, Ticker } from "pixi.js";
 import { PlayScene, type HitInfo } from "@/game/scenes/PlayScene";
 import type { Weapon } from "@/lib/weapons";
+import type { AttackKey, KeyPhase } from "@/lib/keyboard-controls";
 
 export type GameEvents = {
   onHit?: (info: HitInfo) => number | void;
   /** 낙서 비어있음 ↔ 있음 전이 시 호출 — picker 의 펜/지우개 토글용 */
   onDrawingChange?: (hasDrawing: boolean) => void;
+  /** PC 키보드 공격 동작이 받아들여질 때마다 — 텔레메트리 keyActions */
+  onKeyAction?: () => void;
 };
 
 export type CreateGameOptions = GameEvents & {
@@ -37,6 +40,8 @@ export type GameHandle = {
   triggerUltimate: () => void;
   /** 게임 종료/중단 시 궁극기 난타 즉시 정지 */
   stopUltimate: () => void;
+  /** PC 키보드 공격 키(스페이스·방향키) → 현재 무기의 포인터 제스처 */
+  keyAction: (key: AttackKey, phase: KeyPhase) => void;
   /** 하이라이트 녹화용 — 캔버스 MediaStream (미지원 브라우저면 null) */
   captureStream: (fps?: number) => MediaStream | null;
   /** 렉 진단용 perf 통계 — DPR·추정 주사율·평균/p95 프레임타임(ms). 종료 시 텔레메트리로. */
@@ -157,6 +162,7 @@ export async function createGame(
     weapon: opts.weapon,
     onHit: opts.onHit,
     onDrawingChange: opts.onDrawingChange,
+    onKeyAction: opts.onKeyAction,
   });
   app.stage.addChild(scene);
   // app.screen.width 가 DPR 가산값 반환하는 경우가 있어, container CSS 크기 명시 사용.
@@ -254,6 +260,7 @@ export async function createGame(
     setDamageScore: (score: number) => scene.setDamageScore(score),
     triggerUltimate: () => scene.triggerUltimate(),
     stopUltimate: () => scene.stopUltimate(),
+    keyAction: (key, phase) => scene.keyAction(key, phase),
     captureStream: (fps = 30) => {
       const c = app.canvas as HTMLCanvasElement & {
         captureStream?: (fps?: number) => MediaStream;

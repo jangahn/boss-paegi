@@ -199,6 +199,8 @@ export type IntegrityDetail = {
     apm: number | null;
     tapShare: number | null;
     maxTouch: number | null;
+    /** PC 키보드 공격 동작 수(v1.50) — max touch 0 인 세션의 입력 출처 맥락 */
+    keyActions: number | null;
     distinctWeapons: number | null;
     suspicious: boolean;
     intervalCv: number | null;
@@ -316,7 +318,7 @@ export async function getIntegrityDetail(scoreId: string): Promise<IntegrityDeta
         admin
           .from("telemetry_sessions")
           .select(
-            "score, duration_ms, apm, tap_share, max_touch, distinct_weapons, suspicious, interval_cv, device_class, refresh_hz, timeline"
+            "score, duration_ms, apm, tap_share, max_touch, key_actions, distinct_weapons, suspicious, interval_cv, device_class, refresh_hz, timeline"
           )
           .eq("id", tsId)
           .maybeSingle(),
@@ -328,6 +330,7 @@ export async function getIntegrityDetail(scoreId: string): Promise<IntegrityDeta
           apm: number | null;
           tap_share: number | string | null;
           max_touch: number | null;
+          key_actions: number | null;
           distinct_weapons: number | null;
           suspicious: boolean;
           interval_cv: number | string | null;
@@ -340,6 +343,7 @@ export async function getIntegrityDetail(scoreId: string): Promise<IntegrityDeta
           apm: "nullableNonnegativeInteger",
           tap_share: "nullableNonnegativeNumeric",
           max_touch: "nullableNonnegativeInteger",
+          key_actions: "nullableNonnegativeInteger",
           distinct_weapons: "nullableNonnegativeInteger",
           suspicious: "boolean",
           interval_cv: "nullableNonnegativeNumeric",
@@ -376,6 +380,7 @@ export async function getIntegrityDetail(scoreId: string): Promise<IntegrityDeta
         apm: ts.apm,
         tapShare: ts.tap_share === null ? null : Number(ts.tap_share),
         maxTouch: ts.max_touch,
+        keyActions: ts.key_actions,
         distinctWeapons: ts.distinct_weapons,
         suspicious: ts.suspicious,
         intervalCv:

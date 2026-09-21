@@ -361,6 +361,7 @@ export function sanitizePayload(
         apm: boundedInt(t.apm, 0, 1e5),
         tapShare: num(t.tapShare, 0, 1),
         maxTouch: boundedInt(t.maxTouch, 0, 20),
+        keyActions: boundedInt(t.keyActions, 0, 1e6),
         dpr: num(t.dpr, 0, 8),
         refreshHz: boundedInt(t.refreshHz, 0, 360),
         avgFrameMs: num(t.avgFrameMs, 0, 10000),
