@@ -6,7 +6,7 @@ import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
 import { SpeechBubble } from "@/components/SpeechBubble";
 import { Spinner } from "@/components/Spinner";
-import { WeaponPicker } from "@/components/WeaponPicker";
+import { WeaponPicker, isEraserSlot } from "@/components/WeaponPicker";
 import { UltimateButton } from "@/components/UltimateButton";
 import { BgSwitcher } from "@/components/play/BgSwitcher";
 import { BadgeChallenge } from "@/components/play/BadgeChallenge";
@@ -14,9 +14,10 @@ import { topWeapon, useGameStore } from "@/store/gameStore";
 import { useSessionLimits } from "@/components/SessionLimitsProvider";
 import { FORCE_END_GRACE_MS } from "@/lib/score-limits";
 import { setSentryGameContext, setSentryPerfContext } from "@/lib/sentry-context";
-import { resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
+import { BACKGROUNDS, resolveBackground, findBackground, randomBackground } from "@/lib/backgrounds";
 import { WEAPONS, Weapon, weaponHint, weaponsForMap, remapWeaponForMap } from "@/lib/weapons";
 import { juggleConfigFromSeconds } from "@/lib/game-tuning";
+import { keyboardHint } from "@/lib/keyboard-controls";
 import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import type { RoleId } from "@/lib/roles";
 import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
@@ -29,6 +30,7 @@ import { useHighlightRecorder } from "./useHighlightRecorder";
 import { useScoreTimeline } from "./useScoreTimeline";
 import { useBadgeChallenge } from "./useBadgeChallenge";
 import { useTelemetry } from "./useTelemetry";
+import { useKeyboardControls } from "./useKeyboardControls";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
 import { baseDollKeyFromParam, telemetryBaseDollLabel } from "@/lib/base-dolls";
@@ -65,6 +67,8 @@ function PlayInner() {
   const [gameInitAttempt, setGameInitAttempt] = useState(0);
   // 낙서 존재 여부 — picker 의 펜 슬롯이 지우개(🧽)로 토글
   const [hasDrawing, setHasDrawing] = useState(false);
+  // 마우스를 올린 무기(PC) — 안내 캡슐이 그 무기의 키보드 조작법으로 바뀐다
+  const [hoverWeapon, setHoverWeapon] = useState<Weapon | null>(null);
   // 결과 보고서에 표시할 캐릭터 이미지 (커스텀 or 기본)
   const [dollImageUrl, setDollImageUrl] = useState<string>(
     "/sprites/boss-default.png"
@@ -174,6 +178,7 @@ function PlayInner() {
     onHit: ({ strength, weapon: weaponKey, chargeUlt }) =>
       hit(strength, weaponKey, chargeUlt),
     onDrawingChange: setHasDrawing,
+    onKeyAction: telemetry.onKeyAction,
     setGameReady,
     setGameInitError,
     setDollImageUrl,
@@ -255,6 +260,24 @@ function PlayInner() {
     }
     setBgKey(key);
   };
+
+  // PC 키보드(v1.50) — 숫자키 = 그 칸 클릭(지우개 규칙 포함), Q~Y = 맵, 스페이스·방향키 = 공격(스페이스는 궁극기 우선).
+  useKeyboardControls({
+    enabled: gameReady && !over,
+    gameRef,
+    onWeaponSlot: (slot) => {
+      const w = roster[slot];
+      if (!w) return;
+      if (isEraserSlot(w, hasDrawing)) gameRef.current?.clearDrawing();
+      else handleWeapon(w);
+    },
+    onMap: (index) => {
+      const b = BACKGROUNDS[index];
+      if (b) handleBg(b.key);
+    },
+    onUltimate: handleUltimate,
+    onUltimateKey: telemetry.onKeyAction,
+  });
 
   // 배경 전환 — 텍스처만 핫스왑. 게임 상태 (점수/낙서/무기) 그대로.
   // run-once boolean 가드는 StrictMode 더블 effect 에서 깨지므로
@@ -540,7 +563,7 @@ function PlayInner() {
           하단 HUD 세로 간격 8px: 피커 윗변 = 모바일 88px(bottom-12 + 40) · sm 116px(bottom-14 + 60) → 캡슐 96 · 124px. */}
       <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 -translate-x-1/2 sm:bottom-31">
         <span className="whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm sm:text-sm">
-          {weaponHint(weapon.key, role)}
+          {hoverWeapon ? keyboardHint(hoverWeapon.category) : weaponHint(weapon.key, role)}
         </span>
       </div>
       <UltimateButton ready={ultReady} onFire={handleUltimate} />
@@ -550,6 +573,7 @@ function PlayInner() {
         onChange={handleWeapon}
         hasDrawing={hasDrawing}
         onClearDrawing={() => gameRef.current?.clearDrawing()}
+        onHover={setHoverWeapon}
       />
       <BgSwitcher active={bgKey} onChange={handleBg} />
       <GameOverModal

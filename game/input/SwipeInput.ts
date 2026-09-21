@@ -24,7 +24,7 @@ type Callbacks = {
 };
 
 const HIT_MIN_SPEED = 500; // px/sec — 이보다 빨라야 타격
-const HIT_COOLDOWN_MS = 150; // 연속 타격 최소 간격 — 왔다갔다 1회당 1대
+export const HIT_COOLDOWN_MS = 150; // 연속 타격 최소 간격 — 왔다갔다 1회당 1대
 
 /**
  * 싸대기 입력 — 터치/드래그 시작하면 손바닥(✋)이 손가락을 따라다니고,
@@ -121,6 +121,21 @@ export class SwipeInput {
     if (this.pointerId === null || e.pointerId !== this.pointerId) return;
     this.cancel();
   };
+
+  /**
+   * 손바닥을 직접 움직인다 — PC 키보드 싸대기(v1.50)의 준비 동작·가속·여운 연출용. 포인터 이력·타격 판정과 무관한
+   * 표시 전용이며(타격은 호출부가 임팩트 순간에 한 번 보고한다), 끝나면 `cancel()` 로 숨긴다.
+   */
+  showPalm(x: number, y: number, vx: number, vy: number) {
+    if (!this.active) return;
+    this.palm.x = x;
+    this.palm.y = y;
+    this.palm.visible = true;
+    if (Math.hypot(vx, vy) > 120) {
+      this.palm.rotation = Math.atan2(vy, vx) * 0.2;
+      this.palm.scale.x = vx < 0 ? -1 : 1;
+    }
+  }
 
   cancel() {
     this.pointerId = null;

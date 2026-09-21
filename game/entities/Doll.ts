@@ -73,6 +73,8 @@ export class Doll extends Container {
   private spriteScale = 1;
   /** sprite 경로일 때 원본 텍스처 — 실루엣 mask 생성용 */
   private texture: Texture | null = null;
+  /** getBodyBounds 캐시 — 알파맵은 생성 뒤 불변 */
+  private bodyBounds: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
   constructor(opts: DollOptions = {}) {
     super();
@@ -112,6 +114,41 @@ export class Doll extends Container {
     const r = this.naturalSize / 2;
     if (lx * lx + ly * ly <= r * r) return true;
     return Math.abs(lx) <= r * 0.7 && ly >= r * 0.55 && ly <= r * 1.45;
+  }
+
+  /**
+   * 실루엣의 경계 상자(bodyWrap local px) — 키보드 조작이 "그 방향 부위"(위·아래·왼쪽·오른쪽)를 고를 때 쓴다(v1.50).
+   * 알파맵을 4px 간격으로 1회 훑어 캐시. 알파맵이 없으면 `isInsideBody` 의 도형 근사와 같은 범위.
+   */
+  getBodyBounds(): { x0: number; y0: number; x1: number; y1: number } {
+    if (this.bodyBounds) return this.bodyBounds;
+    const r = this.naturalSize / 2;
+    let bounds = this.isSprite
+      ? { x0: -r * 0.9, y0: -r * 0.9, x1: r * 0.9, y1: r * 0.9 }
+      : { x0: -r, y0: -r, x1: r, y1: r * 1.45 };
+    if (this.alphaMap) {
+      const { data, w, h } = this.alphaMap;
+      let minX = w, minY = h, maxX = -1, maxY = -1;
+      for (let ty = 0; ty < h; ty += 4) {
+        for (let tx = 0; tx < w; tx += 4) {
+          if (data[(ty * w + tx) * 4 + 3] < 48) continue;
+          if (tx < minX) minX = tx;
+          if (tx > maxX) maxX = tx;
+          if (ty < minY) minY = ty;
+          if (ty > maxY) maxY = ty;
+        }
+      }
+      if (maxX >= minX && maxY >= minY) {
+        bounds = {
+          x0: (minX - w / 2) * this.spriteScale,
+          y0: (minY - h / 2) * this.spriteScale,
+          x1: (maxX - w / 2) * this.spriteScale,
+          y1: (maxY - h / 2) * this.spriteScale,
+        };
+      }
+    }
+    this.bodyBounds = bounds;
+    return bounds;
   }
 
   /**

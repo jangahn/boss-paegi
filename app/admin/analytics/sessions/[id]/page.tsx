@@ -61,6 +61,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
               <Field label="첫타(ms)" value={s.first_hit_ms == null ? "—" : String(s.first_hit_ms)} />
               <Field label="첫전환(ms)" value={s.first_switch_ms == null ? "—" : String(s.first_switch_ms)} />
               <Field label="동시터치" value={metric(s.max_touch)} />
+              <Field label="키보드 동작" value={metric(s.key_actions)} />
               <Field label="플래그" value={`${s.suspicious ? "의심 " : ""}${s.has_gap ? "gap" : ""}`.trim() || "—"} />
             </div>
 

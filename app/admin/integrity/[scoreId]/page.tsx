@@ -122,6 +122,7 @@ export default async function AdminIntegrityDetailPage({
               <Field label="APM" value={t.apm?.toLocaleString() ?? "—"} warn={(t.apm ?? 0) > HUMAN_APM_CEILING} />
               <Field label="tap 비율" value={t.tapShare != null ? t.tapShare.toFixed(2) : "—"} />
               <Field label="max touch" value={t.maxTouch?.toString() ?? "—"} />
+              <Field label="키보드 동작" value={t.keyActions?.toLocaleString() ?? "—"} />
               <Field label="무기 종류" value={t.distinctWeapons?.toString() ?? "—"} />
               <Field label="간격 CV" value={t.intervalCv != null ? t.intervalCv.toFixed(3) : "—"} warn={t.intervalCv != null && t.intervalCv < INTERVAL_CV_MIN} />
               <Field label="기기/주사율" value={`${t.deviceClass ?? "—"} / ${t.refreshHz ?? "—"}Hz`} />

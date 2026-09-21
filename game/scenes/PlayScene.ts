@@ -39,6 +39,8 @@ import { ThrowInput } from "@/game/input/ThrowInput";
 import { SwipeInput } from "@/game/input/SwipeInput";
 import { ShootInput } from "@/game/input/ShootInput";
 import { DrawInput } from "@/game/input/DrawInput";
+import { KeyboardInput } from "@/game/input/KeyboardInput";
+import type { AttackKey, KeyPhase } from "@/lib/keyboard-controls";
 import {
   WEAPONS,
   SWIPE_FACTOR_MAX,
@@ -98,6 +100,8 @@ type PlaySceneOptions = {
   onHit?: (info: HitInfo) => number | void;
   /** 낙서 비어있음 ↔ 있음 전이 시 호출 — picker 의 펜/지우개 토글용 */
   onDrawingChange?: (hasDrawing: boolean) => void;
+  /** PC 키보드 공격 동작이 받아들여질 때마다 — 텔레메트리 keyActions(v1.50) */
+  onKeyAction?: () => void;
 };
 
 // fling 으로 전환되는 이동 거리 (stage px)
@@ -147,6 +151,8 @@ export class PlayScene extends Container {
   private swipeInput: SwipeInput;
   private shootInput: ShootInput;
   private drawInput: DrawInput;
+  /** PC 키보드(v1.50) — 스페이스·방향키를 가상 포인터로 바꿔 아래 핸들러들에 넣는다(별도 점수 경로 없음). */
+  private keyboardInput: KeyboardInput;
   private mode: WeaponCategory = "tap";
   private lifecycle: "running" | "paused" | "ended" = "running";
   // 비비탄
@@ -292,6 +298,23 @@ export class PlayScene extends Container {
     this.drawInput = new DrawInput(this, this.doll, this.drawingLayer, {
       onStroke: this.handleDrawStroke,
     });
+    this.keyboardInput = new KeyboardInput({
+      doll: this.doll,
+      mode: () => this.mode,
+      ultActive: () => this.ultActive,
+      view: () => ({ w: this.viewW, h: this.viewH }),
+      dollDown: this.handleDollPointerDown,
+      dollMove: this.handleDollPointerMove,
+      dollUp: this.handleDollPointerUp,
+      stageDown: this.handleStagePointerDown,
+      stageMove: this.handleStagePointerMove,
+      stageUp: this.handleStagePointerUp,
+      weapon: () => this.weapon,
+      swipePalm: (x, y, vx, vy) => this.swipeInput.showPalm(x, y, vx, vy),
+      swipePalmHide: () => this.swipeInput.cancel(),
+      swipeHit: this.handleSwipeHit,
+      onAction: opts.onKeyAction,
+    });
     this.on("pointerdown", this.handleStagePointerDown);
     this.on("pointermove", this.handleStagePointerMove);
     this.on("pointerup", this.handleStagePointerUp);
@@ -340,6 +363,15 @@ export class PlayScene extends Container {
     this.cancelActivePointers();
     this.stopUltimate();
     this.clearTransientAttacks();
+  }
+
+  /**
+   * PC 키보드 공격 키(스페이스·방향키) — 현재 무기에 맞는 포인터 제스처로 합성된다(받아들여진 동작은 onKeyAction 으로 알린다).
+   * 궁극기 **발동**은 여기가 아니라 React 의 handleUltimate(게이지 소비·텔레메트리 동반) — 여기서는 발동 중 연타만 받는다.
+   */
+  keyAction(key: AttackKey, phase: KeyPhase) {
+    if (this.lifecycle !== "running") return;
+    this.keyboardInput.handle(key, phase);
   }
 
   setWeapon(w: Weapon) {
@@ -974,6 +1006,7 @@ export class PlayScene extends Container {
     this.swipeInput.cancel();
     this.shootInput.cancel();
     this.drawInput.cancel();
+    this.keyboardInput.cancel();
   }
 
   /** 탭 무기 (주먹/뿅망치) — 한 방. 무기별 시그니처 연출로 분기. */
@@ -1493,6 +1526,9 @@ export class PlayScene extends Container {
         this.ultFinish();
       }
     }
+
+    // 키보드 제스처 진행(스윕·끌기·당기기·낙서) — 아래 fling 고정·연사보다 먼저.
+    this.keyboardInput.update(deltaSec);
 
     // drag 중에는 매 tick 손가락 위치에 고정 — 중력 velocity 누적으로
     // 캐릭터가 손에서 처지거나 (포인터 정지 시) 빠져나가는 것 방지.

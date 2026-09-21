@@ -42,6 +42,8 @@ export class TelemetryCollector {
   // 세션 전체 최대 동시터치(active pointer 수) — closeBucket/end 에서 절대 리셋 안 함.
   // collector 는 startSession 마다 새로 생성되므로 이 필드 초기화가 곧 세션 초기화.
   private sessionMaxTouch = 0;
+  // 세션 전체 키보드 공격 동작 수(v1.50) — maxTouch 와 같은 세션 스칼라(리셋 없음).
+  private sessionKeyActions = 0;
 
   // 마일스톤·엣지 감지
   private firstSwitchMs: number | null = null;
@@ -158,6 +160,11 @@ export class TelemetryCollector {
     if (v > this.sessionMaxTouch) this.sessionMaxTouch = v; // 세션 totals 용 — 리셋 안 함
   }
 
+  /** PC 키보드 공격 동작 1회(쿨다운 통과분) — 타격 수는 store 델타로만 세므로 입력 출처는 여기서 따로 센다. */
+  noteKeyAction(): void {
+    if (this.sessionKeyActions < 1e6) this.sessionKeyActions += 1; // validate/RPC 상한과 동일
+  }
+
   /** 게임 종료 시 ticker 프레임타임 통계 주입(렉 진단). */
   setPerf(p: { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number }): void {
     this.perf = p;
@@ -242,6 +249,7 @@ export class TelemetryCollector {
         apm: durMin > 0 ? Math.round(s.hitCount / durMin) : 0,
         tapShare: totalHits > 0 ? tapHits / totalHits : 0,
         maxTouch: this.sessionMaxTouch, // 세션 전체 최대(버킷 리셋과 무관) — 종료 후에도 보존
+        keyActions: this.sessionKeyActions,
         dpr: this.perf.dpr,
         refreshHz: this.perf.refreshHz,
         avgFrameMs: this.perf.avgFrameMs,

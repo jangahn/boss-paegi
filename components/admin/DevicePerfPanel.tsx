@@ -1,6 +1,6 @@
 import type { DevicePerf } from "@/lib/admin-analytics";
 
-const DEVICE_KO: Record<string, string> = {
+export const DEVICE_KO: Record<string, string> = {
   "mobile-touch": "모바일(터치)",
   "desktop-pointer": "데스크탑(마우스)",
   "desktop-touch": "데스크탑(터치)",

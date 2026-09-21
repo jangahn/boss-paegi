@@ -37,7 +37,7 @@ export const MAX_OBJECT_DEPTH = 4;
 // ── key allowlist(소스에서 파생 — 드리프트 방지) ──
 export const WEAPON_KEYS: readonly string[] = WEAPONS.map((w) => w.key);
 export const MAP_KEYS: readonly string[] = BACKGROUNDS.map((b) => b.key);
-export const WEAPON_COUNT = WEAPON_KEYS.length; // 9
+export const WEAPON_COUNT = WEAPON_KEYS.length; // 19 (공통 7 + 맵별 투척 12)
 export const MAP_COUNT = MAP_KEYS.length; // 6
 
 /** 디바이스 클래스 allowlist(coarse·무PII). 그 외는 'other' 로 clamp. */

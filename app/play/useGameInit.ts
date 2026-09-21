@@ -37,6 +37,8 @@ export function useGameInit(opts: {
   initialBgUrlRef: MutableRefObject<string | null>;
   onHit: NonNullable<CreateGameOptions["onHit"]>;
   onDrawingChange: (v: boolean) => void;
+  /** PC 키보드 공격 동작이 받아들여질 때마다(텔레메트리 keyActions) — 안정 참조라 마운트 캡처로 충분 */
+  onKeyAction: () => void;
   setGameReady: (v: boolean) => void;
   setGameInitError: (message: string | null) => void;
   setDollImageUrl: (url: string) => void;
@@ -55,6 +57,7 @@ export function useGameInit(opts: {
     initialBgUrlRef,
     onHit,
     onDrawingChange,
+    onKeyAction,
     setGameReady,
     setGameInitError,
     setDollImageUrl,
@@ -160,6 +163,7 @@ export function useGameInit(opts: {
           weapon: weaponRef.current,
           onHit,
           onDrawingChange,
+          onKeyAction,
         },
         () => cancelled
       );
