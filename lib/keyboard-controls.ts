@@ -58,18 +58,19 @@ export function shouldIgnoreKeyEvent(e: KeyEventLike): boolean {
 }
 
 /**
- * 무기 종류별 키 동작 안내 — 무기 피커 hover 툴팁(안내 캡슐)에 그대로 쓴다(무기 이름은 넣지 않는다 — 사용자 결정).
+ * 무기 종류별 키 동작 안내 — 무기 피커 hover 툴팁(안내 캡슐)에 그대로 쓴다. 문구는 사용자 확정(2026-09-21) — 동작만 적고
+ * 「주먹」「뿅망치」처럼 무기 이름을 앞에 붙이지 않는다.
  * 방향키 규칙(사용자 확정): 주먹·뿅망치·투척·비비탄총 = **그 방향 부위를 타격**(투척·총은 그쪽에서 날아와 맞는다),
  * 싸대기·잡아던지기 = **그 방향으로** 치고·던진다, 꼬집기·펜 = 누르는 동안 그 방향으로 조종. 방향은 8방향(두 키 = 대각선).
  */
 export const KEYBOARD_HELP: Readonly<Record<WeaponCategory, { space: string; arrows: string }>> = {
   tap: { space: "랜덤 부위 타격", arrows: "그 방향 부위 타격" },
-  swipe: { space: "상하좌우 랜덤으로 왕복 두 대", arrows: "그 방향으로 왕복 두 대" },
+  swipe: { space: "상하좌우 랜덤으로 싸대기", arrows: "그 방향으로 싸대기" },
   grab: { space: "랜덤 방향으로 던지기", arrows: "그 방향으로 던지기" },
-  pinch: { space: "누르는 동안 이리저리 늘리기", arrows: "누르는 동안 그 방향으로 늘리기" },
-  throw: { space: "랜덤한 곳에서 투척", arrows: "그 방향 부위로 투척" },
-  shoot: { space: "누르는 동안 자동 발사", arrows: "그 방향 부위로 자동 발사" },
-  draw: { space: "누르는 동안 자동 낙서", arrows: "누르는 동안 직접 그리기" },
+  pinch: { space: "누르는 동안 이리저리 꼬집기", arrows: "그 방향으로 꼬집기" },
+  throw: { space: "랜덤한 곳에서 던지기", arrows: "그 방향으로 던지기" },
+  shoot: { space: "누르는 동안 자동으로 쏘기", arrows: "그 방향으로 쏘기" },
+  draw: { space: "누르는 동안 자동으로 낙서", arrows: "누르는 동안 직접 낙서" },
 };
 
 export function keyboardHint(category: WeaponCategory): string {

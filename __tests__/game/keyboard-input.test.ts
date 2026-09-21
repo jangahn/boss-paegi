@@ -173,9 +173,21 @@ test("안내 문구: 무기 7종류 모두 스페이스·방향키 동작이 있
   for (const help of Object.values(KEYBOARD_HELP) as { space: string; arrows: string }[]) {
     assert.ok(help.space.length > 0 && help.arrows.length > 0);
   }
-  // 안내에는 무기 이름을 넣지 않는다(사용자 결정).
+  // 문구는 사용자 확정(2026-09-21) — 동작만 적고 「주먹」「뿅망치」처럼 무기 이름을 앞에 붙이지 않는다.
+  assert.deepEqual(KEYBOARD_HELP, {
+    tap: { space: "랜덤 부위 타격", arrows: "그 방향 부위 타격" },
+    swipe: { space: "상하좌우 랜덤으로 싸대기", arrows: "그 방향으로 싸대기" },
+    grab: { space: "랜덤 방향으로 던지기", arrows: "그 방향으로 던지기" },
+    pinch: { space: "누르는 동안 이리저리 꼬집기", arrows: "그 방향으로 꼬집기" },
+    throw: { space: "랜덤한 곳에서 던지기", arrows: "그 방향으로 던지기" },
+    shoot: { space: "누르는 동안 자동으로 쏘기", arrows: "그 방향으로 쏘기" },
+    draw: { space: "누르는 동안 자동으로 낙서", arrows: "누르는 동안 직접 낙서" },
+  });
   assert.equal(keyboardHint("tap"), "스페이스: 랜덤 부위 타격 · 방향키: 그 방향 부위 타격");
-  for (const w of WEAPONS) assert.ok(!keyboardHint(w.category).includes(w.label), w.label);
+  for (const w of WEAPONS) {
+    const help = KEYBOARD_HELP[w.category];
+    assert.ok(!help.space.startsWith(w.label) && !help.arrows.startsWith(w.label), w.label);
+  }
 });
 
 test("주먹: 스페이스 = 즉시 랜덤 부위, 방향키 = 그 방향 부위(8방향 — 두 키 = 대각선). 점수는 포인터 탭과 같고 최소 간격 80ms", (t) => {
