@@ -45,8 +45,9 @@ export function ScoreBoard() {
               · 무기변경 ×{(1 + varietyMult).toFixed(2)}
             </span>
           )}
+          {/* lime: sky(디자인 리맵 = 스틸블루)는 파란 맵(회의실·복사실·탕비실) 상단에 묻힌다 — 리맵 없는 lime 은 맵 6종 전부에서 구분된다. */}
           {mapMult > 0 && (
-            <span className="text-[10px] text-sky-300 sm:text-xs">
+            <span className="text-[10px] text-lime-300 sm:text-xs">
               · 맵변경 ×{(1 + mapMult).toFixed(2)}
             </span>
           )}
