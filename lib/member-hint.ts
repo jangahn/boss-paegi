@@ -2,8 +2,8 @@
 //
 // 배경: 홈은 정적 페이지라 서버 HTML 이 로그인 상태를 모른다. hydrate 뒤에 세션을 읽어 화면을 바꾸면 회원은 그동안 비회원 화면을
 //   본다(프로드 실측: 데스크톱 0.15~0.41초, 모바일 0.82~1.54초). 그래서 상태에 따라 달라지는 영역은 두 상태를 정적 HTML 에 같이
-//   넣고, <head> 의 동기 인라인 스크립트가 <html data-member-hint> 를 달아 CSS(`member-hint:` 변형, app/globals.css)가 하나만
-//   보이게 한다 — Next 가이드 「preventing flash before hydration」의 Themes 방식. 홈은 정적 그대로다.
+//   넣고, <head> 의 동기 인라인 스크립트가 <html data-member-hint> 를 달아 같은 <head> 의 인라인 <style>(MEMBER_HINT_STYLE)이
+//   하나만 보이게 한다 — Next 가이드 「preventing flash before hydration」의 Themes 방식. 홈은 정적 그대로다.
 // 힌트는 **표시 전용**이다. 권위 판정은 여전히 getSession()·getMyProfile()·서버 proxy 가 하고, 확정되면 applyMemberHint 로 맞춘다.
 //   힌트가 틀려도 달라지는 것은 링크뿐이고 회원 전용 경로는 proxy 가 다시 막는다.
 // 쿠키 형식(@supabase/ssr: `<이름>` 단일 또는 `<이름>.0..N` 청크, 값 = "base64-" + base64url(JSON))은
@@ -14,6 +14,21 @@ import { PUBLIC_ENV } from "@/lib/env";
 import { supabaseAuthCookieName } from "@/lib/supabase/session-cookie";
 
 export const MEMBER_HINT_ATTRIBUTE = "data-member-hint";
+
+/** 비회원에게만 보이는 블록의 클래스 · 회원에게만 보이는 블록의 클래스 — 두 블록을 정적 HTML 에 같이 넣고 아래 규칙이 하나만 남긴다. */
+export const FOR_NONMEMBER_CLASS = "for-nonmember";
+export const FOR_MEMBER_CLASS = "for-member";
+
+/**
+ * 표시 규칙 — 루트 레이아웃 <head> 에 **인라인 <style>** 로 넣는다(스크립트와 같은 자리, 같은 모듈).
+ * 스타일시트(app/globals.css · Tailwind 변형)에 두지 않는 이유: v1.51 은 `@custom-variant member-hint` 유틸로 만들었는데
+ * Vercel 빌드가 이전 배포의 빌드 캐시를 복원하면서 그 유틸 규칙이 CSS 에 생성되지 않았다(로컬 빌드·CI 는 정상, HTML 에는 클래스가
+ * 있고 CSS 에 규칙이 없어 **회원에게 비회원 홈이 고정**으로 보였다 — 2026-09-21 프로드 사고, 3분 30초 뒤 이전 배포로 복귀).
+ * 첫 페인트를 좌우하는 규칙은 CSS 빌드·캐시와 무관하게 HTML 에 실려야 한다. display:none 은 접근성 트리·탭 순서에서도 빠진다.
+ */
+export const MEMBER_HINT_STYLE =
+  `[${MEMBER_HINT_ATTRIBUTE}] .${FOR_NONMEMBER_CLASS}{display:none!important}` +
+  `html:not([${MEMBER_HINT_ATTRIBUTE}]) .${FOR_MEMBER_CLASS}{display:none!important}`;
 
 /**
  * 세션 쿠키 이름 — `sb-<프로젝트 ref>-auth-token`(쿠키 이름을 바꾸는 옵션은 쓰지 않는다, lib/supabase/auth-cookie-options.ts).

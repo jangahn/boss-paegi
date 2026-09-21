@@ -46,13 +46,14 @@ test("문구 키 개명: 새 키가 이미 있으면 그대로(재발행 뒤 no-
 test("홈: 1차 = 플레이(비회원 /play · 회원 /gallery), 2차 = 만들기(비회원은 가입 후 생성), 부제 없음", () => {
   const home = source("app/page.tsx");
   // v1.51: 두 상태를 정적 HTML 에 같이 넣고 회원 힌트(첫 페인트 전 쿠키 판별)로 하나만 보인다 — 새로고침 때 회원에게 비회원 화면이 보이지 않는다.
+  // v1.52: 표시 클래스는 lib/member-hint.ts 소유(<head> 인라인 style) — Tailwind 변형은 Vercel 빌드 캐시에서 규칙이 빠진 사고로 폐기.
   assert.match(
     home,
-    /state="nonmember"\s+className="flex flex-col gap-3 member-hint:hidden"\s+play=\{\{ href: "\/play", label: home\.playCta \}\}\s+create=\{\{ href: "\/login\?next=\/generate", label: home\.createCta \}\}/,
+    /state="nonmember"\s+className=\{`\$\{FOR_NONMEMBER_CLASS\} flex flex-col gap-3`\}\s+play=\{\{ href: "\/play", label: home\.playCta \}\}\s+create=\{\{ href: "\/login\?next=\/generate", label: home\.createCta \}\}/,
   );
   assert.match(
     home,
-    /state="member"\s+className="hidden flex-col gap-3 member-hint:flex"\s+play=\{\{ href: "\/gallery", label: home\.memberPlayCta \}\}\s+create=\{\{ href: "\/generate", label: home\.createCta \}\}/,
+    /state="member"\s+className=\{`\$\{FOR_MEMBER_CLASS\} flex flex-col gap-3`\}\s+play=\{\{ href: "\/gallery", label: home\.memberPlayCta \}\}\s+create=\{\{ href: "\/generate", label: home\.createCta \}\}/,
   );
   // 로그인 상태는 세션으로 확정해 힌트를 맞춘다. 세션을 읽지 못하면 힌트를 그대로 둔다(힌트가 없으면 비회원 화면) — React 상태로 화면을 바꾸지 않는다.
   assert.match(home, /applyMemberHint\(\s*sessionData\.session !== null &&\s*sessionData\.session\.user\.is_anonymous !== true,\s*\);/);
@@ -75,11 +76,11 @@ test("홈 캐릭터 줄: 열린 캐릭터만 링크, 잠긴 캐릭터는 무상�
   assert.match(row, /const locked = state === "nonmember" && doll\.extra;/);
   assert.match(
     row,
-    /<div className="flex w-full flex-col items-center gap-2 member-hint:hidden">\s*<CharacterFaces state="nonmember" onPlay=\{onPlay\} \/>\s*<p className="text-xs text-zinc-500">\{lockedCaption\}<\/p>\s*<\/div>/,
+    /<div className=\{`\$\{FOR_NONMEMBER_CLASS\} flex w-full flex-col items-center gap-2`\}>\s*<CharacterFaces state="nonmember" onPlay=\{onPlay\} \/>\s*<p className="text-xs text-zinc-500">\{lockedCaption\}<\/p>\s*<\/div>/,
   );
   assert.match(
     row,
-    /<div className="hidden w-full flex-col items-center gap-2 member-hint:flex">\s*<CharacterFaces state="member" onPlay=\{onPlay\} \/>\s*<\/div>/,
+    /<div className=\{`\$\{FOR_MEMBER_CLASS\} flex w-full flex-col items-center gap-2`\}>\s*<CharacterFaces state="member" onPlay=\{onPlay\} \/>\s*<\/div>/,
   );
   assert.match(row, /href=\{playHrefFor\(key\)\}/);
   const lockedBranch = row.slice(row.indexOf("{locked ? ("), row.indexOf(") : ("));

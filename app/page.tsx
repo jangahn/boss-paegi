@@ -13,7 +13,7 @@ import { HomeCharacterRow, type HomeState } from "@/components/home/HomeCharacte
 import { SERVICE_NAME } from "@/lib/policy";
 import { runBoundedClientOperation } from "@/lib/client-operation";
 import { log } from "@/lib/log";
-import { applyMemberHint } from "@/lib/member-hint";
+import { FOR_MEMBER_CLASS, FOR_NONMEMBER_CLASS, applyMemberHint } from "@/lib/member-hint";
 
 export default function Home() {
   const { home } = useMarketingCopy();
@@ -93,14 +93,14 @@ export default function Home() {
                   v1.51: 두 상태를 같이 렌더하고 회원 힌트로 하나만 보인다 — 글자를 같은 요소에서 바꾸지 않는다. */}
               <EntryButtons
                 state="nonmember"
-                className="flex flex-col gap-3 member-hint:hidden"
+                className={`${FOR_NONMEMBER_CLASS} flex flex-col gap-3`}
                 play={{ href: "/play", label: home.playCta }}
                 create={{ href: "/login?next=/generate", label: home.createCta }}
                 onClick={noteClick}
               />
               <EntryButtons
                 state="member"
-                className="hidden flex-col gap-3 member-hint:flex"
+                className={`${FOR_MEMBER_CLASS} flex flex-col gap-3`}
                 play={{ href: "/gallery", label: home.memberPlayCta }}
                 create={{ href: "/generate", label: home.createCta }}
                 onClick={noteClick}
