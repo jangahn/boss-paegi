@@ -70,6 +70,24 @@ test("자산: 추가 4종은 public/sprites/base/<key>.png 768×1024 PNG(알파�
   }
 });
 
+test("머리 크롭(face): 5종이 프사 프리셋 5장을 하나씩 — 256×256 PNG, 매핑은 눈·유사도 대조로 고정(v1.49 홈 캐릭터 줄)", () => {
+  const pub = path.resolve(process.cwd(), "public");
+  // 1=화난 검은 머리(기본 부장님) · 5=회색 구레나룻(사장님) · 3=긴 머리(부장님 여) · 4=단발(팀장님 여) · 2=능글 웃음(신입)
+  assert.deepEqual(
+    BASE_DOLL_KEYS.map((k) => BASE_DOLLS[k].face),
+    ["/avatars/preset-1.png", "/avatars/preset-5.png", "/avatars/preset-3.png", "/avatars/preset-4.png", "/avatars/preset-2.png"],
+  );
+  assert.equal(new Set(BASE_DOLL_KEYS.map((k) => BASE_DOLLS[k].face)).size, BASE_DOLL_KEYS.length, "한 장씩");
+  for (const key of BASE_DOLL_KEYS) {
+    const file = path.join(pub, BASE_DOLLS[key].face);
+    assert.ok(fs.existsSync(file), file);
+    const buf = fs.readFileSync(file);
+    assert.equal(buf.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", `${file}: PNG`);
+    assert.equal(buf.readUInt32BE(16), 256, `${file}: width`);
+    assert.equal(buf.readUInt32BE(20), 256, `${file}: height`);
+  }
+});
+
 test("DB CHECK 어휘(0127)와 코드 어휘가 같다", () => {
   const sql = fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/0127_base_dolls.sql"), "utf8");
   const m = sql.match(/base_doll in \(([^)]*)\)/);

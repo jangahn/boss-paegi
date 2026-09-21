@@ -10,6 +10,7 @@
 export type Region = { id?: string; label: string; tone?: "edit" | "ctx" };
 export type SurfaceKey =
   | "home"
+  | "homeMember"
   | "galNonmember"
   | "galMemberEmpty"
   | "galHeader"
@@ -24,13 +25,27 @@ export type SurfaceKey =
 
 const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
   home: {
-    title: "홈 화면",
+    title: "홈 화면 — 비회원",
     regions: [
       { label: "부장님 패기 (앱명·고정)", tone: "ctx" },
       { id: "tagline", label: "태그라인", tone: "edit" },
-      { id: "primaryCta", label: "주 버튼", tone: "edit" },
-      { id: "secondaryCta", label: "보조 버튼", tone: "edit" },
-      { label: "갤러리·랭킹 링크 (고정)", tone: "ctx" },
+      { label: "캐릭터 줄: 기본 부장님 + 잠긴 추가 4종 (고정)", tone: "ctx" },
+      { id: "lockedCaption", label: "캐릭터 줄 캡션 (가입 혜택 한 줄)", tone: "edit" },
+      { id: "playCta", label: "1차 버튼 (기본 부장님 바로 플레이)", tone: "edit" },
+      { id: "createCta", label: "2차 버튼 (가입 후 만들기)", tone: "edit" },
+      { label: "랭킹·내 뱃지 링크 (고정)", tone: "ctx" },
+      { id: "disclaimer", label: "고지", tone: "edit" },
+    ],
+  },
+  homeMember: {
+    title: "홈 화면 — 회원",
+    regions: [
+      { label: "부장님 패기 (앱명·고정)", tone: "ctx" },
+      { id: "tagline", label: "태그라인", tone: "edit" },
+      { label: "캐릭터 줄: 기본 캐릭터 5종, 탭하면 바로 플레이 (고정)", tone: "ctx" },
+      { id: "memberPlayCta", label: "1차 버튼 (갤러리로)", tone: "edit" },
+      { id: "createCta", label: "2차 버튼 (만들기)", tone: "edit" },
+      { label: "랭킹·내 뱃지 링크 (고정)", tone: "ctx" },
       { id: "disclaimer", label: "고지", tone: "edit" },
     ],
   },
@@ -197,11 +212,22 @@ export const FIELD_SURFACE: Record<
   string,
   ReadonlyArray<{ surface: SurfaceKey; region: string }>
 > = {
-  // 홈
-  tagline: [{ surface: "home", region: "tagline" }],
-  primaryCta: [{ surface: "home", region: "primaryCta" }],
-  secondaryCta: [{ surface: "home", region: "secondaryCta" }],
-  disclaimer: [{ surface: "home", region: "disclaimer" }],
+  // 홈 — 태그라인·2차 버튼·고지는 비회원/회원 두 상태 공통, 캡션·1차 버튼은 상태별.
+  tagline: [
+    { surface: "home", region: "tagline" },
+    { surface: "homeMember", region: "tagline" },
+  ],
+  lockedCaption: [{ surface: "home", region: "lockedCaption" }],
+  playCta: [{ surface: "home", region: "playCta" }],
+  memberPlayCta: [{ surface: "homeMember", region: "memberPlayCta" }],
+  createCta: [
+    { surface: "home", region: "createCta" },
+    { surface: "homeMember", region: "createCta" },
+  ],
+  disclaimer: [
+    { surface: "home", region: "disclaimer" },
+    { surface: "homeMember", region: "disclaimer" },
+  ],
   // 갤러리
   // 비회원 배너 제목은 게임 종료 화면 비회원 부제로도 쓰인다(가입 혜택 문구 단일 소스).
   nonmemberTitle: [{ surface: "galNonmember", region: "nonmemberTitle" }],

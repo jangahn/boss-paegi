@@ -27,11 +27,37 @@ const tplNoUrl = (max: number) =>
     message: "URL 은 공유 시 자동으로 붙으니 문구에 넣지 마세요.",
   });
 
-export const marketingCopySchema = z.object({
+/**
+ * 홈 버튼 키 개명(v1.49) 읽기 정규화 — 구 `primaryCta`(만들기)·`secondaryCta`(바로 패기)는 자리 이름이라 홈 개편으로
+ * 1차·2차가 뒤바뀌며 뜻이 어긋났다. 역할 이름 `createCta`·`playCta` 로 바꾸고, 발행행의 구 키 값을 새 키로 무손실 승계한다
+ * (새 키가 이미 있으면 그대로 — 재발행 뒤 no-op, 구 키는 z.object 가 strip). score_config·role_content 와 같은 패턴.
+ */
+export function normalizeMarketingCopyInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const c = input as { home?: unknown };
+  if (!c.home || typeof c.home !== "object" || Array.isArray(c.home)) return input;
+  const home = c.home as Record<string, unknown>;
+  if (!("primaryCta" in home) && !("secondaryCta" in home)) return input;
+  return {
+    ...c,
+    home: {
+      ...home,
+      createCta: home.createCta ?? home.primaryCta,
+      playCta: home.playCta ?? home.secondaryCta,
+    },
+  };
+}
+
+const marketingCopyBaseSchema = z.object({
   home: z.object({
     tagline, // 줄바꿈으로 여러 줄
-    primaryCta: button,
-    secondaryCta: button,
+    // 캐릭터 줄 캡션(비회원 전용) — 잠긴 추가 캐릭터 4종 아래 가입 혜택 한 줄. 발행행 무중단 .default().
+    lockedCaption: title.default("가입하면 캐릭터 4명이 더 열려요"),
+    // 1차 버튼(플레이): 비회원 = 기본 부장님 바로 플레이 / 회원 = 갤러리에서 골라 플레이.
+    playCta: button,
+    memberPlayCta: button.default("캐릭터 골라서 패기"),
+    // 2차 버튼(만들기): 비회원 = 가입 후 생성 / 회원 = 바로 생성. 문구는 공통.
+    createCta: button,
     disclaimer, // 줄바꿈으로 여러 줄
   }),
   signupBanner: z.object({
@@ -87,14 +113,18 @@ export const marketingCopySchema = z.object({
   }),
 });
 
-export type MarketingCopy = z.infer<typeof marketingCopySchema>;
+export const marketingCopySchema = z.preprocess(normalizeMarketingCopyInput, marketingCopyBaseSchema);
+
+export type MarketingCopy = z.infer<typeof marketingCopyBaseSchema>;
 
 // 코드 기본값 = 현재 하드코딩 문구(폴백·시드 전 동작 동일). boss 기준 바이트 동일.
 export const MARKETING_COPY_DEFAULT: MarketingCopy = {
   home: {
     tagline: "오늘 부장님한테 받은 스트레스,\n여기서 마음껏 풀고 가세요.",
-    primaryCta: "내 캐릭터 만들어서 패기",
-    secondaryCta: "기본 부장님 바로 패기",
+    lockedCaption: "가입하면 캐릭터 4명이 더 열려요",
+    playCta: "기본 부장님 바로 패기",
+    memberPlayCta: "캐릭터 골라서 패기",
+    createCta: "내 캐릭터 만들어서 패기",
     disclaimer:
       "본 서비스는 코믹한 스트레스 해소를 위한 캐주얼 게임입니다.\n타인 비방·괴롭힘 목적의 사용은 금지됩니다.",
   },

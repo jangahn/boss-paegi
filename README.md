@@ -943,6 +943,12 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.49 (2026-09-21, 홈 진입 경로 개편 — 캐릭터 줄 + 상태별 1차(플레이)·2차(만들기) 버튼; 마이그레이션 없음):
+- **배경**: 비회원은 기본 부장님 1종, 회원은 기본 캐릭터 5종 + 내 캐릭터인데 홈은 "만들기"(비회원은 로그인 벽)와 "기본 부장님 바로 패기" 둘뿐이었다. 실측(30일): 방문 1,410 중 홈 도착 비회원 66·회원 46, 회원 플레이는 추가 4종 출시 뒤 14판 중 11판이 추가 4종.
+- **구조(사용자 확정)**: 홈 카드에 **캐릭터 줄**(`components/home/HomeCharacterRow.tsx`) — 기본 캐릭터 5종 얼굴(프사 프리셋이 이 5종의 머리 크롭이라 `BaseDoll.face` 로 재사용, 새 자산·조회 없음). 열린 얼굴 탭 = 그 캐릭터로 바로 플레이, 비회원의 추가 4종은 갤러리 잠금 카드와 같은 표현의 무상호작용 티저 + 캡션. **1차 = 플레이**(비회원 `/play` · 회원 `/gallery`), **2차 = 만들기**(비회원은 가입 후 생성), 2차 버튼 부제는 두지 않는다. 텍스트 링크 = 오늘의 랭킹·내 뱃지. iPhone SE 첫 화면(Safari 553px)에 두 버튼이 들어오도록 로고 144→112px·상단 여백 48→24px(실측: 발행 로고 640×480 기준 비회원 2차 버튼 하단 547px).
+- **문구 키**(`marketing_copy.home`): 자리 이름이던 `primaryCta`·`secondaryCta` 를 역할 이름 `createCta`·`playCta` 로 개명(1차·2차가 뒤바뀌며 뜻이 어긋남) — 발행행의 구 키 값은 읽기 정규화(`normalizeMarketingCopyInput`)로 무손실 승계, 신규 `memberPlayCta`("캐릭터 골라서 패기")·`lockedCaption`("가입하면 캐릭터 4명이 더 열려요")은 `.default()` 무중단. 어드민 편집기·도식은 홈을 비회원/회원 두 상태로.
+- 계측: `home.cta_click { slot, state }`(Sentry Logs, `gameover.cta_click` 관례). 테스트: `__tests__/qa/home-entry-paths.test.ts`, `base-dolls.test.ts`(face 매핑·규격).
+
 v1.48 (2026-09-21, 플레이 HUD — 맵변경 배율 색·무기 조작 안내 간격; 마이그레이션 없음):
 - **맵변경 배율 색**: `text-sky-300` 은 디자인 리맵으로 스틸블루(`#7aa1c0`)라 파란 맵 상단에 묻혔다(HUD 영역 대비 ΔE2000: 회의실 3.1·복사실 9.0). 리맵 대상이 아닌 `text-lime-300`(`#bbf451`)로 — 맵 6종 최소 ΔE 35.5, 콤보(amber)·무기변경(fuchsia)과도 구분. 그림자는 넣지 않는다(사용자 결정).
 - **안내 캡슐 간격**: 하단 HUD 가 각자 고정 위치라 PC 폭에서 캡슐 아랫변(112px)이 무기 피커 윗변(116px)보다 낮아 4px 겹쳤다(모바일 간격 4px). 간격 8px 로 통일 — 캡슐 `bottom-24`/`sm:bottom-31`, 궁극기 버튼 `sm:bottom-40`.
