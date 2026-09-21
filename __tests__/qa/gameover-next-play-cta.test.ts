@@ -40,8 +40,10 @@ test("game-over modal routes the primary CTA by login state and demotes retry to
     modal,
     /nextPlay\.kind === "nonmember" &&[\s\S]*?mk\.share\.gameoverNonmemberSub/,
   );
-  // 로그인 상태는 홈과 같은 fail-closed 기본(비회원) → 프로필 응답으로 갱신.
-  assert.match(modal, /const \[isLoggedIn, setIsLoggedIn\] = useState\(false\);/);
+  // 로그인 상태(v1.51): 프로필 확인 전(null)에는 회원 힌트(첫 페인트 전 쿠키 판별)를 따르고 프로필 응답으로 확정 —
+  // 비회원 기본값이면 회원에게 비회원 1차 버튼과 부제가 잠깐 보였다(__tests__/qa/member-hint.test.ts 가 상세 계약).
+  assert.match(modal, /const \[isLoggedIn, setIsLoggedIn\] = useState<boolean \| null>\(null\);/);
+  assert.match(modal, /const nextPlay = \(isLoggedIn \?\? readMemberHint\(\)\)/);
   assert.match(modal, /setIsLoggedIn\(p\.isLoggedIn\);/);
   // 다시 패기: 하단 텍스트 행의 button(onRestart). 2차 알약 버튼 형태는 제거.
   assert.match(

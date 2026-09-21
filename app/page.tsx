@@ -2,23 +2,24 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
 import { EventBanner } from "@/components/events/EventBanner";
 import { EventPopup } from "@/components/events/EventPopup";
-import { HomeCharacterRow } from "@/components/home/HomeCharacterRow";
+import { HomeCharacterRow, type HomeState } from "@/components/home/HomeCharacterRow";
 import { SERVICE_NAME } from "@/lib/policy";
 import { runBoundedClientOperation } from "@/lib/client-operation";
 import { log } from "@/lib/log";
+import { applyMemberHint } from "@/lib/member-hint";
 
 export default function Home() {
   const { home } = useMarketingCopy();
   const { logoUrl } = useMediaAssets();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
+  // 로그인 상태 확정 — 첫 화면은 회원 힌트(첫 페인트 전 쿠키 판별, lib/member-hint.ts)가 고르고, 여기서 세션으로 확정해 맞춘다.
+  // 세션을 읽지 못하면 힌트를 그대로 둔다(힌트가 없으면 비회원 화면).
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
@@ -29,14 +30,13 @@ export default function Home() {
             () => createClient().auth.getSession(),
             { signal: controller.signal },
           );
-        if (!sessionData.session) return;
-        if (!cancelled) {
-          setIsLoggedIn(
+        if (cancelled) return;
+        applyMemberHint(
+          sessionData.session !== null &&
             sessionData.session.user.is_anonymous !== true,
-          );
-        }
+        );
       } catch {
-        // The default logged-out CTA is the fail-closed state.
+        // The pre-paint hint (or its absence = logged-out CTA) stays as is.
       }
     })();
     return () => {
@@ -45,14 +45,7 @@ export default function Home() {
     };
   }, []);
 
-  // 진입 경로(v1.49) — 1차 = 플레이, 2차 = 만들기. 비회원은 기본 부장님 1종이라 바로 플레이, 회원은 기본 5종 + 내 캐릭터라
-  // 갤러리에서 고른다. 캐릭터 줄이 기본 5종의 바로 가기(비회원은 추가 4종 잠금 티저)를 맡는다.
-  const state = isLoggedIn ? "member" : "nonmember";
-  const play = isLoggedIn
-    ? { href: "/gallery", label: home.memberPlayCta }
-    : { href: "/play", label: home.playCta };
-  const createHref = isLoggedIn ? "/generate" : "/login?next=/generate";
-  const noteClick = (slot: string) => {
+  const noteClick = (slot: string, state: HomeState) => {
     // 홈 진입 경로 클릭 계측(Sentry Logs, gameover.cta_click 과 같은 관례) — 계측이 내비를 막지 않는다.
     try {
       log.info("home.cta_click", { slot, state });
@@ -90,28 +83,28 @@ export default function Home() {
             </p>
 
             <HomeCharacterRow
-              isLoggedIn={isLoggedIn}
               lockedCaption={home.lockedCaption}
-              onPlay={(key) => noteClick(`character:${key}`)}
+              onPlay={(key, state) => noteClick(`character:${key}`, state)}
             />
 
             <div className="flex w-full flex-col gap-3">
-              {/* 로그인 상태 전환 시 key 리마운트(iOS WebKit 텍스트 잔상 처방 — 게임 종료 1차 버튼과 같은 관례). */}
-              <Link
-                key={state}
-                href={play.href}
-                onClick={() => noteClick("play")}
-                className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
-              >
-                {play.label}
-              </Link>
-              <Link
-                href={createHref}
-                onClick={() => noteClick("create")}
-                className="rounded-full border border-foreground/15 ui-surface px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
-              >
-                {home.createCta}
-              </Link>
+              {/* 진입 경로(v1.49) — 1차 = 플레이, 2차 = 만들기. 비회원은 기본 부장님 1종이라 바로 플레이, 회원은 기본 5종 + 내 캐릭터라
+                  갤러리에서 고른다. 캐릭터 줄이 기본 5종의 바로 가기(비회원은 추가 4종 잠금 티저)를 맡는다.
+                  v1.51: 두 상태를 같이 렌더하고 회원 힌트로 하나만 보인다 — 글자를 같은 요소에서 바꾸지 않는다. */}
+              <EntryButtons
+                state="nonmember"
+                className="flex flex-col gap-3 member-hint:hidden"
+                play={{ href: "/play", label: home.playCta }}
+                create={{ href: "/login?next=/generate", label: home.createCta }}
+                onClick={noteClick}
+              />
+              <EntryButtons
+                state="member"
+                className="hidden flex-col gap-3 member-hint:flex"
+                play={{ href: "/gallery", label: home.memberPlayCta }}
+                create={{ href: "/generate", label: home.createCta }}
+                onClick={noteClick}
+              />
               <div className="flex justify-center gap-4 pt-1 text-sm">
                 <Link
                   href="/leaderboard"
@@ -150,5 +143,38 @@ export default function Home() {
         </div>
       </main>
     </>
+  );
+}
+
+function EntryButtons({
+  state,
+  className,
+  play,
+  create,
+  onClick,
+}: {
+  state: HomeState;
+  className: string;
+  play: { href: string; label: string };
+  create: { href: string; label: string };
+  onClick: (slot: string, state: HomeState) => void;
+}) {
+  return (
+    <div className={className}>
+      <Link
+        href={play.href}
+        onClick={() => onClick("play", state)}
+        className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
+      >
+        {play.label}
+      </Link>
+      <Link
+        href={create.href}
+        onClick={() => onClick("create", state)}
+        className="rounded-full border border-foreground/15 ui-surface px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
+      >
+        {create.label}
+      </Link>
+    </div>
   );
 }
