@@ -22,16 +22,18 @@ export type BaseDoll = {
   gender: Gender;
   /** public 정적 스프라이트 경로(서명 불필요) */
   image: string;
+  /** 머리 크롭(256px 알파 PNG) — 홈 캐릭터 줄용. 프사 프리셋(v1.41, `lib/avatar-presets`)이 이 5종의 머리라 같은 자산을 쓴다. */
+  face: string;
   /** 회원 추가 캐릭터(갤러리 '추가' 카드, 비회원은 잠금 티저). 기본 부장님만 false. */
   extra: boolean;
 };
 
 export const BASE_DOLLS: Readonly<Record<BaseDollKey, BaseDoll>> = {
-  "boss-m": { key: "boss-m", role: "boss", gender: "male", image: "/sprites/boss-default.png", extra: false },
-  "ceo-m": { key: "ceo-m", role: "ceo", gender: "male", image: "/sprites/base/ceo-m.png", extra: true },
-  "boss-f": { key: "boss-f", role: "boss", gender: "female", image: "/sprites/base/boss-f.png", extra: true },
-  "teamlead-f": { key: "teamlead-f", role: "teamlead", gender: "female", image: "/sprites/base/teamlead-f.png", extra: true },
-  "junior-m": { key: "junior-m", role: "junior", gender: "male", image: "/sprites/base/junior-m.png", extra: true },
+  "boss-m": { key: "boss-m", role: "boss", gender: "male", image: "/sprites/boss-default.png", face: "/avatars/preset-1.png", extra: false },
+  "ceo-m": { key: "ceo-m", role: "ceo", gender: "male", image: "/sprites/base/ceo-m.png", face: "/avatars/preset-5.png", extra: true },
+  "boss-f": { key: "boss-f", role: "boss", gender: "female", image: "/sprites/base/boss-f.png", face: "/avatars/preset-3.png", extra: true },
+  "teamlead-f": { key: "teamlead-f", role: "teamlead", gender: "female", image: "/sprites/base/teamlead-f.png", face: "/avatars/preset-4.png", extra: true },
+  "junior-m": { key: "junior-m", role: "junior", gender: "male", image: "/sprites/base/junior-m.png", face: "/avatars/preset-2.png", extra: true },
 };
 
 /** 갤러리 '추가' 카드 순서 = 어휘 순서(사장님·부장님(여)·팀장님(여)·신입). */

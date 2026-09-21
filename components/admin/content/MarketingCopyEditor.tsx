@@ -35,8 +35,10 @@ const GROUPS: Group[] = [
     label: "홈 화면",
     fields: [
       { sec: "home", k: "tagline", label: "태그라인 (개행=여러 줄)", max: 120, multiline: true },
-      { sec: "home", k: "primaryCta", label: "주 버튼", max: 30 },
-      { sec: "home", k: "secondaryCta", label: "보조 버튼", max: 30 },
+      { sec: "home", k: "lockedCaption", label: "캐릭터 줄 캡션 — 비회원 (잠긴 캐릭터 아래, 가입 혜택 한 줄)", max: 80 },
+      { sec: "home", k: "playCta", label: "1차 버튼 — 비회원 (기본 부장님 바로 플레이)", max: 30 },
+      { sec: "home", k: "memberPlayCta", label: "1차 버튼 — 회원 (갤러리로)", max: 30 },
+      { sec: "home", k: "createCta", label: "2차 버튼 — 만들기 (비회원은 가입 후 생성으로)", max: 30 },
       { sec: "home", k: "disclaimer", label: "고지 (개행=여러 줄)", max: 240, multiline: true },
     ],
   },
