@@ -28,7 +28,7 @@ import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
-import { memberHintCookieName, memberHintInlineScript } from "@/lib/member-hint";
+import { MEMBER_HINT_STYLE, memberHintCookieName, memberHintInlineScript } from "@/lib/member-hint";
 
 export async function generateMetadata(): Promise<Metadata> {
   const sc = await getSiteContent();
@@ -114,6 +114,8 @@ export default async function RootLayout({
     <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/* 회원 힌트(v1.51) — 첫 페인트 전에 세션 쿠키로 회원 여부를 판별해 정적 HTML 의 두 상태 중 맞는 쪽을 보이게 한다(lib/member-hint.ts). */}
+        {/* 표시 규칙은 스타일시트가 아니라 HTML 에 싣는다 — CSS 빌드·캐시와 무관해야 한다(v1.52, lib/member-hint.ts MEMBER_HINT_STYLE). */}
+        <style dangerouslySetInnerHTML={{ __html: MEMBER_HINT_STYLE }} />
         {memberHintCookie !== null && (
           <script dangerouslySetInnerHTML={{ __html: memberHintInlineScript(memberHintCookie) }} />
         )}

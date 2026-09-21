@@ -10,9 +10,8 @@ import { createChunks, stringToBase64URL } from "@supabase/ssr";
 
 register("../telemetry/node-loader.mjs", import.meta.url);
 
-const { MEMBER_HINT_ATTRIBUTE, memberHintCookieName, memberHintFromCookie, memberHintInlineScript } = await import(
-  "../../lib/member-hint.ts"
-);
+const { FOR_MEMBER_CLASS, FOR_NONMEMBER_CLASS, MEMBER_HINT_ATTRIBUTE, MEMBER_HINT_STYLE, memberHintCookieName, memberHintFromCookie, memberHintInlineScript } =
+  await import("../../lib/member-hint.ts");
 
 const NAME = "sb-testprojectref-auth-token";
 const source = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -123,7 +122,22 @@ test("루트 레이아웃: <head> 인라인 스크립트 + <html suppressHydrati
     sync,
     /useLayoutEffect\(\(\) => \{\s*const cookieName = memberHintCookieName\(\);\s*if \(cookieName !== null\) applyMemberHint\(memberHintFromCookie\(document\.cookie, cookieName\)\);/,
   );
-  assert.match(source("app/globals.css"), /@custom-variant member-hint \(&:where\(\[data-member-hint\] \*\)\);/);
+  // 표시 규칙은 스타일시트가 아니라 <head> 인라인 <style> — 스크립트보다 앞(같은 <head>), env 와 무관하게 항상 들어간다.
+  assert.match(
+    layout,
+    /<head>[\s\S]*<style dangerouslySetInnerHTML=\{\{ __html: MEMBER_HINT_STYLE \}\} \/>\s*\{memberHintCookie !== null && \(/,
+  );
+  assert.equal(
+    MEMBER_HINT_STYLE,
+    `[${MEMBER_HINT_ATTRIBUTE}] .${FOR_NONMEMBER_CLASS}{display:none!important}html:not([${MEMBER_HINT_ATTRIBUTE}]) .${FOR_MEMBER_CLASS}{display:none!important}`,
+  );
+  assert.doesNotMatch(MEMBER_HINT_STYLE, /<|>\s*\//, "style 종료 태그를 만들 수 없다");
+  // v1.51 사고 재발 방지: 첫 페인트를 좌우하는 규칙을 Tailwind 변형·globals.css 에 두지 않는다
+  // (Vercel 이 빌드 캐시를 복원한 빌드에서 새 @custom-variant 유틸 규칙이 CSS 에 생성되지 않아 회원에게 비회원 홈이 고정으로 보였다).
+  assert.doesNotMatch(source("app/globals.css"), /member-hint/);
+  for (const file of ["app/page.tsx", "components/home/HomeCharacterRow.tsx", "components/GameOverModal.tsx"]) {
+    assert.doesNotMatch(source(file), /member-hint:/, `${file}: Tailwind 변형 사용 금지`);
+  }
   // 홈은 정적 페이지로 남는다 — 서버에서 쿠키를 읽지 않는다.
   assert.doesNotMatch(layout, /cookies\(\)|headers\(\)/);
   assert.doesNotMatch(source("app/page.tsx"), /cookies\(\)|headers\(\)/);

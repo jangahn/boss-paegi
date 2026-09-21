@@ -5,10 +5,11 @@ import { FadeImg } from "@/components/FadeImg";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { BASE_DOLL_KEYS, BASE_DOLLS, playHrefFor, type BaseDollKey } from "@/lib/base-dolls";
+import { FOR_MEMBER_CLASS, FOR_NONMEMBER_CLASS } from "@/lib/member-hint";
 
 const FACE = "h-12 w-12 rounded-full border border-foreground/10";
 
-/** 홈의 로그인 상태 — 두 상태를 정적 HTML 에 같이 넣고 회원 힌트(`member-hint:` 변형)로 하나만 보인다. */
+/** 홈의 로그인 상태 — 두 상태를 정적 HTML 에 같이 넣고 회원 힌트(lib/member-hint.ts 의 표시 클래스)로 하나만 보인다. */
 export type HomeState = "nonmember" | "member";
 
 /**
@@ -29,11 +30,11 @@ export function HomeCharacterRow({
 }) {
   return (
     <>
-      <div className="flex w-full flex-col items-center gap-2 member-hint:hidden">
+      <div className={`${FOR_NONMEMBER_CLASS} flex w-full flex-col items-center gap-2`}>
         <CharacterFaces state="nonmember" onPlay={onPlay} />
         <p className="text-xs text-zinc-500">{lockedCaption}</p>
       </div>
-      <div className="hidden w-full flex-col items-center gap-2 member-hint:flex">
+      <div className={`${FOR_MEMBER_CLASS} flex w-full flex-col items-center gap-2`}>
         <CharacterFaces state="member" onPlay={onPlay} />
       </div>
     </>
