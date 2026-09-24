@@ -102,6 +102,42 @@ export const AUDIT_FN = `(() => {
         if (tops.size >= 2) push("label-wrapped", "warn", el, { heading: nearestHeading(el), lines: tops.size });
       }
     }
+    // 의도치 않은 두 줄(v1.57) — 자기 텍스트를 가진 요소 중 ① 짧은 글(공백 빼고 12자 이하: 닉네임 · 값 · 칸)이 꺾이거나
+    // ② 60자 이하 글의 마지막 줄이 한두 글자뿐인 꼬리 줄바꿈(결재란 「광견병걸린너구 / 리」, 판정 등급 「…시작됐습 / 니다」).
+    // 글자마다 줄(top)을 모아 센다(표 셀 · 값 칸 · 문단 포함 — label-wrapped 는 공백 없는 8자 이하 버튼 · 라벨만 본다).
+    const ownText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (ownText && cs.whiteSpace !== "nowrap" && !formControl && tag !== "OPTION") {
+      const full = (el.innerText || "").replace(/\\s+/g, " ").trim();
+      const visibleLen = full.replace(/\\s/g, "").length;
+      if (visibleLen > 0 && full.length <= 60) {
+        const rows = [];
+        const rg = document.createRange();
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const t = n.textContent;
+          for (let i = 0; i < t.length; ) {
+            const cp = t.codePointAt(i);
+            const len = cp > 0xffff ? 2 : 1;
+            if (!/\\s/.test(t[i])) {
+              rg.setStart(n, i);
+              rg.setEnd(n, i + len);
+              const b = rg.getBoundingClientRect();
+              if (b.width > 0 || b.height > 0) {
+                const row = rows.find((x) => Math.abs(x.top - b.top) < 6);
+                if (row) row.count += 1;
+                else rows.push({ top: b.top, count: 1 });
+              }
+            }
+            i += len;
+          }
+        }
+        if (rows.length >= 2) {
+          const last = rows.reduce((a, b) => (b.top > a.top ? b : a));
+          if (visibleLen <= 12) push("short-wrapped", "warn", el, { heading: nearestHeading(el), lines: rows.length });
+          if (last.count <= 2) push("orphan-wrap", "warn", el, { heading: nearestHeading(el), lines: rows.length, lastLine: last.count });
+        }
+      }
+    }
   }
   return { vw, sw, findings: out };
 })()`;

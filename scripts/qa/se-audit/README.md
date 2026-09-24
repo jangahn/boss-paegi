@@ -11,6 +11,8 @@
 | `out-of-viewport` | error | fixed/absolute 요소가 뷰포트 밖 |
 | `clipped` | warn | overflow hidden 에 잘림(ellipsis 없음) |
 | `label-wrapped` | warn | 짧은 라벨(≤8자·공백 없음)이 2줄 이상으로 꺾임(알약·탭·버튼 찌그러짐) |
+| `short-wrapped` | warn | 짧은 글(공백 빼고 12자 이하 — 닉네임·값·표 칸)이 2줄 이상으로 꺾임(v1.57) |
+| `orphan-wrap` | warn | 60자 이하 글의 마지막 줄이 한두 글자뿐인 꼬리 줄바꿈(「…시작됐습 / 니다」, v1.57) |
 | `truncated` / `scroll-container` | info | 의도된 ellipsis·가로 스크롤 컨테이너(검토용) |
 
 제외: 변형 요소(transform/rotate/scale/translate — 회전 스탬프), 의도된 블리드(`-mx-*`), sr-only(1×1), 폼 컨트롤 내부 텍스트 스크롤(input/textarea/select).

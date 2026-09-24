@@ -287,6 +287,20 @@ h4 {
   word-break: keep-all;
 }
 
+/* 결과 보고서 결재란 작성자(v1.57, components/ReportParts.tsx) — 닉네임 한 줄 고정. 칸보다 길 때만 칸 폭(100cqi) ÷ 글자 폭 합
+ * (--fit-weight, em)으로 글자를 줄이고(부모 글자 크기가 상한, 하한 8px), 그래도 넘치는 극단(320px 에 이모지 10개 등)만 말줄임.
+ * 부모에 @container(container-type: inline-size) 필요 — 표 셀은 크기 컨테이너가 될 수 없어 셀 안 div 가 맡는다.
+ * 컨테이너 쿼리 단위를 모르는 브라우저(iOS 15 이하)는 종전처럼 줄바꿈. */
+@supports (width: 1cqi) {
+  .fit-one-line {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: max(8px, min(1em, calc(100cqi / var(--fit-weight, 1))));
+  }
+}
+
 /*
  * 게임 화면용 — 연타/드래그 중 브라우저 기본 인터랙션 전부 차단:
  * 텍스트 선택, iOS 길게누름 돋보기, 콜아웃 시트(이미지 저장 등), 드래그 시작.
