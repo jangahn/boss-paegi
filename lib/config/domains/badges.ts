@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DomainEntry } from "../registry";
 import type { GameplayStats } from "@/lib/stats";
+import type { PlayTotals } from "@/lib/play-totals";
 import {
   PERSONA_DEFS,
   PERSONA_FALLBACK_ID,
@@ -10,10 +11,12 @@ import {
 } from "@/lib/persona";
 
 /**
- * 뱃지 카탈로그 도메인 — 마케터가 임계값(수치)·개수·라벨·활성 편집. 카테고리(패밀리)는 7종 고정,
- * 각 패밀리의 **달성값 계산 함수는 코드**(FAMILY_VALUE, stats 필드 참조라 비직렬화). slug 는 **불변 동결**
+ * 뱃지 카탈로그 도메인 — 마케터가 임계값(수치)·개수·라벨·활성 편집. 카테고리(패밀리)는 8종 고정,
+ * 각 패밀리의 **달성값 계산 함수와 기준(누적·한 판·유형)은 코드**(FAMILY_VALUE·FAMILY_BASIS). slug 는 **불변 동결**
  * (threshold 파싱 안 함) → 임계값 바꿔도 user_badges 고아 없음. 삭제 대신 active=false(획득 표시 보존).
- * 인증 grant(/api/score)·컬렉션·챌린지가 이 카탈로그로 구동. 마이그 없음(순수 config).
+ * 인증 grant(/api/score)·컬렉션·챌린지가 이 카탈로그로 구동.
+ * v1.55(2026-09-25 사용자 결정 A): 👊 타격 · 💥 궁극기 · ⏱️ 플레이 = 누적(내 모든 판 합계, 0132 합계 RPC).
+ * 제한 시간(v1.53) 한 판으로는 닿을 수 없는 tier 가 생겨서다. 한 판 기준으로 이미 딴 뱃지는 누적 조건도 충족한다.
  */
 
 export const BADGE_FAMILY_KEYS = [
@@ -36,17 +39,35 @@ export const PERSONA_FAMILY_KEY = "persona" as const;
 export const PERSONA_FAMILY_DEFAULT = { key: PERSONA_FAMILY_KEY, name: "유형", emoji: "🎭" } as const;
 export type BadgeFamilyKey = (typeof BADGE_FAMILY_KEYS)[number];
 
-// 패밀리별 달성값(코드 — 마케터 편집 불가). familyKey → (stats,score)→value.
+/** 카테고리 기준(코드 고정, 어드민 표시) — 누적 = 내 모든 판 합계 · 한 판 = 그 판 하나 · 유형 = 이 판의 유형 판정. */
+export type FamilyBasis = "cumulative" | "game" | "persona";
+export const FAMILY_BASIS: Record<BadgeFamilyKey, FamilyBasis> = {
+  score: "game",
+  combo: "game",
+  hits: "cumulative",
+  weapon: "game",
+  ult: "cumulative",
+  time: "cumulative",
+  map: "game",
+  persona: "persona",
+};
+
+/** 이 판의 플레이 시간 — 제한 시간(v1.53) 판은 playMs(첫 타격부터, 멈춘 구간 제외), 그 전 판은 소요 시간. 0132 합계와 같은 규칙. */
+export function gamePlayMs(s: GameplayStats): number {
+  return s.playMs ?? s.durationMs;
+}
+
+// 패밀리별 달성값(코드 — 마케터 편집 불가). familyKey → (stats,score,이전 합계)→value. 누적 = 이전 합계 + 이 판.
 export const FAMILY_VALUE: Record<
   BadgeFamilyKey,
-  (s: GameplayStats, score: number) => number
+  (s: GameplayStats, score: number, totals: PlayTotals) => number
 > = {
   score: (_s, score) => score,
   combo: (s) => s.maxCombo,
-  hits: (s) => s.hitCount,
+  hits: (s, _score, t) => t.hits + s.hitCount,
   weapon: (s) => Object.keys(s.weaponCounts).length,
-  ult: (s) => s.ultimateCount,
-  time: (s) => s.durationMs / 60000,
+  ult: (s, _score, t) => t.ultimates + s.ultimateCount,
+  time: (s, _score, t) => (t.playMs + gamePlayMs(s)) / 60000,
   map: (s) => s.bgVisits.length,
   // 유형은 뱃지별 매칭(evaluateBadges 특례) — 패밀리 단일 달성값 개념 없음
   persona: () => 0,
@@ -161,7 +182,7 @@ export type BadgeCatalog = z.infer<typeof badgeCatalogBaseSchema>;
 export type CatalogBadge = z.infer<typeof badgeSchema>;
 export type CatalogFamily = z.infer<typeof familySchema>;
 
-// ── 코드 기본값(현 lib/badges 와 byte-identical) — slug = 현 id(`family_threshold`) 그대로 동결. ──
+// ── 코드 기본값 — slug = `family_threshold` 동결. 라벨·설명은 v1.55 누적 문구(발행본이 정본, 발행 전 기본값에만 쓰인다). ──
 type Seed = {
   key: BadgeFamilyKey;
   name: string;
@@ -180,11 +201,11 @@ type Seed = {
 const SEED: Seed[] = [
   { key: "score", name: "점수", emoji: "🏆", tiers: [1000, 3000, 5000, 10000, 30000, 50000, 100000, 300000, 500000, 1000000], label: (t) => `${t.toLocaleString()}점`, desc: (t) => `총 정산 점수 ${t.toLocaleString()}점 달성` },
   { key: "combo", name: "콤보", emoji: "🔥", tiers: [100, 200, 300, 500, 1000, 1500, 2000, 3000, 5000, 10000], label: (t) => `콤보 ${t.toLocaleString()}`, desc: (t) => `최대 콤보 ${t.toLocaleString()} 달성` },
-  { key: "hits", name: "타격", emoji: "👊", tiers: [150, 400, 700, 1200, 2500, 4000, 7000, 12000, 20000, 30000], label: (t) => `${t.toLocaleString()}타`, desc: (t) => `한 판에 ${t.toLocaleString()}타 (궁극기 제외)` },
+  { key: "hits", name: "타격", emoji: "👊", tiers: [150, 400, 700, 1200, 2500, 4000, 7000, 12000, 20000, 30000], label: (t) => `누적 ${t.toLocaleString()}타`, desc: (t) => `모든 판 합계 ${t.toLocaleString()}타 (궁극기 제외)` },
   // v1.37: 로스터 19종(맵별 투척 12종) — 10·13·16·19 신설. v1.39: 9종 tier 코드 은퇴 철회(어드민 활성 체크가 정본 — 발행본은 3·6·9·12·15 를 쓴다)
   { key: "weapon", name: "무기", emoji: "🗡️", tiers: [2, 4, 6, 8, 9, 10, 13, 16, 19], added: [10, 13, 16, 19], label: (t) => `무기 ${t}종`, desc: (t) => `한 판에 무기 ${t}종 사용` },
-  { key: "ult", name: "궁극기", emoji: "💥", tiers: [1, 2, 3, 5, 10, 15, 20, 30, 40, 50], label: (t) => `궁극기 ${t}회`, desc: (t) => `한 판에 궁극기 ${t}회 발동` },
-  { key: "time", name: "플레이", emoji: "⏱️", tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], label: (t) => `${t}분`, desc: (t) => `${t}분 이상 플레이` },
+  { key: "ult", name: "궁극기", emoji: "💥", tiers: [1, 2, 3, 5, 10, 15, 20, 30, 40, 50], label: (t) => `누적 궁극기 ${t}회`, desc: (t) => `모든 판 합계 궁극기 ${t}회 발동` },
+  { key: "time", name: "플레이", emoji: "⏱️", tiers: [1, 2, 3, 5, 7, 10, 12, 15, 18, 20], label: (t) => `누적 ${t}분`, desc: (t) => `모든 판 합계 ${t}분 플레이 (일시정지 제외)` },
   { key: "map", name: "맵", emoji: "🗺️", tiers: [2, 3, 4, 5, 6], label: (t) => `맵 ${t}곳`, desc: (t) => `한 판에 맵 ${t}곳 순회` },
 ];
 
@@ -220,29 +241,35 @@ export const badgeEntry: DomainEntry<BadgeCatalog> = {
 
 // ── 카탈로그 기반 순수 헬퍼(서버 grant + 클라 표시 공용) ──
 
-/** 이번 판 달성 slug 전체 — **active 만** grant(비활성은 신규 획득 안 됨), ladder 하위 동반. */
+/**
+ * 이번 판 달성 slug 전체 — **active 만** grant(비활성은 신규 획득 안 됨), ladder 하위 동반.
+ * totals = 이 판을 뺀 이전 누적 합계(누적 카테고리만 씀, lib/play-totals). 모르면 PLAY_TOTALS_ZERO — 누적 카테고리가 이 판 값만으로
+ * 평가된다(표시 전용 폴백. 서버 부여는 합계를 모르면 리포트를 재시도로 돌린다).
+ */
 export function evaluateBadges(
   stats: GameplayStats,
   score: number,
-  catalog: BadgeCatalog
+  catalog: BadgeCatalog,
+  totals: PlayTotals
 ): string[] {
   const personaSlug = personaBadgeSlug(matchPersona(stats).id);
   return catalog.badges
     .filter((b) =>
       b.familyKey === PERSONA_FAMILY_KEY
         ? b.active && b.slug === personaSlug // 유형: 이 판의 유형과 일치할 때 1개
-        : b.active && FAMILY_VALUE[b.familyKey](stats, score) >= b.threshold
+        : b.active && FAMILY_VALUE[b.familyKey](stats, score, totals) >= b.threshold
     )
     .map((b) => b.slug);
 }
 
-/** 패밀리 달성값(인게임 진행도). */
+/** 패밀리 달성값(인게임 진행도) — 누적 카테고리는 이전 합계 + 이 판. */
 export function familyValue(
   familyKey: BadgeFamilyKey,
   stats: GameplayStats,
-  score: number
+  score: number,
+  totals: PlayTotals
 ): number {
-  return FAMILY_VALUE[familyKey](stats, score);
+  return FAMILY_VALUE[familyKey](stats, score, totals);
 }
 
 /** 컬렉션 카운트 분모/known 집합 — 카탈로그의 모든 slug(active+inactive; 획득 보존). 구 고아 제외용. */

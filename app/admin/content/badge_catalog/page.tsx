@@ -52,8 +52,9 @@ export default async function BadgeCatalogPage() {
         </div>
         <h1 className="mt-2 text-2xl font-bold">뱃지</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          카테고리(7종 고정)별 이름·이모지와 뱃지 임계값·개수·라벨을 편집해요. 비활성화하면 신규 획득에서 빠지지만
-          이미 받은 사람의 뱃지는 보존됩니다. (달성 기준 자체는 코드 — 임계값만 조정.)
+          카테고리(8종 고정)별 이름·이모지와 뱃지 임계값·개수·라벨을 편집해요. 비활성화하면 신규 획득과 내 뱃지
+          화면에서 빠지고, 받은 기록은 보존돼 공유·이력 화면에 남아요. 달성 기준은 코드 고정이고 카테고리 옆 칩이
+          기준이에요(누적 = 내 모든 판 합계, 한 판 = 그 판 하나).
         </p>
         <BadgeCatalogEditor
           initial={value}

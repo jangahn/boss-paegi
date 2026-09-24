@@ -1,6 +1,7 @@
 import { weaponLabel } from "@/lib/report";
 import { resolveWeapon } from "@/lib/weapons";
 import { deriveStats, type GameplayStats } from "@/lib/stats";
+import { formatSecondsKo, reachedMaxPlay } from "@/lib/time-limit";
 
 /**
  * 플레이 스타일 페르소나("패기 유형") — "부장님 패기 인사평가" 패러디.
@@ -20,6 +21,10 @@ import { deriveStats, type GameplayStats } from "@/lib/stats";
  *   옮겨야 도달) → 콤보 ≥400 → **투척 카테고리 비중 40%+(📚 사무용품 투척왕, 복귀 — 투척 12종 공통)** → 비중 40%+ 무기 유형
  *   (책·키보드 개별 유형은 은퇴, 표시 정의만 보존) → 폴백. 투어리스트가 웨폰 마스터보다 앞인 이유: 30일 실측에서 맵 5곳
  *   게임의 절반 이상이 무기도 많이 쓴 판이라 뒤에 두면 거의 안 나온다. 맵 수 = GameplayStats.bgVisits(맵 뱃지와 같은 소스).
+ * v4 (2026-09-25, 사용자 확정 — 제한 시간 v1.53 과 함께): 궁극기 ≥10 → **이 판의 시간을 최대 플레이 시간까지 늘림
+ *   (⏰ 연장근무 달인, 신설)** → 투어리스트 → … 기준은 기본 시간 + 받은 추가 시간 = 최대 플레이 시간이라 어드민 수치가
+ *   바뀌어도 그대로 성립한다. 폭격기가 위인 이유: 기본값에서 궁극기 10회 판은 거의 항상 최대까지 늘린 판이라 아래에 두면
+ *   폭격기가 사라진다. 제한 시간 전 판(추가 시간 필드 없음)은 해당 없음.
  */
 
 export type PersonaDef = {
@@ -54,6 +59,12 @@ const DEFS = {
     label: "궁극기 폭격기",
     emoji: "💥",
     blurb: "필살기 없으면 손이 안 나가는, 한 방의 승부사.",
+  },
+  overtime: {
+    id: "overtime",
+    label: "연장근무 달인",
+    emoji: "⏰",
+    blurb: "칼퇴는 사치, 궁극기로 시간을 끝까지 늘린 야근러.",
   },
   tourist: {
     id: "tourist",
@@ -178,6 +189,11 @@ export function matchPersona(stats: GameplayStats): Persona {
 
   if (stats.ultimateCount >= PERSONA_ULT_MIN)
     return { ...DEFS.ult_dependent, evidence: `궁극기 ${stats.ultimateCount}회 발동` };
+  if (reachedMaxPlay(stats))
+    return {
+      ...DEFS.overtime,
+      evidence: `최대 ${formatSecondsKo((stats.timeCapMs ?? 0) / 1000)}까지 연장 (+${Math.round((stats.timeBonusMs ?? 0) / 1000)}초)`,
+    };
   const mapsVisited = new Set(stats.bgVisits).size;
   if (mapsVisited >= PERSONA_TOURIST_MAPS_MIN)
     return { ...DEFS.tourist, evidence: `맵 ${mapsVisited}곳 순회` };

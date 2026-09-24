@@ -15,6 +15,7 @@ import { roleFrom } from "@/lib/config/domains/roles";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
 import { evaluateBadges } from "@/lib/config/domains/badges";
+import { PLAY_TOTALS_ZERO, type PlayTotals } from "@/lib/play-totals";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
 import { resolveCopy } from "@/lib/config/template";
@@ -54,6 +55,8 @@ type Props = {
   endReason?: "normal" | "time_limit" | "score_limit";
   /** 텔레메트리 세션 id — 점수↔세션 링크(scores.telemetry_session_id). */
   telemetrySessionId?: string | null;
+  /** 판 시작 때 읽은 이전 누적 합계(v1.55, 인게임 도전과 같은 값) — 누적 뱃지 표시. 모르면 null. */
+  playTotals?: PlayTotals | null;
 };
 
 export function GameOverModal({
@@ -70,6 +73,7 @@ export function GameOverModal({
   bgVisits,
   endReason = "normal",
   telemetrySessionId = null,
+  playTotals = null,
 }: Props) {
   const router = useRouter();
   const roleCfg = useRoleConfig(); // 마케터 편집 롤 콘텐츠(반응·라벨, 라이브)
@@ -138,9 +142,10 @@ export function GameOverModal({
   const persona = useMemo(() => matchPersona(gameplayStats), [gameplayStats]);
   const badgeCatalog = useBadgeCatalog();
   // 이번 판 달성 뱃지 — 클라 즉시(서버 응답이 NEW/수집수를 채움). 표시용(서버가 인증 grant).
+  // 누적 카테고리는 판 시작 때 읽은 이전 합계 + 이 판. 합계를 모르면 0(이 판 값만) — 서버가 준 NEW 는 아래에서 합친다.
   const earnedBadges = useMemo(
-    () => evaluateBadges(gameplayStats, score, badgeCatalog),
-    [gameplayStats, score, badgeCatalog]
+    () => evaluateBadges(gameplayStats, score, badgeCatalog, playTotals ?? PLAY_TOTALS_ZERO),
+    [gameplayStats, score, badgeCatalog, playTotals]
   );
   // The persisted score weapon must match every report surface's "주력 무기".
   // `weapon` is merely the tool selected at the instant the game ended.
@@ -214,6 +219,11 @@ export function GameOverModal({
       endReason,
       telemetrySessionId,
     });
+  // 표시 뱃지 = 클라 계산 ∪ 서버 NEW — 판 시작 때 합계를 못 읽었거나 직전 판이 합계에 덜 들어가도 서버가 준 누적 뱃지는 보인다.
+  const shownBadges = useMemo(
+    () => [...new Set([...earnedBadges, ...newBadges])],
+    [earnedBadges, newBadges]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -476,7 +486,7 @@ export function GameOverModal({
           roleLabel={roleLabel}
           persona={isPending ? undefined : persona}
           percentile={percentile}
-          badges={isPending ? [] : earnedBadges}
+          badges={isPending ? [] : shownBadges}
           newBadges={isPending ? [] : newBadges}
           collectedCount={collectedCount}
           badgeCatalog={badgeCatalog}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useGameStore } from "@/store/gameStore";
+import { selectPlayMs, useGameStore } from "@/store/gameStore";
 import { buildGameplayStats } from "@/lib/stats";
 import {
   PERSONA_FAMILY_KEY,
@@ -10,10 +10,11 @@ import {
   familyValue,
   familyEmoji,
 } from "@/lib/config/domains/badges";
+import type { PlayTotals } from "@/lib/play-totals";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
-import { resolveOwnedBadgeRead } from "@/lib/badge-owned";
+import { resolveOwnedBadgeRead, resolvePlayTotalsRead } from "@/lib/badge-owned";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { errInfo, log } from "@/lib/log";
 import { runBoundedClientOperation } from "@/lib/client-operation";
@@ -22,6 +23,8 @@ import { runBoundedClientOperation } from "@/lib/client-operation";
  * 인게임 뱃지 도전 — 단일 소스(lib/badges)로 구동되는 라이브 체크리스트 + 획득 토스트.
  * MissionHud/useGameMilestones 대체. "획득 임박 3개" 노출, 실제 획득 순간 토스트+✅, 1.2s 후 리필.
  * store.subscribe 기반(별도 interval 없음). 성능: setState 는 슬롯 id·진행률(floor%)·✅ 변동 시에만.
+ * 누적 카테고리(v1.55)는 판 시작 때 읽은 이전 합계 + 이 판. 그 합계를 종료 화면 표시에도 넘긴다(playTotals).
+ * 다음 판 시작 때 다시 읽기 전까지는 직전 값이 남는다(직전 판이 빠진 만큼 낮게만 틀린다 — 서버가 부여 정본).
  */
 
 export type ChallengeSlot = {
@@ -47,10 +50,12 @@ export function useBadgeChallenge({
   slots: ChallengeSlot[];
   toasts: EarnToast[];
   loadError: string | null;
+  playTotals: PlayTotals | null;
 } {
   const [slots, setSlots] = useState<ChallengeSlot[]>([]);
   const [toasts, setToasts] = useState<EarnToast[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [playTotals, setPlayTotals] = useState<PlayTotals | null>(null);
   const catalog = useBadgeCatalog(); // 마케터 편집 카탈로그(라이브). 프로바이더 값=레이아웃 고정.
 
   useEffect(() => {
@@ -62,6 +67,7 @@ export function useBadgeChallenge({
     let loaded = false; // owned 로드 전엔 earn 감지 안 함(오탐 방지)
 
     const owned = new Set<string>(); // 보유(시작 로드 + 세션 획득)
+    let totals: PlayTotals | null = null; // 이전 누적 합계(시작 로드)
     const earnedAt = new Map<string, number>(); // 방금 획득 ✅ 핀 만료용
     const timers: ReturnType<typeof setTimeout>[] = [];
     let toastSeq = 0;
@@ -84,6 +90,14 @@ export function useBadgeChallenge({
           ultimateCount: s.ultimateCount,
           firstHitMs: s.firstHitMs,
           bgVisits: getBgVisits(),
+          // 누적 플레이 진행도 = 제한 시간 시계(첫 타격부터, 멈춘 구간 제외) — 서버 판 통계 playMs 와 같은 값
+          timeLimit: {
+            playMs: selectPlayMs(s, performance.now()),
+            timeBaseMs: s.timeLimit.baseMs,
+            timeCapMs: s.timeLimit.maxPlayMs,
+            timeBonusMs: s.timeBonusMs,
+            timeBonusCount: s.timeBonusCount,
+          },
         }),
         score: s.score,
       };
@@ -98,13 +112,14 @@ export function useBadgeChallenge({
     };
 
     const recompute = () => {
-      if (cancelled || !loaded) return;
+      if (cancelled || !loaded || !totals) return;
+      const prior = totals;
       const { stats, score } = liveStats();
       const now = performance.now();
 
       // 1) 신규 획득 감지 → 보유 추가 + "「라벨」 획득!" 토스트 + ✅ 핀(1.2s)
       for (const d of defs) {
-        if (!owned.has(d.slug) && familyValue(d.familyKey, stats, score) >= d.threshold) {
+        if (!owned.has(d.slug) && familyValue(d.familyKey, stats, score, prior) >= d.threshold) {
           owned.add(d.slug);
           pushToast(`「${d.label}」 획득!`);
           earnedAt.set(d.slug, now);
@@ -128,7 +143,7 @@ export function useBadgeChallenge({
       >();
       for (const d of defs) {
         if (owned.has(d.slug) || pinnedFamilies.has(d.familyKey)) continue;
-        const r = familyValue(d.familyKey, stats, score) / d.threshold;
+        const r = familyValue(d.familyKey, stats, score, prior) / d.threshold;
         const cur = bestPerFamily.get(d.familyKey);
         if (!cur || r > cur.r) bestPerFamily.set(d.familyKey, { id: d.slug, r, t: d.threshold });
       }
@@ -141,7 +156,7 @@ export function useBadgeChallenge({
       // 4) 표시 데이터 — 시그니처(슬롯 id·floor%·✅) 변동 시에만 setState
       const data: ChallengeSlot[] = ids.map((id) => {
         const d = badgeBySlug(catalog, id)!;
-        const cur = familyValue(d.familyKey, stats, score);
+        const cur = familyValue(d.familyKey, stats, score, prior);
         return {
           id,
           emoji: familyEmoji(catalog, d.familyKey),
@@ -166,25 +181,34 @@ export function useBadgeChallenge({
     (async () => {
       try {
         await ensureAuth(controller.signal);
-        const result = await runBoundedClientOperation(
-          (signal) =>
-            createClient()
-              .from("user_badges")
-              .select("badge_id")
-              .abortSignal(signal),
-          { signal: controller.signal },
-        );
+        const [result, totalsResult] = await Promise.all([
+          runBoundedClientOperation(
+            (signal) =>
+              createClient()
+                .from("user_badges")
+                .select("badge_id")
+                .abortSignal(signal),
+            { signal: controller.signal },
+          ),
+          runBoundedClientOperation(
+            (signal) =>
+              createClient().rpc("get_my_play_totals").abortSignal(signal),
+            { signal: controller.signal },
+          ),
+        ]);
         if (cancelled) return;
         for (const badgeId of resolveOwnedBadgeRead(result)) {
           owned.add(badgeId);
         }
+        totals = resolvePlayTotalsRead(totalsResult);
         loaded = true;
         setLoadError(null);
+        setPlayTotals(totals);
         recompute();
       } catch (error) {
         if (cancelled) return;
         // 보유 목록 불확실성을 빈 목록으로 축소하면 기존 뱃지를 신규 획득으로
-        // 오인한다. 도전을 중지하고 장애를 명시적으로 노출한다.
+        // 오인한다(누적 합계를 0 으로 축소하면 진행도가 틀린다). 도전을 중지하고 장애를 명시적으로 노출한다.
         loaded = false;
         setSlots([]);
         setToasts([]);
@@ -202,5 +226,5 @@ export function useBadgeChallenge({
     };
   }, [recording, getBgVisits, catalog]);
 
-  return { slots, toasts, loadError };
+  return { slots, toasts, loadError, playTotals };
 }

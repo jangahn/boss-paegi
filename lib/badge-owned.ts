@@ -1,4 +1,5 @@
 import { SupabaseOperationError } from "./supabase-operation.ts";
+import { parsePlayTotals, type PlayTotals } from "./play-totals.ts";
 
 export function resolveOwnedBadgeRead(result: {
   data: unknown;
@@ -36,4 +37,22 @@ export function resolveOwnedBadgeRead(result: {
     owned.add(badgeId);
   }
   return owned;
+}
+
+/** 누적 합계(get_my_play_totals, 0132) 읽기 — 모르면 누적 도전 진행도를 정할 수 없어 보유 목록 실패와 같이 도전을 멈춘다. */
+export function resolvePlayTotalsRead(result: {
+  data: unknown;
+  error?: unknown;
+}): PlayTotals {
+  if (result.error !== null && result.error !== undefined) {
+    throw new SupabaseOperationError("badges.play_totals", result.error);
+  }
+  const totals = parsePlayTotals(result.data);
+  if (!totals) {
+    throw new SupabaseOperationError(
+      "badges.play_totals",
+      new Error("invalid_play_totals"),
+    );
+  }
+  return totals;
 }
