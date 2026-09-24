@@ -30,12 +30,14 @@ test("game toggle and picker controls expose their selected state", () => {
 });
 
 test("report grade labels and comments have an audible separator", () => {
+  // v1.57: 한 줄 평은 등급 이름 아래 줄(공용 GradeRow) — 화면 대시는 없애고 스크린 리더용 구분자만 남긴다.
+  assert.match(source("components/ReportParts.tsx"), /<span className="sr-only">— <\/span>\s*\{grade\.comment\}/);
   for (const path of [
     "components/ScoreReport.tsx",
     "app/share/[scoreId]/page.tsx",
     "app/history/[userId]/[scoreId]/page.tsx",
   ]) {
-    assert.match(source(path), /— \{grade\.comment\}/, path);
+    assert.match(source(path), /<GradeRow grade=\{grade\} \/>/, path);
   }
 });
 

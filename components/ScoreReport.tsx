@@ -5,6 +5,7 @@ import { PersonaCard } from "@/components/PersonaCard";
 import { BadgeStrip } from "@/components/BadgeStrip";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
+import { GradeRow, ReportApprovalTable, ReportRow } from "@/components/ReportParts";
 
 /**
  * 게임 결과 "보고서(종이)" 표현 — 패기 유형(페르소나) 해석 + 점수/콤보/등급/부장님 반응.
@@ -94,31 +95,12 @@ export function ScoreReport({
         <FadeImg
           src={dollImageUrl ?? "/sprites/boss-default.png"}
           alt={`맞은 ${roleLabel}`}
-          className="aspect-square w-20 rounded-xl border border-zinc-300 bg-zinc-100"
+          className="aspect-square w-20 shrink-0 rounded-xl border border-zinc-300 bg-zinc-100"
           fit="contain"
           placeholder="shimmer"
           errorText="캐릭터 이미지를 불러오지 못했어요."
         />
-        <table className="border-collapse text-center text-[10px]">
-          <tbody>
-            <tr>
-              <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">
-                작성자
-              </td>
-              <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">결재</td>
-            </tr>
-            <tr>
-              <td className="border border-zinc-400 px-1 py-2 text-[11px] font-medium">
-                {nickname || "—"}
-              </td>
-              <td className="relative border border-zinc-400 py-2">
-                <span className="inline-block -rotate-12 rounded-full border-2 border-red-500 px-1.5 py-1 text-[9px] font-bold text-red-500">
-                  해소완료
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <ReportApprovalTable author={nickname || "—"} />
       </div>
 
       {/* 본문 항목 */}
@@ -140,18 +122,9 @@ export function ScoreReport({
               <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
                 <Spinner className="h-3 w-3" /> 계산 중
               </span>
-            ) : previousBest === null ? (
-              <span className="text-xs text-zinc-600">첫 판이 곧 최고 기록이에요</span>
-            ) : score > previousBest ? (
-              <span className="text-xs text-zinc-600 tabular-nums">
-                이전 {previousBest.toLocaleString()}점 → <b className="text-red-500">+{(score - previousBest).toLocaleString()}</b>
-              </span>
-            ) : score === previousBest ? (
-              <span className="text-xs text-zinc-600">최고 기록과 같은 점수</span>
             ) : (
-              <span className="text-xs text-zinc-600 tabular-nums">
-                최고 {previousBest.toLocaleString()}점까지 <b>{(previousBest - score).toLocaleString()}</b>점
-              </span>
+              // 최고 점수 하나만(v1.57 사용자 결정) — 이번 판을 포함한 최고. 신기록 · 첫 기록은 총 정산 점수 옆 칩이 알린다.
+              <span className="tabular-nums">{Math.max(score, previousBest ?? score).toLocaleString()}점</span>
             )}
           </ReportRow>
         )}
@@ -176,12 +149,7 @@ export function ScoreReport({
             <span className="ml-1 text-xs text-zinc-500">(궁극기 {timeBonus.count}회)</span>
           </ReportRow>
         )}
-        <ReportRow label="판정 등급">
-          <span className="font-bold">{grade.label}</span>
-          <span className="ml-1.5 text-xs text-zinc-500">
-            — {grade.comment}
-          </span>
-        </ReportRow>
+        <GradeRow grade={grade} />
         {nextGrade && (
           <ReportRow label="다음 등급">
             <span className="text-xs text-zinc-600 tabular-nums">
@@ -235,21 +203,6 @@ export function ScoreReport({
           </p>
         </div>
       )}
-    </div>
-  );
-}
-
-function ReportRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-zinc-200 pb-1.5">
-      <dt className="shrink-0 text-xs font-semibold text-zinc-500">{label}</dt>
-      <dd className="text-right">{children}</dd>
     </div>
   );
 }

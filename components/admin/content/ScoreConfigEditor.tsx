@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
-import type { ScoreConfig } from "@/lib/config/domains/score";
+import {
+  GRADE_COMMENT_ONE_LINE_MAX_CHARS,
+  GRADE_COMMENT_ONE_LINE_MAX_HANGUL,
+  GRADE_LABEL_ONE_LINE_MAX_HANGUL,
+  gradeFitsOneLine,
+  type ScoreConfig,
+} from "@/lib/config/domains/score";
 import { isValidThresholds, THRESHOLD_STEP, TIER_COUNT, tierBandLabel } from "@/lib/score-tiers";
 import {
   COMBO_WINDOW_SEC_MAX,
@@ -103,8 +109,12 @@ export function ScoreConfigEditor({
     }
   };
 
-  const inputCls =
-    "w-full rounded-lg border border-foreground/15 ui-field p-2 text-sm outline-none focus:border-foreground/40";
+  // 테두리 색은 하나만(기본 · 경고) — 두 색 클래스를 같이 두면 스타일시트 순서로 기본색이 이긴다.
+  const fieldCls = (warn: boolean) =>
+    `w-full rounded-lg border ui-field p-2 text-sm outline-none ${
+      warn ? "border-amber-500 focus:border-amber-500" : "border-foreground/15 focus:border-foreground/40"
+    }`;
+  const inputCls = fieldCls(false);
 
   return (
     <div className="mt-5 flex flex-col gap-4">
@@ -179,27 +189,42 @@ export function ScoreConfigEditor({
         )}
       </fieldset>
 
-      {grades.map((g, i) => (
-        <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 ui-surface p-3">
-          <span className="text-[11px] text-zinc-400">
-            {i}단계 · {tierBandLabel(i, previewThresholds)}점
-          </span>
-          <input
-            value={g.label}
-            maxLength={20}
-            onChange={(e) => setField(i, "label", e.target.value)}
-            placeholder="등급 라벨 (예: 키보드 워리어)"
-            className={`${inputCls} font-semibold`}
-          />
-          <input
-            value={g.comment}
-            maxLength={40}
-            onChange={(e) => setField(i, "comment", e.target.value)}
-            placeholder="한 줄 평 (예: 엔터키에 오늘의 감정이 실렸습니다)"
-            className={inputCls}
-          />
-        </div>
-      ))}
+      {/* 결과 화면 한 줄 규칙(v1.57) — 넘으면 경고만(발행은 막지 않음) */}
+      <p className="text-xs text-zinc-500">
+        결과 화면 한 줄(iPhone SE 375px) 기준: 등급 이름은 한글 {GRADE_LABEL_ONE_LINE_MAX_HANGUL}자, 한 줄 평은 공백 포함{" "}
+        {GRADE_COMMENT_ONE_LINE_MAX_CHARS}자(한글 {GRADE_COMMENT_ONE_LINE_MAX_HANGUL}자)까지. 넘기면 그 줄이 두 줄로 꺾여요.
+      </p>
+      {grades.map((g, i) => {
+        const fits = gradeFitsOneLine(g);
+        return (
+          <div key={i} className="flex flex-col gap-1 rounded-xl border border-foreground/10 ui-surface p-3">
+            <span className="text-[11px] text-zinc-400">
+              {i}단계 · {tierBandLabel(i, previewThresholds)}점
+            </span>
+            <input
+              value={g.label}
+              maxLength={20}
+              onChange={(e) => setField(i, "label", e.target.value)}
+              placeholder="등급 라벨 (예: 키보드 워리어)"
+              className={`${fieldCls(!fits.label)} font-semibold`}
+            />
+            <input
+              value={g.comment}
+              maxLength={40}
+              onChange={(e) => setField(i, "comment", e.target.value)}
+              placeholder="한 줄 평 (예: 엔터키에 오늘의 감정이 실렸습니다)"
+              className={fieldCls(!fits.comment)}
+            />
+            {(!fits.label || !fits.comment) && (
+              <p className="text-[11px] text-amber-600">
+                {!fits.label && "등급 이름"}
+                {!fits.label && !fits.comment && " · "}
+                {!fits.comment && "한 줄 평"}이 iPhone SE 에서 두 줄로 꺾여요.
+              </p>
+            )}
+          </div>
+        );
+      })}
 
       {msg && <p className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-400"}`}>{msg.text}</p>}
 

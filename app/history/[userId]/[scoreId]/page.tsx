@@ -15,6 +15,7 @@ import { BadgeStrip } from "@/components/BadgeStrip";
 import { ShareReportButton } from "@/components/ShareReportButton";
 import { ReportButton } from "@/components/ReportButton";
 import { baseDollOf } from "@/lib/base-dolls";
+import { GradeRow, ReportApprovalTable, ReportRow } from "@/components/ReportParts";
 
 // private Storage signed URL을 HTML에 넣으므로 ISR stale 결과를 사용할 수 없다.
 // 장기간 무방문 뒤 첫 요청도 요청 시점에 새 URL을 발급한다.
@@ -105,61 +106,37 @@ export default async function HistoryDetailPage({
               <FadeImg
                 src={dollImg ?? base.image}
                 alt={`맞은 ${rlabel}`}
-                className="aspect-square w-24 rounded-xl border border-zinc-300 bg-zinc-100"
+                className="aspect-square w-20 shrink-0 rounded-xl border border-zinc-300 bg-zinc-100 min-[360px]:w-24"
                 fit="contain"
                 placeholder="shimmer"
                 errorText="캐릭터 이미지를 불러오지 못했어요."
               />
-              <table className="border-collapse text-center text-[10px]">
-                <tbody>
-                  <tr>
-                    <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">
-                      작성자
-                    </td>
-                    <td className="w-16 border border-zinc-400 bg-zinc-100 py-0.5">결재</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-zinc-400 px-1 py-2 text-[11px] font-medium">
-                      {name}
-                    </td>
-                    <td className="border border-zinc-400 py-2">
-                      <span className="inline-block -rotate-12 rounded-full border-2 border-red-500 px-1.5 py-1 text-[9px] font-bold text-red-500">
-                        해소완료
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <ReportApprovalTable author={name} />
             </div>
 
             <dl className="mt-3 space-y-1.5 text-sm">
-              <Row label="총 정산 점수">
+              <ReportRow label="총 정산 점수">
                 <span className="text-2xl font-extrabold tabular-nums">
                   {score.score.toLocaleString()}
                 </span>
                 <span className="ml-1 text-xs text-zinc-500">점</span>
-              </Row>
+              </ReportRow>
               {score.percentile != null && (
-                <Row label="전체 상위">
+                <ReportRow label="전체 상위">
                   <span className="font-bold text-amber-600">
                     상위 {score.percentile}%
                   </span>
-                </Row>
+                </ReportRow>
               )}
               {score.max_combo !== null && score.max_combo > 0 && (
-                <Row label="최대 콤보">x{score.max_combo}</Row>
+                <ReportRow label="최대 콤보">x{score.max_combo}</ReportRow>
               )}
               {hitCount !== null && (
-                <Row label="총 타격">{hitCount.toLocaleString()}회</Row>
+                <ReportRow label="총 타격">{hitCount.toLocaleString()}회</ReportRow>
               )}
-              <Row label="주력 무기">{weaponLabel(score.weapon)}</Row>
-              <Row label="소요 시간">{formatDuration(score.duration_ms)}</Row>
-              <Row label="판정 등급">
-                <span className="font-bold">{grade.label}</span>
-                <span className="ml-1.5 text-xs text-zinc-500">
-                  — {grade.comment}
-                </span>
-              </Row>
+              <ReportRow label="주력 무기">{weaponLabel(score.weapon)}</ReportRow>
+              <ReportRow label="소요 시간">{formatDuration(score.duration_ms)}</ReportRow>
+              <GradeRow grade={grade} />
             </dl>
 
             {score.badge_ids && score.badge_ids.length > 0 && (
@@ -184,20 +161,5 @@ export default async function HistoryDetailPage({
         </div>
       </main>
     </>
-  );
-}
-
-function Row({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-zinc-200 pb-1.5">
-      <dt className="shrink-0 text-xs font-semibold text-zinc-500">{label}</dt>
-      <dd className="text-right">{children}</dd>
-    </div>
   );
 }

@@ -25,6 +25,27 @@ const grade = z.object({
   comment: z.string().trim().min(1).max(40),
 });
 
+/**
+ * 결과 보고서 한 줄 규칙(v1.57, iPhone SE 375 실측) — 등급 이름은 종료 화면 「다음 등급」 줄(남은 점수 5~6자리와 함께)에서
+ * 한글 15자까지(실측 16), 한 줄 평은 판정 등급 줄 아래 전체 폭(303px, text-xs)에서 공백 · 문장부호 포함 34자 · 한글 28자까지
+ * (실측 35 · 29) 한 줄. 넘기면 어드민 편집기가 경고만 한다 — 발행은 막지 않고 스키마 상한(20자 · 40자)도 그대로.
+ */
+export const GRADE_LABEL_ONE_LINE_MAX_HANGUL = 15;
+export const GRADE_COMMENT_ONE_LINE_MAX_CHARS = 34;
+export const GRADE_COMMENT_ONE_LINE_MAX_HANGUL = 28;
+
+const hangulCount = (s: string) => (s.match(/[가-힣]/g) ?? []).length;
+
+/** 등급 이름 · 한 줄 평이 375px 한 줄 규칙 안인지(편집기 경고 · 코드 기본값 테스트 공용). */
+export function gradeFitsOneLine(g: { label: string; comment: string }): { label: boolean; comment: boolean } {
+  const comment = g.comment.trim();
+  return {
+    label: hangulCount(g.label.trim()) <= GRADE_LABEL_ONE_LINE_MAX_HANGUL,
+    comment:
+      comment.length <= GRADE_COMMENT_ONE_LINE_MAX_CHARS && hangulCount(comment) <= GRADE_COMMENT_ONE_LINE_MAX_HANGUL,
+  };
+}
+
 /** 구 10단계 발행행(v1.23 이전) → 5단계: 사용자 확정 매핑 — 눈치보는 신입·마음만 퇴사자·키보드 워리어·빌런 심판관·전설의 퇴사자. */
 export const LEGACY_GRADE_PICK = [0, 1, 5, 7, 9] as const;
 
