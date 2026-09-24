@@ -13,6 +13,7 @@
 - visible 점수의 `score_stats`와 `user_badges`는 `commit_score_report` 한 트랜잭션에서 확정된다. 최초 snapshot은 immutable하다.
 - 응답이 badge INSERT 뒤 유실돼도 `user_badges.first_score_id=score_id`가 durable receipt이므로 재시도 응답의 `newBadges`가 복원된다. 다른 점수에서 먼저 얻은 badge는 포함하지 않는다.
 - badge catalog는 uncached strict read다. 정상 no-row만 코드 seed를 쓰고 DB 오류·invalid 발행 row는 report 503으로 재시도한다.
+- 누적 뱃지(v1.55, 타격·궁극기·플레이)의 이전 합계 `get_play_totals(owner, p_exclude_score=이 판)`(0132)도 strict read다. RPC 오류·형식 이상은 report 503으로 재시도하고, 재시도에서 이 판의 판 통계가 이미 있어도 `p_exclude_score`로 빠져 이중 합산이 없다.
 - percentile은 시점에 따라 달라지는 선택적 표시 snapshot이다. 조회 오류·범위 밖 값은 의도적으로 `null`로 commit하며 점수와 badge transaction을 막지 않는다.
 - pending/voided 점수는 leaderboard, percentile, HTML share, OG, public history에서 모두 숨긴다.
 
