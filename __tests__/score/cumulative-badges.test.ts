@@ -6,7 +6,7 @@ import { register } from "node:module";
 register("../telemetry/node-loader.mjs", import.meta.url);
 
 const { buildGameplayStats } = await import("../../lib/stats.ts");
-const { BADGE_CATALOG_DEFAULT, FAMILY_BASIS, evaluateBadges, familyValue, gamePlayMs } = await import(
+const { BADGE_CATALOG_DEFAULT, FAMILY_BASIS, evaluateBadges, familyValue, gamePlayMs, reachedBeforeGame } = await import(
   "../../lib/config/domains/badges.ts"
 );
 const { PLAY_TOTALS_ZERO, parsePlayTotals } = await import("../../lib/play-totals.ts");
@@ -115,4 +115,16 @@ test("부여 계약: 서버는 이 판을 뺀 이전 합계로 평가하고 합�
   const modal = readFileSync(new URL("../../components/GameOverModal.tsx", import.meta.url), "utf8");
   assert.match(modal, /evaluateBadges\(gameplayStats, score, badgeCatalog, playTotals \?\? PLAY_TOTALS_ZERO\)/);
   assert.match(modal, /new Set\(\[\.\.\.earnedBadges, \.\.\.newBadges\]\)/);
+});
+
+test("v1.56 판 시작 전 달성: 이전 합계만으로 넘은 누적 tier 만 — 한 판 카테고리와 유형은 해당 없음", () => {
+  const totals = { hits: 450, ultimates: 3, playMs: 130_000 };
+  const reached = BADGE_CATALOG_DEFAULT.badges.filter((b) => reachedBeforeGame(b, totals)).map((b) => b.slug);
+  assert.deepEqual(reached.sort(), ["hits_150", "hits_400", "time_1", "time_2", "ult_1", "ult_2", "ult_3"].sort());
+  assert.deepEqual(BADGE_CATALOG_DEFAULT.badges.filter((b) => reachedBeforeGame(b, PLAY_TOTALS_ZERO)), []);
+  // 인게임 도전: 합계를 읽은 직후 조용히 보유 처리하고(토스트 없음) 그 뒤에야 판정을 연다
+  const hook = readFileSync(new URL("../../app/play/useBadgeChallenge.ts", import.meta.url), "utf8");
+  const silent = hook.indexOf("if (!owned.has(d.slug) && reachedBeforeGame(d, totals)) owned.add(d.slug);");
+  assert.ok(silent > 0, "시작 전 달성 조용히 보유");
+  assert.ok(silent < hook.indexOf("loaded = true;"), "판정 열기 전에");
 });

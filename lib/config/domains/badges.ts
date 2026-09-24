@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DomainEntry } from "../registry";
-import type { GameplayStats } from "@/lib/stats";
+import { buildGameplayStats, type GameplayStats } from "@/lib/stats";
 import type { PlayTotals } from "@/lib/play-totals";
 import {
   PERSONA_DEFS,
@@ -260,6 +260,31 @@ export function evaluateBadges(
         : b.active && FAMILY_VALUE[b.familyKey](stats, score, totals) >= b.threshold
     )
     .map((b) => b.slug);
+}
+
+/** 이 판 값이 0 인 판 — 판 시작 전 달성 판정용(누적 카테고리는 이전 합계만 남고, 한 판 카테고리는 0). */
+const EMPTY_GAME: GameplayStats = buildGameplayStats({
+  hitCount: 0,
+  maxCombo: 0,
+  durationMs: 0,
+  weaponCounts: {},
+  weaponScores: {},
+  ultScore: 0,
+  ultimateCount: 0,
+  firstHitMs: null,
+  bgVisits: [],
+});
+
+/**
+ * 판 시작 전에 이전 합계만으로 이미 넘은 누적 뱃지(v1.56) — 인게임 도전은 이것을 토스트 없이 달성 처리한다.
+ * 부여는 이번 판 제출 때 서버가 하고 종료 화면이 NEW 로 보인다(v1.55 설계 「다음 판 제출 때 한꺼번에」).
+ * 토스트는 이번 판에 새로 넘는 tier 만. 한 판 카테고리와 유형은 해당 없음.
+ */
+export function reachedBeforeGame(badge: CatalogBadge, totals: PlayTotals): boolean {
+  return (
+    FAMILY_BASIS[badge.familyKey] === "cumulative" &&
+    FAMILY_VALUE[badge.familyKey](EMPTY_GAME, 0, totals) >= badge.threshold
+  );
 }
 
 /** 패밀리 달성값(인게임 진행도) — 누적 카테고리는 이전 합계 + 이 판. */

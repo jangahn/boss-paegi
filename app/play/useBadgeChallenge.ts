@@ -9,6 +9,7 @@ import {
   badgeBySlug,
   familyValue,
   familyEmoji,
+  reachedBeforeGame,
 } from "@/lib/config/domains/badges";
 import type { PlayTotals } from "@/lib/play-totals";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
@@ -24,6 +25,7 @@ import { runBoundedClientOperation } from "@/lib/client-operation";
  * MissionHud/useGameMilestones 대체. "획득 임박 3개" 노출, 실제 획득 순간 토스트+✅, 1.2s 후 리필.
  * store.subscribe 기반(별도 interval 없음). 성능: setState 는 슬롯 id·진행률(floor%)·✅ 변동 시에만.
  * 누적 카테고리(v1.55)는 판 시작 때 읽은 이전 합계 + 이 판. 그 합계를 종료 화면 표시에도 넘긴다(playTotals).
+ * 이전 합계만으로 이미 넘은 tier 는 시작 때 조용히 달성 처리하고, 토스트는 이번 판에 새로 넘는 tier 만(v1.56).
  * 다음 판 시작 때 다시 읽기 전까지는 직전 값이 남는다(직전 판이 빠진 만큼 낮게만 틀린다 — 서버가 부여 정본).
  */
 
@@ -201,6 +203,11 @@ export function useBadgeChallenge({
           owned.add(badgeId);
         }
         totals = resolvePlayTotalsRead(totalsResult);
+        // 판 시작 전에 이전 합계만으로 이미 넘은 누적 tier 는 토스트 없이 달성 처리(v1.56) — 부여는 이번 판
+        // 제출 때 서버가, 표시는 종료 화면 NEW. 안 그러면 기존 플레이어가 치기도 전에 「획득!」이 몰려 뜬다.
+        for (const d of defs) {
+          if (!owned.has(d.slug) && reachedBeforeGame(d, totals)) owned.add(d.slug);
+        }
         loaded = true;
         setLoadError(null);
         setPlayTotals(totals);
