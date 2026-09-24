@@ -178,7 +178,11 @@ export function FunnelView({ funnel }: { funnel: Funnel }) {
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full border border-foreground/15 px-2.5 py-1">강제종료 <b>{funnel.forced ?? 0}</b></span>
+        {/* 제한 시간(v1.53) 뒤로 시간 종료(time_limit, 드물게 최대 점수 score_limit 포함)가 정상 완료의 대부분 — 나머지는 그만 패기. */}
+        <span className="rounded-full border border-foreground/15 px-2.5 py-1">시간 종료 <b>{funnel.forced ?? 0}</b></span>
+        <span className="rounded-full border border-foreground/15 px-2.5 py-1">
+          그만 패기 <b>{Math.max(0, (funnel.completed ?? 0) - (funnel.forced ?? 0))}</b>
+        </span>
         <span className="rounded-full border border-foreground/15 px-2.5 py-1">이탈 <b>{funnel.abandoned ?? 0}</b></span>
         <span className="rounded-full border border-foreground/15 px-2.5 py-1">맵전환(2곳+) <b>{funnel.multi_map ?? 0}</b> ({pct(funnel.multi_map ?? 0, entered)})</span>
       </div>
@@ -306,7 +310,8 @@ export function WeaponThroughputBars({ data }: { data: WeaponThroughput }) {
             </div>
             <span className="w-16 shrink-0 text-right tabular-nums font-medium">{Math.round(value ?? 0).toLocaleString()}/초</span>
             <span className="w-28 shrink-0 text-right text-[10px] text-zinc-400">
-              {usePure ? `단일무기 ${n}판` : `메인무기 ${n}판·단일무기 표본 없음`}
+              {/* SE 375 한 줄(112px) — 단일무기 표본이 없으면 메인무기 판 수만(각주가 「단일무기 세션 우선」을 설명). */}
+              {usePure ? `단일무기 ${n}판` : `메인무기 ${n}판`}
               {badge ? ` · ${badge}` : ""}
             </span>
           </div>

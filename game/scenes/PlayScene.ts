@@ -502,6 +502,11 @@ export class PlayScene extends Container {
     playYelp(1, 1.1);
   }
 
+  /** 궁극기 난타가 진행 중인가 — 시간 종료 순간 진행 중이던 궁극기는 끝까지 친다(v1.53). */
+  isUltimateActive(): boolean {
+    return this.ultActive;
+  }
+
   /** 궁극기 진행도 0..1 (예산 소진 기준) */
   private get ultProgress(): number {
     return ULT_BLOW_BUDGET > 0 ? this.ultFired / ULT_BLOW_BUDGET : 1;

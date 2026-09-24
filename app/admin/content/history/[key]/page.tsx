@@ -16,7 +16,7 @@ const KEY_LABEL: Record<DomainKey, string> = {
   role_content: "롤 콘텐츠",
   score_config: "점수 등급",
   badge_catalog: "뱃지 카탈로그",
-  session_limits: "세션 한도",
+  session_limits: "제한 시간",
   growth_levers: "성장 레버",
   site_content: "소개·FAQ (SEO)",
   media_config: "미디어 자산",

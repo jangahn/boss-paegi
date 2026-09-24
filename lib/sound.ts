@@ -741,3 +741,46 @@ export function stopPinchTension(released: boolean, ratio = 0) {
   pinchFilter = null;
   if (released && ratio > 0.1) playHitSound("snap", 0.6 + ratio * 0.6);
 }
+
+// ── 제한 시간 신호음(v1.53) — 마지막 10초 째깍 · 추가 시간 띠링 · 시간 종료 버저 ─────────────
+// 타격음과 겹쳐도 묻히지 않게 고역 짧은 톤으로 합성(효과음 버스 = 음소거·하이라이트 녹화 공통).
+export type TimerCue = "tick" | "tickLast" | "gain" | "buzzer";
+
+export function playTimerCue(cue: TimerCue, volume = 1) {
+  const c = getCtx();
+  if (!c || c.state !== "running") return;
+  const t = c.currentTime;
+  const v = Math.max(0.05, Math.min(2, volume));
+  const tone = (freq: number, t0: number, dur: number, peak: number, type: OscillatorType = "square") => {
+    const osc = c.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak * v, t0 + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(gain).connect(out(c));
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  };
+  if (cue === "tick") {
+    // 째깍 — 초침 클릭(10~4초)
+    tone(1850, t, 0.05, 0.07);
+    return;
+  }
+  if (cue === "tickLast") {
+    // 마지막 3초 — 한 음 높고 두 번
+    tone(2350, t, 0.06, 0.09);
+    tone(2350, t + 0.09, 0.05, 0.06);
+    return;
+  }
+  if (cue === "gain") {
+    // 띠링 — 추가 시간(상행 2음)
+    tone(1318, t, 0.1, 0.1, "triangle");
+    tone(1976, t + 0.08, 0.18, 0.11, "triangle");
+    return;
+  }
+  // 버저 — 시간 종료(저역 사각파 두 겹)
+  tone(220, t, 0.55, 0.12);
+  tone(233, t, 0.55, 0.08);
+}

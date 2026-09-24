@@ -9,6 +9,8 @@ export type GameEvents = {
   onDrawingChange?: (hasDrawing: boolean) => void;
   /** PC 키보드 공격 동작이 받아들여질 때마다 — 텔레메트리 keyActions */
   onKeyAction?: () => void;
+  /** blur/hidden 으로 게임이 멈추거나 다시 움직일 때 — 제한 시간 시계가 같이 멈춘다(v1.53). 생성 직후 현재 상태로 1회. */
+  onPausedChange?: (paused: boolean) => void;
 };
 
 export type CreateGameOptions = GameEvents & {
@@ -40,6 +42,8 @@ export type GameHandle = {
   triggerUltimate: () => void;
   /** 게임 종료/중단 시 궁극기 난타 즉시 정지 */
   stopUltimate: () => void;
+  /** 궁극기 난타가 진행 중인가 — 시간 종료 순간 진행 중이던 궁극기는 끝까지 친다(v1.53). */
+  isUltimateActive: () => boolean;
   /** PC 키보드 공격 키(스페이스·방향키) → 현재 무기의 포인터 제스처 */
   keyAction: (key: AttackKey, phase: KeyPhase) => void;
   /** 하이라이트 녹화용 — 캔버스 MediaStream (미지원 브라우저면 null) */
@@ -231,8 +235,19 @@ export async function createGame(
     scene,
     app.canvas,
   );
+  // 게임 멈춤 = 제한 시간 멈춤(v1.53): 같은 blur/hidden 판정을 scene 과 시계가 함께 쓴다(원인 판정 단일 소스).
+  const lifecycleTarget: GameLifecycleScene = {
+    pause: () => {
+      scene.pause();
+      opts.onPausedChange?.(true);
+    },
+    resume: () => {
+      scene.resume();
+      opts.onPausedChange?.(false);
+    },
+  };
   const unbindVisibility = bindGameVisibilityLifecycle(
-    scene,
+    lifecycleTarget,
     window,
     document,
     () => document.visibilityState,
@@ -260,6 +275,7 @@ export async function createGame(
     setDamageScore: (score: number) => scene.setDamageScore(score),
     triggerUltimate: () => scene.triggerUltimate(),
     stopUltimate: () => scene.stopUltimate(),
+    isUltimateActive: () => scene.isUltimateActive(),
     keyAction: (key, phase) => scene.keyAction(key, phase),
     captureStream: (fps = 30) => {
       const c = app.canvas as HTMLCanvasElement & {

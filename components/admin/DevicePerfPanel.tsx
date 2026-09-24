@@ -1,10 +1,11 @@
 import type { DevicePerf } from "@/lib/admin-analytics";
 
+/** 기기 이름(어드민 공통) — SE 375 표 한 줄에 들어가게 짧게(v1.53, 구 「데스크탑(마우스)」 등). PC = desktop-* 세션. */
 export const DEVICE_KO: Record<string, string> = {
-  "mobile-touch": "모바일(터치)",
-  "desktop-pointer": "데스크탑(마우스)",
-  "desktop-touch": "데스크탑(터치)",
-  "mobile-pointer": "모바일(포인터)",
+  "mobile-touch": "모바일 터치",
+  "desktop-pointer": "PC 마우스",
+  "desktop-touch": "PC 터치",
+  "mobile-pointer": "모바일 포인터",
   other: "기타",
 };
 
@@ -38,16 +39,16 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
             <b>프레임타임(ms)</b> = 화면 1번 그리는 데 걸린 시간. <b>낮을수록 부드러움</b> · 16.7ms=60fps · 33.3ms=30fps.
           </div>
           <div>
-            <b>중앙 avg</b> = 세션들의 평균 프레임타임 중앙값 — 그 디바이스의 “보통” 부드러움.
+            <b>avg</b> = 세션들의 평균 프레임타임 중앙값 — 그 기기의 “보통” 부드러움.
           </div>
           <div>
-            <b>중앙 p95</b> = 세션들의 p95(느린 5% 프레임) 중앙값 — <b>끊김·튐 체감</b>(평균은 괜찮아도 p95 높으면 가끔 끊김).
+            <b>p95</b> = 세션들의 p95(느린 5% 프레임) 중앙값 — <b>끊김·튐 체감</b>(평균은 괜찮아도 p95 높으면 가끔 끊김).
           </div>
           <div>
-            <b>추정 fps</b> = 1000 ÷ 중앙 avg — 초당 프레임 수(60=부드러움, 30=끊김).
+            <b>fps</b> = 1000 ÷ avg — 추정 초당 프레임 수(60=부드러움, 30=끊김).
           </div>
           <div>
-            <b>렉 세션</b> = p95 &gt; {LAG_P95_MS}ms(30fps 미달 스파이크)인 세션 비율 — 높을수록 그 디바이스가 자주 끊김.
+            <b>렉</b> = p95 &gt; {LAG_P95_MS}ms(30fps 미달 스파이크)인 세션 비율 — 높을수록 그 기기가 자주 끊김.
           </div>
           <div className="text-zinc-400">
             가장 느린 세션 줄: <b>dpr</b>=화면 픽셀밀도(3=고밀도 폰) · <b>hz</b>=화면 주사율 · 끝의 <b>s</b>=플레이 시간.
@@ -60,12 +61,12 @@ export function DevicePerfPanel({ data }: { data: DevicePerf }) {
         <table className="whitespace-nowrap w-full text-sm">
           <thead>
             <tr className="text-left text-[11px] text-zinc-400">
-              <th className="py-1 pr-2">디바이스</th>
+              <th className="py-1 pr-2">기기</th>
               <th className="px-2">세션</th>
-              <th className="px-2">중앙 avg</th>
-              <th className="px-2">중앙 p95</th>
-              <th className="px-2">추정 fps</th>
-              <th className="px-2">렉 세션</th>
+              <th className="px-2">avg</th>
+              <th className="px-2">p95</th>
+              <th className="px-2">fps</th>
+              <th className="px-2">렉</th>
             </tr>
           </thead>
           <tbody>

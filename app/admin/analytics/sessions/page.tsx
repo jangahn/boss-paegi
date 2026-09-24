@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-server";
 import { getRecentSessions } from "@/lib/admin-analytics";
-import { fmtKst } from "@/lib/admin-format";
+import { endReasonLabel, fmtKst } from "@/lib/admin-format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -58,7 +58,7 @@ export default async function SessionsPage() {
                     <td className="px-2 py-2 text-right tabular-nums">{r.score.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.hit_count.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.distinct_weapons}/{r.distinct_maps}</td>
-                    <td className="px-2 py-2 text-zinc-500">{r.end_reason ?? "—"}</td>
+                    <td className="px-2 py-2 text-zinc-500">{endReasonLabel(r.end_reason)}</td>
                     <td className="px-2 py-2">
                       <Link href={`/admin/analytics/sessions/${r.id}`} className="text-sky-600 underline">상세</Link>
                     </td>

@@ -353,6 +353,63 @@ body:has(.game-surface) {
   animation: milestone-pop 2.2s ease-in-out forwards;
 }
 
+/* 제한 시간(v1.53) — 마지막 10초 큰 숫자: 1초마다 새 요소(key)로 튀어나왔다 살짝 옅어진다(한 번만, 반복 애니 없음). */
+@keyframes countdown-pop {
+  0% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+  14% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(0.94);
+  }
+}
+.animate-countdown-pop {
+  animation: countdown-pop 1s ease-out forwards;
+}
+/* 추가 시간 — 시간 바에 새로 찬 구간이 흰 잔상으로 번쩍였다 사라진다(0.7s). */
+@keyframes time-refill {
+  0% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.animate-time-refill {
+  animation: time-refill 0.7s ease-out forwards;
+}
+/* 추가 시간 — 남은 시간 알약이 잠깐 「+10초」로 바뀔 때 톡 튀는 등장(1회). */
+@keyframes time-flash {
+  0% {
+    transform: scale(0.85);
+  }
+  35% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-time-flash {
+  animation: time-flash 0.35s ease-out;
+}
+
+/* 어드민 — 한글이 단어 중간에서 끊기지 않게 어절 단위로만 줄바꿈(v1.53, SE 375 에서 「키보드 사 / 용」 같은 꺾임).
+ * 한 어절이 줄보다 길 때만 강제로 끊는다(긴 id·URL 넘침 방지). 사용자 화면은 제목(h1~h4)에만 적용 중(위 규칙). */
+.theme-admin {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 /* Sentry User Feedback 위젯(#sentry-feedback)은 /play 몰입화면(.game-surface)에선
  * 무기바/버튼과 겹치므로 숨김. 그 외 페이지(홈/갤러리/랭킹)에선 노출. */
 body:has(.game-surface) #sentry-feedback {

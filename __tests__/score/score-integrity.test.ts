@@ -23,8 +23,10 @@ const {
   ANTI_ABUSE_RULES_VERSION,
   S2_MARGIN,
   S2_MIN_HITS,
+  SCORE_PER_SEC_MAX,
   evaluateSubmission,
   maxUltimateUsesForHits,
+  timeCapScoreCeiling,
 } = await import("../../lib/anti-abuse-rules.ts");
 const { buildGameplayStats, validateGameplayStats } = await import(
   "../../lib/stats.ts"
@@ -528,7 +530,7 @@ function effectiveMaxBase(weapon: (typeof WEAPONS)[number]): number {
 
 test("S2 checks every 1..19-hit weapon payload instead of leaving the old split bypass", () => {
   assert.equal(S2_MIN_HITS, 1);
-  assert.match(ANTI_ABUSE_RULES_VERSION, /v11$/);
+  assert.match(ANTI_ABUSE_RULES_VERSION, /v12$/);
 
   for (const weapon of WEAPONS) {
     // v1.36: 무기변경 ×2 × 맵변경 ×2 = ×4 (콤보 ×4 와 곱해 base × 16)
@@ -615,3 +617,37 @@ test("one ultimate beyond the mathematical hit envelope is always flagged", () =
     );
   }
 });
+
+test("S11 제한 시간 점수 상한 — S3 × (최대 플레이 시간 + 5초) 초과만 검토 대기, 사람 실측 최대는 통과", () => {
+  assert.equal(timeCapScoreCeiling(120), SCORE_PER_SEC_MAX * 125);
+  assert.equal(timeCapScoreCeiling(120), 425_000);
+  // 사람 실측 최대 2,947/초로 125초를 쳐도 상한 아래
+  assert.ok(2_947 * 125 < timeCapScoreCeiling(120));
+  const decide = (score: number, timeCapSeconds: number | null) =>
+    evaluateSubmission({
+      score,
+      durationMs: 30 * 60 * 1000, // 벽시계(멈춤 포함)는 S11 과 무관
+      telemetrySessionId: SESSION,
+      stats: null,
+      telemetry: null,
+      isBanned: false,
+      timeCapSeconds,
+    }).signals.map((signal) => signal.id);
+  assert.ok(!decide(425_000, 120).includes("S11_TIME_CAP_SCORE"));
+  assert.ok(decide(425_001, 120).includes("S11_TIME_CAP_SCORE"));
+  // 기준이 없으면(구 호출) 보지 않는다
+  assert.ok(!decide(9_000_000, null).includes("S11_TIME_CAP_SCORE"));
+  const flagged = evaluateSubmission({
+    score: 500_000,
+    durationMs: 125_000,
+    telemetrySessionId: SESSION,
+    stats: null,
+    telemetry: null,
+    isBanned: false,
+    timeCapSeconds: 120,
+  });
+  const s11 = flagged.signals.find((signal) => signal.id === "S11_TIME_CAP_SCORE");
+  assert.deepEqual(s11, { id: "S11_TIME_CAP_SCORE", value: 500_000, threshold: 425_000, source: "submit" });
+  assert.equal(flagged.evidence.timeCapSeconds, 120);
+});
+
