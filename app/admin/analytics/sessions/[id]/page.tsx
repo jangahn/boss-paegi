@@ -3,6 +3,8 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-server";
 import { getSessionDetail } from "@/lib/admin-analytics";
 import { SessionTimeline } from "@/components/admin/analytics/SessionTimeline";
+import { DEVICE_KO } from "@/components/admin/DevicePerfPanel";
+import { endReasonLabel } from "@/lib/admin-format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,8 +35,8 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
                 value={s.is_anon ? "익명" : s.owner_name ? `회원 (${s.owner_name})` : "회원"}
                 href={!s.is_anon && s.owner_id ? `/admin/users/${s.owner_id}` : undefined}
               />
-              <Field label="종료" value={s.end_reason ?? "—"} />
-              <Field label="기기" value={s.device_class} />
+              <Field label="종료" value={endReasonLabel(s.end_reason)} />
+              <Field label="기기" value={DEVICE_KO[s.device_class] ?? s.device_class} />
               <Field
                 label="시간(초)"
                 value={

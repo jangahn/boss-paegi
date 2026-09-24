@@ -38,8 +38,8 @@ test("0130 데이터 정정: v1.36 이후 세션만, 새 규칙(비율 4000 + �
   assert.match(fix, /<= greatest\(10, t\.hit_count \* 0\.2\)/);
 });
 
-test("규칙 버전 v11 · 아웃박스 점수 상한도 MAX_SCORE_HARD 단일 소스", () => {
-  assert.equal(ANTI_ABUSE_RULES_VERSION, "2026-09-anti-abuse-v11");
+test("규칙 버전 v12 · 아웃박스 점수 상한도 MAX_SCORE_HARD 단일 소스", () => {
+  assert.equal(ANTI_ABUSE_RULES_VERSION, "2026-09-anti-abuse-v12");
   const outbox = fs.readFileSync(path.resolve(process.cwd(), "lib/score-outbox.ts"), "utf8");
   assert.match(outbox, /\(value\.score as number\) <= MAX_SCORE_HARD &&/);
   assert.match(outbox, /\(value\.durationMs as number\) <= MAX_DURATION_MS &&/);

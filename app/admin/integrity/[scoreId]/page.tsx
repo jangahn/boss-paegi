@@ -12,7 +12,9 @@ import {
   INTERVAL_CV_MIN,
   MAX_REASONABLE_DURATION_MS,
   SCORE_PER_SEC_MAX,
+  timeCapScoreCeiling,
 } from "@/lib/anti-abuse-rules";
+import { getSessionLimits } from "@/lib/config/getters";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -38,6 +40,9 @@ export default async function AdminIntegrityDetailPage({
   const { scoreId } = await params;
   const d = await getIntegrityDetail(scoreId);
   if (!d) notFound();
+  // S11 기준(v12) — 지금 발행된 최대 플레이 시간. 플래그 행에 저장된 임계는 「발화 신호」 목록이 보여 준다.
+  const timeCapSeconds = (await getSessionLimits()).timeLimit.maxPlaySeconds;
+  const timeCapCeiling = timeCapScoreCeiling(timeCapSeconds);
 
   const scorePerSec = d.durationMs > 0 ? Math.round((d.score / d.durationMs) * 1000) : 0;
   const t = d.telemetry;
@@ -85,6 +90,11 @@ export default async function AdminIntegrityDetailPage({
             label="점수/초"
             value={`${scorePerSec.toLocaleString()} (인간 실측 ≤${HUMAN_SCORE_PER_SEC_OBSERVED.toLocaleString()} · S3 >${SCORE_PER_SEC_MAX.toLocaleString()})`}
             warn={scorePerSec > SCORE_PER_SEC_MAX}
+          />
+          <Field
+            label="제한 시간 점수 상한"
+            value={`S11 >${timeCapCeiling.toLocaleString()} (최대 ${timeCapSeconds}초)`}
+            warn={d.score > timeCapCeiling}
           />
           <Field label="지속 타격속도" value={apmToRate(t?.apm)} warn={(t?.apm ?? 0) > HITS_PER_SEC_SUSTAINED * 60} />
           <Field label="소요 시간" value={formatDuration(d.durationMs)} warn={d.durationMs > MAX_REASONABLE_DURATION_MS} />

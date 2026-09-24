@@ -29,7 +29,24 @@ export type GameplayStats = {
   bgVisits: string[];
   /** 타격 간격 변동계수(CV=σ/μ) — 어뷰징 jitter 신호(S5). 봇≈0. 표본부족/구데이터면 null/undefined. */
   intervalCV?: number | null;
+  // ── 제한 시간(v1.53, lib/time-limit) — 구 클라·v1.52 이전 판에는 없다(모두 선택). ──
+  /** 플레이 시간 — 첫 타격부터 끝까지 흐른 시간(멈춘 구간 제외, ms). ⏱️ 누적 플레이 뱃지의 기준. */
+  playMs?: number;
+  /** 이 판의 기본 시간(ms) */
+  timeBaseMs?: number;
+  /** 이 판의 최대 플레이 시간(ms) */
+  timeCapMs?: number;
+  /** 받은 추가 시간 합(ms) */
+  timeBonusMs?: number;
+  /** 추가 시간을 받은 궁극기 횟수 */
+  timeBonusCount?: number;
 };
+
+/** 제한 시간 통계 필드(선택) — 스토어 → 판 통계. 없는 판(구 클라)은 필드 자체를 싣지 않는다. */
+export type TimeLimitStats = Pick<
+  GameplayStats,
+  "playMs" | "timeBaseMs" | "timeCapMs" | "timeBonusMs" | "timeBonusCount"
+>;
 
 /** 원시 스냅샷(스토어 + 페이지) → GameplayStats. categoryCounts 는 weaponCounts 에서 파생. */
 export function buildGameplayStats(input: {
@@ -43,6 +60,7 @@ export function buildGameplayStats(input: {
   firstHitMs: number | null;
   bgVisits: string[];
   intervalCV?: number | null;
+  timeLimit?: TimeLimitStats;
 }): GameplayStats {
   const categoryCounts: Record<string, number> = {};
   for (const [k, n] of Object.entries(input.weaponCounts)) {
@@ -62,7 +80,33 @@ export function buildGameplayStats(input: {
     firstHitMs: input.firstHitMs,
     bgVisits: input.bgVisits,
     intervalCV: input.intervalCV ?? null,
+    ...(input.timeLimit
+      ? {
+          playMs: Math.round(input.timeLimit.playMs ?? 0),
+          timeBaseMs: Math.round(input.timeLimit.timeBaseMs ?? 0),
+          timeCapMs: Math.round(input.timeLimit.timeCapMs ?? 0),
+          timeBonusMs: Math.round(input.timeLimit.timeBonusMs ?? 0),
+          timeBonusCount: Math.round(input.timeLimit.timeBonusCount ?? 0),
+        }
+      : {}),
   };
+}
+
+/** 제한 시간 필드 정합 — 있으면 정수·음수 아님·기본 시간 ≤ 최대 플레이 시간·추가 시간 ≤ 그 차이·추가 횟수 ≤ 궁극기 횟수. */
+export function validTimeLimitStats(stats: GameplayStats): boolean {
+  const keys = ["playMs", "timeBaseMs", "timeCapMs", "timeBonusMs", "timeBonusCount"] as const;
+  const present = keys.filter((k) => stats[k] !== undefined);
+  if (present.length === 0) return true; // 구 클라·제한 시간 이전 판
+  if (present.length !== keys.length) return false;
+  for (const k of keys) {
+    const v = stats[k];
+    if (!Number.isSafeInteger(v) || (v as number) < 0) return false;
+  }
+  const base = stats.timeBaseMs as number;
+  const cap = stats.timeCapMs as number;
+  const bonus = stats.timeBonusMs as number;
+  const count = stats.timeBonusCount as number;
+  return base <= cap && bonus <= cap - base && count <= stats.ultimateCount;
 }
 
 function sumValues(obj: Record<string, number>): number {
@@ -174,6 +218,7 @@ export function validateGameplayStats(
   } else if (!exactKnownWeaponMaps(stats)) {
     return false;
   }
+  if (!validTimeLimitStats(stats)) return false;
   const ultScore = stats.v >= 2 ? Math.max(0, stats.ultScore ?? 0) : 0;
   if (!Number.isSafeInteger(ultScore) || ultScore > submittedScore) return false;
   const hitsSum = sumValues(stats.weaponCounts);

@@ -10,6 +10,7 @@ import { WeaponPicker, isEraserSlot } from "@/components/WeaponPicker";
 import { UltimateButton } from "@/components/UltimateButton";
 import { BgSwitcher } from "@/components/play/BgSwitcher";
 import { BadgeChallenge } from "@/components/play/BadgeChallenge";
+import { TimeLimitHud } from "@/components/play/TimeLimitHud";
 import { topWeapon, useGameStore } from "@/store/gameStore";
 import { useSessionLimits } from "@/components/SessionLimitsProvider";
 import { FORCE_END_GRACE_MS } from "@/lib/score-limits";
@@ -21,7 +22,8 @@ import { keyboardHint } from "@/lib/keyboard-controls";
 import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import type { RoleId } from "@/lib/roles";
 import { DEFAULT_GENDER, type Gender } from "@/lib/gender";
-import { unlockAudio, isMuted, setMuted } from "@/lib/sound";
+import { unlockAudio, isMuted, setMuted, playTimerCue } from "@/lib/sound";
+import { grantedBonusMs, timeLimitConfigFromSeconds } from "@/lib/time-limit";
 import { log, errInfo } from "@/lib/log";
 import type { GameHandle } from "@/game/BossPaegiGame";
 import { useGameInit } from "./useGameInit";
@@ -34,6 +36,9 @@ import { useKeyboardControls } from "./useKeyboardControls";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
 import { baseDollKeyFromParam, telemetryBaseDollLabel } from "@/lib/base-dolls";
+
+/** 시간 종료 배너 노출(ms) — 입력이 닫힌 뒤 「시간 종료!」를 보여 주고 종료 화면을 연다. */
+const TIME_UP_BANNER_MS = 1200;
 
 function PlayInner() {
   const router = useRouter();
@@ -97,6 +102,12 @@ function PlayInner() {
   const endingRef = useRef(false); // handleEnd 1회만(중복 제출/모달 방지)
   const graceTimerRef = useRef<number | null>(null); // grace setTimeout id — 재시작/언마운트 시 정리
   const [forcedBanner, setForcedBanner] = useState<string | null>(null);
+  // 제한 시간(v1.53) — 시간 종료 1회 가드, 진행 중 궁극기 마무리 대기 타이머, 마지막 10초(말풍선 쉼).
+  const timeUpRef = useRef(false);
+  const ultWaitRef = useRef<number | null>(null);
+  const [countdownActive, setCountdownActive] = useState(false);
+  // 시간 종료 뒤(배너·궁극기 마무리 동안)에도 말풍선은 쉰다 — 「시간 종료!」 배너와 겹치지 않게.
+  const [timeUp, setTimeUp] = useState(false);
   const [endReason, setEndReason] = useState<"normal" | "time_limit" | "score_limit">(
     "normal"
   );
@@ -118,6 +129,14 @@ function PlayInner() {
   const [bgSwitchError, setBgSwitchError] = useState<string | null>(null);
   const start = useGameStore((s) => s.start);
   const configureJuggle = useGameStore((s) => s.configureJuggle);
+  const configureTimeLimit = useGameStore((s) => s.configureTimeLimit);
+  const setClockPaused = useGameStore((s) => s.setClockPaused);
+  const clockStarted = useGameStore((s) => s.clockStarted);
+  const baseSeconds = useGameStore((s) => Math.round(s.timeLimit.baseMs / 1000));
+  // 이번 궁극기로 받을 추가 시간(초) — 최대 플레이 시간에 막히면 0(버튼 칩 숨김).
+  const ultBonusSeconds = useGameStore((s) =>
+    Math.round(grantedBonusMs(s.timeBudgetMs, s.timeLimit.ultimateBonusMs, s.timeLimit.maxPlayMs) / 1000),
+  );
   const noteMap = useGameStore((s) => s.noteMap);
   const scoreCfg = useScoreConfig(); // 변경 보너스·콤보 창 초수(라이브) — 게임 시작 시 한 판 값으로 고정
   const end = useGameStore((s) => s.end);
@@ -144,6 +163,7 @@ function PlayInner() {
   // 게임 세션 시작 — 스토어 리셋 + 로그(Logs 검색) + Sentry 게임 컨텍스트(이후 event/replay 에 부착).
   useEffect(() => {
     configureJuggle(juggleConfigFromSeconds(scoreCfg.juggle));
+    configureTimeLimit(timeLimitConfigFromSeconds(limitsRef.current.timeLimit));
     start();
     noteMap(bgKeyRef.current); // 맵변경 배율의 시작 맵 체류 기록
     if (!telemetryStartedRef.current) {
@@ -163,7 +183,7 @@ function PlayInner() {
       bg: bgKeyRef.current,
       gamePhase: "playing",
     });
-  }, [start, configureJuggle, noteMap, scoreCfg, dollId, baseDollKey, telemetry]);
+  }, [start, configureJuggle, configureTimeLimit, noteMap, scoreCfg, dollId, baseDollKey, telemetry]);
 
   // Pixi 게임 인스턴스 생성/해제 (캐릭터·배경 텍스처 로드 후 createGame, 언마운트 시 destroy).
   useGameInit({
@@ -179,6 +199,7 @@ function PlayInner() {
       hit(strength, weaponKey, chargeUlt),
     onDrawingChange: setHasDrawing,
     onKeyAction: telemetry.onKeyAction,
+    onPausedChange: setClockPaused,
     setGameReady,
     setGameInitError,
     setDollImageUrl,
@@ -225,7 +246,8 @@ function PlayInner() {
 
   const handleUltimate = () => {
     const s = useGameStore.getState();
-    if (!s.ultReady) return;
+    // 시간 종료 뒤(진행 중 궁극기 마무리 대기 포함)엔 새 궁극기를 받지 않는다 — 추가 시간으로 되살리지 않음.
+    if (!s.ultReady || !s.isPlaying || timeUpRef.current) return;
     log.info("game.ultimate_fire", {
       dollId: dollId ?? telemetryBaseDollLabel(baseDollKey),
       weapon: weapon.key,
@@ -362,7 +384,11 @@ function PlayInner() {
   }, []);
 
   const handleEnd = useCallback(
-    async (reason: "normal" | "time_limit" | "score_limit" = "normal") => {
+    async (
+      reason: "normal" | "time_limit" | "score_limit" = "normal",
+      // 시간 종료는 입력을 닫은 뒤 「시간 종료!」 배너를 잠깐 보여 주고 종료 화면을 연다(v1.53).
+      opts: { bannerMs?: number } = {},
+    ) => {
       if (endingRef.current) return; // 강제종료 grace 중 수동 종료 등 중복 차단(one-shot)
       endingRef.current = true;
       setEndReason(reason);
@@ -371,6 +397,7 @@ function PlayInner() {
       gameRef.current?.end();
       const s = useGameStore.getState();
       end();
+      const clock = useGameStore.getState(); // end() 가 시계를 멈춘 뒤 값 = 확정 플레이 시간
       // 게임 세션 종료 요약 — Logs/Discover 에서 weapon·점수대·플레이타임 분석.
       log.info("game.end", {
         dollId: dollId ?? telemetryBaseDollLabel(baseDollKey),
@@ -383,6 +410,8 @@ function PlayInner() {
         durationMs: Math.round(
           activeGameElapsedMs(s.isPlaying, s.startedAt, performance.now()),
         ),
+        playMs: Math.round(clock.clockAccumMs),
+        timeBonusMs: clock.timeBonusMs,
         endReason: reason,
       });
       setSentryGameContext({
@@ -402,6 +431,7 @@ function PlayInner() {
         router.push("/");
         return;
       }
+      if (opts.bannerMs) await new Promise((resolve) => window.setTimeout(resolve, opts.bannerMs));
       // 진행 중 녹화가 있으면 마감해서 마지막 클라이맥스 클립이 버려지지 않게 한 뒤 모달 오픈.
       await finalizeHighlight();
       setOver(true);
@@ -415,6 +445,36 @@ function PlayInner() {
     handleEndRef.current = handleEnd;
   }, [handleEnd]);
 
+  // 제한 시간 종료(v1.53) — 0초 순간 새 입력을 막고(궁극기 포함 — handleUltimate 가드), 진행 중인 궁극기만 끝까지
+  // 친 뒤(최대 3.9초, 이미 발동한 몫) 버저 + 「시간 종료!」 → 종료 화면. end_reason 은 기존 time_limit 재사용.
+  const handleTimeUp = useCallback(() => {
+    if (timeUpRef.current || endingRef.current) return;
+    timeUpRef.current = true;
+    setTimeUp(true);
+    const finish = () => {
+      ultWaitRef.current = null;
+      playTimerCue("buzzer");
+      setForcedBanner("시간 종료!");
+      void handleEndRef.current("time_limit", { bannerMs: TIME_UP_BANNER_MS });
+    };
+    if (gameRef.current?.isUltimateActive()) {
+      ultWaitRef.current = window.setInterval(() => {
+        if (gameRef.current?.isUltimateActive()) return;
+        if (ultWaitRef.current !== null) window.clearInterval(ultWaitRef.current);
+        finish();
+      }, 100);
+      return;
+    }
+    finish();
+  }, []);
+  // 언마운트 시 궁극기 마무리 대기 정리.
+  useEffect(
+    () => () => {
+      if (ultWaitRef.current !== null) window.clearInterval(ultWaitRef.current);
+    },
+    [],
+  );
+
   // 강제 종료 폴링 — gameReady·!over 동안 0.5s 마다 한도 체크. 도달 시 배너 → grace 후 1회 종료.
   useEffect(() => {
     if (!gameReady || over) return;
@@ -425,10 +485,11 @@ function PlayInner() {
       if (!s.isPlaying) return;
       const elapsed =
         activeGameElapsedMs(true, s.startedAt, performance.now()) / 1000;
+      // 강제 종료(어뷰징 방지) — 최대 점수 · 최대 경과 시간(벽시계, 멈춰 있어도 흐름). 제한 시간 종료는 handleTimeUp.
       const reason =
         s.score >= limits.maxScore
           ? "score_limit"
-          : elapsed >= limits.maxPlaySeconds
+          : elapsed >= limits.maxElapsedSeconds
             ? "time_limit"
             : null;
       if (reason) {
@@ -454,12 +515,20 @@ function PlayInner() {
     setEndReason("normal");
     forceEndRef.current = false;
     endingRef.current = false;
+    timeUpRef.current = false;
+    setTimeUp(false);
+    if (ultWaitRef.current !== null) {
+      window.clearInterval(ultWaitRef.current);
+      ultWaitRef.current = null;
+    }
+    setCountdownActive(false);
     if (graceTimerRef.current) {
       window.clearTimeout(graceTimerRef.current); // orphan grace timeout 차단(D1)
       graceTimerRef.current = null;
     }
     bgVisitsRef.current = new Set([bgKeyRef.current]); // 새 세션 — 현재 배경만
     configureJuggle(juggleConfigFromSeconds(scoreCfg.juggle));
+    configureTimeLimit(timeLimitConfigFromSeconds(limitsRef.current.timeLimit));
     start();
     noteMap(bgKeyRef.current);
     gameRef.current?.start();
@@ -503,8 +572,14 @@ function PlayInner() {
           </button>
         </div>
       )}
-      <SpeechBubble text={taunt} />
+      {/* 마지막 10초엔 카운트다운이 말풍선 자리를 쓴다(시비 멘트 쉼). 시간 종료 뒤에도 배너와 겹치지 않게 쉰다. */}
+      <SpeechBubble text={countdownActive || timeUp ? null : taunt} />
       <ScoreBoard />
+      <TimeLimitHud
+        running={gameReady && !over}
+        onTimeUp={handleTimeUp}
+        onCountdownChange={setCountdownActive}
+      />
       {gameReady && !over && (
         <BadgeChallenge slots={slots} error={badgeLoadError} />
       )}
@@ -562,11 +637,19 @@ function PlayInner() {
       {/* 무기 조작 안내 — picker 바로 위. 반투명 캡슐로 배경 무관 가독.
           하단 HUD 세로 간격 8px: 피커 윗변 = 모바일 88px(bottom-12 + 40) · sm 116px(bottom-14 + 60) → 캡슐 96 · 124px. */}
       <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 -translate-x-1/2 sm:bottom-31">
-        <span className="whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm sm:text-sm">
-          {hoverWeapon ? keyboardHint(hoverWeapon.category) : weaponHint(weapon.key, role)}
+        <span
+          className={`whitespace-nowrap rounded-full bg-black/55 px-3 py-1 text-xs backdrop-blur-sm sm:text-sm ${
+            !hoverWeapon && !clockStarted ? "font-bold text-lime-300" : "font-medium text-white/90"
+          }`}
+        >
+          {hoverWeapon
+            ? keyboardHint(hoverWeapon.category)
+            : !clockStarted
+              ? `때리는 순간 ${baseSeconds}초 시작!`
+              : weaponHint(weapon.key, role)}
         </span>
       </div>
-      <UltimateButton ready={ultReady} onFire={handleUltimate} />
+      <UltimateButton ready={ultReady} onFire={handleUltimate} bonusSeconds={ultBonusSeconds} />
       <WeaponPicker
         weapons={roster}
         active={weapon.key}

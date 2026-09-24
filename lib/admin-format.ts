@@ -45,3 +45,19 @@ export const shortId = (id: string) => (id ? id.slice(0, 8) : "—");
 /** Next 16 searchParams 값은 string | string[] | undefined — 첫 값만 안전 추출(반복 키 방어). */
 export const firstParam = (v: string | string[] | undefined): string | undefined =>
   Array.isArray(v) ? v[0] : v;
+
+/**
+ * 텔레메트리 종료 사유 → 어드민 표시(v1.53). 제한 시간 종료는 기존 `time_limit` 을 재사용한다(최대 경과 시간 30분 강제 종료도 같은 값).
+ * 게임 분석 퍼널 칩(시간 종료 · 그만 패기 · 이탈)과 같은 말.
+ */
+export const END_REASON_KO: Record<string, string> = {
+  normal: "그만 패기",
+  time_limit: "시간 종료",
+  score_limit: "최대 점수",
+  abandon: "이탈",
+  reload: "새로고침",
+  hidden_timeout: "탭 숨김",
+};
+
+export const endReasonLabel = (reason: string | null | undefined): string =>
+  reason ? (END_REASON_KO[reason] ?? reason) : "—";

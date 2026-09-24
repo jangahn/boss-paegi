@@ -143,7 +143,7 @@ export default async function AnalyticsPage({
 
         <section>
           <h2 className="mb-2 text-sm font-bold text-zinc-500">
-            회원 플레이 빈도 <span className="font-normal text-zinc-400">(회원 한정 · 세션 = 게임 한 판 · 익명 세션은 30일 뒤 삭제)</span>
+            회원 플레이 빈도 <span className="font-normal text-zinc-400">(회원만 · 세션 = 게임 한 판)</span>
           </h2>
           <div className="grid grid-cols-3 gap-2">
             <Stat label="회원 세션" value={member.sessions.toLocaleString()} />

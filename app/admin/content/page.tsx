@@ -13,7 +13,7 @@ const DOMAINS: { key: DomainKey; label: string; desc: string }[] = [
   { key: "role_content", label: "롤 대사", desc: "시비 멘트·반응·인사기록·호칭" },
   { key: "score_config", label: "점수 설정", desc: "점수 구간(밴드 간격)·등급 라벨" },
   { key: "badge_catalog", label: "뱃지", desc: "카테고리·임계값·라벨" },
-  { key: "session_limits", label: "세션 한도", desc: "최대 플레이 시간·점수(강제 종료)" },
+  { key: "session_limits", label: "제한 시간", desc: "기본 시간·최대 플레이 시간·추가 시간·강제 종료" },
   { key: "growth_levers", label: "성장 레버", desc: "가입 생성권·충전 가격" },
   { key: "site_content", label: "소개·FAQ (SEO)", desc: "홈 소개·자주 묻는 질문·검색 메타" },
   { key: "business_info", label: "사업자 정보", desc: "상호·사업자번호·연락처 — 푸터 상시 노출(PG 심사 요건)" },

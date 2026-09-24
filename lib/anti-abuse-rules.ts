@@ -16,6 +16,7 @@ import {
   SWITCH_ULT_BONUS_RATIO,
 } from "@/lib/game-tuning";
 import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
+import { TIME_CAP_GRACE_SECONDS } from "@/lib/time-limit";
 
 /**
  * 점수 어뷰징 판정 — 제출 시점 신호(S1~S10)의 단일 출처.
@@ -61,13 +62,13 @@ import { validateGameplayStats, type GameplayStats } from "@/lib/stats";
  * 게이지 식(첫 타 +0.01, 이후 매 타 최대 +0.11)에서 유도해 0~9타로 1~2회
  * 궁극기를 위조하던 여유치를 제거한다.
  */
-export const ANTI_ABUSE_RULES_VERSION = "2026-09-anti-abuse-v11"; // v11: S3 2800→3400(멀티터치 인간 실측 2,947 재측정)·텔레 적재 의심 임계 2000→4000 봉투 동기화(0130)·어드민 라벨 상수 연동 · v10: 맵변경 배율 ×2 곱(합산 ×4) → S2 이론상한 ×2·S3 2800·S7 252만·하드캡 4000/초 · v9: 맵별 투척 12종 · v8: gun 4→7
+export const ANTI_ABUSE_RULES_VERSION = "2026-09-anti-abuse-v12"; // v12: S11 제한 시간 점수 상한(S3 × (최대 플레이 시간 + 5초)) · v11: S3 2800→3400(멀티터치 인간 실측 2,947 재측정)·텔레 적재 의심 임계 2000→4000 봉투 동기화(0130)·어드민 라벨 상수 연동 · v10: 맵변경 배율 ×2 곱(합산 ×4) → S2 이론상한 ×2·S3 2800·S7 252만·하드캡 4000/초 · v9: 맵별 투척 12종 · v8: gun 4→7
 
 /** 리더보드 노출 가치가 있어 텔레메트리 정합이 필요한 점수 하한(S6). */
 export const NOTABLE_SCORE = 300_000;
 /** 장기 세션 경계(S7) — 정상 최대 플레이 12.2분(실측 2026-07-02) 위 마진.
  *  ⚠ 이 값 단독 초과는 어뷰징 증거가 아니다: 세션 캡(30분, score-limits.ts MAX_DURATION_MS =
- *  session_limits.maxPlaySeconds 상한)까지 간 제출은 clampForSubmit 이 정확히 캡으로 안착시키고
+ *  session_limits.maxElapsedSeconds 「최대 경과 시간」 상한)까지 간 제출은 clampForSubmit 이 정확히 캡으로 안착시키고
  *  route 400 은 strict `>` 라 경계값이 통과 — 캡 완주·탭 방치가 전부 여기 떨어진다(v5 오탐 교정).
  *  S7 은 반드시 S7_LONG_SESSION_SCORE_FLOOR 와 결합해 발화한다. */
 export const MAX_REASONABLE_DURATION_MS = 900_000; // 15분
@@ -97,6 +98,15 @@ export const SCORE_PER_SEC_MAX = 3_400;
  *  인간이 이 하한을 넘으려면 3,400/s 를 15분 이상 지속해야 함(실측 최대: 2,947/s 를 44초·최장 12.2분). */
 export const S7_LONG_SESSION_SCORE_FLOOR =
   SCORE_PER_SEC_MAX * (MAX_REASONABLE_DURATION_MS / 1000); // 3,060,000
+/**
+ * S11 제한 시간 점수 상한(v12) — 한 판은 최대 플레이 시간(+ 시간 종료 뒤 궁극기 마무리 여유 5초)을 넘을 수 없으니,
+ * 그 시간 동안 S3 비율(3,400/초)로 낼 수 있는 점수가 정상 판의 상한이다. 120초면 425,000(사람 실측 최대 2,947/초 × 125초 = 368,375).
+ * 벽시계 duration 과 무관하게 점수만 보므로 탭 숨김으로 멈춘 시간은 영향이 없다. 무플래그 위조 상한이 S7 하한(306만)에서
+ * 이 값으로 내려간다. 추가 시간은 클라 계산이라 검증할 수 없지만 최대 플레이 시간이 곧 봉투라 무관하다.
+ */
+export function timeCapScoreCeiling(timeCapSeconds: number): number {
+  return SCORE_PER_SEC_MAX * (timeCapSeconds + TIME_CAP_GRACE_SECONDS);
+}
 /** S2 무기별 타당성 최소 타격수. 점수/타격은 exact integer이고 fresh도 정확 차감되므로
  *  1타부터 이론 상한을 적용해 소량 타격 분산 우회를 남기지 않는다. */
 export const S2_MIN_HITS = 1;
@@ -133,6 +143,8 @@ export type EvaluateInput = {
   telemetry: TelemetrySnapshot;
   /** banned 유저 제출 — 무조건 voided. */
   isBanned: boolean;
+  /** 발행된 최대 플레이 시간(초, 제한 시간 v1.53) — S11 기준. null 이면 S11 을 보지 않는다. */
+  timeCapSeconds?: number | null;
 };
 
 export type EvaluateResult = {
@@ -187,7 +199,7 @@ export function maxUltimateUsesForHits(hitCount: number): number {
  * abuseScore = 신호 개수(치명 신호 가중) — 어드민 큐 위험도 칩 표시용(큐 정렬은 최신 제출순).
  */
 export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
-  const { score, durationMs, telemetrySessionId, stats, telemetry, isBanned } = input;
+  const { score, durationMs, telemetrySessionId, stats, telemetry, isBanned, timeCapSeconds = null } = input;
   const signals: AbuseSignal[] = [];
   const durationSec = durationMs > 0 ? durationMs / 1000 : 0;
   const scorePerSec = durationSec > 0 ? score / durationSec : score;
@@ -246,6 +258,12 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
   if (durationMs > MAX_REASONABLE_DURATION_MS && score > S7_LONG_SESSION_SCORE_FLOOR)
     signals.push({ id: "S7_DURATION_LONG", value: durationMs, threshold: MAX_REASONABLE_DURATION_MS, source: "submit" });
 
+  // ── S11: 제한 시간 점수 상한(v12) — 최대 플레이 시간 + 5초 동안 S3 비율로 낼 수 있는 점수 초과 ──
+  const timeCapCeiling =
+    typeof timeCapSeconds === "number" && timeCapSeconds > 0 ? timeCapScoreCeiling(timeCapSeconds) : null;
+  if (timeCapCeiling != null && score > timeCapCeiling)
+    signals.push({ id: "S11_TIME_CAP_SCORE", value: score, threshold: timeCapCeiling, source: "submit" });
+
   // ── S8: 연결 텔레메트리가 이미 suspicious(단조 → 오토클리커는 제출시 true) ──
   if (telemetry?.suspicious)
     signals.push({ id: "S8_TELEMETRY_SUSPICIOUS", value: 1, threshold: 1, source: "submit" });
@@ -294,6 +312,7 @@ export function evaluateSubmission(input: EvaluateInput): EvaluateResult {
     telemetryScore: telemetry?.score ?? null,
     telemetryDurationMs: telemetry?.durationMs ?? null,
     telemetrySuspicious: telemetry?.suspicious ?? null,
+    timeCapSeconds: timeCapSeconds ?? null,
     rulesVersion: ANTI_ABUSE_RULES_VERSION,
   };
 

@@ -7,6 +7,7 @@ import {
   buildGameplayStats,
   validateGameplayStats,
   type GameplayStats,
+  type TimeLimitStats,
 } from "@/lib/stats";
 import {
   evaluateSubmission,
@@ -14,7 +15,7 @@ import {
   type TelemetrySnapshot,
 } from "@/lib/anti-abuse-rules";
 import { matchPersona } from "@/lib/persona";
-import { getBadgeCatalogStrictUncached } from "@/lib/config/getters";
+import { getBadgeCatalogStrictUncached, getSessionLimits } from "@/lib/config/getters";
 import { evaluateBadges, knownSlugs } from "@/lib/config/domains/badges";
 import { log, errInfo } from "@/lib/log";
 import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
@@ -150,6 +151,23 @@ function sanitizeBackgroundVisits(value: unknown): string[] {
       ),
     ),
   ].slice(0, BACKGROUNDS.length);
+}
+
+/** 제한 시간 통계(v1.53) — 다섯 필드가 모두 유한수일 때만 싣는다(구 클라는 필드 없음). 플레이 시간은 벽시계 duration 이하. */
+function sanitizeTimeLimitStats(
+  raw: Partial<Record<keyof TimeLimitStats, unknown>>,
+  durationMs: number,
+): TimeLimitStats | undefined {
+  const keys = ["playMs", "timeBaseMs", "timeCapMs", "timeBonusMs", "timeBonusCount"] as const;
+  if (!keys.every((k) => typeof raw[k] === "number" && Number.isFinite(raw[k]))) return undefined;
+  const int = (v: unknown, max: number) => Math.min(max, Math.max(0, Math.round(v as number)));
+  return {
+    playMs: int(raw.playMs, durationMs),
+    timeBaseMs: int(raw.timeBaseMs, MAX_DURATION_MS),
+    timeCapMs: int(raw.timeCapMs, MAX_DURATION_MS),
+    timeBonusMs: int(raw.timeBonusMs, MAX_DURATION_MS),
+    timeBonusCount: int(raw.timeBonusCount, 10_000),
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -356,6 +374,7 @@ export async function POST(req: NextRequest) {
         typeof raw.intervalCV === "number" && Number.isFinite(raw.intervalCV)
           ? raw.intervalCV
           : null,
+      timeLimit: sanitizeTimeLimitStats(raw, durationMs),
     });
   }
 
@@ -468,6 +487,8 @@ export async function POST(req: NextRequest) {
   });
 
   // ── 판정(단일 출처 lib/anti-abuse-rules) ──
+  // S11 기준 = 발행된 최대 플레이 시간(클라가 보낸 값은 믿지 않는다). 설정 조회 실패는 코드 기본값으로 폴백(getter 규약).
+  const sessionLimits = await getSessionLimits();
   const decision = evaluateSubmission({
     score,
     durationMs,
@@ -475,6 +496,7 @@ export async function POST(req: NextRequest) {
     stats: canonicalStats,
     telemetry,
     isBanned,
+    timeCapSeconds: sessionLimits.timeLimit.maxPlaySeconds,
   });
 
   const scoreNetworkActorKey = publicWriteNetworkActorKey(req.headers);

@@ -89,6 +89,12 @@ export function GameOverModal({
   const endedAt = useGameStore((s) => s.endedAt);
   // 타격 간격 CV(어뷰징 jitter, S5) — 러닝 통계에서 지연 계산. 표본부족이면 null.
   const intervalCV = useGameStore((s) => selectIntervalCV(s));
+  // 제한 시간(v1.53) — 종료(end) 뒤 멈춘 시계 = 확정 플레이 시간.
+  const playMs = useGameStore((s) => s.clockAccumMs);
+  const timeBaseMs = useGameStore((s) => s.timeLimit.baseMs);
+  const timeCapMs = useGameStore((s) => s.timeLimit.maxPlayMs);
+  const timeBonusMs = useGameStore((s) => s.timeBonusMs);
+  const timeBonusCount = useGameStore((s) => s.timeBonusCount);
   const dialogRef = useDialogFocus<HTMLDivElement>(open);
   const runScopedOperation = useClientOperationScope();
 
@@ -106,6 +112,7 @@ export function GameOverModal({
         firstHitMs,
         bgVisits: bgVisits ?? [],
         intervalCV,
+        timeLimit: { playMs, timeBaseMs, timeCapMs, timeBonusMs, timeBonusCount },
       }),
     [
       hitCount,
@@ -119,6 +126,11 @@ export function GameOverModal({
       firstHitMs,
       bgVisits,
       intervalCV,
+      playMs,
+      timeBaseMs,
+      timeCapMs,
+      timeBonusMs,
+      timeBonusCount,
     ]
   );
   const persona = useMemo(() => matchPersona(gameplayStats), [gameplayStats]);

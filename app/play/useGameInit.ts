@@ -39,6 +39,8 @@ export function useGameInit(opts: {
   onDrawingChange: (v: boolean) => void;
   /** PC 키보드 공격 동작이 받아들여질 때마다(텔레메트리 keyActions) — 안정 참조라 마운트 캡처로 충분 */
   onKeyAction: () => void;
+  /** 게임이 멈추거나 다시 움직일 때(제한 시간 시계) — 안정 참조(zustand 액션)라 마운트 캡처로 충분 */
+  onPausedChange: (paused: boolean) => void;
   setGameReady: (v: boolean) => void;
   setGameInitError: (message: string | null) => void;
   setDollImageUrl: (url: string) => void;
@@ -58,6 +60,7 @@ export function useGameInit(opts: {
     onHit,
     onDrawingChange,
     onKeyAction,
+    onPausedChange,
     setGameReady,
     setGameInitError,
     setDollImageUrl,
@@ -164,6 +167,7 @@ export function useGameInit(opts: {
           onHit,
           onDrawingChange,
           onKeyAction,
+          onPausedChange,
         },
         () => cancelled
       );

@@ -16,10 +16,11 @@ export function KeyboardUsagePanel({ data }: { data: KeyboardUsage }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-3 gap-2">
-        <MiniStat label="PC 세션 중 키보드 사용" value={ratio(data.desktopKeyboardSessions, data.desktopSessions)} />
-        <MiniStat label="전체 세션 중 키보드 사용" value={ratio(data.keyboardSessions, data.sessions)} />
+        {/* 라벨은 SE 375 칸(88px)에 한 줄 — 「PC 세션 중 키보드 사용」은 「사 / 용」으로 꺾였다(v1.53). */}
+        <MiniStat label="PC 키보드 사용률" value={ratio(data.desktopKeyboardSessions, data.desktopSessions)} />
+        <MiniStat label="전체 키보드 사용률" value={ratio(data.keyboardSessions, data.sessions)} />
         <MiniStat
-          label="키보드 동작/사용 세션"
+          label="세션당 키보드 동작"
           value={data.keyboardSessions > 0 ? Math.round(actions / data.keyboardSessions).toLocaleString() : "—"}
         />
       </div>
@@ -27,11 +28,11 @@ export function KeyboardUsagePanel({ data }: { data: KeyboardUsage }) {
         <table className="w-full whitespace-nowrap text-sm">
           <thead>
             <tr className="text-left text-[11px] text-zinc-400">
-              <th className="py-1 pr-2">디바이스</th>
-              <th className="px-2">플레이 세션</th>
-              <th className="px-2">키보드 사용</th>
+              <th className="py-1 pr-2">기기</th>
+              <th className="px-2">세션</th>
+              <th className="px-2">키보드</th>
               <th className="px-2">비율</th>
-              <th className="px-2">키보드 동작</th>
+              <th className="px-2">동작</th>
             </tr>
           </thead>
           <tbody>

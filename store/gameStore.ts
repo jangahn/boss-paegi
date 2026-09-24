@@ -19,6 +19,13 @@ import {
   type MapLogEntry,
 } from "@/lib/game-tuning";
 import { firstHitElapsedMs } from "@/lib/game-clock";
+import {
+  TIME_LIMIT_CONFIG_DEFAULT,
+  activePlayMs,
+  grantedBonusMs,
+  remainingMs,
+  type TimeLimitConfig,
+} from "@/lib/time-limit";
 
 /** 맵 체류 기록 상한 — 창 산정엔 최근 것만 필요(창 시작 시점 맵 포함). 한 판 전환 수는 이보다 훨씬 적다. */
 const MAP_LOG_MAX = 200;
@@ -99,6 +106,26 @@ type GameState = {
   /** 새 무기 첫 타격 보너스 — ScoreBoard 토스트용(시간기반 자동 숨김) */
   lastFreshWeaponBonus: FreshWeaponBonus | null;
 
+  // ── 제한 시간(v1.53) — lib/time-limit. 첫 타격부터 흐르고, 게임이 멈추면(탭 숨김·포커스 이탈) 같이 멈춘다. ──
+  /** 설정(ms) — 판 시작 전에 configureTimeLimit 로 주입(어드민 session_limits.timeLimit). 판 사이 유지(start 가 리셋하지 않음). */
+  timeLimit: TimeLimitConfig;
+  /** 첫 타격으로 시계가 시작됐는가 */
+  clockStarted: boolean;
+  /** 멈춘 구간을 뺀 누적 플레이 ms(지금 달리는 구간 제외) */
+  clockAccumMs: number;
+  /** 지금 달리는 구간의 시작 시각(performance.now) — 시작 전·멈춤·종료면 null */
+  clockRunningSince: number | null;
+  /** 게임이 멈춰 있는가 — 판 사이 유지(탭 상태는 판과 무관) */
+  clockPaused: boolean;
+  /** 이번 판 시간 예산 = 기본 시간 + 받은 추가 시간(≤ 최대 플레이 시간) */
+  timeBudgetMs: number;
+  /** 받은 추가 시간 합(ms) */
+  timeBonusMs: number;
+  /** 추가 시간을 받은 궁극기 횟수(최대 플레이 시간에 막혀 0초를 받은 발동은 제외) */
+  timeBonusCount: number;
+  /** 마지막 궁극기 추가 시간(HUD +N초 팝) — amount 0 = 최대 플레이 시간에 막힘 */
+  lastTimeBonus: { amount: number; at: number } | null;
+
   /**
    * charge=false 면 점수만 올리고 게이지는 충전 안 함 (궁극기 난타 중 타격).
    * **반환값 = 화면 데미지 팝업에 찍을 값**(콤보×무기변경 배율 적용된 baseGain, fresh 보너스 제외 — 별도 토스트).
@@ -110,8 +137,12 @@ type GameState = {
   noteMap: (map: string) => void;
   /** 현재 점수를 timeline 에 1샘플 추가 (recorder 가 100ms 마다 호출) */
   pushScoreSample: () => void;
-  /** 궁극기 발동 — 게이지 소진 */
+  /** 궁극기 발동 — 게이지 소진 + 추가 시간(제한 시간) */
   consumeUlt: () => void;
+  /** 제한 시간 설정 주입 — 게임 시작 전(라이브 session_limits.timeLimit). */
+  configureTimeLimit: (cfg: TimeLimitConfig) => void;
+  /** 게임 일시정지 신호(탭 숨김·포커스 이탈) — 시계를 멈추거나 다시 달린다. */
+  setClockPaused: (paused: boolean) => void;
   start: () => void;
   end: () => void;
   reset: () => void;
@@ -128,6 +159,35 @@ export function topWeapon(counts: Record<string, number>): string | null {
     }
   }
   return best;
+}
+
+/** 시계·추가 시간 초기값 — create 기본값·start()·reset() 공용. clockPaused 는 판과 무관한 탭 상태라 여기 없음. */
+function clockInitialState(cfg: TimeLimitConfig) {
+  return {
+    clockStarted: false,
+    clockAccumMs: 0,
+    clockRunningSince: null as number | null,
+    timeBudgetMs: cfg.baseMs,
+    timeBonusMs: 0,
+    timeBonusCount: 0,
+    lastTimeBonus: null as { amount: number; at: number } | null,
+  };
+}
+
+/** 이번 판 플레이 시간(ms) — 첫 타격부터, 멈춘 구간 제외. */
+export function selectPlayMs(
+  s: { clockAccumMs: number; clockRunningSince: number | null },
+  now: number,
+): number {
+  return activePlayMs({ accumMs: s.clockAccumMs, runningSince: s.clockRunningSince }, now);
+}
+
+/** 남은 시간(ms) — 시작 전이면 예산 그대로(= 기본 시간). */
+export function selectRemainingMs(
+  s: { clockAccumMs: number; clockRunningSince: number | null; timeBudgetMs: number },
+  now: number,
+): number {
+  return remainingMs(s.timeBudgetMs, selectPlayMs(s, now));
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -152,7 +212,29 @@ export const useGameStore = create<GameState>((set, get) => ({
   scoreSamples: [],
   juggle: JUGGLE_CONFIG_DEFAULT,
   ...JUGGLE_INITIAL_STATE,
+  timeLimit: TIME_LIMIT_CONFIG_DEFAULT,
+  clockPaused: false,
+  ...clockInitialState(TIME_LIMIT_CONFIG_DEFAULT),
   configureJuggle: (cfg) => set({ juggle: cfg }),
+  configureTimeLimit: (cfg) => set({ timeLimit: cfg }),
+  setClockPaused: (paused) => {
+    const s = get();
+    if (s.clockPaused === paused) return;
+    const now = performance.now();
+    if (paused) {
+      // 달리던 구간을 누적에 접는다 — 멈춘 동안은 흐르지 않는다.
+      set({
+        clockPaused: true,
+        clockAccumMs: activePlayMs({ accumMs: s.clockAccumMs, runningSince: s.clockRunningSince }, now),
+        clockRunningSince: null,
+      });
+    } else {
+      set({
+        clockPaused: false,
+        clockRunningSince: s.clockStarted && s.isPlaying ? now : null,
+      });
+    }
+  },
   noteMap: (map) => {
     const now = performance.now();
     const s = get();
@@ -258,7 +340,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       ? { ...weaponScores, [weaponKey]: (weaponScores[weaponKey] ?? 0) + totalGain }
       : weaponScores;
 
+    // 제한 시간 — 첫 타격 순간부터 시계가 흐른다(멈춰 있으면 재개 때부터).
+    const clockStart = hitCount === 0 && !state.clockStarted
+      ? { clockStarted: true, clockAccumMs: 0, clockRunningSince: state.clockPaused ? null : now }
+      : {};
+
     set({
+      ...clockStart,
       score: score + totalGain,
       combo: nextCombo,
       maxCombo: Math.max(maxCombo, nextCombo),
@@ -292,13 +380,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     return baseGain; // 화면 데미지 팝업용(콤보×무기변경×맵변경 적용, fresh 제외)
   },
 
-  // 궁극기 발동 — 게이지 소진 + 발동 횟수 누적
+  // 궁극기 발동 — 게이지 소진 + 발동 횟수 누적 + 추가 시간(최대 플레이 시간을 넘는 몫은 잘림)
   consumeUlt: () =>
-    set((s) => ({
-      ultReady: false,
-      ultProgress: 0,
-      ultimateCount: s.ultimateCount + 1,
-    })),
+    set((s) => {
+      const amount = grantedBonusMs(s.timeBudgetMs, s.timeLimit.ultimateBonusMs, s.timeLimit.maxPlayMs);
+      return {
+        ultReady: false,
+        ultProgress: 0,
+        ultimateCount: s.ultimateCount + 1,
+        timeBudgetMs: s.timeBudgetMs + amount,
+        timeBonusMs: s.timeBonusMs + amount,
+        timeBonusCount: amount > 0 ? s.timeBonusCount + 1 : s.timeBonusCount,
+        lastTimeBonus: s.timeLimit.ultimateBonusMs > 0 ? { amount, at: performance.now() } : s.lastTimeBonus,
+      };
+    }),
 
   pushScoreSample: () => {
     const { scoreSamples, score } = get();
@@ -332,11 +427,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       endedAt: null,
       scoreSamples: [],
       ...JUGGLE_INITIAL_STATE,
+      ...clockInitialState(get().timeLimit),
     });
   },
 
   end: () => {
-    set({ isPlaying: false, endedAt: performance.now() });
+    const s = get();
+    const now = performance.now();
+    set({
+      isPlaying: false,
+      endedAt: now,
+      // 시계 정지 — 종료 뒤로는 흐르지 않는다(플레이 시간 통계 확정).
+      clockAccumMs: activePlayMs({ accumMs: s.clockAccumMs, runningSince: s.clockRunningSince }, now),
+      clockRunningSince: null,
+    });
   },
 
   reset: () => {
@@ -361,6 +465,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       endedAt: null,
       scoreSamples: [],
       ...JUGGLE_INITIAL_STATE,
+      ...clockInitialState(get().timeLimit),
     });
   },
 }));
