@@ -92,9 +92,9 @@ const marketingCopyBaseSchema = z.object({
     // ("다른 캐릭터 더 열고 패기" → 가입 후 갤러리, v1.42). 비회원 부제는 gameoverNonmemberSub(종료 화면 전용). 발행행 무중단 .default().
     gameoverPlayBtnMember: tpl(30).default("다른 캐릭터로 패기"),
     gameoverPlayBtnNonmember: tpl(30).default("다른 캐릭터 더 열고 패기"),
-    // 게임오버 — 비회원 1차 버튼 아래 부제(v1.42, 종료 화면 전용 키 — 갤러리 배너 제목과 분리). 발행행 무중단 .default().
+    // 게임오버 — 비회원 다음 플레이 버튼 아래 부제(v1.42, 종료 화면 전용 키 — 갤러리 배너 제목과 분리). 발행행 무중단 .default().
     gameoverNonmemberSub: tpl(80).default("부장님 한 명으로 부족하죠? 가입하면 4명이 더 열려요"),
-    // 게임오버 — 공유 버튼(하이라이트 없을 때/있을 때, 2차) + 다시 패기 링크(하단 텍스트 행). 발행행 무중단 .default().
+    // 게임오버 — 공유 버튼(하이라이트 없을 때/있을 때, 3차) + 다시 패기 버튼(하단 고정 1차, v1.54 — 구 하단 텍스트 행 링크). 발행행 무중단 .default().
     gameoverShareBtn: tpl(30),
     gameoverShareBtnHighlight: tpl(30).default("🔥 하이라이트 공유하기"),
     gameoverRetryBtn: tpl(20),

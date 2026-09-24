@@ -302,6 +302,14 @@ test("partial or type-confused 2xx acknowledgements never clear durable state", 
       scoreId: "00000000-0000-4000-8000-000000000010",
       collectedCount: -1,
     },
+    {
+      scoreId: "00000000-0000-4000-8000-000000000010",
+      previousBest: -1,
+    },
+    {
+      scoreId: "00000000-0000-4000-8000-000000000010",
+      previousBest: "32450",
+    },
   ]) {
     const storage = new MemoryStorage();
     const durableEntry = entry();
@@ -483,3 +491,17 @@ test("corrupt, future and expired localStorage records are never replayed", () =
     /score_outbox_corrupt/,
   );
 });
+
+test("이전 최고 기록(v1.54) — 숫자·null 은 받아들이고 그대로 돌려준다", async () => {
+  for (const previousBest of [null, 0, 32450]) {
+    const storage = new MemoryStorage();
+    const result = await submitScoreWithOutbox(entry(), {
+      storage,
+      now: NOW,
+      fetcher: async () => Response.json({ scoreId: SCORE_ID, previousBest }),
+    });
+    assert.equal(result.previousBest, previousBest);
+    assert.equal(readScoreSubmissionOutbox(storage, NOW).length, 0);
+  }
+});
+

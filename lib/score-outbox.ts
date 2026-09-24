@@ -46,6 +46,8 @@ export type ScoreSubmissionAck = {
   scoreId: string;
   reviewStatus?: string;
   percentile?: number | null;
+  /** 이전 최고 기록(v1.54) — null = 첫 기록, 없음 = 모름 */
+  previousBest?: number | null;
   newBadges?: string[];
   collectedCount?: number;
   duplicate?: boolean;
@@ -465,6 +467,17 @@ function isValidAck(value: unknown): value is ScoreSubmissionAck {
       Number.isSafeInteger(value.percentile) &&
       value.percentile >= 1 &&
       value.percentile <= 100
+    )
+  ) {
+    return false;
+  }
+  if (
+    value.previousBest !== undefined &&
+    value.previousBest !== null &&
+    !(
+      typeof value.previousBest === "number" &&
+      Number.isSafeInteger(value.previousBest) &&
+      value.previousBest >= 0
     )
   ) {
     return false;

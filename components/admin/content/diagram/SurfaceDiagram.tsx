@@ -114,12 +114,13 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
     title: "게임 종료 화면 — 하이라이트 없을 때",
     regions: [
       { label: "보고서 본문(제목·점수·뱃지·피격자 의견) — 코드/롤/등급", tone: "ctx" },
-      { id: "gameoverPlayBtnMember", label: "다음 플레이 버튼 — 회원 (갤러리로)", tone: "edit" },
-      { id: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼 — 비회원 (가입 후 갤러리로)", tone: "edit" },
+      { id: "gameoverPlayBtnMember", label: "다음 플레이 버튼(2차) — 회원 (갤러리로)", tone: "edit" },
+      { id: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼(2차) — 비회원 (가입 후 갤러리로)", tone: "edit" },
       { id: "gameoverNonmemberSub", label: "비회원 부제 (가입 혜택 한 줄, 종료 화면 전용)", tone: "edit" },
-      { id: "gameoverShareBtn", label: "공유 버튼 (2차)", tone: "edit" },
+      { id: "gameoverShareBtn", label: "공유 버튼 (3차)", tone: "edit" },
       { id: "scoreShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
-      { id: "gameoverRetryBtn", label: "하단 링크: 랭킹 · 내 뱃지 · [다시 패기] · 홈으로", tone: "edit" },
+      { label: "하단 링크: 랭킹 · 내 뱃지 · 홈으로 — 고정", tone: "ctx" },
+      { id: "gameoverRetryBtn", label: "하단 고정 버튼(1차): 다시 패기 + ⏱ 기본 시간(제한 시간 설정에서 자동)", tone: "edit" },
     ],
   },
   gameoverHl: {
@@ -127,12 +128,13 @@ const SURFACES: Record<SurfaceKey, { title: string; regions: Region[] }> = {
     regions: [
       { label: "보고서 본문(제목·점수·뱃지·피격자 의견) — 코드/롤/등급", tone: "ctx" },
       { label: "하이라이트 영상 (모바일은 공유에 첨부) — 자동", tone: "ctx" },
-      { id: "gameoverPlayBtnMember", label: "다음 플레이 버튼 — 회원 (갤러리로)", tone: "edit" },
-      { id: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼 — 비회원 (가입 후 갤러리로)", tone: "edit" },
+      { id: "gameoverPlayBtnMember", label: "다음 플레이 버튼(2차) — 회원 (갤러리로)", tone: "edit" },
+      { id: "gameoverPlayBtnNonmember", label: "다음 플레이 버튼(2차) — 비회원 (가입 후 갤러리로)", tone: "edit" },
       { id: "gameoverNonmemberSub", label: "비회원 부제 (가입 혜택 한 줄, 종료 화면 전용)", tone: "edit" },
-      { id: "gameoverShareBtnHighlight", label: "공유 버튼 (2차)", tone: "edit" },
+      { id: "gameoverShareBtnHighlight", label: "공유 버튼 (3차)", tone: "edit" },
       { id: "scoreShareText", label: "웹 공유 텍스트(공유 시)", tone: "edit" },
-      { id: "gameoverRetryBtn", label: "하단 링크: 랭킹 · 내 뱃지 · [다시 패기] · 홈으로", tone: "edit" },
+      { label: "하단 링크: 랭킹 · 내 뱃지 · 홈으로 — 고정", tone: "ctx" },
+      { id: "gameoverRetryBtn", label: "하단 고정 버튼(1차): 다시 패기 + ⏱ 기본 시간(제한 시간 설정에서 자동)", tone: "edit" },
     ],
   },
   history: {
@@ -257,7 +259,7 @@ export const FIELD_SURFACE: Record<
   scoreRankLink: [{ surface: "share", region: "scoreRankLink" }],
   scoreOgTitle: [{ surface: "shareOg", region: "scoreOgTitle" }],
   scoreOgDesc: [{ surface: "shareOg", region: "scoreOgDesc" }],
-  // 게임 종료 화면 — 다음 플레이 버튼 2종·웹 공유 텍스트(scoreShareText)·다시 패기 링크는
+  // 게임 종료 화면 — 다음 플레이 버튼 2종·웹 공유 텍스트(scoreShareText)·다시 패기 버튼(하단 고정, v1.54)은
   // 하이라이트 유/무 두 상태 공통.
   gameoverPlayBtnMember: [
     { surface: "gameover", region: "gameoverPlayBtnMember" },

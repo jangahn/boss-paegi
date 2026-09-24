@@ -11,6 +11,7 @@ const {
   ownsTelemetrySession,
   parseScoreReportRpcResult,
   parseScoreSubmissionRpcResult,
+  readOptionalPreviousBest,
   readOptionalScorePercentile,
   scoreSubmissionFingerprint,
   telemetrySubmitterBinding,
@@ -649,5 +650,28 @@ test("S11 제한 시간 점수 상한 — S3 × (최대 플레이 시간 + 5초)
   const s11 = flagged.signals.find((signal) => signal.id === "S11_TIME_CAP_SCORE");
   assert.deepEqual(s11, { id: "S11_TIME_CAP_SCORE", value: 500_000, threshold: 425_000, source: "submit" });
   assert.equal(flagged.evidence.timeCapSeconds, 120);
+});
+
+test("이전 최고 기록(v1.54) — 기록 없음=null(첫 기록), 형식 이상·조회 실패=모름", async () => {
+  assert.deepEqual(await readOptionalPreviousBest(async () => ({ data: [{ score: 32450 }], error: null })), {
+    known: true,
+    value: 32450,
+    error: null,
+  });
+  assert.deepEqual(await readOptionalPreviousBest(async () => ({ data: [], error: null })), {
+    known: true,
+    value: null,
+    error: null,
+  });
+  for (const data of [null, "rows", [{ score: "1" }], [{ score: -1 }], [{ score: 1.5 }], [null]]) {
+    assert.equal((await readOptionalPreviousBest(async () => ({ data, error: null }))).known, false, JSON.stringify(data));
+  }
+  const failed = await readOptionalPreviousBest(async () => ({ data: null, error: { code: "XX001" } }));
+  assert.equal(failed.known, false);
+  assert.deepEqual(failed.error, { code: "XX001" });
+  const thrown = await readOptionalPreviousBest(async () => {
+    throw new Error("network");
+  });
+  assert.equal(thrown.known, false);
 });
 

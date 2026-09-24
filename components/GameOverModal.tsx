@@ -95,6 +95,8 @@ export function GameOverModal({
   const timeCapMs = useGameStore((s) => s.timeLimit.maxPlayMs);
   const timeBonusMs = useGameStore((s) => s.timeBonusMs);
   const timeBonusCount = useGameStore((s) => s.timeBonusCount);
+  // 하단 고정 「다시 패기」의 ⏱ 초 — 다음 판도 같은 기본 시간(판 시작 때 같은 설정으로 다시 주입).
+  const baseSeconds = Math.round(timeBaseMs / 1000);
   const dialogRef = useDialogFocus<HTMLDivElement>(open);
   const runScopedOperation = useClientOperationScope();
 
@@ -193,6 +195,7 @@ export function GameOverModal({
     submitting,
     submitError,
     percentile,
+    previousBest,
     newBadges,
     collectedCount,
     reviewStatus,
@@ -256,6 +259,12 @@ export function GameOverModal({
   const pendingNotice = isPending
     ? { notice: mk.share.pendingReviewNotice, warning: mk.share.pendingReviewWarning }
     : null;
+  // 다음 등급까지 남은 점수(v1.54) — 점수 설정 경계(라이브). 최고 등급이면 없음.
+  const tier = scoreTier(score, scoreCfg.thresholds);
+  const nextGrade =
+    tier < scoreCfg.grades.length - 1 && scoreCfg.thresholds[tier] != null
+      ? { label: scoreCfg.grades[tier + 1].label, gap: Math.max(0, scoreCfg.thresholds[tier] - score) }
+      : null;
 
   // 1차 '다음 플레이' — 회원은 갤러리에서 다른 캐릭터 선택, 비회원은 가입 후 갤러리(추가 캐릭터 4종이 열리는 곳, v1.42).
   // 비회원 {호칭}은 플레이한 기본 캐릭터의 롤(기본 부장님 또는 링크로 온 추가 캐릭터).
@@ -448,7 +457,9 @@ export function GameOverModal({
         tabIndex={-1}
         className="absolute inset-0 overflow-y-auto"
       >
-      <div className="flex min-h-full items-center justify-center px-4 py-6">
+      {/* 내용(가운데 정렬) + 하단 고정 「다시 패기」(v1.54). 내용이 짧으면 둘이 한 화면, 길면 스크롤 중에도 버튼이 아래에 붙어 있다. */}
+      <div className="flex min-h-full flex-col">
+      <div className="flex flex-1 items-center justify-center px-4 pb-4 pt-6">
         <div className="w-full max-w-sm">
         {/* ── 보고서 (종이) ───────────────────────────────── */}
         <ScoreReport
@@ -473,6 +484,9 @@ export function GameOverModal({
           submitError={submitError}
           onRetrySubmit={retrySubmission}
           pending={pendingNotice}
+          previousBest={isPending ? undefined : previousBest}
+          timeBonus={{ ms: timeBonusMs, count: timeBonusCount }}
+          nextGrade={nextGrade}
         />
 
         {/* ── 하이라이트 클립 프리뷰 (녹화 성공 시) ───────── */}
@@ -494,12 +508,13 @@ export function GameOverModal({
 
         {/* ── CTA ────────────────────────────────────────── */}
         <div className="mt-4 flex flex-col gap-2.5">
-          {/* 1차: 다음 플레이 — 로그인 여부로 분기. 상태 전환 시 key 리마운트(iOS WebKit 텍스트 잔상 처방). */}
+          {/* 다음 플레이 — 로그인 여부로 분기. 1차 자리는 하단 고정 「다시 패기」에 양보(v1.54)해 테두리 알약.
+              상태 전환 시 key 리마운트(iOS WebKit 텍스트 잔상 처방). DOM 순서상 첫 포커스라 스페이스 연타에도 이동 안 함. */}
           <Link
             key={nextPlay.kind}
             href={nextPlay.href}
             onClick={handleNextPlayClick}
-            className="transform-gpu rounded-full bg-white py-3 text-center font-semibold text-black transition hover:opacity-90"
+            className="transform-gpu rounded-full border border-white/25 py-3 text-center font-medium text-white transition hover:bg-white/10"
           >
             {nextPlay.label}
           </Link>
@@ -523,7 +538,7 @@ export function GameOverModal({
                   : mk.share.gameoverShareBtn}
             </button>
           )}
-          {/* 하단 텍스트 행 — 다시 패기는 여기(2차 알약에서 강등, 동작 동일). 갤러리 링크는 1차 버튼이 담당. */}
+          {/* 하단 텍스트 행 — 다시 패기는 하단 고정 버튼으로 옮겼다(v1.54). 갤러리 링크는 다음 플레이 버튼이 담당. */}
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-1 text-sm text-zinc-300">
             <button
               type="button"
@@ -538,13 +553,6 @@ export function GameOverModal({
             >
               내 뱃지
             </Link>
-            <button
-              type="button"
-              onClick={onRestart}
-              className="underline-offset-4 hover:underline"
-            >
-              {mk.share.gameoverRetryBtn}
-            </button>
             <Link href="/" className="underline-offset-4 hover:underline">
               홈으로
             </Link>
@@ -560,6 +568,22 @@ export function GameOverModal({
           )}
         </div>
         </div>
+      </div>
+      {/* 하단 고정 「다시 패기」 — 같은 캐릭터·같은 맵으로 새 판. DOM 끝이라 첫 포커스가 아니다(스페이스 연타 재시작 방지). */}
+      <div className="sticky bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/85 to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6">
+        <div className="mx-auto w-full max-w-sm">
+          <button
+            type="button"
+            onClick={onRestart}
+            className="w-full transform-gpu rounded-full bg-white py-3 text-center font-semibold text-black shadow-lg transition hover:opacity-90"
+          >
+            {mk.share.gameoverRetryBtn}
+            {baseSeconds > 0 && (
+              <span className="ml-1.5 text-sm font-bold text-lime-700 tabular-nums">⏱ {baseSeconds}초</span>
+            )}
+          </button>
+        </div>
+      </div>
       </div>
       </div>
     </div>
