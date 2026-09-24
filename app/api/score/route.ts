@@ -17,6 +17,7 @@ import {
 import { matchPersona } from "@/lib/persona";
 import { getBadgeCatalogStrictUncached, getSessionLimits } from "@/lib/config/getters";
 import { evaluateBadges, knownSlugs } from "@/lib/config/domains/badges";
+import { parsePlayTotals } from "@/lib/play-totals";
 import { log, errInfo } from "@/lib/log";
 import { recordConversion, memberStateFromUser } from "@/lib/analytics/server";
 import { isTrackableUserAgent, type RawSource } from "@/lib/analytics/core";
@@ -694,7 +695,14 @@ export async function POST(req: NextRequest) {
     try {
       personaId = matchPersona(canonicalStats).id;
       const catalog = await getBadgeCatalogStrictUncached();
-      const earned = evaluateBadges(canonicalStats, score, catalog);
+      // 누적 뱃지(v1.55) — 이 판을 뺀 본인 이전 합계. 모르면 누적 부여를 정할 수 없어 리포트를 재시도로 돌린다
+      // (재시도에서 이 판의 판 통계가 이미 있어도 p_exclude_score 로 빠져 이중 합산 없음).
+      const totalsResult = await requireSupabaseSuccess("score.play_totals", () =>
+        admin.rpc("get_play_totals", { p_owner: user.id, p_exclude_score: scoreId }),
+      );
+      const priorTotals = parsePlayTotals(totalsResult.data);
+      if (!priorTotals) throw new Error("score_play_totals_invalid");
+      const earned = evaluateBadges(canonicalStats, score, catalog, priorTotals);
 
       const percentileSnapshot = await readOptionalScorePercentile(() =>
         admin.rpc("get_score_percentile", { p_score: score }),

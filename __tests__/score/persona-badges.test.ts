@@ -6,6 +6,7 @@ register("../telemetry/node-loader.mjs", import.meta.url);
 
 const { buildGameplayStats } = await import("../../lib/stats.ts");
 const { PERSONA_DEFS, PERSONA_FALLBACK_ID, personaBadgeSlug } = await import("../../lib/persona.ts");
+const { PLAY_TOTALS_ZERO } = await import("../../lib/play-totals.ts");
 const { BADGE_CATALOG_DEFAULT, CODE_RETIRED_BADGE_SLUGS, badgeCatalogSchema, evaluateBadges, knownSlugs } = await import(
   "../../lib/config/domains/badges.ts"
 );
@@ -75,11 +76,11 @@ test("유형 뱃지 저장값: active 만 존중, 라벨/미지 slug 는 코드 
 });
 
 test("evaluateBadges: 이 판의 유형과 일치하는 활성 유형 뱃지 1개만 부여", () => {
-  const earned = evaluateBadges(statsFor({ pinch: 6, fist: 4 }), 1000, BADGE_CATALOG_DEFAULT);
+  const earned = evaluateBadges(statsFor({ pinch: 6, fist: 4 }), 1000, BADGE_CATALOG_DEFAULT, PLAY_TOTALS_ZERO);
   const personaEarned = earned.filter((s) => s.startsWith("persona_"));
   assert.deepEqual(personaEarned, [personaBadgeSlug("pinch")]);
   // 폴백 유형은 디폴트 비활성이라 부여 없음
-  const balanced = evaluateBadges(statsFor({ fist: 3, slap: 3, book: 3 }), 1000, BADGE_CATALOG_DEFAULT);
+  const balanced = evaluateBadges(statsFor({ fist: 3, slap: 3, book: 3 }), 1000, BADGE_CATALOG_DEFAULT, PLAY_TOTALS_ZERO);
   assert.equal(balanced.filter((s) => s.startsWith("persona_")).length, 0);
   // 어드민이 폴백을 켜면 부여
   const enabled = badgeCatalogSchema.parse({
@@ -89,7 +90,7 @@ test("evaluateBadges: 이 판의 유형과 일치하는 활성 유형 뱃지 1�
     ),
   });
   assert.deepEqual(
-    evaluateBadges(statsFor({ fist: 3, slap: 3, book: 3 }), 1000, enabled).filter((s) => s.startsWith("persona_")),
+    evaluateBadges(statsFor({ fist: 3, slap: 3, book: 3 }), 1000, enabled, PLAY_TOTALS_ZERO).filter((s) => s.startsWith("persona_")),
     [personaBadgeSlug(PERSONA_FALLBACK_ID)],
   );
 });

@@ -5,13 +5,20 @@ import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
 import { ModalShell } from "@/components/ModalShell";
 import { moveWithinGroup } from "@/lib/reorder";
-import type { BadgeCatalog } from "@/lib/config/domains/badges";
+import { FAMILY_BASIS, type BadgeCatalog, type BadgeFamilyKey, type FamilyBasis } from "@/lib/config/domains/badges";
 import { useAdminConfigMutation } from "@/lib/use-admin-config-mutation";
 
 const ERR_KO: Record<string, string> = {
   version_conflict: "다른 곳에서 먼저 변경됐어요. 새로고침 후 다시 시도하세요.",
-  validation_failed: "형식 오류 — 라벨/설명 필수·임계값 정수·키 형식 확인. 카테고리는 7종 고정.",
+  validation_failed: "형식 오류 — 라벨/설명 필수·임계값 정수·키 형식 확인. 카테고리는 8종 고정.",
   update_failed: "저장 실패. 잠시 후 다시 시도하세요.",
+};
+
+// 카테고리 달성 기준 칩(코드 고정 FAMILY_BASIS) — 누적 = 내 모든 판 합계, 한 판 = 그 판 하나, 유형 판정 = 그 판의 유형.
+const BASIS_CHIP: Record<FamilyBasis, { label: string; cls: string }> = {
+  cumulative: { label: "누적", cls: "bg-sky-500/15 text-sky-600" },
+  game: { label: "한 판", cls: "bg-foreground/10 text-zinc-500" },
+  persona: { label: "유형 판정", cls: "bg-foreground/10 text-zinc-500" },
 };
 
 type FamilyD = { key: string; name: string; emoji: string };
@@ -166,6 +173,7 @@ export function BadgeCatalogEditor({
         const fBadges = badges.filter((b) => b.familyKey === f.key);
         // 유형 패밀리: 행은 코드 유형 정의(lib/persona.ts)에서 파생되는 고정 집합 — 활성만 편집
         const locked = f.key === "persona";
+        const basis = BASIS_CHIP[FAMILY_BASIS[f.key as BadgeFamilyKey]];
         return (
           <fieldset key={f.key} className="min-w-0 flex flex-col gap-2 rounded-2xl border border-foreground/10 ui-surface p-3">
             <div className="flex items-end gap-2">
@@ -179,7 +187,12 @@ export function BadgeCatalogEditor({
                 />
               </label>
               <label className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-[11px] text-zinc-400">카테고리 이름 ({f.key})</span>
+                <span className="flex items-center gap-1 text-[11px] text-zinc-400">
+                  카테고리 이름 ({f.key})
+                  {basis && (
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${basis.cls}`}>{basis.label}</span>
+                  )}
+                </span>
                 <input
                   value={f.name}
                   maxLength={20}

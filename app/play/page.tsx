@@ -239,7 +239,7 @@ function PlayInner() {
   // 뱃지 도전 라이브 체크리스트 + 획득 토스트(단일 소스 lib/badges 구동).
   // bgVisits 는 store 밖 ref → 안정 getter 로 전달(맵 패밀리 진행도 반영).
   const getBgVisits = useCallback(() => Array.from(bgVisitsRef.current), []);
-  const { slots, toasts, loadError: badgeLoadError } = useBadgeChallenge({
+  const { slots, toasts, loadError: badgeLoadError, playTotals } = useBadgeChallenge({
     recording: gameReady && !over,
     getBgVisits,
   });
@@ -673,6 +673,7 @@ function PlayInner() {
         bgVisits={bgVisitsSnapshot}
         endReason={endReason}
         telemetrySessionId={telemetry.getSessionId()}
+        playTotals={playTotals}
       />
     </div>
   );
