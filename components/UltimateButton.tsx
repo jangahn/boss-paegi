@@ -21,7 +21,7 @@ export function UltimateButton({ ready, onFire, bonusSeconds = 0 }: Props) {
       type="button"
       onClick={onFire}
       aria-keyshortcuts="Space"
-      className="pointer-events-auto absolute bottom-[8.5rem] left-1/2 z-20 -translate-x-1/2 animate-bounce rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 px-6 py-3 text-base font-extrabold text-white shadow-[0_0_24px_rgba(249,115,22,0.7)] ring-2 ring-white/40 transition active:scale-95 sm:bottom-40 sm:px-8 sm:py-3.5 sm:text-lg"
+      className="pointer-events-auto absolute bottom-[8.5rem] left-1/2 z-20 -translate-x-1/2 animate-bounce whitespace-nowrap rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 px-6 py-3 text-base font-extrabold text-white shadow-[0_0_24px_rgba(249,115,22,0.7)] ring-2 ring-white/40 transition active:scale-95 sm:bottom-40 sm:px-8 sm:py-3.5 sm:text-lg"
     >
       🔥 궁극기 발동
       {bonusSeconds > 0 && (

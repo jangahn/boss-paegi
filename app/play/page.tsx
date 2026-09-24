@@ -106,6 +106,8 @@ function PlayInner() {
   const timeUpRef = useRef(false);
   const ultWaitRef = useRef<number | null>(null);
   const [countdownActive, setCountdownActive] = useState(false);
+  // 시간 종료 뒤(배너·궁극기 마무리 동안)에도 말풍선은 쉰다 — 「시간 종료!」 배너와 겹치지 않게.
+  const [timeUp, setTimeUp] = useState(false);
   const [endReason, setEndReason] = useState<"normal" | "time_limit" | "score_limit">(
     "normal"
   );
@@ -448,6 +450,7 @@ function PlayInner() {
   const handleTimeUp = useCallback(() => {
     if (timeUpRef.current || endingRef.current) return;
     timeUpRef.current = true;
+    setTimeUp(true);
     const finish = () => {
       ultWaitRef.current = null;
       playTimerCue("buzzer");
@@ -513,6 +516,7 @@ function PlayInner() {
     forceEndRef.current = false;
     endingRef.current = false;
     timeUpRef.current = false;
+    setTimeUp(false);
     if (ultWaitRef.current !== null) {
       window.clearInterval(ultWaitRef.current);
       ultWaitRef.current = null;
@@ -568,8 +572,8 @@ function PlayInner() {
           </button>
         </div>
       )}
-      {/* 마지막 10초엔 카운트다운이 말풍선 자리를 쓴다(시비 멘트 쉼). */}
-      <SpeechBubble text={countdownActive ? null : taunt} />
+      {/* 마지막 10초엔 카운트다운이 말풍선 자리를 쓴다(시비 멘트 쉼). 시간 종료 뒤에도 배너와 겹치지 않게 쉰다. */}
+      <SpeechBubble text={countdownActive || timeUp ? null : taunt} />
       <ScoreBoard />
       <TimeLimitHud
         running={gameReady && !over}
