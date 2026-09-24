@@ -37,6 +37,7 @@ import {
   ownsTelemetrySession,
   parseScoreReportRpcResult,
   parseScoreSubmissionRpcResult,
+  readOptionalPreviousBest,
   readOptionalScorePercentile,
   scoreSubmissionFingerprint,
 } from "@/lib/score-submission";
@@ -680,6 +681,8 @@ export async function POST(req: NextRequest) {
   // 이 경로를 다시 타므로 score 저장 뒤 응답 단절이 나도 누락된 리포트를 복구한다.
   let personaId: string | null = null;
   let percentile: number | null = null;
+  // 이전 최고 기록 — undefined 면 응답에서 뺀다(조회 실패·비공개 판).
+  let previousBest: number | null | undefined = undefined;
   let newBadges: string[] = [];
   let collectedCount = 0;
   let reportPending = false;
@@ -702,6 +705,21 @@ export async function POST(req: NextRequest) {
           scoreId,
           ...errInfo(percentileSnapshot.error),
         });
+      }
+      // 종료 화면 「내 최고 기록」(v1.54, best-effort) — 이 판을 뺀 본인 공개 점수 최고값.
+      const bestSnapshot = await readOptionalPreviousBest(() =>
+        admin
+          .from("scores")
+          .select("score")
+          .eq("owner_id", user.id)
+          .neq("id", scoreId)
+          .in("review_status", ["registered", "cleared"])
+          .order("score", { ascending: false })
+          .limit(1),
+      );
+      if (bestSnapshot.known) previousBest = bestSnapshot.value;
+      else if (bestSnapshot.error) {
+        log.warn("score.previous_best_error", { scoreId, ...errInfo(bestSnapshot.error) });
       }
 
       let report = null as ReturnType<typeof parseScoreReportRpcResult>;
@@ -917,6 +935,7 @@ export async function POST(req: NextRequest) {
     reviewStatus,
     personaId,
     percentile,
+    ...(previousBest !== undefined ? { previousBest } : {}),
     newBadges,
     collectedCount,
     duplicate: result.duplicate,

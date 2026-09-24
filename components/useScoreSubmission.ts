@@ -67,6 +67,8 @@ export function useScoreSubmission(opts: {
   submitError: string | null;
   /** 서버 산정 백분위(전체 상위 N%) — 응답 전 null */
   percentile: number | null;
+  /** 이전 최고 기록(v1.54) — undefined = 아직 모름(응답 전·조회 실패), null = 첫 기록 */
+  previousBest: number | null | undefined;
   /** 이번 제출로 새로 획득한 뱃지 id */
   newBadges: string[];
   /** 누적 수집 뱃지 수 */
@@ -99,6 +101,7 @@ export function useScoreSubmission(opts: {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [percentile, setPercentile] = useState<number | null>(null);
+  const [previousBest, setPreviousBest] = useState<number | null | undefined>(undefined);
   const [newBadges, setNewBadges] = useState<string[]>([]);
   const [collectedCount, setCollectedCount] = useState(0);
   const [reviewStatus, setReviewStatus] = useState<string | null>(null);
@@ -171,6 +174,7 @@ export function useScoreSubmission(opts: {
       setSubmitting(false);
       setSubmitError(null);
       setPercentile(null);
+      setPreviousBest(undefined);
       setNewBadges([]);
       setCollectedCount(0);
       setReviewStatus(null);
@@ -244,6 +248,7 @@ export function useScoreSubmission(opts: {
             if (typeof data.reviewStatus === "string") setReviewStatus(data.reviewStatus);
             // 부가 리포트(best-effort) — 없으면 기본값 유지
             if (typeof data.percentile === "number") setPercentile(data.percentile);
+            if (data.previousBest !== undefined) setPreviousBest(data.previousBest);
             if (Array.isArray(data.newBadges)) setNewBadges(data.newBadges);
             if (typeof data.collectedCount === "number")
               setCollectedCount(data.collectedCount);
@@ -311,6 +316,7 @@ export function useScoreSubmission(opts: {
     submitting,
     submitError,
     percentile,
+    previousBest,
     newBadges,
     collectedCount,
     reviewStatus,

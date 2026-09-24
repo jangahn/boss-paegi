@@ -32,6 +32,9 @@ export function ScoreReport({
   submitError,
   onRetrySubmit,
   pending,
+  previousBest,
+  timeBonus,
+  nextGrade,
 }: {
   docNo: string;
   score: number;
@@ -61,7 +64,14 @@ export function ScoreReport({
   onRetrySubmit?: () => void;
   /** 어뷰징 의심으로 운영자 검토 대기(pending/voided) — 안내+경고 문구. null=정상. */
   pending?: { notice: string; warning: string } | null;
+  /** 이전 최고 기록(v1.54, 서버) — undefined = 모름(응답 전이면 「계산 중」, 실패면 줄 숨김), null = 첫 기록 */
+  previousBest?: number | null;
+  /** 이번 판에 받은 추가 시간(제한 시간) — 0 이면 줄 숨김 */
+  timeBonus?: { ms: number; count: number } | null;
+  /** 다음 등급과 남은 점수 — 최고 등급이면 null */
+  nextGrade?: { label: string; gap: number } | null;
 }) {
+  const isNewBest = previousBest === null || (typeof previousBest === "number" && score > previousBest);
   return (
     <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
       {/* 헤더 */}
@@ -118,7 +128,33 @@ export function ScoreReport({
             {score.toLocaleString()}
           </span>
           <span className="ml-1 text-xs text-zinc-500">점</span>
+          {previousBest !== undefined && isNewBest && (
+            <span className="ml-1.5 inline-block -translate-y-1 rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-extrabold text-white">
+              {previousBest === null ? "첫 기록!" : "신기록!"}
+            </span>
+          )}
         </ReportRow>
+        {(previousBest !== undefined || submitting) && (
+          <ReportRow label="내 최고 기록">
+            {previousBest === undefined ? (
+              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+                <Spinner className="h-3 w-3" /> 계산 중
+              </span>
+            ) : previousBest === null ? (
+              <span className="text-xs text-zinc-600">첫 판이 곧 최고 기록이에요</span>
+            ) : score > previousBest ? (
+              <span className="text-xs text-zinc-600 tabular-nums">
+                이전 {previousBest.toLocaleString()}점 → <b className="text-red-500">+{(score - previousBest).toLocaleString()}</b>
+              </span>
+            ) : score === previousBest ? (
+              <span className="text-xs text-zinc-600">최고 기록과 같은 점수</span>
+            ) : (
+              <span className="text-xs text-zinc-600 tabular-nums">
+                최고 {previousBest.toLocaleString()}점까지 <b>{(previousBest - score).toLocaleString()}</b>점
+              </span>
+            )}
+          </ReportRow>
+        )}
         {(percentile != null || submitting) && (
           <ReportRow label="전체 상위">
             {percentile != null ? (
@@ -134,12 +170,25 @@ export function ScoreReport({
         <ReportRow label="총 타격">{hitCount.toLocaleString()}회</ReportRow>
         <ReportRow label="주력 무기">{weaponLabel(mainWeapon)}</ReportRow>
         <ReportRow label="소요 시간">{formatDuration(durationMs)}</ReportRow>
+        {timeBonus && timeBonus.ms > 0 && (
+          <ReportRow label="추가 시간">
+            <span className="font-semibold tabular-nums">+{Math.round(timeBonus.ms / 1000)}초</span>
+            <span className="ml-1 text-xs text-zinc-500">(궁극기 {timeBonus.count}회)</span>
+          </ReportRow>
+        )}
         <ReportRow label="판정 등급">
           <span className="font-bold">{grade.label}</span>
           <span className="ml-1.5 text-xs text-zinc-500">
             — {grade.comment}
           </span>
         </ReportRow>
+        {nextGrade && (
+          <ReportRow label="다음 등급">
+            <span className="text-xs text-zinc-600 tabular-nums">
+              「{nextGrade.label}」까지 <b>{nextGrade.gap.toLocaleString()}</b>점
+            </span>
+          </ReportRow>
+        )}
       </dl>
 
       {/* 부장님 피드백 */}

@@ -160,6 +160,27 @@ export async function readOptionalScorePercentile(
 }
 
 /**
+ * 이전 최고 기록(v1.54, 종료 화면 「내 최고 기록」) — 이 판을 뺀 본인의 공개(registered/cleared) 점수 최고값.
+ * 기록이 없으면 value=null(첫 기록), 조회 실패·형식 이상은 known=false(응답에서 뺀다 — 종료 화면은 줄을 숨김).
+ */
+export async function readOptionalPreviousBest(
+  read: () => PromiseLike<{ data: unknown; error: unknown | null }>,
+): Promise<{ known: boolean; value: number | null; error: unknown | null }> {
+  try {
+    const result = await read();
+    if (result.error) return { known: false, value: null, error: result.error };
+    if (!Array.isArray(result.data)) return { known: false, value: null, error: null };
+    if (result.data.length === 0) return { known: true, value: null, error: null };
+    const score = (result.data[0] as { score?: unknown } | null)?.score;
+    return typeof score === "number" && Number.isSafeInteger(score) && score >= 0
+      ? { known: true, value: score, error: null }
+      : { known: false, value: null, error: null };
+  } catch (error) {
+    return { known: false, value: null, error };
+  }
+}
+
+/**
  * Must remain byte-identical to `bp_telemetry_submitter_binding` in migration
  * 0074. UUID text is canonicalized because PostgreSQL `uuid::text` is lower
  * case even if an HTTP client submits upper-case hexadecimal.
