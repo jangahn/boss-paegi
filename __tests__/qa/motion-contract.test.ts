@@ -163,4 +163,8 @@ test("화면 전환 — 상단 메뉴만 본문 교차(nav 타입), 선택 알�
   assert.match(source("app/play/page.tsx"), /useEffect\(\(\) => resetPendingPlayDoll\(\), \[\]\);/);
   const css = motionCss();
   assert.match(css, /::view-transition \{\s*pointer-events: none;/);
+  // 랭킹 목록은 연출 없이 바로(v1.66 사용자 결정 — 차례로 올라오는 물결이 꿀렁여 보였다). 탭 알약 미끄러짐은 유지.
+  const leaderboard = source("app/leaderboard/page.tsx");
+  assert.doesNotMatch(leaderboard, /motion-rise/);
+  assert.match(leaderboard, /transition-transform duration-300 ease-\[var\(--ease-paper\)\]/);
 });
