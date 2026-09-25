@@ -38,6 +38,17 @@ seeds 는 링크 필터(`SKIP_HREF`: /api·/auth·/login·로그아웃 등)를 *
 
 환경변수: `MAX_PAGES`(기본 400) · `MAX_CLICKS`(페이지당 30) · `PER_PATTERN`(같은 라우트 패턴당 2) · `CLICK=0`(버튼 탐색 끄기) · `ONLY=<regex>`.
 
+## 화면 밀림 측정 (`shift.mjs`, v1.60)
+자산(로고 · 사진 · 캐릭터 이미지)이나 데이터가 늦게 와서 **이미 그려진 요소가 자리를 옮기는지**를 라우트마다 잰다. 느린 4G(왕복 150ms, 1.6Mbps) · CPU 4배 감속 · 라우트마다 새 컨텍스트(첫 방문)로 열고 Chromium layout-shift 기록에서 CLS(창 방식)와 움직인 요소 · 전후 좌표를 뽑는다. 판정은 CLS 0.1 이상 error, 0.01 이상 warn.
+```bash
+BASE=https://boss-paegi.vercel.app COOKIES=./cookies.json SEEDS=./seeds.json node shift.mjs   # → out-shift/shift-report.md
+ONLY='^/(news|leaderboard)' FILM='^/news/' node shift.mjs                                      # 일부 라우트 + 화면 프레임(out-shift/film/)
+```
+- 쓰기 차단 · Sentry 차단은 `audit.mjs` 와 같다. Chromium 전용이고, 3px 미만 이동은 Chromium 이 세지 않는다.
+- Playwright 가 route 를 가로채면 HTTP 캐시가 꺼진다 — 재방문(캐시 있음)은 잴 수 없고, 캐시 동작은 응답 헤더로 판단한다.
+- 쿠키 없이(비회원) 재면 익명 로그인(POST)이 막혀 하이드레이션 게이트가 안 풀린다 — 서버 HTML 단계(로고 · 본문 이미지 자리)만 유효하다. 브라우저에서 채우는 영역은 회원 세션으로 잰다.
+- 밀림을 막는 규약(v1.60): 이미지는 도착 전에 완성 크기의 자리(고정 크기 · aspect · 실제 비율의 width/height), 서버 HTML fallback 은 실제 첫 화면과 같은 스켈레톤, 로딩 상태에는 `PAGE_LOADING_PROPS`(`lib/page-loading.ts` — 그동안 사업자 정보 푸터를 뺀다). `__tests__/qa/layout-shift-contract.test.ts` 가 소스에서 고정한다.
+
 ## 한계
 - Playwright WebKit 은 데스크톱 WebKit — iOS Safari 고유 quirk 일부(`datetime-local` 고유 최소폭 등)는 재현되지 않는다. 그런 항목은 코드 규약(`block w-full min-w-0 appearance-none`)으로 막고 실기기로 확인한다.
 - `/play` 는 캔버스라 DOM 측정만 하고 버튼 탐색은 건너뛴다. 게임 종료 모달은 `/share/[scoreId]`·`/history/…/[scoreId]` 카드로 대신 본다.
