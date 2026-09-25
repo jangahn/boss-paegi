@@ -22,6 +22,7 @@ const {
 } = await import("../../lib/game-tuning.ts");
 const { scoreConfigSchema, SCORE_CONFIG_DEFAULT } = await import("../../lib/config/domains/score.ts");
 const { MAX_AVG_SCORE_PER_SEC, MAX_SCORE_HARD, MAX_DURATION_MS } = await import("../../lib/score-limits.ts");
+const { MAX_PLAY_SECONDS_MAX, TIME_CAP_GRACE_SECONDS } = await import("../../lib/time-limit.ts");
 const { HUMAN_SCORE_PER_SEC_OBSERVED, SCORE_PER_SEC_MAX, S7_LONG_SESSION_SCORE_FLOOR } = await import("../../lib/anti-abuse-rules.ts");
 
 function withClock<T>(t: { mock: { method: (obj: object, name: string, impl: () => number) => unknown } }, run: (set: (ms: number) => void) => T): T {
@@ -141,14 +142,16 @@ test("score_config.juggle 스키마: 기본값 충전·범위 검사, start 는 
   assert.deepEqual(useGameStore.getState().juggle, { weaponWindowMs: 5_000, mapWindowMs: 7_000, comboWindowMs: 1_500 });
 });
 
-test("봉투 계층: 저장 상한 4000/초 ≥ S3 3400 ≥ 인간 실측 2947 · S7 = S3 × 900초 · 30분 × 4000 ≤ 점수 하드캡 800만", () => {
-  assert.equal(MAX_AVG_SCORE_PER_SEC, 4000);
-  assert.equal(SCORE_PER_SEC_MAX, 3400);
-  assert.equal(HUMAN_SCORE_PER_SEC_OBSERVED, 2947);
+test("봉투 계층(v13): 저장 상한 5500/초 ≥ S3 4500 ≥ 인간 실측 3748 · S7 = S3 × 900초 · 최대 플레이 시간 봉투 ≤ 점수 하드캡 800만", () => {
+  assert.equal(MAX_AVG_SCORE_PER_SEC, 5500);
+  assert.equal(SCORE_PER_SEC_MAX, 4500);
+  assert.equal(HUMAN_SCORE_PER_SEC_OBSERVED, 3748);
   assert.ok(MAX_AVG_SCORE_PER_SEC >= SCORE_PER_SEC_MAX);
-  // v11: S3 = 인간 실측 × 1.15 여유(2,947 × 1.15 ≈ 3,389 → 3,400), 저장 상한 아래
-  assert.ok(SCORE_PER_SEC_MAX >= Math.round(HUMAN_SCORE_PER_SEC_OBSERVED * 1.1) && SCORE_PER_SEC_MAX < MAX_AVG_SCORE_PER_SEC);
-  assert.equal(S7_LONG_SESSION_SCORE_FLOOR, 3_060_000);
+  // v13: S3 = 인간 실측 × 약 1.2(3,748 × 1.2 ≈ 4,498 → 4,500), 저장 상한 아래
+  assert.ok(SCORE_PER_SEC_MAX >= Math.round(HUMAN_SCORE_PER_SEC_OBSERVED * 1.15) && SCORE_PER_SEC_MAX < MAX_AVG_SCORE_PER_SEC);
+  assert.equal(S7_LONG_SESSION_SCORE_FLOOR, 4_050_000);
   assert.equal(MAX_SCORE_HARD, 8_000_000);
-  assert.ok((MAX_DURATION_MS / 1000) * MAX_AVG_SCORE_PER_SEC <= MAX_SCORE_HARD);
+  // 제한 시간(v1.53) 뒤 한 판 봉투 = 어드민 상한 최대 플레이 시간 600초 + 5초 × 저장 상한 — 하드 캡이 정상 판을 먼저 막지 않는다
+  assert.ok((MAX_PLAY_SECONDS_MAX + TIME_CAP_GRACE_SECONDS) * MAX_AVG_SCORE_PER_SEC <= MAX_SCORE_HARD);
+  assert.ok(MAX_DURATION_MS >= (MAX_PLAY_SECONDS_MAX + TIME_CAP_GRACE_SECONDS) * 1000);
 });

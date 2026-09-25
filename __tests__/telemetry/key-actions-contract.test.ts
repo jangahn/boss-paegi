@@ -11,7 +11,7 @@ import { register } from "node:module";
 register("./node-loader.mjs", import.meta.url);
 
 const { sanitizePayload } = await import("../../lib/telemetry/validate.ts");
-const { FORCE_END_GRACE_MS, MAX_AVG_SCORE_PER_SEC, MAX_DURATION_MS, MAX_SCORE_HARD } = await import("../../lib/score-limits.ts");
+const { FORCE_END_GRACE_MS, MAX_DURATION_MS, MAX_SCORE_HARD } = await import("../../lib/score-limits.ts");
 const { DEVICE_CLASSES, WEAPON_KEYS, MAP_KEYS } = await import("../../lib/telemetry/budget.ts");
 
 const read = (rel: string) => fs.readFileSync(path.resolve(process.cwd(), rel), "utf8");
@@ -55,7 +55,8 @@ test("0131 적재 RPC = 0130 본문 + key_actions 한 블록 + 무기 종류 수
   );
   assert.ok(next.indexOf(KEY_ACTIONS_BLOCK) > next.indexOf("max_touch = least("), "max_touch 와 같은 UPDATE 목록");
   const lit = (name: string) => Number(next.match(new RegExp(`\\n  ${name} \\w+ := (\\d+);`))![1]);
-  assert.equal(lit("c_max_avg_per_sec"), MAX_AVG_SCORE_PER_SEC);
+  // 0131 당시 봉투(4000) — 이후 0133(v1.59)이 5500 으로 올렸다(현행 = TS 상수 계약은 telemetry-ingest-envelope.test.ts)
+  assert.equal(lit("c_max_avg_per_sec"), 4000);
   assert.equal(lit("c_max_score"), MAX_SCORE_HARD);
   assert.equal(lit("c_max_duration"), MAX_DURATION_MS + FORCE_END_GRACE_MS);
   // 종류 수 상한 = 클라 검증기와 같은 어휘 크기(무기 19·맵 6) — 0027 시절 값(9)이 v1.35 에서 안 올라간 드리프트 재발 방지.
