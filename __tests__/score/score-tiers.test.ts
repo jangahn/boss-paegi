@@ -18,14 +18,14 @@ const {
   LEGACY_GRADE_PICK,
   SCORE_CONFIG_DEFAULT,
   normalizeScoreConfigInput,
-  scoreConfigSchema,
 } = await import("../../lib/config/domains/score.ts");
+const { scoreConfigSchema } = await import("../../lib/config/domains/score-schema.ts");
 const {
   ROLE_CONFIG_DEFAULT,
   mergeLegacyTiers,
   normalizeRoleContentInput,
-  roleConfigSchema,
 } = await import("../../lib/config/domains/roles.ts");
+const { roleConfigSchema } = await import("../../lib/config/domains/roles-schema.ts");
 const { MAX_SCORE_HARD } = await import("../../lib/score-limits.ts");
 const { ROLE_IDS } = await import("../../lib/roles/ids.ts");
 

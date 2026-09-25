@@ -1,7 +1,10 @@
 // 자산 가볍게(v1.61) — 이미지가 늦게 뜨는 시간을 줄이는 규약. 2026-09-25 실측: 소식 본문 원본 PNG 2.2MB(느린 4G LCP 15초),
 // 갤러리 기본 캐릭터 카드가 게임용 768×1024 PNG 5장 710KB, 로고 112px 자리에 640px(56KB), 공개 자산 캐시 1시간.
+// JS 무게(v1.64): 사용자 화면 클라 번들에 zod(압축 약 94KB)가 들어가지 않게 — 검증 schema 는 `*-schema` 모듈로 나눴다.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { register } from "node:module";
 
@@ -78,4 +81,96 @@ test("루트 레이아웃이 Supabase 연결을 미리 연다(crossOrigin anonym
   const c = source("components/SupabasePreconnect.tsx");
   assert.match(c, /preconnect\(new URL\(url\)\.origin, \{ crossOrigin: "anonymous" \}\)/);
   assert.match(c, /if \(url\) \{/);
+});
+
+// ── JS 무게(v1.64) ──
+const ROOT = fileURLToPath(root);
+const RUNTIME_IMPORT = /^\s*(?:import|export)\s+(?!type\b)([^;]*?)\s+from\s+["']([^"']+)["']/gm;
+const SIDE_EFFECT_IMPORT = /^\s*import\s+["']([^"']+)["']/gm;
+const DYNAMIC_IMPORT = /import\(\s*["']([^"']+)["']\s*\)/g;
+
+/** 런타임 import 대상(타입 전용 import · export 는 빌드에서 지워지므로 뺀다). */
+function runtimeSpecifiers(code: string): string[] {
+  const src = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
+  const out: string[] = [];
+  for (const m of src.matchAll(RUNTIME_IMPORT)) {
+    const clause = m[1].trim();
+    const named = /^\{([\s\S]*)\}$/.exec(clause);
+    if (named && named[1].split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.startsWith("type "))) continue;
+    out.push(m[2]);
+  }
+  for (const m of src.matchAll(SIDE_EFFECT_IMPORT)) out.push(m[1]);
+  for (const m of src.matchAll(DYNAMIC_IMPORT)) out.push(m[1]);
+  return out;
+}
+
+function resolveLocal(from: string, spec: string): string | null {
+  const base = spec.startsWith("@/") ? join(ROOT, spec.slice(2)) : spec.startsWith(".") ? join(dirname(from), spec) : null;
+  if (!base) return null;
+  for (const c of [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.mjs`, join(base, "index.ts"), join(base, "index.tsx")]) {
+    if (existsSync(c) && statSync(c).isFile()) return c;
+  }
+  return null;
+}
+
+function walk(dir: string, acc: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p, acc);
+    else if (/\.(ts|tsx)$/.test(name)) acc.push(p);
+  }
+  return acc;
+}
+
+const PURE_DOMAIN_MODULES = [
+  "lib/config/domains/badges.ts",
+  "lib/config/domains/growth.ts",
+  "lib/config/domains/marketing.ts",
+  "lib/config/domains/roles.ts",
+  "lib/config/domains/score.ts",
+  "lib/config/domains/session.ts",
+  "lib/events/types.ts",
+];
+
+test("JS 무게(v1.64): 클라에 들어가는 설정 · 소식 모듈은 zod 와 schema 모듈을 런타임으로 불러오지 않는다(타입만)", () => {
+  for (const file of PURE_DOMAIN_MODULES) {
+    const specs = runtimeSpecifiers(source(file));
+    assert.ok(!specs.some((x) => x === "zod" || x.startsWith("zod/")), `${file} → zod`);
+    assert.ok(!specs.some((x) => /-schema$|\/schema$/.test(x)), `${file} → schema 모듈`);
+  }
+});
+
+test("JS 무게(v1.64): 사용자 화면 클라 컴포넌트(\"use client\", 어드민 제외)에서 zod 까지 이어지는 런타임 import 가 없다", () => {
+  const isAdmin = (rel: string) => /^(app\/admin|components\/admin)\//.test(rel);
+  const entries = ["app", "components", "lib"]
+    .flatMap((d) => walk(join(ROOT, d)))
+    .filter((f) => /^\s*["']use client["']/.test(readFileSync(f, "utf8")) && !isAdmin(relative(ROOT, f)));
+  assert.ok(entries.length > 50, "클라 컴포넌트를 찾았다");
+  const seen = new Map<string, string | null>(); // 파일 → 처음 도달한 부모
+  const queue: string[] = [];
+  for (const e of entries) {
+    seen.set(e, null);
+    queue.push(e);
+  }
+  const chain = (f: string) => {
+    const path: string[] = [];
+    for (let c: string | null = f; c; c = seen.get(c) ?? null) path.unshift(relative(ROOT, c));
+    return path.join(" → ");
+  };
+  const violations: string[] = [];
+  while (queue.length) {
+    const f = queue.shift()!;
+    for (const spec of runtimeSpecifiers(readFileSync(f, "utf8"))) {
+      if (spec === "zod" || spec.startsWith("zod/")) {
+        violations.push(`${chain(f)} → zod`);
+        continue;
+      }
+      const next = resolveLocal(f, spec);
+      if (next && !seen.has(next)) {
+        seen.set(next, f);
+        queue.push(next);
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
 });

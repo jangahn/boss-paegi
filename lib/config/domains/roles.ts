@@ -1,5 +1,4 @@
-import { z } from "zod";
-import type { DomainEntry } from "../registry";
+import type { RoleFull } from "./roles-schema";
 import { ROLE_IDS, ROLE_META, asRole, type RoleId } from "@/lib/roles";
 import { LEGACY_ROLE_ALIASES } from "@/lib/roles/ids";
 import type { GenderVoice, RoleContent } from "@/lib/roles/types";
@@ -17,35 +16,9 @@ import { friend } from "@/lib/roles/friend";
 // 점수 5단계 결합 가드: reactions/taunts 는 **정확히 TIER_COUNT tier**(.length(5)), tier 당 ≥1 줄
 // (시드는 반응 6줄·멘트 8줄 — 권장치이며 스키마 강제는 아님).
 // tier 개수(5)는 코드 고정, 경계는 score_config.thresholds — 마케터는 내용만.
-const tier = z.array(z.string().trim().min(1).max(120)).min(1);
-const tiered = z.array(tier).length(TIER_COUNT);
+// 검증 schema(zod)는 `./roles-schema` — 이 모듈은 클라 번들(종료 화면 · 갤러리 · 공유)에 들어가 zod 를 끌어오지 않는다(v1.64).
 
-// 성별 보이스 한 벌(피격 반응·시비 멘트) — 루트 reactions/taunts 가 남성(기본), female 블록이 여성(v1.26).
-const genderVoiceSchema = z.object({ reactions: tiered, taunts: tiered });
-
-// 롤 1개 스키마 — desc(v1.25)·female(v1.26)은 신설이라 발행행에 없으면 롤별 코드 기본값 충전(재발행 시 저장됨).
-function roleFullSchema(role: RoleId) {
-  return z.object({
-    reactions: tiered,
-    taunts: tiered,
-    female: genderVoiceSchema.default(() => femaleVoiceDefault(role)),
-    traits: z.array(z.string().trim().min(1).max(60)).min(1),
-    ranks: z.array(z.string().trim().min(1).max(40)).min(1),
-    departments: z.array(z.string().trim().min(1).max(40)).min(1),
-    label: z.string().trim().min(1).max(20),
-    desc: z.string().trim().min(1).max(40).default(ROLE_META[role].desc),
-  });
-}
-
-// 7롤 고정(엔지니어 전용) — 키 = ROLE_IDS 정확히(추가 키는 strict 거절, 구 alias 는 정규화가 제거).
-const roleConfigBaseSchema = z
-  .object(
-    Object.fromEntries(ROLE_IDS.map((r) => [r, roleFullSchema(r)])) as Record<
-      RoleId,
-      ReturnType<typeof roleFullSchema>
-    >,
-  )
-  .strict();
+export type { RoleFull };
 
 /**
  * 구 10단계(v1.23 이전 발행행) → 5단계: 인접 쌍 병합(0+1, 2+3, 4+5, 6+7, 8+9).
@@ -91,9 +64,6 @@ export function normalizeRoleContentInput(input: unknown): unknown {
   return out;
 }
 
-export const roleConfigSchema = z.preprocess(normalizeRoleContentInput, roleConfigBaseSchema);
-
-export type RoleFull = z.infer<ReturnType<typeof roleFullSchema>>;
 export type RoleConfig = Record<RoleId, RoleFull>;
 export type RoleVoice = { reactions: string[][]; taunts: string[][] };
 
@@ -104,7 +74,7 @@ function copyVoice(v: GenderVoice): RoleVoice {
 }
 
 /** 롤별 여성 보이스 코드 기본값(mutable 복제) — 발행행에 female 이 없을 때 스키마 default. */
-function femaleVoiceDefault(role: RoleId): RoleVoice {
+export function femaleVoiceDefault(role: RoleId): RoleVoice {
   return copyVoice(CODE_CONTENT[role].female);
 }
 
@@ -145,13 +115,6 @@ export const ROLE_CONFIG_DEFAULT: RoleConfig = {
 export function roleFrom(role: RoleId | string, cfg?: RoleConfig): RoleFull {
   return (cfg ?? ROLE_CONFIG_DEFAULT)[asRole(role)];
 }
-
-// 클라(시비멘트/반응/칩)는 루트 레이아웃이 서버에서 읽어 RoleContentProvider 로 주입(라이브).
-// → /api/config/public 에 노출 불필요(큰 페이로드 방지). 서버 OG/doll 은 getRoleConfig() 직접.
-export const rolesEntry: DomainEntry<RoleConfig> = {
-  schema: roleConfigSchema as unknown as z.ZodType<RoleConfig>,
-  codeDefault: ROLE_CONFIG_DEFAULT,
-};
 
 // dev 보조: 7롤 키가 ROLE_IDS 와 일치하는지(런타임 결합 가드, prod 영향 없음).
 if (process.env.NODE_ENV !== "production") {

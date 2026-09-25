@@ -7,9 +7,10 @@ register("../telemetry/node-loader.mjs", import.meta.url);
 const { buildGameplayStats } = await import("../../lib/stats.ts");
 const { PERSONA_DEFS, PERSONA_FALLBACK_ID, personaBadgeSlug } = await import("../../lib/persona.ts");
 const { PLAY_TOTALS_ZERO } = await import("../../lib/play-totals.ts");
-const { BADGE_CATALOG_DEFAULT, CODE_RETIRED_BADGE_SLUGS, badgeCatalogSchema, evaluateBadges, knownSlugs } = await import(
+const { BADGE_CATALOG_DEFAULT, CODE_RETIRED_BADGE_SLUGS, evaluateBadges, knownSlugs } = await import(
   "../../lib/config/domains/badges.ts"
 );
+const { badgeCatalogSchema } = await import("../../lib/config/domains/badges-schema.ts");
 
 function statsFor(weaponCounts: Record<string, number>) {
   const hitCount = Object.values(weaponCounts).reduce((s, n) => s + n, 0);

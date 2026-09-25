@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eventSaveSchema } from "./events/types.ts";
+import { eventSaveSchema } from "./events/schema.ts";
 import { legalSectionsSchema } from "./legal/types.ts";
 import { isDeletedMarker } from "./oauth-metadata.ts";
 

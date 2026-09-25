@@ -19,7 +19,7 @@ import {
   parseAdminSettlementMutationResult,
   parseAdminSettlementReceipt,
 } from "../../lib/admin-mutation.ts";
-import { eventSaveSchema } from "../../lib/events/types.ts";
+import { eventSaveSchema } from "../../lib/events/schema.ts";
 
 const ADMIN = "00000000-0000-4000-8000-000000000001";
 const TARGET = "00000000-0000-4000-8000-000000000002";
