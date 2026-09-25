@@ -31,6 +31,30 @@ db_value() {
   db_psql -Atq -c "$1"
 }
 
+# 경합 순서는 시간 간격(sleep)으로 가정하지 않고 서버에서 관찰한다 — 느린 CI 러너에서 docker exec 기동이 늦으면 뒤 연결이 먼저
+# 실행돼 기대 상태가 어긋났다(2026-09-25 PR #314 CI: same-session 1|1:1|1:1). 잠금을 잡은 연결이 application_name 표시를 달면
+# 그 표시가 보일 때까지 기다린 뒤 다음 연결을 시작한다(test-anon-reassign-race.sh wait_for_activity 와 같은 방식, 최대 120초).
+wait_for_activity() {
+  predicate="$1"
+  expected="$2"
+  description="$3"
+  for _ in $(seq 1 2400); do
+    count="$(
+      db_value "
+        select count(*)
+          from pg_catalog.pg_stat_activity
+         where backend_type = 'client backend'
+           and ($predicate);
+      "
+    )"
+    if [[ "$count" == "$expected" ]]; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  fail "timed out waiting for $description"
+}
+
 fail() {
   echo "public write quota race QA failed: $*" >&2
   exit 1
@@ -236,6 +260,10 @@ telemetry_budget_fixture_installed="true"
 # Same absent session, two real connections: A holds the transaction-level
 # advisory/global/actor locks after ingest; B must wait, observe the committed
 # row, and consume request-only quota rather than a second new-session unit.
+# B starts only after the server shows A holding its locks, and A holds them for
+# 0.1s — well under ingest_telemetry_delta's lock_timeout (250ms). Holding
+# longer (the old 0.2s hold plus slow-runner latency) made B time out into
+# quota_busy, which counts nothing (1|1:1|1:1, PR #314 CI).
 db_psql -Aqt >/dev/null <<SQL
 delete from public.public_write_quota_buckets where endpoint = 'telemetry';
 delete from public.telemetry_sessions
@@ -251,12 +279,14 @@ select public.ingest_telemetry_delta(
   '$actor_a',
   '{"deviceClass":"desktop-pointer","summary":{"seqHigh":1,"durationMs":1000,"totals":{"score":1,"hitCount":1}},"events":[]}'::jsonb
 )->>'ok';
-select pg_catalog.pg_sleep(0.2);
+set application_name = 'qa-quota-same-a-holding';
+select pg_catalog.pg_sleep(0.1);
 commit;
 SQL
 ) &
 same_pid_a=$!
-sleep 0.05
+wait_for_activity "application_name = 'qa-quota-same-a-holding'" 1 \
+  "same-session connection A to hold its ingest locks"
 (
   db_psql -Aqt >"$qa_tmp_dir/same-b.out" <<SQL
 select public.ingest_telemetry_delta(
@@ -536,12 +566,14 @@ select actor_key
   from public.public_write_quota_buckets
  where endpoint = 'track' and actor_key = 'global'
  for update;
+set application_name = 'qa-quota-lock-holder';
 select pg_catalog.pg_sleep(1);
 commit;
 SQL
 ) &
 lock_holder_pid=$!
-sleep 0.15
+wait_for_activity "application_name = 'qa-quota-lock-holder'" 1 \
+  "the global quota row lock holder"
 db_psql -Aqt >"$qa_tmp_dir/lock-contender.out" <<SQL
 select case
   when result->>'accepted' = 'true' then 'accepted'
