@@ -8,7 +8,7 @@ import { register } from "node:module";
 
 register("../telemetry/node-loader.mjs", import.meta.url);
 
-const { AVATAR_PRESET_COUNT, AVATAR_PRESET_INDEXES, avatarPresetUrl, defaultAvatarPreset, defaultAvatarUrl, avatarSrc, avatarPresetThumbUrl, defaultAvatarThumbUrl, avatarThumbSrc } =
+const { AVATAR_PRESET_COUNT, AVATAR_PRESET_INDEXES, avatarPresetUrl, defaultAvatarPreset, defaultAvatarUrl, avatarSrc, avatarPresetThumbUrl, defaultAvatarThumbUrl, avatarThumbSrc, httpsAvatarUrl } =
   await import("../../lib/avatar-presets.ts");
 
 test("프리셋 URL: 1..5 만 유효, 범위 밖은 RangeError", () => {
@@ -80,4 +80,32 @@ test("작은 칸 썸네일(v1.61): 144px WebP 경로 · 범위 검사 · 커스�
   }
   assert.match(src("app/account/page.tsx"), /const avatar = avatarSrc\(profile\.avatar_url, profile\.id\);/);
   for (const i of AVATAR_PRESET_INDEXES) assert.ok(fs.existsSync(path.resolve(process.cwd(), "public", avatarPresetThumbUrl(i).slice(1))), `thumb ${i}`);
+});
+
+test("카카오 프로필 사진(v1.63): 주소는 https 로, 작은 칸은 110px 썸네일 — 카카오 기본 이미지 · 구글 · 업로드는 그대로", () => {
+  const id = "35da9ed8-0432-4a67-95c6-e4e70a2a36a9";
+  const kakao = "http://k.kakaocdn.net/dn/abc/btsXyZ/AbCdEf/img_640x640.jpg";
+  const kakaoDefault = "http://img1.kakaocdn.net/thumb/R640x640.q70/?fname=http://t1.kakaocdn.net/account_images/default_profile.jpeg";
+  const google = "https://lh3.googleusercontent.com/a/ACg8ocK=s96-c";
+  const upload = "https://x.supabase.co/storage/v1/object/public/avatars/u/a.jpg";
+  assert.equal(httpsAvatarUrl(kakao), "https://k.kakaocdn.net/dn/abc/btsXyZ/AbCdEf/img_640x640.jpg");
+  assert.equal(httpsAvatarUrl(kakaoDefault), "https://img1.kakaocdn.net/thumb/R640x640.q70/?fname=http://t1.kakaocdn.net/account_images/default_profile.jpeg");
+  assert.equal(httpsAvatarUrl("http://example.com/a.jpg"), "http://example.com/a.jpg", "카카오 CDN 밖은 손대지 않는다");
+  // 작은 칸: 카카오 사진만 110px, 나머지는 https 고정 외 그대로
+  assert.equal(avatarThumbSrc(kakao, id), "https://k.kakaocdn.net/dn/abc/btsXyZ/AbCdEf/img_110x110.jpg");
+  assert.equal(avatarThumbSrc(kakaoDefault, id), httpsAvatarUrl(kakaoDefault));
+  assert.equal(avatarThumbSrc(google, id), google);
+  assert.equal(avatarThumbSrc(upload, id), upload);
+  // 큰 칸(회원정보 96 · 변경 창 112px): 카카오 원본(https)
+  assert.equal(avatarSrc(kakao, id), "https://k.kakaocdn.net/dn/abc/btsXyZ/AbCdEf/img_640x640.jpg");
+  assert.equal(avatarSrc(null, id), defaultAvatarUrl(id));
+});
+
+test("업로드 규격(v1.63): 128~256px JPEG 로 정규화, 서버 상한 512KB 는 유지(배포 전환 중 구 번들 수용)", () => {
+  const src = (p: string) => fs.readFileSync(path.resolve(process.cwd(), p), "utf8");
+  const lib = src("lib/avatar.ts");
+  assert.match(lib, /const MIN_DIM = 128;/);
+  assert.match(lib, /const MAX_DIM = 256;/);
+  assert.match(lib, /canvas\.toBlob\(resolve, "image\/jpeg", 0\.85\)/);
+  assert.match(src("app/api/avatar/route.ts"), /const MAX_BYTES = 512 \* 1024;/);
 });

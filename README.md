@@ -943,6 +943,13 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.63 (2026-09-25, 프로필 사진 가볍게 — v1.61 후속, 사용자 결정; 마이그레이션 없음):
+- **업로드 규격 256px**: `lib/avatar.ts` 가 128~256px JPEG q0.85 로 정규화한다(종전 512px). 가장 큰 칸(프로필 사진 변경 창 112px · 회원정보 96px)의 2배이고, 512px JPEG 27~109KB → 256px 약 15~25KB. 서버 상한 512KB 는 그대로(배포 전환 중 구 번들의 512px 업로드도 받는다).
+- **이미 올린 사진도 같은 규격으로**: `scripts/backfill-avatar-256.mjs`(dry-run 기본, `--apply`) — 256px 를 넘는 업로드 사진을 앱과 같은 규격으로 줄여 새 경로로 올리고, 앱과 같은 교체 경로(`create_avatar_upload_intent` → 업로드 → `confirm_avatar_upload_intent` → `request_avatar_replace`)로 바꾼다. 옛 파일은 스크립트가 지우지 않고 content-maintain cron 의 정리 잡(avatar_replace)이 지운다. 256px 이하(「캐릭터로 고르기」 프리셋 PNG 포함)와 카카오 · 구글 주소는 건드리지 않는다.
+- **카카오 프로필 사진**: 가입 때 저장한 카카오 주소(`img_640x640.jpg`, 중간값 59KB)를 작은 칸(헤더 24 · 랭킹 36 · 기록 목록 44px)에서는 같은 주소의 110px 썸네일(`img_110x110.jpg`, 중간값 4.6KB)로 쓰고(`avatarThumbSrc`), 큰 칸은 원본(`avatarSrc`). 저장된 카카오 주소는 http 라 https 로 고쳐 쓴다(`httpsAvatarUrl`).
+- **카카오 기본 이미지는 그대로**(사용자 결정): 사진을 등록하지 않은 카카오 계정의 기본 이미지를 우리 기본 프사로 바꾸지 않는다 — 구글 기본 이미지는 가려낼 방법이 없어 카카오만 바꾸면 일관성이 깨진다.
+- 테스트: `avatar-presets`(카카오 https · 110px 매핑 · 기본 이미지 · 구글 · 업로드 주소 불변, 업로드 규격 128~256 · 상한 512KB).
+
 v1.62 (2026-09-25, 공지 배너 서버 HTML — v1.60 설계의 세 번째 묶음, 사용자 결정 「이번에 같이」; 마이그레이션 없음):
 - **문제**: 공지 배너(홈 · 갤러리 · 랭킹)는 하이드레이션 뒤 `/api/events/active` 로만 조회해, 배너를 걸면 JS 가 뜬 뒤 끼어들며 아래 본문 전부를 밀었다(게시된 배너가 없던 9/25 실측 때는 잠재).
 - **서버 HTML 스냅샷**: 루트 레이아웃이 `getEventBannerSnapshot()`(`lib/events/banner-snapshot-server.ts`, `unstable_cache` 태그 `events` + 1시간 backstop, 실패는 캐시하지 않고 빈 스냅샷)을 `EventBannersProvider` 로 내려 주고, `useActiveEvents` 가 그 배너를 첫 상태로 쓴다 — 조회가 끝나면 권위 값, 경계에서는 종전처럼 먼저 숨긴 뒤 다시 조회. 팝업은 싣지 않는다(「며칠 안 보기」가 브라우저 저장소라 닫은 사람에게도 잠깐 보인다).
