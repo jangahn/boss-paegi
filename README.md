@@ -943,6 +943,14 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.62 (2026-09-25, 공지 배너 서버 HTML — v1.60 설계의 세 번째 묶음, 사용자 결정 「이번에 같이」; 마이그레이션 없음):
+- **문제**: 공지 배너(홈 · 갤러리 · 랭킹)는 하이드레이션 뒤 `/api/events/active` 로만 조회해, 배너를 걸면 JS 가 뜬 뒤 끼어들며 아래 본문 전부를 밀었다(게시된 배너가 없던 9/25 실측 때는 잠재).
+- **서버 HTML 스냅샷**: 루트 레이아웃이 `getEventBannerSnapshot()`(`lib/events/banner-snapshot-server.ts`, `unstable_cache` 태그 `events` + 1시간 backstop, 실패는 캐시하지 않고 빈 스냅샷)을 `EventBannersProvider` 로 내려 주고, `useActiveEvents` 가 그 배너를 첫 상태로 쓴다 — 조회가 끝나면 권위 값, 경계에서는 종전처럼 먼저 숨긴 뒤 다시 조회. 팝업은 싣지 않는다(「며칠 안 보기」가 브라우저 저장소라 닫은 사람에게도 잠깐 보인다).
+- **CPU 한도**: 짧은 ISR 은 쓰지 않는다 — 정적 페이지 재생성 주기는 config 와 같은 1시간 그대로(2026-07-07 실측: revalidate 60 이면 홈이 ISR 쓰기와 Active CPU 양쪽 1위, `lib/config/get.ts`). 대신 ① 어드민 발행 · 수정 · 삭제가 `EVENTS_CACHE_TAG` 를 무효화(종전 `"events"` 문자열) ② 예약 경계가 지난 스냅샷은 활성 배너 API 가 조회마다 알아채 `revalidateTag(events, { expire: 0 })` — 다음 페이지 요청이 새 배너로 다시 그린다(경계 뒤 첫 방문자 한 명만 브라우저 보정).
+- **활성 배너 API 는 그대로**: 캐시 없는 한 번의 DB 스냅샷(`lib/events` 는 여전히 `unstable_cache` 를 쓰지 않는다 — 경계를 캐시 TTL 로 양자화하지 않는 원칙, `active-events-response` 테스트가 고정).
+- 테스트: `__tests__/events/banner-ssr.test.ts`(경계 판정 · 서버 캐시 태그와 backstop · 팝업 제외 · 레이아웃 provider · 훅 첫 상태 · API 부수 재검증).
+- **검증(로컬 Supabase 시험 배너 + 로컬 프로덕션 빌드)**: 서버 HTML(홈 · 랭킹 · 갤러리)에 배너가 처음부터 실리고 재생성 주기는 1시간 그대로. 같은 배너로 첫 방문 밀림 — v1.61 코드 홈 0.090 · 랭킹 0.073 · 갤러리 0.077(하이드레이션 뒤 배너가 끼어들며 카드 · 탭 · 격자가 74px 밀림) → v1.62 셋 다 0.001(계정 메뉴 가로 폭만). 종료 시각이 지나자 열린 탭의 훅이 경계에서 부른 활성 배너 API 가 캐시를 만료시켜, 1시간 backstop 전인데도 다음 요청이 배너 없는 HTML 로 다시 그려졌다(캐시 MISS 후 재생성).
+
 v1.61 (2026-09-25, 자산 가볍게 — v1.60 설계의 두 번째 묶음, 이미지가 늦게 뜨는 시간 줄이기; 마이그레이션 없음):
 - **소식 본문 이미지 변환본**: 원본(PNG 2.2MB, 느린 4G LCP 15초) 대신 Supabase 변환 WebP 폭 750 · 1080 · 1440(`srcSet` · `sizes`, 원본보다 넓게 안 늘림, width + height + contain — `eventImageVariants`) — 폭 750 약 61KB. 변환할 수 없는 주소면 원본 그대로.
 - **기본 캐릭터 카드 썸네일**: 갤러리 카드 · 공유 · 기록 상세 · 캐릭터 공유(삭제된 캐릭터 자리)가 게임용 768×1024 PNG(124~167KB) 대신 `BaseDoll.thumb` 384×512 WebP(16~20KB, 다섯 장 710KB → 92KB). 게임 화면은 원본 그대로. 홈 캐릭터 얼굴(`BaseDoll.face`)은 144px WebP(약 5KB, 종전 256px PNG 21~26KB)이고 두 줄 모두 바로 받기(잠긴 줄이 lazy 였다). 생성 = `scripts/gen-static-thumbs.mjs`(sharp) — /sprites · /avatars 는 1년 immutable 캐시라 원본을 바꾸면 파일명도 바꾼다.

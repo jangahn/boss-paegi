@@ -26,6 +26,8 @@ import { creditsConfig } from "@/lib/config/domains/growth";
 import { SiteContentProvider } from "@/components/SiteContentProvider";
 import { SiteFooter } from "@/components/SiteFooter";
 import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
+import { EventBannersProvider } from "@/components/events/EventBannersProvider";
+import { getEventBannerSnapshot } from "@/lib/events/banner-snapshot-server";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
@@ -80,7 +82,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // 마케팅 카피 + 롤 콘텐츠 + 점수 등급을 서버에서 1회 읽어 클라 컨텍스트로 주입(클라 fetch 불필요·코드 기본값 폴백).
-  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog, siteContent, businessInfo, mediaAssets] =
+  const [marketingCopy, roleConfig, scoreConfig, sessionLimits, growthLevers, badgeCatalog, siteContent, businessInfo, mediaAssets, eventBanners] =
     await Promise.all([
       getMarketingCopy(),
       getRoleConfig(),
@@ -91,6 +93,8 @@ export default async function RootLayout({
       getSiteContent(),
       getBusinessInfo(),
       getMediaAssetUrls(),
+      // 공지 배너 서버 HTML 스냅샷(v1.62) — 캐시(태그 events + 1시간), 실패하면 빈 스냅샷.
+      getEventBannerSnapshot(),
     ]);
   const jsonLd = [
     { "@context": "https://schema.org", "@type": "WebSite", name: SERVICE_NAME, url: SITE_URL, inLanguage: "ko-KR", description: siteContent.definition },
@@ -134,6 +138,7 @@ export default async function RootLayout({
           <AppNav />
           <SiteContentProvider value={siteContent}>
           <MediaAssetsProvider value={{ logoUrl: mediaAssets.logoUrl }}>
+          <EventBannersProvider value={eventBanners}>
           <MarketingCopyProvider value={marketingCopy}>
             <RoleContentProvider value={roleConfig}>
               <ScoreConfigProvider value={scoreConfig}>
@@ -149,6 +154,7 @@ export default async function RootLayout({
               </ScoreConfigProvider>
             </RoleContentProvider>
           </MarketingCopyProvider>
+          </EventBannersProvider>
           </MediaAssetsProvider>
           </SiteContentProvider>
         </SessionBootstrap>

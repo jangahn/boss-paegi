@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getActiveEventSurfaces } from "@/lib/events";
+import { revalidateStaleEventBannerSnapshot } from "@/lib/events/banner-snapshot-server";
+import { errInfo, log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +14,13 @@ export const maxDuration = 20;
  */
 export async function GET() {
   const snapshot = await getActiveEventSurfaces();
+  // 서버 HTML 에 실린 배너 스냅샷(v1.62)의 예약 경계가 지났으면 캐시를 무효화해 다음 페이지 요청이 새 배너로 그리게 한다.
+  // 부수 작업이라 실패해도 응답은 그대로.
+  try {
+    await revalidateStaleEventBannerSnapshot(snapshot.serverNow);
+  } catch (error) {
+    log.warn("events.banner_snapshot_revalidate_fail", errInfo(error));
+  }
   return NextResponse.json(
     snapshot,
     {
