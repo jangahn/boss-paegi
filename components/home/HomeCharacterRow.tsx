@@ -7,6 +7,7 @@ import { FadeImg } from "@/components/FadeImg";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom, roleVoice } from "@/lib/config/domains/roles";
 import { playJelly, prefersReducedMotion, SPRING_SNAP } from "@/lib/motion";
+import { clearPlayDollSource, markPlayDollSource } from "@/lib/view-transition";
 import { BASE_DOLL_KEYS, BASE_DOLLS, playHrefFor, type BaseDollKey } from "@/lib/base-dolls";
 import { FOR_MEMBER_CLASS, FOR_NONMEMBER_CLASS } from "@/lib/member-hint";
 
@@ -152,7 +153,12 @@ function CharacterFaces({
               <Link
                 href={playHrefFor(key)}
                 onClick={() => onPlay(key, state)}
-                onPointerDown={(e) => playJelly(e.currentTarget.querySelector("[data-jelly]"))}
+                onPointerDown={(e) => {
+                  const face = e.currentTarget.querySelector<HTMLElement>("[data-jelly]");
+                  playJelly(face);
+                  markPlayDollSource(face); // 이 얼굴이 게임 로딩 막의 캐릭터로 이어진다(lib/view-transition.ts)
+                }}
+                onPointerCancel={clearPlayDollSource}
                 data-face={key}
                 aria-label={`${label} 패기`}
                 className="group flex flex-col items-center gap-1"

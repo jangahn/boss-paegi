@@ -7,7 +7,7 @@ export const VIRAL_KO: Record<string, string> = { score: "점수 공유 경유",
 // 랜딩 표시 묶음(가안 A) — 저장은 세분 토큰, 표시만 묶는다(묶음을 바꿔도 재집계 가능).
 export const LANDING_GROUP_KO: Record<string, string> = {
   home: "홈", play: "게임", generate: "캐릭터 생성", gallery: "갤러리", leaderboard: "랭킹",
-  doll: "캐릭터 상세", share: "점수 공유", history: "기록", news: "소식", badges: "배지",
+  doll: "캐릭터 상세", share: "점수 공유", history: "기록", news: "소식", badges: "뱃지",
   account: "계정·결제", credits: "계정·결제", login: "로그인",
   faq: "약관·안내", terms: "약관·안내", privacy: "약관·안내",
   other: "기타", "기타": "기타", "": "(수집 전)",

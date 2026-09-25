@@ -111,3 +111,16 @@ export function burst(anchor: Element | null, opts: { emojis: readonly string[];
     };
   }
 }
+
+/** 살짝 흔들기 — 잠긴 뱃지의 자물쇠처럼 「아직」 을 알리는 짧은 반응(CSS `rotate` 속성만). 진행 중이면 끊고 새로. */
+export function playWiggle(el: Animatable | null): void {
+  if (!el || typeof el.animate !== "function" || prefersReducedMotion()) return;
+  for (const running of el.getAnimations()) {
+    if (running.id === "wiggle") running.cancel();
+  }
+  const anim = el.animate(
+    [{ rotate: "0deg" }, { rotate: "-9deg" }, { rotate: "7deg" }, { rotate: "-4deg" }, { rotate: "0deg" }],
+    { duration: 420, easing: "ease-in-out" },
+  );
+  anim.id = "wiggle";
+}

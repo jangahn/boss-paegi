@@ -221,7 +221,7 @@ export function useBadgeChallenge({
         loaded = false;
         setSlots([]);
         setToasts([]);
-        setLoadError("배지 도전을 불러오지 못했어요.");
+        setLoadError("뱃지 도전을 불러오지 못했어요.");
         log.warn("play.badge_challenge_unavailable", errInfo(error));
       }
     })();

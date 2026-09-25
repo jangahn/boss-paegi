@@ -132,7 +132,7 @@ export function DollCard({
     // 잘리지 않게 이미지 영역과 분리 (작은 폰에서 메뉴가 카드보다 큼)
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
-        {/* 이미지 로드 전 shimmer 스켈레톤(FadeImg) → 로드 시 페이드인. hover 줌은 wrapper 스케일. */}
+        {/* 이미지 로드 전 shimmer 스켈레톤(FadeImg — 이미지는 페이드 없이 불투명). hover 줌은 이미지 스케일, 누르면 틀이 젤리처럼 출렁(v1.65). */}
         <Link
           href={`/play?doll=${doll.id}`}
           className="block h-full w-full"

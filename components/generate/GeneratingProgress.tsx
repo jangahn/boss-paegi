@@ -43,7 +43,7 @@ export function GeneratingProgress({
 
   return (
     <div className="m-auto flex w-full max-w-xs flex-col items-center gap-4 text-center">
-      <div className="h-14 w-14 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+      <StampingPaper />
       <p className="text-lg font-medium">{text}</p>
       <div
         className="h-2 w-full overflow-hidden rounded-full bg-foreground/10"
@@ -51,8 +51,8 @@ export function GeneratingProgress({
         aria-label="캐릭터 생성 진행"
       >
         <div
-          className="h-full rounded-full bg-foreground transition-[width] duration-500 ease-out"
-          style={{ width: `${pct}%` }}
+          className="h-full w-full origin-left rounded-full bg-foreground transition-[scale] duration-500 ease-out"
+          style={{ scale: `${(pct / 100).toFixed(3)} 1` }}
         />
       </div>
       <p className="text-xs text-zinc-500">
@@ -100,7 +100,7 @@ export function SavingProgress({
 
   return (
     <div className="m-auto flex w-full max-w-xs flex-col items-center gap-4 text-center">
-      <div className="h-14 w-14 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+      <StampingPaper />
       <p className="text-lg font-medium">{text}</p>
       <div
         className="h-2 w-full overflow-hidden rounded-full bg-foreground/10"
@@ -108,11 +108,28 @@ export function SavingProgress({
         aria-label="캐릭터 저장 진행"
       >
         <div
-          className="h-full rounded-full bg-foreground transition-[width] duration-500 ease-out"
-          style={{ width: `${pct}%` }}
+          className="h-full w-full origin-left rounded-full bg-foreground transition-[scale] duration-500 ease-out"
+          style={{ scale: `${(pct / 100).toFixed(3)} 1` }}
         />
       </div>
       <p className="text-xs text-zinc-500">곧 게임이 시작돼요.</p>
+    </div>
+  );
+}
+
+/**
+ * 대기 표시(v1.65) — 서류에 결재 도장이 쾅쾅 찍힌다(종전 회전 스피너와 같은 56px 자리). 진행 문구는 그대로 서버 실상태.
+ * 도장은 크기만 움직인다(scale — 글자 opacity 없음), 모션 감소면 정지(globals.css motion-stamp-loop).
+ */
+function StampingPaper() {
+  return (
+    <div aria-hidden className="relative h-14 w-14">
+      <div className="absolute inset-x-1.5 inset-y-1 rounded-md border border-foreground/15 bg-paper-2 shadow-sm">
+        <div className="mx-2 mt-2 h-1 rounded bg-foreground/15" />
+        <div className="mx-2 mt-1.5 h-1 w-5 rounded bg-foreground/15" />
+        <div className="mx-2 mt-1.5 h-1 w-7 rounded bg-foreground/15" />
+      </div>
+      <span className="motion-stamp-loop absolute bottom-1 right-0.5 block h-6 w-6 -rotate-12 rounded-full border-2 border-red-500 bg-red-500/10" />
     </div>
   );
 }

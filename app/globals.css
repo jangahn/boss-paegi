@@ -598,6 +598,94 @@ body:has(.game-surface) #sentry-feedback {
   }
 }
 
+/* 막대 채우기 — 요소의 scale(진행 비율)까지 0 에서 차오른다(처음 볼 때 한 번). */
+@keyframes bar-fill {
+  from {
+    scale: 0 1;
+  }
+}
+.motion-fill {
+  animation: bar-fill 700ms var(--ease-paper) 200ms both;
+}
+
+/* 카드 뒤집기 — 생성 후보가 한 장씩 뒤집히며 나온다(transform 만, 뒷면은 안 보이게). */
+@keyframes card-flip {
+  0% {
+    transform: perspective(800px) rotateY(88deg);
+  }
+  100% {
+    transform: perspective(800px) rotateY(0deg);
+  }
+}
+.motion-flip {
+  animation: card-flip 520ms var(--ease-paper) both;
+  animation-delay: calc(var(--i, 0) * 140ms);
+  backface-visibility: hidden;
+}
+/* 결재 도장 반복 — 생성 · 저장 대기(종전 회전 스피너 자리). 크기만 움직인다. */
+@keyframes stamp-loop {
+  0% {
+    scale: 0;
+  }
+  8% {
+    scale: 2;
+  }
+  26% {
+    scale: 0.9;
+  }
+  34%,
+  82% {
+    scale: 1;
+  }
+  100% {
+    scale: 0;
+  }
+}
+.motion-stamp-loop {
+  animation: stamp-loop 1.4s var(--ease-paper) infinite;
+}
+
+/* 해롱 — 404 · 오류 화면의 캐릭터. 얼굴이 좌우로 흔들리고(게임 속 해롱 sway) 별이 머리 위 타원을 돈다. */
+@keyframes daze-sway {
+  0%,
+  100% {
+    rotate: -7deg;
+  }
+  50% {
+    rotate: 7deg;
+  }
+}
+@keyframes daze-star {
+  0% {
+    translate: -2.25rem -0.25rem;
+    scale: 0.8;
+  }
+  25% {
+    translate: -0.5rem 0.4rem;
+    scale: 1.1;
+  }
+  50% {
+    translate: 1.5rem -0.25rem;
+    scale: 0.8;
+  }
+  75% {
+    translate: -0.5rem -0.8rem;
+    scale: 0.6;
+  }
+  100% {
+    translate: -2.25rem -0.25rem;
+    scale: 0.8;
+  }
+}
+.motion-daze-sway {
+  animation: daze-sway 1.6s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+.motion-daze-star {
+  animation: daze-star 1.5s linear infinite;
+  margin: -0.5rem 0 0 -0.5rem;
+}
+
 .motion-rise {
   animation: rise-in 320ms var(--ease-paper) both;
   animation-delay: calc(var(--i, 0) * 45ms);
@@ -657,9 +745,56 @@ body:has(.game-surface) #sentry-feedback {
   display: none;
 }
 
+/* View Transitions(v1.65) — 이름 · 타입은 lib/view-transition.ts. 전환 중에도 클릭이 막히지 않게 겹 층은 포인터를 통과시킨다.
+ * 스냅샷(이미지)의 opacity 라 iOS 글자 잔상과 무관하다. */
+::view-transition {
+  pointer-events: none;
+}
+/* 상단 메뉴 이동 — 본문만 교차: 이전 본문은 빠르게 빠지고 새 본문은 살짝 올라오며 들어온다. 헤더 · 푸터(루트)는 즉시. */
+::view-transition-group(.nav-fade) {
+  animation: none;
+}
+::view-transition-old(.nav-fade) {
+  animation: 110ms ease-in both vt-out;
+}
+::view-transition-new(.nav-fade) {
+  animation: 220ms var(--ease-paper) 70ms both vt-in;
+}
+:root:active-view-transition-type(nav)::view-transition-old(root),
+:root:active-view-transition-type(nav)::view-transition-new(root) {
+  animation: none;
+}
+/* 선택 알약 — 이전 칸에서 새 칸으로 미끄러진다. */
+::view-transition-group(nav-pill) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-paper);
+}
+/* 캐릭터 → 게임 — 누른 캐릭터 이미지가 로딩 막의 캐릭터 자리로 커지며 이어진다. */
+::view-transition-group(play-doll) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-paper);
+  z-index: 50;
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
 /* 모션 감소 — 연출 전부 끔(최종 상태 그대로). View Transitions 도 즉시. */
 @media (prefers-reduced-motion: reduce) {
   .motion-rise,
+  .motion-fill,
+  .motion-flip,
+  .motion-stamp-loop,
+  .motion-daze-sway,
+  .motion-daze-star,
   .motion-pop,
   .motion-wiggle,
   .motion-sheet,

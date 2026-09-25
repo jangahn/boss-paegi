@@ -1,3 +1,4 @@
+import { ViewTransition } from "react";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SERVICE_NAME } from "@/lib/policy";
@@ -28,6 +29,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
 import { EventBannersProvider } from "@/components/events/EventBannersProvider";
 import { MotionProvider } from "@/components/motion/MotionProvider";
+import { NAV_TRANSITION } from "@/lib/view-transition";
 import { getEventBannerSnapshot } from "@/lib/events/banner-snapshot-server";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
@@ -147,7 +149,10 @@ export default async function RootLayout({
                 <SessionLimitsProvider value={sessionLimits}>
                   <CreditProductsProvider value={creditsConfig(growthLevers)}>
                     <BadgeCatalogProvider value={badgeCatalog}>
-                      {children}
+                      {/* 상단 메뉴 이동(nav 타입)일 때만 본문을 짧게 교차(v1.65, lib/view-transition.ts · globals.css). 그 밖의 이동은 그대로. */}
+                      <ViewTransition update={{ [NAV_TRANSITION]: "nav-fade", default: "none" }} enter="none" exit="none" default="none">
+                        {children}
+                      </ViewTransition>
                       {/* 사업자정보 푸터 — PG 심사 요건(메인+결제페이지 상시 노출). 미설정 시 비노출. */}
                       <SiteFooter info={businessInfo.info} />
                     </BadgeCatalogProvider>
