@@ -80,7 +80,7 @@ export default async function ContentHistoryPage({
                       <span className="text-sm font-semibold">
                         {r.adminName ?? `관리자 ${r.adminId.slice(0, 8)}`}
                       </span>
-                      <div className="mt-0.5 text-[11px] text-zinc-400">
+                      <div className="mt-0.5 text-balance text-[11px] text-zinc-400">
                         v{r.oldVersion ?? 0} → v{r.newVersion}
                         {r.note ? ` · ${r.note}` : ""}
                       </div>
@@ -101,7 +101,7 @@ export default async function ContentHistoryPage({
                   ) : diff.length > 0 ? (
                     <ul className="mt-2 flex flex-col gap-1">
                       {diff.map((d, i) => (
-                        <li key={i} className="text-xs leading-relaxed">
+                        <li key={i} className="text-balance text-xs leading-relaxed">
                           <span className="font-mono text-zinc-500">{d.path}</span>{" "}
                           {d.complex ? (
                             <span className="font-medium text-amber-600">변경됨</span>

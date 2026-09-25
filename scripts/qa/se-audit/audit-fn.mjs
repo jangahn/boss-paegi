@@ -133,9 +133,10 @@ export const AUDIT_FN = `(() => {
               rg.setEnd(n, i + len);
               const b = rg.getBoundingClientRect();
               if (b.width > 0 || b.height > 0) {
-                const row = rows.find((x) => Math.abs(x.top - b.top) < 6);
-                if (row) row.count += 1;
-                else rows.push({ top: b.top, count: 1 });
+                // 같은 줄 = 세로로 절반 이상 겹침(글자 크기가 섞인 줄 — 24px 숫자 옆 12px 「점」 — 은 윗변이 10px 넘게 달라도 한 줄)
+                const row = rows.find((x) => Math.min(x.bottom, b.bottom) - Math.max(x.top, b.top) > 0.5 * Math.min(x.bottom - x.top, b.height));
+                if (row) { row.count += 1; row.top = Math.min(row.top, b.top); row.bottom = Math.max(row.bottom, b.bottom); }
+                else rows.push({ top: b.top, bottom: b.bottom, count: 1 });
               }
             }
             i += len;
