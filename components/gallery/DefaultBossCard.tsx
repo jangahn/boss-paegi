@@ -6,8 +6,10 @@ import type { ViewerState } from "@/lib/gallery-cta";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { asRole } from "@/lib/roles";
+import { BASE_DOLLS, DEFAULT_BASE_DOLL } from "@/lib/base-dolls";
 
-const DEFAULT_BOSS_SRC = "/sprites/boss-default.png";
+// 카드 썸네일(v1.61) — 게임용 원본(768×1024 PNG) 대신 384×512 WebP.
+const DEFAULT_BOSS_SRC = BASE_DOLLS[DEFAULT_BASE_DOLL].thumb;
 
 
 /**

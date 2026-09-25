@@ -60,7 +60,7 @@ function CharacterFaces({
             {locked ? (
               <div className="flex flex-col items-center gap-1" aria-label={`${label} — 가입하면 열림`}>
                 <span className="relative block">
-                  <FadeImg src={doll.face} className={`${FACE} opacity-60 blur-[2px] grayscale-[35%]`} />
+                  <FadeImg src={doll.face} loading="eager" className={`${FACE} opacity-60 blur-[2px] grayscale-[35%]`} />
                   <span aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm">
                     🔒
                   </span>

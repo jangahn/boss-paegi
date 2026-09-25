@@ -31,6 +31,37 @@ export function withEventImageSize(url: string, size: EventImageSize): string {
   return `${url}#${Math.round(size.width)}x${Math.round(size.height)}`;
 }
 
+// 폭별 변환본(v1.61) — 원본(예: PNG 2.2MB)을 그대로 받던 것을 Supabase 이미지 변환(WebP, 폭 750 약 61KB)으로 바꾼다.
+// 폭 후보는 휴대폰 2~3배 DPR 과 데스크톱 본문 칸(최대 672px)을 덮는다. 원본보다 넓게 늘리지 않는다.
+// width 만 주면 height 가 안 줄어드는 Supabase 함정 때문에 항상 width + height + contain(lib/site-assets.ts 와 같은 규칙).
+const RENDER_WIDTHS = [750, 1080, 1440] as const;
+/** 소식 본문 칸 최대 폭(max-w-2xl) — 좌우 여백 20px 씩(app/news/[id]/page.tsx). */
+const BODY_MAX_WIDTH = 672;
+const BODY_GUTTER = 40;
+const OBJECT_MARKER = "/storage/v1/object/public/";
+const RENDER_MARKER = "/storage/v1/render/image/public/";
+
+/**
+ * 본문 이미지의 폭별 변환 주소(src · srcSet · sizes). 크기를 모르면 40:21 자리 비율로 만든다. 공개 버킷 주소가 아니면 null(원본 그대로).
+ */
+export function eventImageVariants(
+  url: string,
+  size: EventImageSize | null,
+): { src: string; srcSet: string; sizes: string } | null {
+  const at = url.indexOf(OBJECT_MARKER);
+  if (at < 0) return null;
+  const base = `${url.slice(0, at)}${RENDER_MARKER}${url.slice(at + OBJECT_MARKER.length)}`;
+  const ratio = size ? size.height / size.width : 21 / 40;
+  const widths = [...new Set(RENDER_WIDTHS.map((w) => Math.min(w, size?.width ?? w)))];
+  const variant = (w: number) => `${base}?width=${w}&height=${Math.max(1, Math.round(w * ratio))}&resize=contain`;
+  const shown = Math.min(size?.width ?? BODY_MAX_WIDTH, BODY_MAX_WIDTH);
+  return {
+    src: variant(widths[widths.length - 1]),
+    srcSet: widths.map((w) => `${variant(w)} ${w}w`).join(", "),
+    sizes: `(min-width: ${shown + BODY_GUTTER}px) ${shown}px, calc(100vw - ${BODY_GUTTER}px)`,
+  };
+}
+
 /**
  * 고른 이미지 파일의 가로세로(브라우저 전용) — 화면에 그려질 방향(EXIF 회전 반영) 그대로의 크기. 읽지 못하면 null
  * (본문에는 크기 조각 없이 들어가 40:21 자리를 쓴다).

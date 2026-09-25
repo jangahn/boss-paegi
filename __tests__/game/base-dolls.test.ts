@@ -70,21 +70,56 @@ test("자산: 추가 4종은 public/sprites/base/<key>.png 768×1024 PNG(알파�
   }
 });
 
-test("머리 크롭(face): 5종이 프사 프리셋 5장을 하나씩 — 256×256 PNG, 매핑은 눈·유사도 대조로 고정(v1.49 홈 캐릭터 줄)", () => {
+// WebP 크기(VP8X 확장 · VP8 손실 · VP8L 무손실 세 형식) — 썸네일 규격 확인용.
+function webpSize(buf: Buffer): { width: number; height: number } {
+  assert.equal(buf.subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(buf.subarray(8, 12).toString("ascii"), "WEBP");
+  const chunk = buf.subarray(12, 16).toString("ascii");
+  if (chunk === "VP8X") return { width: 1 + buf.readUIntLE(24, 3), height: 1 + buf.readUIntLE(27, 3) };
+  if (chunk === "VP8 ") return { width: buf.readUInt16LE(26) & 0x3fff, height: buf.readUInt16LE(28) & 0x3fff };
+  if (chunk === "VP8L") {
+    const bits = buf.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  }
+  throw new Error(`unknown WebP chunk ${chunk}`);
+}
+
+test("머리 크롭(face): 5종이 프사 프리셋 5장을 하나씩 — 홈 캐릭터 줄은 144px WebP 썸네일(v1.61), 원본은 256×256 PNG(v1.49 매핑)", () => {
   const pub = path.resolve(process.cwd(), "public");
   // 1=화난 검은 머리(기본 부장님) · 5=회색 구레나룻(사장님) · 3=긴 머리(부장님 여) · 4=단발(팀장님 여) · 2=능글 웃음(신입)
   assert.deepEqual(
     BASE_DOLL_KEYS.map((k) => BASE_DOLLS[k].face),
-    ["/avatars/preset-1.png", "/avatars/preset-5.png", "/avatars/preset-3.png", "/avatars/preset-4.png", "/avatars/preset-2.png"],
+    ["/avatars/thumb/preset-1.webp", "/avatars/thumb/preset-5.webp", "/avatars/thumb/preset-3.webp", "/avatars/thumb/preset-4.webp", "/avatars/thumb/preset-2.webp"],
   );
   assert.equal(new Set(BASE_DOLL_KEYS.map((k) => BASE_DOLLS[k].face)).size, BASE_DOLL_KEYS.length, "한 장씩");
   for (const key of BASE_DOLL_KEYS) {
-    const file = path.join(pub, BASE_DOLLS[key].face);
+    const thumb = path.join(pub, BASE_DOLLS[key].face);
+    assert.ok(fs.existsSync(thumb), thumb);
+    assert.deepEqual(webpSize(fs.readFileSync(thumb)), { width: 144, height: 144 }, thumb);
+    assert.ok(fs.statSync(thumb).size <= 16 * 1024, `${thumb}: 16KB 상한`);
+    // 썸네일의 원본 = 같은 번호의 프사 프리셋 PNG(256×256)
+    const source = path.join(pub, BASE_DOLLS[key].face.replace("/thumb/", "/").replace(/\.webp$/, ".png"));
+    const buf = fs.readFileSync(source);
+    assert.equal(buf.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", `${source}: PNG`);
+    assert.equal(buf.readUInt32BE(16), 256, `${source}: width`);
+    assert.equal(buf.readUInt32BE(20), 256, `${source}: height`);
+  }
+});
+
+test("카드 썸네일(thumb, v1.61): 5종 public/sprites/thumb/<key>.webp 384×512(원본 768×1024 의 절반), 32KB 이하", () => {
+  const pub = path.resolve(process.cwd(), "public");
+  for (const key of BASE_DOLL_KEYS) {
+    const d = BASE_DOLLS[key];
+    assert.equal(d.thumb, `/sprites/thumb/${key}.webp`);
+    const file = path.join(pub, d.thumb);
     assert.ok(fs.existsSync(file), file);
-    const buf = fs.readFileSync(file);
-    assert.equal(buf.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", `${file}: PNG`);
-    assert.equal(buf.readUInt32BE(16), 256, `${file}: width`);
-    assert.equal(buf.readUInt32BE(20), 256, `${file}: height`);
+    assert.deepEqual(webpSize(fs.readFileSync(file)), { width: 384, height: 512 }, file);
+    assert.ok(fs.statSync(file).size <= 32 * 1024, `${file}: 32KB 상한`);
+  }
+  // 생성 스크립트의 키 · 원본 경로가 어휘와 같다
+  const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/gen-static-thumbs.mjs"), "utf8");
+  for (const key of BASE_DOLL_KEYS) {
+    assert.match(script, new RegExp(`"${key}": "${BASE_DOLLS[key].image.slice(1).replace(/\//g, "\\/")}"`), key);
   }
 });
 

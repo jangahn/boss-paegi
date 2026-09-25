@@ -3,6 +3,7 @@ import "./globals.css";
 import { SERVICE_NAME } from "@/lib/policy";
 import { SessionBootstrap } from "@/components/SessionBootstrap";
 import { MemberHintSync } from "@/components/MemberHintSync";
+import { SupabasePreconnect } from "@/components/SupabasePreconnect";
 import { AnalyticsVisitTracker } from "@/components/AnalyticsVisitTracker";
 import { AppNav } from "@/components/AppNav";
 import { MarketingCopyProvider } from "@/components/MarketingCopyProvider";
@@ -125,6 +126,7 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <MemberHintSync />
+        <SupabasePreconnect />
         <JsonLd data={jsonLd} />
         <SessionBootstrap>
           <AnalyticsVisitTracker />
