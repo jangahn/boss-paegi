@@ -460,3 +460,391 @@ body:has(.game-surface) #sentry-feedback {
     content: none;
   }
 }
+
+/* ───────────────────────────── 모션(v1.65) ─────────────────────────────
+ * 게임 밖 화면 연출 — 값의 단일 소스는 lib/motion.ts(시간 · 결과 연출 시점), 여기는 같은 값의 CSS 쪽.
+ * 규칙: transform 계열(translate · scale · rotate)과 단색 덮개 opacity 만 움직인다. 글자 · 그라데이션 opacity 금지(iOS 잔상,
+ * 위 「궁극기 게이지」 주석). 크기 · 위치 속성은 움직이지 않는다(밀림 규약). 모션 감소 설정이면 전부 끈다(맨 아래).
+ * Tailwind 의 rotate-* · scale-* · translate-* 는 개별 속성(rotate · scale · translate)이라 keyframes 도 개별 속성으로 써서 겹친다. */
+:root {
+  --ease-paper: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-stamp: cubic-bezier(0.3, 1.45, 0.5, 1);
+}
+
+/* 서류가 책상 위로 올라온다 — 결과 보고서 · 모달 시트. */
+@keyframes paper-rise {
+  0% {
+    translate: 0 28px;
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+/* 아래에서 살짝 — 등급 · 유형 카드, 목록 행, 뱃지 타일. */
+@keyframes rise-in {
+  0% {
+    translate: 0 10px;
+    scale: 0.98;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1;
+  }
+}
+/* 도장 쾅 — 크게 들렸다가 찍히며 살짝 넘친 뒤 제자리(기울기는 요소의 rotate 유틸이 유지). 시작 전(지연 동안)은 크기 0 으로 숨김. */
+@keyframes stamp-slam {
+  0% {
+    scale: 0;
+  }
+  1% {
+    scale: 2.6;
+  }
+  55% {
+    scale: 0.88;
+  }
+  78% {
+    scale: 1.06;
+  }
+  100% {
+    scale: 1;
+  }
+}
+/* 도장이 찍힌 순간 종이가 한 번 흔들린다(3px). */
+@keyframes paper-shake {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: -3px 1px;
+  }
+  50% {
+    translate: 3px -1px;
+  }
+  75% {
+    translate: -2px 0;
+  }
+}
+/* 잉크 번짐 — 도장 자리에서 퍼지는 링(단색 테두리의 크기만, 끝에 0). */
+@keyframes ink-ring {
+  0% {
+    scale: 0;
+  }
+  1% {
+    scale: 0.4;
+  }
+  70% {
+    scale: 1.6;
+  }
+  100% {
+    scale: 0;
+  }
+}
+/* 튀어나오는 칩 — 뱃지 · 신기록 칩. */
+@keyframes pop-in {
+  0% {
+    scale: 0;
+  }
+  60% {
+    scale: 1.15;
+  }
+  100% {
+    scale: 1;
+  }
+}
+/* 「툭」 — 다음 행동(다시 패기)을 한 번 권한다. */
+@keyframes nudge {
+  0%,
+  100% {
+    scale: 1;
+  }
+  35% {
+    scale: 1.045;
+  }
+  65% {
+    scale: 0.985;
+  }
+}
+/* 금박 반짝 — 칩 위를 흰 띠가 한 번 지나간다(덮개의 위치만). */
+@keyframes gold-shine {
+  0% {
+    translate: -120% 0;
+  }
+  100% {
+    translate: 220% 0;
+  }
+}
+/* 살짝 흔들 — 잠긴 뱃지 「?」 를 눌렀을 때. */
+@keyframes wiggle {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  25% {
+    rotate: -9deg;
+  }
+  50% {
+    rotate: 7deg;
+  }
+  75% {
+    rotate: -4deg;
+  }
+}
+
+/* 누름 — 1차 버튼을 누르면 도장 찍듯 살짝 눌린다(크기 · 폰트 · 간격 불변, 요소의 transition 유틸이 부드럽게). */
+@utility press {
+  &:active {
+    scale: 0.97;
+  }
+}
+
+/* 막대 채우기 — 요소의 scale(진행 비율)까지 0 에서 차오른다(처음 볼 때 한 번). */
+@keyframes bar-fill {
+  from {
+    scale: 0 1;
+  }
+}
+.motion-fill {
+  animation: bar-fill 700ms var(--ease-paper) 200ms both;
+}
+
+/* 카드 뒤집기 — 생성 후보가 한 장씩 뒤집히며 나온다(transform 만, 뒷면은 안 보이게). */
+@keyframes card-flip {
+  0% {
+    transform: perspective(800px) rotateY(88deg);
+  }
+  100% {
+    transform: perspective(800px) rotateY(0deg);
+  }
+}
+.motion-flip {
+  animation: card-flip 520ms var(--ease-paper) both;
+  animation-delay: calc(var(--i, 0) * 140ms);
+  backface-visibility: hidden;
+}
+/* 결재 도장 반복 — 생성 · 저장 대기(종전 회전 스피너 자리). 크기만 움직인다. */
+@keyframes stamp-loop {
+  0% {
+    scale: 0;
+  }
+  8% {
+    scale: 2;
+  }
+  26% {
+    scale: 0.9;
+  }
+  34%,
+  82% {
+    scale: 1;
+  }
+  100% {
+    scale: 0;
+  }
+}
+.motion-stamp-loop {
+  animation: stamp-loop 1.4s var(--ease-paper) infinite;
+}
+
+/* 해롱 — 404 · 오류 화면의 캐릭터. 얼굴이 좌우로 흔들리고(게임 속 해롱 sway) 별이 머리 위 타원을 돈다. */
+@keyframes daze-sway {
+  0%,
+  100% {
+    rotate: -7deg;
+  }
+  50% {
+    rotate: 7deg;
+  }
+}
+@keyframes daze-star {
+  0% {
+    translate: -2.25rem -0.25rem;
+    scale: 0.8;
+  }
+  25% {
+    translate: -0.5rem 0.4rem;
+    scale: 1.1;
+  }
+  50% {
+    translate: 1.5rem -0.25rem;
+    scale: 0.8;
+  }
+  75% {
+    translate: -0.5rem -0.8rem;
+    scale: 0.6;
+  }
+  100% {
+    translate: -2.25rem -0.25rem;
+    scale: 0.8;
+  }
+}
+.motion-daze-sway {
+  animation: daze-sway 1.6s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+.motion-daze-star {
+  animation: daze-star 1.5s linear infinite;
+  margin: -0.5rem 0 0 -0.5rem;
+}
+
+.motion-rise {
+  animation: rise-in 320ms var(--ease-paper) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+.motion-pop {
+  animation: pop-in 360ms var(--ease-stamp) both;
+}
+.motion-wiggle {
+  animation: wiggle 420ms ease-in-out;
+}
+.motion-sheet {
+  animation: paper-rise 280ms var(--ease-paper) both;
+}
+/* 모달 덮개(단색) — 옅게 깔린다. 글자가 없는 단색 층이라 opacity 를 쓴다. */
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+.motion-scrim {
+  animation: scrim-in 200ms ease-out both;
+}
+/* 계정 메뉴 — 알약 아래에서 말려 내려오듯 펼쳐진다(clip-path, 글자 opacity 없음). */
+@keyframes menu-unroll {
+  from {
+    clip-path: inset(0% 0% 100% 0% round 16px);
+    translate: 0 -4px;
+  }
+  to {
+    clip-path: inset(0% 0% 0% 0% round 16px);
+    translate: 0 0;
+  }
+}
+.motion-menu {
+  animation: menu-unroll 200ms var(--ease-paper) both;
+}
+/* 말풍선 — 아래 꼬리 쪽을 축으로 톡 튀어나온다. */
+.motion-bubble {
+  animation: pop-in 300ms var(--ease-stamp) both;
+  transform-origin: 50% 100%;
+}
+
+/* 결과 보고서 연출 — 보고서 틀에 data-ceremony="play" 가 있을 때만 재생. 게임 종료 화면은 열릴 때(탭하면 "done" 으로 끝 상태),
+ * 공유 · 기록 상세는 서버 HTML 에 처음부터 실려 첫 페인트에 재생된다(카운트업은 종료 화면만 — JS 가 필요). 시점 = lib/motion.ts CEREMONY_MS. */
+[data-ceremony="play"] .cer-sheet {
+  animation: paper-rise 280ms var(--ease-paper) both;
+}
+[data-ceremony="play"] .cer-stamp {
+  animation: stamp-slam 420ms var(--ease-stamp) 900ms both;
+}
+[data-ceremony="play"] .cer-ink {
+  animation: ink-ring 520ms var(--ease-paper) 1030ms both;
+}
+[data-ceremony="play"] .cer-shake {
+  animation: paper-shake 180ms linear 1080ms;
+}
+[data-ceremony="play"] .cer-rise {
+  animation: rise-in 320ms var(--ease-paper) both;
+  animation-delay: calc(1000ms + var(--i, 0) * 60ms);
+}
+[data-ceremony="play"] .cer-pop {
+  animation: pop-in 380ms var(--ease-stamp) both;
+  animation-delay: calc(1200ms + var(--i, 0) * 80ms);
+}
+[data-ceremony="play"] .cer-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: rgba(255, 255, 255, 0.55);
+  translate: -120% 0;
+  rotate: 18deg;
+  animation: gold-shine 700ms ease-out both;
+  animation-delay: calc(1400ms + var(--i, 0) * 80ms);
+  pointer-events: none;
+}
+[data-ceremony="play"] .cer-nudge {
+  animation: nudge 460ms var(--ease-stamp) 1500ms;
+}
+/* 잉크 번짐 링은 연출 중에만 보인다. */
+.cer-ink {
+  scale: 0;
+}
+[data-ceremony="done"] .cer-ink {
+  display: none;
+}
+
+/* View Transitions(v1.65) — 이름 · 타입은 lib/view-transition.ts. 전환 중에도 클릭이 막히지 않게 겹 층은 포인터를 통과시킨다.
+ * 스냅샷(이미지)의 opacity 라 iOS 글자 잔상과 무관하다. */
+::view-transition {
+  pointer-events: none;
+}
+/* 상단 메뉴 이동 — 본문만 교차: 이전 본문은 빠르게 빠지고 새 본문은 살짝 올라오며 들어온다. 헤더 · 푸터(루트)는 즉시. */
+::view-transition-group(.nav-fade) {
+  animation: none;
+}
+::view-transition-old(.nav-fade) {
+  animation: 110ms ease-in both vt-out;
+}
+::view-transition-new(.nav-fade) {
+  animation: 220ms var(--ease-paper) 70ms both vt-in;
+}
+:root:active-view-transition-type(nav)::view-transition-old(root),
+:root:active-view-transition-type(nav)::view-transition-new(root) {
+  animation: none;
+}
+/* 선택 알약 — 이전 칸에서 새 칸으로 미끄러진다. */
+::view-transition-group(nav-pill) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-paper);
+}
+/* 캐릭터 → 게임 — 누른 캐릭터 이미지가 로딩 막의 캐릭터 자리로 커지며 이어진다. */
+::view-transition-group(play-doll) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-paper);
+  z-index: 50;
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+/* 모션 감소 — 연출 전부 끔(최종 상태 그대로). View Transitions 도 즉시. */
+@media (prefers-reduced-motion: reduce) {
+  .motion-rise,
+  .motion-fill,
+  .motion-flip,
+  .motion-stamp-loop,
+  .motion-daze-sway,
+  .motion-daze-star,
+  .motion-pop,
+  .motion-wiggle,
+  .motion-sheet,
+  .motion-scrim,
+  .motion-menu,
+  .motion-bubble,
+  [data-ceremony] .cer-sheet,
+  [data-ceremony] .cer-stamp,
+  [data-ceremony] .cer-shake,
+  [data-ceremony] .cer-rise,
+  [data-ceremony] .cer-pop,
+  [data-ceremony] .cer-nudge {
+    animation: none !important;
+  }
+  [data-ceremony] .cer-ink,
+  [data-ceremony] .cer-shine::after {
+    display: none;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}

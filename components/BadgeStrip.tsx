@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import {
   badgeBySlug,
   summarizeBadges,
@@ -43,16 +44,18 @@ export function BadgeStrip({
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
-        {shown.map((slug) => {
+        {shown.map((slug, i) => {
           const b = badgeBySlug(catalog, slug);
           if (!b) return null;
           const isNew = newFamilies.has(b.familyKey);
+          // 결과 연출(v1.65): 칩이 차례로 튀어나오고(cer-pop) NEW 칩엔 금박 반짝(cer-shine) — 조상 data-ceremony="play" 일 때만.
           return (
             <span
               key={slug}
               title={b.desc}
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                isNew ? "bg-amber-400 text-zinc-900" : "bg-zinc-200 text-zinc-700"
+              style={{ "--i": i } as CSSProperties}
+              className={`cer-pop inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                isNew ? "cer-shine relative overflow-hidden bg-amber-400 text-zinc-900" : "bg-zinc-200 text-zinc-700"
               }`}
             >
               {familyEmoji(catalog, b.familyKey)} {b.label}

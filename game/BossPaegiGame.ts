@@ -50,6 +50,11 @@ export type GameHandle = {
   captureStream: (fps?: number) => MediaStream | null;
   /** 렉 진단용 perf 통계 — DPR·추정 주사율·평균/p95 프레임타임(ms). 종료 시 텔레메트리로. */
   getPerfStats: () => { dpr: number; refreshHz: number; avgFrameMs: number; p95FrameMs: number };
+  /**
+   * 그리기 켜고 끄기(v1.65) — 결과 화면 동안 멈춘다. 흐림 배경 뒤에서 WebGL 이 계속 그리면 저사양 폰에서 결과 연출이 끊긴다.
+   * 멈춘 동안 캔버스는 마지막 장면 그대로, 다시 패기에서 켠다.
+   */
+  setRendering: (on: boolean) => void;
 };
 
 type GameLifecycleScene = Pick<
@@ -265,6 +270,10 @@ export async function createGame(
       app.destroy(true, { children: true });
     },
     cancelActiveInput: () => scene.cancelActivePointers(),
+    setRendering: (on: boolean) => {
+      if (on) app.ticker.start();
+      else app.ticker.stop();
+    },
     pause: () => scene.pause(),
     resume: () => scene.resume(),
     end: () => scene.end(),

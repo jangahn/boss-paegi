@@ -2,6 +2,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
+import { DazedBoss } from "@/components/motion/DazedBoss";
 
 const ERROR_TITLE = "페이지 오류 · 부장님 패기";
 
@@ -24,9 +25,7 @@ export default function RouteError({
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <title>{ERROR_TITLE}</title>
-      <div aria-hidden className="text-5xl">
-        😵
-      </div>
+      <DazedBoss />
       <h1 className="text-xl font-bold">페이지를 불러오지 못했어요</h1>
       <p role="alert" className="text-sm text-zinc-500">
         잠시 후 다시 시도해 주세요.

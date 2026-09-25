@@ -784,3 +784,20 @@ export function playTimerCue(cue: TimerCue, volume = 1) {
   tone(220, t, 0.55, 0.12);
   tone(233, t, 0.55, 0.08);
 }
+
+// ── 게임 밖 연출 효과음(v1.65) — 결과 보고서 연출 · 뱃지 알림. 사건 하나에 소리 하나, 음소거 설정을 그대로 따른다. ──
+// 오디오 잠금 해제(unlockAudio)는 /play 에만 연결돼 있어 게임 화면 밖에서는 울리지 않는다(게임 밖 무음, 9/25 사용자 결정).
+const UI_CUES = {
+  /** 보고서가 올라올 때 — 종이 스치는 소리(작게) */
+  sheet: ["whoosh", 0.3],
+  /** 「해소완료」 도장이 찍힐 때 */
+  stamp: ["thud", 1],
+  /** 뱃지 · 신기록을 받을 때 */
+  reward: ["twinkle", 0.8],
+} as const satisfies Record<string, readonly [SoundPreset, number]>;
+export type UiCue = keyof typeof UI_CUES;
+
+export function playUiCue(cue: UiCue): void {
+  const [preset, volume] = UI_CUES[cue];
+  playHitSound(preset, volume);
+}

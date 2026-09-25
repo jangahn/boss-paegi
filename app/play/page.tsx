@@ -35,7 +35,9 @@ import { useTelemetry } from "./useTelemetry";
 import { useKeyboardControls } from "./useKeyboardControls";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
-import { baseDollKeyFromParam, telemetryBaseDollLabel } from "@/lib/base-dolls";
+import { baseDollKeyFromParam, telemetryBaseDollLabel, type BaseDollKey } from "@/lib/base-dolls";
+import { resetPendingPlayDoll } from "@/lib/view-transition";
+import { PlayDollPreview } from "@/components/play/PlayDollPreview";
 import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 /** 시간 종료 배너 노출(ms) — 입력이 닫힌 뒤 「시간 종료!」를 보여 주고 종료 화면을 연다. */
@@ -85,6 +87,12 @@ function PlayInner() {
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
+  // 누른 캐릭터(로딩 막 이어짐)는 게임 화면이 뜨면 비운다 — 다음 이동에 남지 않게(v1.65, lib/view-transition.ts).
+  useEffect(() => resetPendingPlayDoll(), []);
+  // 결과 화면 동안 게임 그리기를 멈춘다(v1.65) — 흐림 배경 뒤 WebGL 이 결과 연출을 끊지 않게. 다시 패기(over=false)에서 재개.
+  useEffect(() => {
+    gameRef.current?.setRendering(!over);
+  }, [over]);
   // 사운드 음소거 토글 — 저장값(localStorage)으로 초기화, master gain 0/1
   const [soundMuted, setSoundMuted] = useState(false);
   // SSR/hydration 안전: 서버·첫 렌더는 false(🔊), 마운트 후 저장값 반영(불일치 방지 — effect 의도적)
@@ -550,7 +558,7 @@ function PlayInner() {
       {/* min-h-0/min-w-0: flex item 이 canvas(고정 CSS 크기) content 이하로 축소되게 허용 →
           ResizeObserver 가 창 축소도 포착(없으면 min-content=캔버스 크기에 묶여 미발화). */}
       <div ref={stageRef} className="min-h-0 min-w-0 flex-1 select-none" />
-      {!gameReady && !gameInitError && <PlayLoadingOverlay />}
+      {!gameReady && !gameInitError && <PlayLoadingOverlay doll={baseDollKey} />}
       {!gameReady && gameInitError && (
         <div
           role="alert"
@@ -687,9 +695,14 @@ function PlayKeyed() {
 //   canvas content 가 컨테이너를 붙들어 축소 시 안 줄어들던 문제).
 const PLAY_SURFACE_CLASS = "game-surface relative flex h-[100dvh] flex-col overflow-hidden bg-zinc-900";
 
-function PlayLoadingOverlay() {
+/**
+ * 로딩 막. v1.65: 기본 캐릭터로 들어오면 그 캐릭터 카드 이미지를 보여 주고, 홈 얼굴 · 갤러리 카드에서 눌러 들어오면 누른 이미지가
+ * 이 자리로 커지며 이어진다(PlayDollPreview — View Transition 모핑). 커스텀 캐릭터 · 직접 진입은 종전처럼 스피너만.
+ */
+function PlayLoadingOverlay({ doll }: { doll?: BaseDollKey | null }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
+      <PlayDollPreview doll={doll} />
       <Spinner className="h-8 w-8 text-white/80" />
       <p className="text-sm text-white/70">캐릭터 불러오는 중...</p>
     </div>

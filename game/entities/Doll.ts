@@ -1,5 +1,6 @@
 import { Container, Graphics, Sprite, Texture } from "pixi.js";
 import { log, errInfo } from "@/lib/log";
+import { JELLY_BOUNCE, JELLY_HIT, squashScale } from "@/lib/jelly";
 
 type DollOptions = {
   texture?: Texture;
@@ -43,8 +44,8 @@ export class Doll extends Container {
   // 방향성 스쿼시&스트레치: 타격 축으로 눌렸다가 감쇠 진동하며 복원 (인형 몸통 질감)
   private sqAmp = 0;
   private sqPhase = 0;
-  private sqFreq = 9; // 진동수 (cycle/sec)
-  private sqDamp = 6; // 감쇠 (1/sec)
+  private sqFreq: number = JELLY_HIT.freq; // 진동수 (cycle/sec)
+  private sqDamp: number = JELLY_HIT.damp; // 감쇠 (1/sec)
   private sqAx = 0; // 스쿼시 축 성분 (dirX², dirY² — 축 정렬 근사)
   private sqAy = 1;
   // 회전 킥 스프링 (싸대기 — 고개가 홱 돌아갔다 복원)
@@ -283,13 +284,13 @@ export class Doll extends Container {
     this.sqPhase = 0;
     this.sqAx = nx * nx;
     this.sqAy = ny * ny;
-    this.sqFreq = opts?.freq ?? 9;
-    this.sqDamp = opts?.damp ?? 6;
+    this.sqFreq = opts?.freq ?? JELLY_HIT.freq;
+    this.sqDamp = opts?.damp ?? JELLY_HIT.damp;
   }
 
   /** 뿅망치 — 수직 깊은 눌림 + 낮은 감쇠(띠용용용 4~5회 바운스) */
   bounce(intensity = 1) {
-    this.hitSquash(0, 1, intensity * 1.7, { freq: 7.5, damp: 2.4 });
+    this.hitSquash(0, 1, intensity * 1.7, JELLY_BOUNCE);
   }
 
   /** 회전 킥 — 싸대기 방향으로 고개가 홱 돌아갔다 스프링 복원 */
@@ -371,9 +372,10 @@ export class Doll extends Container {
     if (this.sqAmp > 0.003) {
       this.sqPhase += this.sqFreq * Math.PI * 2 * deltaSec;
       this.sqAmp *= Math.exp(-this.sqDamp * deltaSec);
-      const sq = this.sqAmp * Math.cos(this.sqPhase);
-      sx *= 1 - sq * this.sqAx + sq * 0.7 * this.sqAy;
-      sy *= 1 - sq * this.sqAy + sq * 0.7 * this.sqAx;
+      // 곡선 식은 lib/jelly.ts 와 공유(게임 밖 화면의 찌르기 반응도 같은 식)
+      const squash = squashScale(this.sqAmp * Math.cos(this.sqPhase), this.sqAx, this.sqAy);
+      sx *= squash.sx;
+      sy *= squash.sy;
     } else {
       this.sqAmp = 0;
     }

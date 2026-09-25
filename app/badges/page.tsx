@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAuth } from "@/lib/auth-client";
 import {
   familyGroups,
   activeBadges,
+  nextCumulativeBadges,
+  type BadgeFamilyKey,
   type CatalogBadge,
+  type NextBadge,
 } from "@/lib/config/domains/badges";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
-import { resolveOwnedBadgeRead } from "@/lib/badge-owned";
+import { resolveOwnedBadgeRead, resolvePlayTotalsRead } from "@/lib/badge-owned";
+import type { PlayTotals } from "@/lib/play-totals";
+import { playWiggle } from "@/lib/motion";
 import { runBoundedClientOperation } from "@/lib/client-operation";
 import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
@@ -19,6 +24,8 @@ import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
  */
 export default function BadgesPage() {
   const [owned, setOwned] = useState<Set<string> | null>(null);
+  // 누적 합계(v1.65) — 누적 카테고리 머리의 「다음 단계까지」 막대. 못 읽으면 막대만 없다(보유 목록과 별개, 추정 금지).
+  const [totals, setTotals] = useState<PlayTotals | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const catalog = useBadgeCatalog();
@@ -42,6 +49,15 @@ export default function BadgesPage() {
         );
         const nextOwned = resolveOwnedBadgeRead(result);
         if (!cancelled) setOwned(nextOwned);
+        try {
+          const totalsResult = await runBoundedClientOperation(
+            (signal) => createClient().rpc("get_my_play_totals").abortSignal(signal),
+            { signal: controller.signal },
+          );
+          if (!cancelled) setTotals(resolvePlayTotalsRead(totalsResult));
+        } catch {
+          // 합계를 못 읽으면 다음 단계 막대만 뺀다.
+        }
       } catch {
         if (!cancelled) setLoadFailed(true);
       }
@@ -58,6 +74,7 @@ export default function BadgesPage() {
         0
       )
     : 0;
+  const nextByFamily = totals ? nextCumulativeBadges(catalog, totals) : null;
 
   return (
     <>
@@ -102,7 +119,12 @@ export default function BadgesPage() {
             <BadgeSkeleton />
           ) : (
             families.map((f) => (
-              <FamilySection key={f.key} family={f} owned={owned} />
+              <FamilySection
+                key={f.key}
+                family={f}
+                owned={owned}
+                next={nextByFamily?.get(f.key as BadgeFamilyKey) ?? null}
+              />
             ))
           )}
         </div>
@@ -114,9 +136,12 @@ export default function BadgesPage() {
 function FamilySection({
   family,
   owned,
+  next,
 }: {
   family: { key: string; name: string; emoji: string; badges: CatalogBadge[] };
   owned: Set<string>;
+  /** 누적 카테고리의 다음 단계(v1.65) — 없으면(한 판 · 유형 카테고리, 다 받음, 합계 모름) 막대 없음 */
+  next: NextBadge | null;
 }) {
   const got = family.badges.filter((d) => owned.has(d.slug)).length;
   return (
@@ -127,14 +152,31 @@ function FamilySection({
         <span className="text-xs text-zinc-500 tabular-nums">
           {got}/{family.badges.length}
         </span>
+        {next && (
+          <span className="ml-auto truncate text-[11px] text-zinc-500 tabular-nums">
+            「{next.badge.label}」까지 <b>{next.remaining.toLocaleString()}</b>
+            {next.unit}
+          </span>
+        )}
       </div>
+      {next && (
+        // 직전 단계부터 온 만큼 — 폭이 아니라 scale 로 채우고 처음 볼 때 0 에서 차오른다(motion-fill, 배치 불변).
+        <div aria-hidden className="mb-2 h-1 overflow-hidden rounded-full bg-foreground/10">
+          <div
+            className="motion-fill h-full origin-left rounded-full bg-amber-400"
+            style={{ scale: `${next.progress.toFixed(3)} 1` }}
+          />
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-        {family.badges.map((d) =>
+        {family.badges.map((d, i) =>
           owned.has(d.slug) ? (
+            // 처음 볼 때 차례로 살짝 올라온다(v1.65, motion-rise — transform 만).
             <div
               key={d.slug}
               title={d.desc}
-              className="flex flex-col items-center gap-1 rounded-xl border border-foreground/10 ui-surface p-2 text-center"
+              style={{ "--i": i } as CSSProperties}
+              className="motion-rise flex flex-col items-center gap-1 rounded-xl border border-foreground/10 ui-surface p-2 text-center"
             >
               <span className="text-xl">{family.emoji}</span>
               <span className="text-[10px] font-semibold leading-tight">
@@ -142,11 +184,15 @@ function FamilySection({
               </span>
             </div>
           ) : (
+            // 잠긴 뱃지 — 누르면 자물쇠가 살짝 흔들린다(무엇인지는 알려 주지 않는다, v1.65).
             <div
               key={d.slug}
+              onPointerDown={(e) => playWiggle(e.currentTarget.querySelector("[data-lock]"))}
               className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-foreground/15 p-2 text-center"
             >
-              <span className="text-xl opacity-40">🔒</span>
+              <span data-lock className="text-xl opacity-40">
+                🔒
+              </span>
               <span className="text-[10px] font-bold text-zinc-500">?</span>
             </div>
           )

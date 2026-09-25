@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { playJelly } from "@/lib/motion";
+import { clearPlayDollSource, markPlayDollSource, PLAY_TRANSITION } from "@/lib/view-transition";
 import { FadeImg } from "@/components/FadeImg";
 import type { ViewerState } from "@/lib/gallery-cta";
 import { useRoleConfig } from "@/components/RoleContentProvider";
@@ -41,7 +43,17 @@ export function BaseDollCard({ doll, state }: { doll: BaseDoll; state: ViewerSta
             </span>
           </div>
         ) : (
-          <Link href={playHrefFor(doll.key)} className="block h-full w-full" aria-label={`${alt} 패기`}>
+          <Link
+            href={playHrefFor(doll.key)}
+            transitionTypes={[PLAY_TRANSITION]}
+            className="block h-full w-full"
+            aria-label={`${alt} 패기`}
+            onPointerDown={(e) => {
+              playJelly(e.currentTarget, { amp: 0.07, origin: "50% 100%" });
+              markPlayDollSource(e.currentTarget, doll.key); // 이 카드가 게임 로딩 막의 캐릭터로 이어진다
+            }}
+            onPointerCancel={clearPlayDollSource}
+          >
             {image}
           </Link>
         )}

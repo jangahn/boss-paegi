@@ -6,6 +6,10 @@ import { BadgeStrip } from "@/components/BadgeStrip";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { GradeRow, ReportApprovalTable, ReportRow } from "@/components/ReportParts";
+import { CountUp } from "@/components/motion/CountUp";
+import { CEREMONY_MS } from "@/lib/motion";
+import type { NextBadge } from "@/lib/config/domains/badges";
+import type { CSSProperties } from "react";
 
 /**
  * 게임 결과 "보고서(종이)" 표현 — 패기 유형(페르소나) 해석 + 점수/콤보/등급/부장님 반응.
@@ -36,6 +40,8 @@ export function ScoreReport({
   previousBest,
   timeBonus,
   nextGrade,
+  nextBadge,
+  ceremony = false,
 }: {
   docNo: string;
   score: number;
@@ -71,10 +77,14 @@ export function ScoreReport({
   timeBonus?: { ms: number; count: number } | null;
   /** 다음 등급과 남은 점수 — 최고 등급이면 null */
   nextGrade?: { label: string; gap: number } | null;
+  /** 누적 뱃지 다음 단계(v1.65) — 합계를 모르거나 다 받았으면 null */
+  nextBadge?: NextBadge | null;
+  /** 결과 연출 재생 중(v1.65) — 점수 카운트업. 연출 순서 자체는 부모의 data-ceremony 와 CSS(cer-*)가 맡는다. */
+  ceremony?: boolean;
 }) {
   const isNewBest = previousBest === null || (typeof previousBest === "number" && score > previousBest);
   return (
-    <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
+    <div className="cer-shake rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
       {/* 헤더 */}
       <div className="border-b-2 border-zinc-800 pb-3 text-center">
         <p className="text-[10px] tracking-[0.3em] text-zinc-500">{docNo}</p>
@@ -85,7 +95,7 @@ export function ScoreReport({
 
       {/* 오늘의 패기 유형 (페르소나 해석 리빌) — 보고서의 하이라이트 */}
       {persona && (
-        <div className="mt-3">
+        <div className="cer-rise mt-3" style={{ "--i": 0 } as CSSProperties}>
           <PersonaCard persona={persona} />
         </div>
       )}
@@ -107,11 +117,14 @@ export function ScoreReport({
       <dl className="mt-3 space-y-1.5 text-sm">
         <ReportRow label="총 정산 점수">
           <span className="text-2xl font-extrabold tabular-nums">
-            {score.toLocaleString()}
+            <CountUp value={score} play={ceremony} delayMs={CEREMONY_MS.score} durationMs={CEREMONY_MS.scoreMs} />
           </span>
           <span className="ml-1 text-xs text-zinc-500">점</span>
           {previousBest !== undefined && isNewBest && (
-            <span className="ml-1.5 inline-block -translate-y-1 rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-extrabold text-white">
+            <span
+              data-new-best
+              className="cer-pop cer-shine relative ml-1.5 inline-block -translate-y-1 overflow-hidden rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-extrabold text-white"
+            >
               {previousBest === null ? "첫 기록!" : "신기록!"}
             </span>
           )}
@@ -154,6 +167,21 @@ export function ScoreReport({
           <ReportRow label="다음 등급">
             <span className="text-xs text-zinc-600 tabular-nums">
               「{nextGrade.label}」까지 <b>{nextGrade.gap.toLocaleString()}</b>점
+            </span>
+          </ReportRow>
+        )}
+        {nextBadge && (
+          <ReportRow label="다음 뱃지">
+            <span className="text-xs text-zinc-600 tabular-nums">
+              「{nextBadge.badge.label}」까지 <b>{nextBadge.remaining.toLocaleString()}</b>
+              {nextBadge.unit}
+            </span>
+            {/* 직전 단계부터 온 만큼 — 폭이 아니라 scaleX 로 채운다(배치 불변). */}
+            <span aria-hidden className="mt-1 ml-auto block h-1 w-24 overflow-hidden rounded-full bg-zinc-200">
+              <span
+                className="block h-full origin-left rounded-full bg-amber-400"
+                style={{ transform: `scaleX(${nextBadge.progress.toFixed(3)})` }}
+              />
             </span>
           </ReportRow>
         )}

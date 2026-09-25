@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import { FadeImg } from "@/components/FadeImg";
 import { EventBanner } from "@/components/events/EventBanner";
@@ -18,6 +18,8 @@ type Period = "daily" | "weekly" | "monthly";
 
 const PERIODS: readonly Period[] = ["daily", "weekly", "monthly"];
 const DEFAULT_PERIOD: Period = "monthly";
+/** 기간 탭 화면 순서(왼쪽부터) — 선택 알약 위치. */
+const TAB_ORDER: readonly Period[] = ["monthly", "weekly", "daily"];
 
 function parsePeriod(value: string | null): Period {
   return PERIODS.includes(value as Period) ? (value as Period) : DEFAULT_PERIOD;
@@ -119,7 +121,8 @@ function LeaderboardPageInner() {
       ) : (
         <ol className="space-y-2">
           {rows.map((r, i) => (
-            <li key={r.id}>
+            // 목록이 도착하면 위에서부터 차례로 살짝 올라온다(v1.65, globals.css motion-rise — transform 만).
+            <li key={r.id} className="motion-rise" style={{ "--i": i } as CSSProperties}>
               <Link
                 href={`/history/${r.owner_id}`}
                 className="flex items-center gap-4 rounded-2xl border border-foreground/10 ui-surface p-3 transition hover:bg-foreground/10"
@@ -171,7 +174,7 @@ function LeaderboardFrame({
           <h1 className="text-2xl font-bold">랭킹</h1>
           <Link
             href="/play"
-            className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2"
+            className="press rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition"
           >
             패러 가기
           </Link>
@@ -179,7 +182,13 @@ function LeaderboardFrame({
         {/* 공지 배너 — 제목 아래(갤러리 '내 캐릭터들' 아래와 일관). */}
         <EventBanner surface="leaderboard" />
 
-        <div className="flex gap-2 rounded-full bg-foreground/5 p-1 text-sm">
+        <div className="relative flex gap-2 rounded-full bg-foreground/5 p-1 text-sm">
+          {/* 선택 알약(v1.65) — 탭마다 따로 칠하지 않고 하나가 미끄러진다(transform 만, 배치 불변). 폭 = 탭 한 칸, 이동 = 칸 + 간격. */}
+          <span
+            aria-hidden
+            className="absolute inset-y-1 left-1 w-[calc((100%-1.5rem)/3)] rounded-full bg-foreground transition-transform duration-300 ease-[var(--ease-paper)]"
+            style={{ transform: `translateX(calc(${TAB_ORDER.indexOf(period)} * (100% + 0.5rem)))` }}
+          />
           <Tab active={period === "monthly"} onClick={onSelect && (() => onSelect("monthly"))}>
             이번 달
           </Tab>
@@ -211,8 +220,8 @@ function Tab({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`flex-1 rounded-full py-2 text-center transition ${
-        active ? "bg-foreground text-paper-2" : "text-zinc-500 hover:text-foreground"
+      className={`relative flex-1 rounded-full py-2 text-center transition ${
+        active ? "text-paper-2" : "text-zinc-500 hover:text-foreground"
       }`}
     >
       {children}

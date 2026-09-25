@@ -437,7 +437,7 @@ export default function GalleryPage() {
               // 로딩 중엔 state 가 nonmember 기본값이라 회원이 눌러도 /login 으로 새지 않게 /generate 고정
               // (proxy 가 비회원은 /login?next=/generate 로 동일 게이트). 로드 후엔 state별 ctaFor.
               href={loading || profileLoadError ? "/generate" : ctaFor(state).href}
-              className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition hover:opacity-90"
+              className="press rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition hover:opacity-90"
             >
               {mk.signupBanner.memberHeaderCta}
             </Link>
