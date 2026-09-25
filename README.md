@@ -947,6 +947,7 @@ v1.61 (2026-09-25, 자산 가볍게 — v1.60 설계의 두 번째 묶음, 이�
 - **소식 본문 이미지 변환본**: 원본(PNG 2.2MB, 느린 4G LCP 15초) 대신 Supabase 변환 WebP 폭 750 · 1080 · 1440(`srcSet` · `sizes`, 원본보다 넓게 안 늘림, width + height + contain — `eventImageVariants`) — 폭 750 약 61KB. 변환할 수 없는 주소면 원본 그대로.
 - **기본 캐릭터 카드 썸네일**: 갤러리 카드 · 공유 · 기록 상세 · 캐릭터 공유(삭제된 캐릭터 자리)가 게임용 768×1024 PNG(124~167KB) 대신 `BaseDoll.thumb` 384×512 WebP(16~20KB, 다섯 장 710KB → 92KB). 게임 화면은 원본 그대로. 홈 캐릭터 얼굴(`BaseDoll.face`)은 144px WebP(약 5KB, 종전 256px PNG 21~26KB)이고 두 줄 모두 바로 받기(잠긴 줄이 lazy 였다). 생성 = `scripts/gen-static-thumbs.mjs`(sharp) — /sprites · /avatars 는 1년 immutable 캐시라 원본을 바꾸면 파일명도 바꾼다.
 - **로고 변환 384×288**(4:3 자리의 3배 DPR, WebP 56KB → 약 18KB), 어드민 미리보기 224×168.
+- **작은 칸 기본 프사도 썸네일**: 헤더 24 · 랭킹 36 · 기록 목록 44px 은 `avatarThumbSrc`(기본 프사 = 144px WebP, 커스텀 프사는 그대로), 계정 화면 96px 과 「캐릭터로 고르기」 업로드 원본은 256px PNG. 사용자가 올린 프로필 사진은 512px JPEG(64~107KB)라 작은 칸에서도 원본을 받는다 — 변환하면 줄지만 무료 플랜 변환 쿼터를 확인한 뒤 따로 정한다(후속).
 - **공개 자산 캐시 1년**: 어드민 업로드(소식 이미지 · 사이트 자산)에 `cacheControl` 31536000 — 경로가 uuid 라 바꾸면 새 경로이고, 변환(render) 응답도 원본 객체의 캐시 값을 따른다(시험 객체로 실측 후 삭제). 기존 로고 · 공유 이미지 · 소식 이미지는 롤아웃 때 같은 내용으로 다시 올려 1년으로 맞춘다.
 - **Supabase preconnect**: 루트 레이아웃이 `<head>` 에 Supabase 연결(crossOrigin anonymous)을 미리 연다(`components/SupabasePreconnect.tsx`) — 하이드레이션 뒤 첫 API 요청의 DNS · TLS 왕복.
 - 테스트: `__tests__/qa/asset-weight-contract.test.ts`(변환본 주소 · 썸네일 사용처 · 홈 얼굴 eager · 로고 변환 · 업로드 캐시 · preconnect), `__tests__/game/base-dolls.test.ts`(썸네일 규격 · 생성 스크립트 경로).
