@@ -9,7 +9,7 @@ import { Spinner } from "@/components/Spinner";
 import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 
 /**
- * 프로필 사진 변경/삭제 — 캐릭터 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 512 로 정규화.
+ * 프로필 사진 변경/삭제 — 캐릭터 생성과 동일한 크롭 UX(정사각). 너무 작으면 128, 크면 256 으로 정규화(v1.63, 종전 512).
  * v1.41: 캐릭터 프리셋 5장 중 골라 그대로 올리는 경로 추가(`uploadPresetAvatar`, 알파 PNG 보존).
  * v1.44: "기본 사진으로 되돌리기"(DELETE) 제거 — 프리셋 5장 중 고르기가 그 역할을 대신한다(기본 프사 = 유저별 고정 프리셋).
  */

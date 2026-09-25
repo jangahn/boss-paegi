@@ -25,7 +25,7 @@ import { publicWriteActorKey } from "@/lib/public-write-quota";
 export const runtime = "nodejs";
 
 const BUCKET = "avatars";
-/** hard cap — 클라가 ≤512px JPEG(~40~80KB)로 정규화. 여유 포함 512KB(과거 PNG 폴백 bloat 방지). */
+/** hard cap — 클라가 ≤256px JPEG(~15~25KB, v1.63 · 종전 512px)로 정규화. 여유 포함 512KB(과거 PNG 폴백 bloat 방지, 배포 전환 중 구 번들 512px 업로드도 수용). */
 const MAX_BYTES = 512 * 1024;
 
 async function cleanupAvatarUpload(

@@ -20,16 +20,18 @@ import {
 
 const BUCKET = "avatars";
 const MIN_DIM = 128;
-const MAX_DIM = 512;
+// 256px(v1.63, 종전 512) — 가장 큰 표시 칸(프로필 사진 변경 창 112px · 회원정보 96px)의 2배. 512px JPEG 는 27~109KB 로
+// 24~44px 칸(헤더 · 랭킹 · 기록 목록)에서도 그대로 받혔다. 256px 는 약 15~25KB.
+const MAX_DIM = 256;
 
 /**
- * 정사각 crop blob → 128~512 정사각 **JPEG** 로 정규화.
- * 너무 작으면 128×128 로 업스케일, 너무 크면 512×512 로 다운스케일.
+ * 정사각 crop blob → 128~256 정사각 **JPEG** 로 정규화.
+ * 너무 작으면 128×128 로 업스케일, 너무 크면 256×256 으로 다운스케일.
  *
  * JPEG 고정 이유: `toBlob("image/webp")` 가 webp 미지원 브라우저(일부 Safari/iOS)에서
  * **PNG 로 silently 폴백**(canvas 스펙 기본값) → 512px 사진 PNG=무손실 400~600KB 로 비대해져
  * 프사 로딩이 느렸다. JPEG 는 toBlob 보편 지원·사진에 적합·알파 불필요(정사각 풀-드로) →
- * 512px 기준 ~40~80KB. (알파 없는 JPEG 라 빈 영역 검정 방지로 흰 배경 선채움.)
+ * 256px 기준 ~15~25KB. (알파 없는 JPEG 라 빈 영역 검정 방지로 흰 배경 선채움.)
  */
 async function normalizeSquare(blob: Blob): Promise<Blob> {
   const img = await loadImage(blob);
