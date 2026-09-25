@@ -47,7 +47,7 @@ export function OrdersFilter({ status, q }: { status: string | null; q: string |
           e.preventDefault();
           go(status ?? "", query);
         }}
-        className="flex flex-1 gap-2"
+        className="flex min-w-0 flex-1 gap-2"
       >
         <input
           value={query}
@@ -59,7 +59,7 @@ export function OrdersFilter({ status, q }: { status: string | null; q: string |
         <button
           type="submit"
           disabled={pending}
-          className="flex items-center gap-1 rounded-lg border border-foreground/20 px-3 py-2 text-sm font-medium disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-foreground/20 px-3 py-2 text-sm font-medium disabled:opacity-50"
         >
           {pending && <Spinner className="h-3.5 w-3.5" />}검색
         </button>
