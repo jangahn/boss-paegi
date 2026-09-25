@@ -11,6 +11,7 @@ import {
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { resolveOwnedBadgeRead } from "@/lib/badge-owned";
 import { runBoundedClientOperation } from "@/lib/client-operation";
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 /**
  * 뱃지 수집 페이지 — 프로필 메뉴("내 뱃지")에서 진입. 익명/회원 공통(self-RLS).
@@ -157,7 +158,7 @@ function FamilySection({
 
 function BadgeSkeleton() {
   return (
-    <div className="flex flex-col gap-5">
+    <div {...PAGE_LOADING_PROPS} className="flex flex-col gap-5">
       {Array.from({ length: 3 }).map((_, i) => (
         <div key={i} className="flex flex-col gap-2">
           <div className="h-4 w-20 animate-pulse rounded bg-foreground/10" />

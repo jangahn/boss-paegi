@@ -66,17 +66,18 @@ export default function Home() {
           <div className="relative flex flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 text-center shadow-sm">
             <Paperclip className="left-7" />
             <CornerFold />
-            {/* 정사각 로고 슬롯(LOGO_TRANSFORM 640²·에디터 미리보기와 동일 비율) — 4:3 정적 폴백은 object-contain 으로 안전 수용.
+            {/* 로고 자리 4:3 고정(v1.60, 112×84) — 로고 자산이 4:3(640×480)이다. 종전 640×640 이라 정사각 자리가 잡혔다가 로고가 오면서
+                28px 줄어 아래 전부가 당겨졌다(2026-09-25 실측). 다른 비율 로고는 object-contain 으로 자리 안에 맞춘다.
                 w-28·main py-6: 캐릭터 줄이 들어와도 iPhone SE 첫 화면(Safari 553px)에 1차·2차 버튼이 모두 보이게
                 (실측: 발행 로고 640×480 기준 비회원 2차 버튼 하단 547px). */}
             <Image
               src={logoUrl ?? "/logo.png"}
               alt="부장님 패기"
               width={640}
-              height={640}
+              height={480}
               unoptimized
               priority
-              className="w-28 max-w-full object-contain"
+              className="h-21 w-28 max-w-full object-contain"
             />
             <p className="whitespace-pre-line text-base leading-relaxed text-zinc-600">
               {home.tagline}

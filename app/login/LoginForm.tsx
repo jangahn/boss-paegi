@@ -14,6 +14,7 @@ import { Paperclip, CornerFold } from "@/components/dossier";
 import { useMediaAssets } from "@/components/MediaAssetsProvider";
 import { ownRecordValue } from "@/lib/own-record";
 import { runClientMutation } from "@/lib/client-mutation";
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 import {
   resolveOAuthFlowBrowserRecoveryPath,
 } from "@/lib/oauth-flow-browser-recovery";
@@ -71,7 +72,6 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function LoginForm({ supportEmail }: { supportEmail?: string }) {
-  const { logoUrl } = useMediaAssets();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
   // PG 심사·테스트 계정 전용 ID/PW 진입 — `?reviewer=1` 일 때만 폼 노출(평상시 로그인 UI 불변).
@@ -265,21 +265,138 @@ export function LoginForm({ supportEmail }: { supportEmail?: string }) {
   }
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+    <LoginCardFrame>
+      {autoFailed && (
+        <p
+          role="alert"
+          className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400"
+        >
+          자동 로그인에 실패했어요. 아래 버튼으로 다시 시도해주세요.
+        </p>
+      )}
+      {errorMsg && (
+        <div
+          role="alert"
+          className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500"
+        >
+          <p>{errorMsg}</p>
+          {/* 탈퇴 안내 분기 한정 고객센터 노출 — 푸터가 /login self-hide 라
+              복구 문의 창구가 없던 공백(약관 제5조 7항 정합) */}
+          {errorKey === "account_deleted" && supportEmail && (
+            <p className="mt-2 text-xs text-red-400">
+              고객센터:{" "}
+              <a className="underline underline-offset-2" href={`mailto:${supportEmail}`}>
+                {supportEmail}
+              </a>
+            </p>
+          )}
+        </div>
+      )}
+
+      {reviewerMode && (
+        <form
+          className="flex w-full flex-col gap-2 rounded-xl border border-foreground/15 bg-foreground/5 p-4 text-left"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void onReviewerLogin();
+          }}
+        >
+          <p className="text-sm font-semibold">심사용 계정 로그인</p>
+          <p className="text-xs text-zinc-500">
+            결제 심사(PG)용 테스트 계정 전용이에요. 일반 이용은 아래 카카오/Google 로그인을
+            이용해주세요.
+          </p>
+          <label htmlFor="reviewer-email" className="sr-only">
+            심사용 계정 이메일
+          </label>
+          <input
+            id="reviewer-email"
+            type="email"
+            autoComplete="username"
+            value={rvEmail}
+            disabled={rvBusy || !!busy}
+            onChange={(e) => setRvEmail(e.target.value)}
+            placeholder="아이디(이메일)"
+            className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
+          />
+          <label htmlFor="reviewer-password" className="sr-only">
+            심사용 계정 비밀번호
+          </label>
+          <input
+            id="reviewer-password"
+            type="password"
+            autoComplete="current-password"
+            value={rvPw}
+            disabled={rvBusy || !!busy}
+            onChange={(e) => setRvPw(e.target.value)}
+            placeholder="비밀번호"
+            className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
+          />
+          {rvErr && (
+            <p role="alert" className="text-xs text-red-500">
+              {rvErr}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={rvBusy || !!busy || !rvEmail.trim() || !rvPw}
+            className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-foreground py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-50"
+          >
+            {rvBusy && <Spinner className="h-4 w-4" />}
+            심사용 계정으로 로그인
+          </button>
+        </form>
+      )}
+
+      <ProviderButtons busy={busy} disabled={!!busy || rvBusy} onLogin={(provider) => void onLogin(provider)} />
+
+      {err && (
+        <p role="alert" className="text-sm text-red-400">
+          {err}
+        </p>
+      )}
+
+      <LoginFootnote />
+    </LoginCardFrame>
+  );
+}
+
+/**
+ * 서버 HTML fallback(v1.60) — 폼이 useSearchParams 로 JS 뒤에 그려져 그때까지 빈 화면이던 것. 기본 화면(오류 안내·심사 폼 없음)과
+ * 같은 카드를 싣는다. 버튼은 모양만 같고, 하이드레이션 뒤 본 폼으로 바뀐다(하이드레이션 전이라 어차피 클릭이 먹지 않는다).
+ */
+export function LoginFormFallback() {
+  return (
+    <LoginCardFrame loading>
+      <ProviderButtons busy={null} disabled={false} />
+      <LoginFootnote />
+    </LoginCardFrame>
+  );
+}
+
+/** 로그인 카드 틀(제목, 로고, 안내 문구) — 본 폼과 fallback 이 같이 쓴다. */
+function LoginCardFrame({ loading = false, children }: { loading?: boolean; children: React.ReactNode }) {
+  const { logoUrl } = useMediaAssets();
+  return (
+    <main
+      {...(loading ? PAGE_LOADING_PROPS : {})}
+      className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center"
+    >
       <h1 className="sr-only">로그인</h1>
       <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border border-foreground/10 ui-surface px-7 pb-7 pt-10 shadow-sm">
         <Paperclip className="left-7" />
         <CornerFold />
         <Link href="/" aria-label="부장님 패기 홈">
-          {/* 정사각 로고 슬롯(LOGO_TRANSFORM 640²·에디터 미리보기와 동일 비율) — 4:3 정적 폴백은 object-contain 으로 안전 수용 */}
+          {/* 로고 자리 4:3 고정(v1.60, 128×96) — 로고 자산이 4:3(640×480)이다. 종전 640×640 이라 정사각 자리가 잡혔다가 로고가 오면서
+              32px 줄어 아래가 당겨졌다. 다른 비율 로고는 object-contain 으로 자리 안에 맞춘다. */}
           <Image
             src={logoUrl ?? "/logo.png"}
             alt="부장님 패기"
             width={640}
-            height={640}
+            height={480}
             unoptimized
             priority
-            className="w-32 max-w-full object-contain"
+            className="h-24 w-32 max-w-full object-contain"
           />
         </Link>
         <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
@@ -287,127 +404,58 @@ export function LoginForm({ supportEmail }: { supportEmail?: string }) {
           <br />
           만들어보세요.
         </p>
-
-        {autoFailed && (
-          <p
-            role="alert"
-            className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400"
-          >
-            자동 로그인에 실패했어요. 아래 버튼으로 다시 시도해주세요.
-          </p>
-        )}
-        {errorMsg && (
-          <div
-            role="alert"
-            className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500"
-          >
-            <p>{errorMsg}</p>
-            {/* 탈퇴 안내 분기 한정 고객센터 노출 — 푸터가 /login self-hide 라
-                복구 문의 창구가 없던 공백(약관 제5조 7항 정합) */}
-            {errorKey === "account_deleted" && supportEmail && (
-              <p className="mt-2 text-xs text-red-400">
-                고객센터:{" "}
-                <a className="underline underline-offset-2" href={`mailto:${supportEmail}`}>
-                  {supportEmail}
-                </a>
-              </p>
-            )}
-          </div>
-        )}
-
-        {reviewerMode && (
-          <form
-            className="flex w-full flex-col gap-2 rounded-xl border border-foreground/15 bg-foreground/5 p-4 text-left"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void onReviewerLogin();
-            }}
-          >
-            <p className="text-sm font-semibold">심사용 계정 로그인</p>
-            <p className="text-xs text-zinc-500">
-              결제 심사(PG)용 테스트 계정 전용이에요. 일반 이용은 아래 카카오/Google 로그인을
-              이용해주세요.
-            </p>
-            <label htmlFor="reviewer-email" className="sr-only">
-              심사용 계정 이메일
-            </label>
-            <input
-              id="reviewer-email"
-              type="email"
-              autoComplete="username"
-              value={rvEmail}
-              disabled={rvBusy || !!busy}
-              onChange={(e) => setRvEmail(e.target.value)}
-              placeholder="아이디(이메일)"
-              className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
-            />
-            <label htmlFor="reviewer-password" className="sr-only">
-              심사용 계정 비밀번호
-            </label>
-            <input
-              id="reviewer-password"
-              type="password"
-              autoComplete="current-password"
-              value={rvPw}
-              disabled={rvBusy || !!busy}
-              onChange={(e) => setRvPw(e.target.value)}
-              placeholder="비밀번호"
-              className="rounded-lg border border-foreground/15 bg-white/60 px-3 py-2.5 text-sm dark:bg-black/20"
-            />
-            {rvErr && (
-              <p role="alert" className="text-xs text-red-500">
-                {rvErr}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={rvBusy || !!busy || !rvEmail.trim() || !rvPw}
-              className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-foreground py-2.5 text-sm font-semibold text-paper-2 transition hover:opacity-90 disabled:opacity-50"
-            >
-              {rvBusy && <Spinner className="h-4 w-4" />}
-              심사용 계정으로 로그인
-            </button>
-          </form>
-        )}
-
-        <div className="mt-2 flex w-full flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => void onLogin("kakao")}
-            disabled={!!busy || rvBusy}
-            className="flex items-center justify-center gap-2 rounded-xl bg-[#FEE500] py-4 text-base font-semibold text-[#191600] transition hover:opacity-90 disabled:opacity-50"
-          >
-            {busy === "kakao" ? <Spinner className="h-5 w-5" /> : <KakaoIcon />}
-            카카오로 시작하기
-          </button>
-          <button
-            type="button"
-            onClick={() => void onLogin("google")}
-            disabled={!!busy || rvBusy}
-            className="flex items-center justify-center gap-2 rounded-xl border border-foreground/20 bg-white py-4 text-base font-semibold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
-          >
-            {busy === "google" ? <Spinner className="h-5 w-5" /> : <GoogleIcon />}
-            Google로 시작하기
-          </button>
-        </div>
-
-        {err && (
-          <p role="alert" className="text-sm text-red-400">
-            {err}
-          </p>
-        )}
-
-        <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-          새 계정으로 가입하면 현재 비회원 기록(점수 등)이 이전됩니다. 기존 계정으로
-          로그인하면 비회원 기록은 이전되지 않습니다.
-        </p>
-        <Link
-          href="/"
-          className="text-sm text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
-        >
-          ← 홈으로
-        </Link>
+        {children}
       </div>
     </main>
+  );
+}
+
+function ProviderButtons({
+  busy,
+  disabled,
+  onLogin,
+}: {
+  busy: OAuthProvider | null;
+  disabled: boolean;
+  onLogin?: (provider: OAuthProvider) => void;
+}) {
+  return (
+    <div className="mt-2 flex w-full flex-col gap-3">
+      <button
+        type="button"
+        onClick={onLogin && (() => onLogin("kakao"))}
+        disabled={disabled}
+        className="flex items-center justify-center gap-2 rounded-xl bg-[#FEE500] py-4 text-base font-semibold text-[#191600] transition hover:opacity-90 disabled:opacity-50"
+      >
+        {busy === "kakao" ? <Spinner className="h-5 w-5" /> : <KakaoIcon />}
+        카카오로 시작하기
+      </button>
+      <button
+        type="button"
+        onClick={onLogin && (() => onLogin("google"))}
+        disabled={disabled}
+        className="flex items-center justify-center gap-2 rounded-xl border border-foreground/20 bg-white py-4 text-base font-semibold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
+      >
+        {busy === "google" ? <Spinner className="h-5 w-5" /> : <GoogleIcon />}
+        Google로 시작하기
+      </button>
+    </div>
+  );
+}
+
+function LoginFootnote() {
+  return (
+    <>
+      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+        새 계정으로 가입하면 현재 비회원 기록(점수 등)이 이전됩니다. 기존 계정으로
+        로그인하면 비회원 기록은 이전되지 않습니다.
+      </p>
+      <Link
+        href="/"
+        className="text-sm text-zinc-500 underline-offset-4 transition hover:text-foreground hover:underline"
+      >
+        ← 홈으로
+      </Link>
+    </>
   );
 }

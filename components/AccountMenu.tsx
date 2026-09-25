@@ -185,8 +185,9 @@ export function AccountMenu() {
         </button>
       );
     }
+    // 로딩 자리 높이 = 알약 높이 34px(테두리 + py-1 + 24px 사진, v1.60) — 종전 32px 라 알약이 들어오며 헤더가 2px 커져 아래 전부가 밀렸다.
     return (
-      <div className="flex h-8 w-24 items-center justify-end">
+      <div className="flex h-8.5 w-24 items-center justify-end">
         <Spinner className="h-4 w-4" />
       </div>
     );

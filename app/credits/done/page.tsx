@@ -52,82 +52,99 @@ function CreditsDoneInner() {
   }, [order, pgFailCode]);
 
   return (
+    <CreditsDoneFrame>
+      {state === "checking" && <CheckingContent />}
+      {state === "paid" && (
+        <>
+          <span className="text-4xl" aria-hidden>
+            🎉
+          </span>
+          <h1 className="text-lg font-bold">충전 완료!</h1>
+          <p className="text-sm text-zinc-500">
+            생성권{" "}
+            <span className="font-bold text-foreground">{credits}개</span>가
+            충전됐어요.
+          </p>
+          <Link
+            href="/generate"
+            className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90"
+          >
+            캐릭터 만들러 가기
+          </Link>
+        </>
+      )}
+      {state === "review" && (
+        <>
+          <span className="text-4xl" aria-hidden>
+            ⏳
+          </span>
+          <h1 className="text-lg font-bold">결제 후 처리를 확인 중이에요</h1>
+          <p className="text-sm leading-relaxed text-zinc-500">
+            결제 완료는 확인됐지만 생성권 지급은 운영 확인이 필요해요.
+            중복 결제하지 말고 결제 내역에서 처리 상태를 확인해주세요.
+          </p>
+          <Link
+            href="/account/payments"
+            className="mt-2 text-sm font-semibold underline"
+          >
+            결제 내역 확인
+          </Link>
+        </>
+      )}
+      {(state === "pending" || state === "error") && (
+        <>
+          <span className="text-4xl" aria-hidden>
+            {state === "pending" ? "⏳" : "⚠️"}
+          </span>
+          <h1 className="text-lg font-bold">
+            {state === "pending" ? "결제 처리 중이에요" : "결제를 확인할 수 없어요"}
+          </h1>
+          <p className="text-sm leading-relaxed text-zinc-500">
+            결제가 완료되었는데 화면이 갱신되지 않으면 다시 로그인 후 크레딧을
+            확인해주세요.
+          </p>
+          <Link
+            href="/credits"
+            className="mt-2 text-sm font-semibold underline"
+          >
+            충전 화면으로
+          </Link>
+        </>
+      )}
+    </CreditsDoneFrame>
+  );
+}
+
+// 결제 결과 틀 · 결제 확인 중 내용 — 본 화면(state=checking)과 서버 HTML fallback 이 같이 쓴다(v1.60). fallback 이 비어 있으면
+// JS 가 뜰 때까지 푸터가 헤더 바로 아래 붙어 있다가 본문이 오면서 밀렸다. 로딩 표지(PAGE_LOADING_PROPS)는 달지 않는다 — 결제
+// 결과 화면은 사업자 정보 상시 노출 대상이고, 가운데 정렬 짧은 화면이라 푸터가 움직이지 않는다.
+function CreditsDoneFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+      <div className="flex w-full max-w-sm flex-col items-center gap-4">{children}</div>
+    </main>
+  );
+}
+
+function CheckingContent() {
+  return (
     <>
-      <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-        <div className="flex w-full max-w-sm flex-col items-center gap-4">
-          {state === "checking" && (
-            <>
-              <Spinner className="h-8 w-8" />
-              <h1 className="text-lg font-bold">결제 확인 중…</h1>
-              <p className="text-sm text-zinc-500">잠시만 기다려주세요.</p>
-            </>
-          )}
-          {state === "paid" && (
-            <>
-              <span className="text-4xl" aria-hidden>
-                🎉
-              </span>
-              <h1 className="text-lg font-bold">충전 완료!</h1>
-              <p className="text-sm text-zinc-500">
-                생성권{" "}
-                <span className="font-bold text-foreground">{credits}개</span>가
-                충전됐어요.
-              </p>
-              <Link
-                href="/generate"
-                className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-paper-2 transition hover:opacity-90"
-              >
-                캐릭터 만들러 가기
-              </Link>
-            </>
-          )}
-          {state === "review" && (
-            <>
-              <span className="text-4xl" aria-hidden>
-                ⏳
-              </span>
-              <h1 className="text-lg font-bold">결제 후 처리를 확인 중이에요</h1>
-              <p className="text-sm leading-relaxed text-zinc-500">
-                결제 완료는 확인됐지만 생성권 지급은 운영 확인이 필요해요.
-                중복 결제하지 말고 결제 내역에서 처리 상태를 확인해주세요.
-              </p>
-              <Link
-                href="/account/payments"
-                className="mt-2 text-sm font-semibold underline"
-              >
-                결제 내역 확인
-              </Link>
-            </>
-          )}
-          {(state === "pending" || state === "error") && (
-            <>
-              <span className="text-4xl" aria-hidden>
-                {state === "pending" ? "⏳" : "⚠️"}
-              </span>
-              <h1 className="text-lg font-bold">
-                {state === "pending" ? "결제 처리 중이에요" : "결제를 확인할 수 없어요"}
-              </h1>
-              <p className="text-sm leading-relaxed text-zinc-500">
-                결제가 완료되었는데 화면이 갱신되지 않으면 다시 로그인 후 크레딧을
-                확인해주세요.
-              </p>
-              <Link
-                href="/credits"
-                className="mt-2 text-sm font-semibold underline"
-              >
-                충전 화면으로
-              </Link>
-            </>
-          )}
-        </div>
-      </main>
+      <Spinner className="h-8 w-8" />
+      <h1 className="text-lg font-bold">결제 확인 중…</h1>
+      <p className="text-sm text-zinc-500">잠시만 기다려주세요.</p>
     </>
   );
 }
 
 export default function CreditsDonePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <CreditsDoneFrame>
+          <CheckingContent />
+        </CreditsDoneFrame>
+      }
+    >
       <CreditsDoneInner />
     </Suspense>
   );

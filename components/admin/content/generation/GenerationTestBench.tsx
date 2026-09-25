@@ -339,7 +339,7 @@ export function GenerationTestBench({ current }: { current: GenerationConfig }) 
             <img
               src={croppedPreview}
               alt="크롭된 원본 미리보기"
-              className="h-14 w-auto rounded-md border border-foreground/15"
+              className="aspect-[3/4] h-14 w-auto rounded-md border border-foreground/15"
             />
             <button
               type="button"

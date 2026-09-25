@@ -31,6 +31,7 @@ import {
   runReplayedJsonMutation,
 } from "@/lib/client-mutation";
 import { useClientOperationScope } from "@/lib/use-client-operation-scope";
+import { readImageFileSize, withEventImageSize } from "@/lib/events/markdown-image";
 
 /** ISO(UTC) → KST datetime-local(YYYY-MM-DDTHH:mm). 빈값 "". */
 function isoToKstLocal(iso: string | null): string {
@@ -528,8 +529,10 @@ export function EventEditor({ event }: { event: EventView | null }) {
     setUploading("inline");
     setMsg(null);
     try {
-      const { url } = await upload(file);
-      setBody((b) => `${b}${b.endsWith("\n") || b === "" ? "" : "\n\n"}![](${url})\n`);
+      // 가로세로를 주소 조각으로 함께 기록 — 소식 화면이 도착 전에 이미지 자리를 잡는다(v1.60, lib/events/markdown-image.ts).
+      const [{ url }, size] = await Promise.all([upload(file), readImageFileSize(file)]);
+      const src = size ? withEventImageSize(url, size) : url;
+      setBody((b) => `${b}${b.endsWith("\n") || b === "" ? "" : "\n\n"}![](${src})\n`);
     } catch (e) {
       setMsg({ ok: false, text: `본문 이미지 업로드 실패 (${(e as Error).message})` });
     } finally {
@@ -888,8 +891,9 @@ export function EventEditor({ event }: { event: EventView | null }) {
         {preview && (
           <div className="rounded-2xl border border-foreground/10 p-4">
             {coverUrl && (
+              // 커버 자리 = 공유 이미지와 같은 40:21(v1.60, 최대 240px) — 이미지가 도착하기 전에 자리를 잡는다.
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={coverUrl} alt="" className="mb-3 max-h-60 w-full rounded-xl object-cover" />
+              <img src={coverUrl} alt="" className="mb-3 aspect-[40/21] max-h-60 w-full rounded-xl object-cover" />
             )}
             <h2 className="text-lg font-bold">{title || "(제목 없음)"}</h2>
             <p className="mb-3 mt-1 text-sm text-zinc-500">{summary}</p>

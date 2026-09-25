@@ -30,6 +30,8 @@ import {
   runReplayedJsonMutation,
 } from "@/lib/client-mutation";
 import { runBoundedClientOperation } from "@/lib/client-operation";
+import { FOR_NONMEMBER_CLASS } from "@/lib/member-hint";
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 const GALLERY_PAGE = 12; // 무한스크롤 페이지 크기
 
@@ -455,7 +457,14 @@ export default function GalleryPage() {
               </button>
             </div>
           ) : loading ? (
-            <GridSkeleton />
+            <div {...PAGE_LOADING_PROPS} className="flex flex-col gap-6">
+              {/* 비회원 가입 배너(v1.60) — 회원 힌트(첫 페인트 전 쿠키 판별)로 비회원에게는 로딩 중에도 로딩 뒤와 같은 자리에 보인다.
+                  로딩 뒤에만 그리면 배너가 격자 위로 끼어들어 격자가 약 100px 밀렸다. 회원에게는 숨고, 캐릭터 없는 회원의 배너는 로딩 뒤에 뜬다. */}
+              <div className={FOR_NONMEMBER_CLASS}>
+                <SignupBanner state="nonmember" />
+              </div>
+              <GridSkeleton />
+            </div>
           ) : (
             <>
               <SignupBanner state={state} />
