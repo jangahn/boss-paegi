@@ -8,6 +8,7 @@ import {
 } from "@/lib/http/admin-json-request";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { eventSaveSchema } from "@/lib/events/types";
+import { EVENTS_CACHE_TAG } from "@/lib/events/banner-snapshot-server";
 import { deterministicAdminRequestId } from "@/lib/admin-operation-id";
 import { parseAdminEventMutationResult } from "@/lib/admin-mutation";
 import { legacyAdminClientRefresh } from "@/lib/admin-client-compat";
@@ -63,9 +64,10 @@ function kstLocalToIso(s: string | null): string | null {
   return `${t}+09:00`;
 }
 
-// 발행/수정/삭제 시 공개 지면 + 캐시 태그 무효화(개별 호출).
+// 발행/수정/삭제 시 공개 지면 + 캐시 태그 무효화(개별 호출). 태그는 공지 배너 서버 HTML 스냅샷(v1.62)도 무효화한다 —
+// 루트 레이아웃이 읽으므로 정적 페이지 전체가 다음 방문에 새 배너로 다시 그려진다.
 function revalidateEvents(id?: string) {
-  revalidateTag("events", "max");
+  revalidateTag(EVENTS_CACHE_TAG, "max");
   revalidatePath("/");
   revalidatePath("/news");
   revalidatePath("/leaderboard");

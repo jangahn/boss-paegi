@@ -8,6 +8,7 @@ import {
   type ActiveEvents,
 } from "@/lib/active-events-response";
 import { createExpiringSharedRequest } from "@/lib/expiring-shared-request";
+import { useInitialEventBanners } from "./EventBannersProvider";
 
 const EMPTY: ActiveEvents = {
   serverNow: "1970-01-01T00:00:00.000Z",
@@ -35,7 +36,10 @@ export function useActiveEvents(): ActiveEvents & {
   error: boolean;
   retry: () => void;
 } {
-  const [state, setState] = useState<ActiveEvents>(EMPTY);
+  // 첫 상태 = 서버 HTML 에 실린 배너(v1.62) — 하이드레이션 전에도 배너 자리가 잡혀 본문이 밀리지 않는다. 팝업은 서버에 싣지 않는다
+  // (「며칠 안 보기」가 브라우저 저장소). 조회가 끝나면 권위 값으로 바꾸고, 경계에서는 종전처럼 먼저 숨긴 뒤 다시 조회한다.
+  const initialBanners = useInitialEventBanners().banners;
+  const [state, setState] = useState<ActiveEvents>(() => ({ ...EMPTY, banners: initialBanners }));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
