@@ -260,10 +260,13 @@ telemetry_budget_fixture_installed="true"
 # Same absent session, two real connections: A holds the transaction-level
 # advisory/global/actor locks after ingest; B must wait, observe the committed
 # row, and consume request-only quota rather than a second new-session unit.
-# B starts only after the server shows A holding its locks, and A holds them for
-# 0.1s — well under ingest_telemetry_delta's lock_timeout (250ms). Holding
-# longer (the old 0.2s hold plus slow-runner latency) made B time out into
-# quota_busy, which counts nothing (1|1:1|1:1, PR #314 CI).
+# Ordering is observed on the server, never assumed from sleeps: B starts only
+# after pg_stat_activity shows A holding its locks, and A releases them as soon
+# as pg_locks shows B queued on the session advisory lock. B therefore waits
+# ~10ms, far under ingest_telemetry_delta's lock_timeout (250ms). A fixed hold
+# either timed B out into quota_busy, which counts nothing (0.2s hold on a slow
+# runner: 1|1:1|1:1), or ended before a slow poller saw A's marker (0.1s hold),
+# both in PR #314 CI.
 db_psql -Aqt >/dev/null <<SQL
 delete from public.public_write_quota_buckets where endpoint = 'telemetry';
 delete from public.telemetry_sessions
@@ -280,7 +283,24 @@ select public.ingest_telemetry_delta(
   '{"deviceClass":"desktop-pointer","summary":{"seqHigh":1,"durationMs":1000,"totals":{"score":1,"hitCount":1}},"events":[]}'::jsonb
 )->>'ok';
 set application_name = 'qa-quota-same-a-holding';
-select pg_catalog.pg_sleep(0.1);
+-- Release only after B is actually queued on the session advisory lock, so
+-- B's wait is one 10ms poll — never near the function's 250ms lock_timeout.
+do \$\$
+declare
+  v_deadline timestamptz := pg_catalog.clock_timestamp() + interval '30 seconds';
+begin
+  loop
+    exit when exists (
+      select 1
+        from pg_catalog.pg_locks
+       where locktype = 'advisory'
+         and not granted
+    );
+    exit when pg_catalog.clock_timestamp() > v_deadline;
+    perform pg_catalog.pg_sleep(0.01);
+  end loop;
+end
+\$\$;
 commit;
 SQL
 ) &
@@ -543,7 +563,8 @@ SQL
   || fail "track actor race exceeded boundary ($track_actor_state)"
 
 # A deliberately held global row must fail fast instead of queueing another
-# public request behind a one-second lock holder.
+# public request behind a lock holder (held 3s so a slow runner's contender
+# still arrives while it is held; the contender gives up after 250ms).
 db_psql -Aqt >/dev/null <<SQL
 delete from public.public_write_quota_buckets where endpoint = 'track';
 delete from public.analytics_events
@@ -567,7 +588,7 @@ select actor_key
  where endpoint = 'track' and actor_key = 'global'
  for update;
 set application_name = 'qa-quota-lock-holder';
-select pg_catalog.pg_sleep(1);
+select pg_catalog.pg_sleep(3);
 commit;
 SQL
 ) &
