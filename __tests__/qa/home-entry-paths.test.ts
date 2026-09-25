@@ -7,9 +7,8 @@ import { register } from "node:module";
 
 register("../telemetry/node-loader.mjs", import.meta.url);
 
-const { MARKETING_COPY_DEFAULT, marketingCopySchema, normalizeMarketingCopyInput } = await import(
-  "../../lib/config/domains/marketing.ts"
-);
+const { MARKETING_COPY_DEFAULT, normalizeMarketingCopyInput } = await import("../../lib/config/domains/marketing.ts");
+const { marketingCopySchema } = await import("../../lib/config/domains/marketing-schema.ts");
 
 const source = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 

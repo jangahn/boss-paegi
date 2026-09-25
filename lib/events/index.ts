@@ -14,9 +14,9 @@ import {
   parseActiveEventsResponse,
   type ActiveEvents,
 } from "@/lib/active-events-response";
+import { coverPathSchema } from "./schema";
 import {
   NEWS_PAGE_SIZE,
-  coverPathSchema,
   isEventType,
   type BannerSurface,
   eventExposure,

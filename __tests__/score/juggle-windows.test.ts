@@ -20,7 +20,8 @@ const {
   mapsInWindow,
   varietyMultiplier,
 } = await import("../../lib/game-tuning.ts");
-const { scoreConfigSchema, SCORE_CONFIG_DEFAULT } = await import("../../lib/config/domains/score.ts");
+const { SCORE_CONFIG_DEFAULT } = await import("../../lib/config/domains/score.ts");
+const { scoreConfigSchema } = await import("../../lib/config/domains/score-schema.ts");
 const { MAX_AVG_SCORE_PER_SEC, MAX_SCORE_HARD, MAX_DURATION_MS } = await import("../../lib/score-limits.ts");
 const { MAX_PLAY_SECONDS_MAX, TIME_CAP_GRACE_SECONDS } = await import("../../lib/time-limit.ts");
 const { HUMAN_SCORE_PER_SEC_OBSERVED, SCORE_PER_SEC_MAX, S7_LONG_SESSION_SCORE_FLOOR } = await import("../../lib/anti-abuse-rules.ts");

@@ -17,7 +17,8 @@ const {
   ultimatesToMaxPlay,
 } = await import("../../lib/time-limit.ts");
 const { selectPlayMs, selectRemainingMs, useGameStore } = await import("../../store/gameStore.ts");
-const { SESSION_LIMITS_DEFAULT, sessionLimitsSchema } = await import("../../lib/config/domains/session.ts");
+const { SESSION_LIMITS_DEFAULT } = await import("../../lib/config/domains/session.ts");
+const { sessionLimitsSchema } = await import("../../lib/config/domains/session-schema.ts");
 const { buildGameplayStats, validateGameplayStats, validTimeLimitStats } = await import("../../lib/stats.ts");
 
 test("사용자 확정 기본값 — 기본 60초 · 최대 120초 · 궁극기 +10초", () => {

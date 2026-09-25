@@ -5,22 +5,23 @@ import test from "node:test";
 const source = (path: string) =>
   readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
-// marketing.ts 는 `@/` alias 체인(template → lib/roles)이라 Node 러너에서 직접 import 하지 못한다.
-// 다른 컴포넌트 계약 테스트와 같은 source 계약 방식으로 스키마·기본값을 고정한다.
+// marketing-schema.ts 는 `@/` alias 체인(template → lib/roles)이라 Node 러너에서 직접 import 하지 못한다.
+// 다른 컴포넌트 계약 테스트와 같은 source 계약 방식으로 스키마·기본값을 고정한다(schema 는 v1.64 부터 marketing-schema.ts).
 test("game-over next-play copy keys carry the decided defaults and backfill published rows", () => {
+  const schema = source("lib/config/domains/marketing-schema.ts");
   const marketing = source("lib/config/domains/marketing.ts");
 
   // 스키마: 신규 2키는 .default() — 이미 발행된 marketing_copy 행(키 부재)도 무중단 충전.
   assert.match(
-    marketing,
+    schema,
     /gameoverPlayBtnMember: tpl\(30\)\.default\("다른 캐릭터로 패기"\),/,
   );
   assert.match(
-    marketing,
+    schema,
     /gameoverPlayBtnNonmember: tpl\(30\)\.default\("다른 캐릭터 더 열고 패기"\),/,
   );
   // 다시 패기 키는 이름·검증 불변(발행값 보존).
-  assert.match(marketing, /gameoverRetryBtn: tpl\(20\),/);
+  assert.match(schema, /gameoverRetryBtn: tpl\(20\),/);
 
   // 코드 기본값(폴백)도 같은 문구.
   assert.match(marketing, /gameoverPlayBtnMember: "다른 캐릭터로 패기",/);

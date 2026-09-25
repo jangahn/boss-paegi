@@ -11,36 +11,18 @@ import {
   GENERATION_CONFIG_DEFAULT,
   type GenerationConfig,
 } from "./domains/generation";
-import {
-  marketingCopySchema,
-  MARKETING_COPY_DEFAULT,
-  type MarketingCopy,
-} from "./domains/marketing";
-import {
-  roleConfigSchema,
-  ROLE_CONFIG_DEFAULT,
-  type RoleConfig,
-} from "./domains/roles";
-import {
-  scoreConfigSchema,
-  SCORE_CONFIG_DEFAULT,
-  type ScoreConfig,
-} from "./domains/score";
-import {
-  sessionLimitsSchema,
-  SESSION_LIMITS_DEFAULT,
-  type SessionLimits,
-} from "./domains/session";
-import {
-  growthLeversSchema,
-  GROWTH_LEVERS_DEFAULT,
-  type GrowthLevers,
-} from "./domains/growth";
-import {
-  badgeCatalogSchema,
-  BADGE_CATALOG_DEFAULT,
-  type BadgeCatalog,
-} from "./domains/badges";
+import { MARKETING_COPY_DEFAULT } from "./domains/marketing";
+import { marketingCopySchema, type MarketingCopy } from "./domains/marketing-schema";
+import { ROLE_CONFIG_DEFAULT, type RoleConfig } from "./domains/roles";
+import { roleConfigSchema } from "./domains/roles-schema";
+import { SCORE_CONFIG_DEFAULT } from "./domains/score";
+import { scoreConfigSchema, type ScoreConfig } from "./domains/score-schema";
+import { SESSION_LIMITS_DEFAULT } from "./domains/session";
+import { sessionLimitsSchema, type SessionLimits } from "./domains/session-schema";
+import { GROWTH_LEVERS_DEFAULT } from "./domains/growth";
+import { growthLeversSchema, type GrowthLevers } from "./domains/growth-schema";
+import { BADGE_CATALOG_DEFAULT } from "./domains/badges";
+import { badgeCatalogSchema, type BadgeCatalog } from "./domains/badges-schema";
 import {
   siteContentSchema,
   SITE_CONTENT_DEFAULT,

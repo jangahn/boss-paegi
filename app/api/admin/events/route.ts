@@ -7,7 +7,7 @@ import {
   readAdminJsonRequest,
 } from "@/lib/http/admin-json-request";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { eventSaveSchema } from "@/lib/events/types";
+import { eventSaveSchema } from "@/lib/events/schema";
 import { EVENTS_CACHE_TAG } from "@/lib/events/banner-snapshot-server";
 import { deterministicAdminRequestId } from "@/lib/admin-operation-id";
 import { parseAdminEventMutationResult } from "@/lib/admin-mutation";

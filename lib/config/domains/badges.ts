@@ -1,5 +1,4 @@
-import { z } from "zod";
-import type { DomainEntry } from "../registry";
+import type { BadgeCatalog, CatalogBadge, CatalogFamily } from "./badges-schema";
 import { buildGameplayStats, type GameplayStats } from "@/lib/stats";
 import type { PlayTotals } from "@/lib/play-totals";
 import {
@@ -7,7 +6,6 @@ import {
   PERSONA_FALLBACK_ID,
   matchPersona,
   personaBadgeSlug,
-  personaIdFromBadgeSlug,
 } from "@/lib/persona";
 
 /**
@@ -17,7 +15,10 @@ import {
  * 인증 grant(/api/score)·컬렉션·챌린지가 이 카탈로그로 구동.
  * v1.55(2026-09-25 사용자 결정 A): 👊 타격 · 💥 궁극기 · ⏱️ 플레이 = 누적(내 모든 판 합계, 0132 합계 RPC).
  * 제한 시간(v1.53) 한 판으로는 닿을 수 없는 tier 가 생겨서다. 한 판 기준으로 이미 딴 뱃지는 누적 조건도 충족한다.
+ * 검증 schema(zod)는 `./badges-schema` — 이 모듈은 클라 번들(컬렉션 · 챌린지 · 종료 화면)에 들어가 zod 를 끌어오지 않는다(v1.64).
  */
+
+export type { BadgeCatalog, CatalogBadge, CatalogFamily };
 
 export const BADGE_FAMILY_KEYS = [
   "score",
@@ -72,20 +73,6 @@ export const FAMILY_VALUE: Record<
   // 유형은 뱃지별 매칭(evaluateBadges 특례) — 패밀리 단일 달성값 개념 없음
   persona: () => 0,
 };
-
-const familySchema = z.object({
-  key: z.enum(BADGE_FAMILY_KEYS),
-  name: z.string().trim().min(1).max(20),
-  emoji: z.string().trim().min(1).max(8),
-});
-const badgeSchema = z.object({
-  slug: z.string().trim().min(1).max(40), // 불변 동결(편집 UI 에서 잠금)
-  familyKey: z.enum(BADGE_FAMILY_KEYS),
-  threshold: z.number().int().min(0).max(100_000_000),
-  label: z.string().trim().min(1).max(40),
-  desc: z.string().trim().min(1).max(80),
-  active: z.boolean(),
-});
 
 type RawBadge = { slug?: unknown; familyKey?: unknown; active?: unknown; threshold?: unknown };
 
@@ -148,40 +135,6 @@ export function normalizeBadgeCatalogInput(input: unknown): unknown {
   };
 }
 
-const badgeCatalogBaseSchema = z
-  .object({
-    families: z.array(familySchema).length(BADGE_FAMILY_KEYS.length),
-    badges: z.array(badgeSchema).min(1).max(140),
-  })
-  .refine((c) => new Set(c.badges.map((b) => b.slug)).size === c.badges.length, {
-    message: "duplicate_slug",
-    path: ["badges"],
-  })
-  // 8개 패밀리 키가 중복 없이 완전(누락/중복 시 표시 깨짐) — API trust-boundary 방어(에디터로는 불가).
-  .refine((c) => new Set(c.families.map((f) => f.key)).size === BADGE_FAMILY_KEYS.length, {
-    message: "family_keys_invalid",
-    path: ["families"],
-  })
-  // 유형 뱃지 집합 == 코드 유형 집합(정규화 후 항상 참 — API 경계 방어)
-  .refine(
-    (c) => {
-      const ids = c.badges
-        .filter((b) => b.familyKey === PERSONA_FAMILY_KEY)
-        .map((b) => personaIdFromBadgeSlug(b.slug))
-        .filter((x): x is string => !!x)
-        .sort();
-      const expected = PERSONA_DEFS.map((d) => d.id).sort();
-      return ids.length === expected.length && ids.every((id, i) => id === expected[i]);
-    },
-    { message: "persona_badges_invalid", path: ["badges"] }
-  );
-
-export const badgeCatalogSchema = z.preprocess(normalizeBadgeCatalogInput, badgeCatalogBaseSchema);
-
-export type BadgeCatalog = z.infer<typeof badgeCatalogBaseSchema>;
-export type CatalogBadge = z.infer<typeof badgeSchema>;
-export type CatalogFamily = z.infer<typeof familySchema>;
-
 // ── 코드 기본값 — slug = `family_threshold` 동결. 라벨·설명은 v1.55 누적 문구(발행본이 정본, 발행 전 기본값에만 쓰인다). ──
 type Seed = {
   key: BadgeFamilyKey;
@@ -232,11 +185,6 @@ export const CODE_ADDED_BADGE_SLUGS: ReadonlySet<string> = new Set(
 export const BADGE_CATALOG_DEFAULT: BadgeCatalog = {
   families: [...SEED.map((f) => ({ key: f.key, name: f.name, emoji: f.emoji })), PERSONA_FAMILY_DEFAULT],
   badges: [...SEED_BADGES, ...personaBadgeRows([])],
-};
-
-export const badgeEntry: DomainEntry<BadgeCatalog> = {
-  schema: badgeCatalogSchema,
-  codeDefault: BADGE_CATALOG_DEFAULT,
 };
 
 // ── 카탈로그 기반 순수 헬퍼(서버 grant + 클라 표시 공용) ──

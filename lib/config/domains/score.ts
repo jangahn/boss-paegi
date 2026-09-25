@@ -1,29 +1,15 @@
-import { z } from "zod";
-import type { DomainEntry } from "../registry";
+import type { ScoreConfig } from "./score-schema";
 import { PLAYER_GRADES } from "@/lib/report";
-import {
-  isValidThresholds,
-  SCORE_THRESHOLDS_DEFAULT,
-  THRESHOLD_STEP,
-  TIER_COUNT,
-} from "@/lib/score-tiers";
-import { MAX_SCORE_HARD } from "@/lib/score-limits";
-import {
-  COMBO_WINDOW_SEC_MAX,
-  COMBO_WINDOW_SEC_MIN,
-  JUGGLE_SECONDS_DEFAULT,
-  JUGGLE_WINDOW_SEC_MAX,
-  JUGGLE_WINDOW_SEC_MIN,
-} from "@/lib/game-tuning";
+import { SCORE_THRESHOLDS_DEFAULT, TIER_COUNT } from "@/lib/score-tiers";
+import { JUGGLE_SECONDS_DEFAULT } from "@/lib/game-tuning";
 
 // 점수 설정 도메인 — 5단계 구간 **경계(thresholds)** + 등급 라벨/한 줄 평(=마케팅 '패기 유형') 라이브 편집.
 // 단계 개수(5)는 코드 고정(lib/score-tiers TIER_COUNT). 경계는 라벨과 같은 **라이브** 값 — 바꾸면 과거 판의
 // 등급·피격 반응·어드민 「점수 구간 분포」가 새 경계로 재계산된다(스냅샷 아님). 공유·유입 분석 score_tier 만
 // 공유 시점 인덱스(각주 고지).
-const grade = z.object({
-  label: z.string().trim().min(1).max(20),
-  comment: z.string().trim().min(1).max(40),
-});
+// 검증 schema(zod · 경계 · 창 초수 범위)는 `./score-schema` — 이 모듈은 클라 번들(종료 화면 · 플레이)에 들어가 zod 를 끌어오지 않는다(v1.64).
+
+export type { ScoreConfig };
 
 /**
  * 결과 보고서 한 줄 규칙(v1.57, iPhone SE 375 실측) — 등급 이름은 종료 화면 「다음 등급」 줄(남은 점수 5~6자리와 함께)에서
@@ -60,43 +46,9 @@ export function normalizeScoreConfigInput(input: unknown): unknown {
   return input;
 }
 
-const thresholds = z
-  .array(z.number().int().min(THRESHOLD_STEP).max(MAX_SCORE_HARD))
-  .length(TIER_COUNT - 1)
-  .refine((t) => isValidThresholds(t, THRESHOLD_STEP, MAX_SCORE_HARD), {
-    message: `구간 경계는 ${TIER_COUNT - 1}개, ${THRESHOLD_STEP.toLocaleString()}점 단위, 엄격 오름차순이어야 해요.`,
-  })
-  // 발행된 행(v10)엔 없던 키 — 자동 충전(additive 무중단 패턴).
-  .default([...SCORE_THRESHOLDS_DEFAULT]);
-
-/** 변경 보너스·콤보 창 초수(v1.36) — 배율 표는 코드(lib/game-tuning), 어드민은 초수만. 발행행에 없던 키는 기본값 충전(additive). */
-const juggle = z
-  .object({
-    weaponWindowSec: z.number().int().min(JUGGLE_WINDOW_SEC_MIN).max(JUGGLE_WINDOW_SEC_MAX),
-    mapWindowSec: z.number().int().min(JUGGLE_WINDOW_SEC_MIN).max(JUGGLE_WINDOW_SEC_MAX),
-    comboWindowSec: z.number().min(COMBO_WINDOW_SEC_MIN).max(COMBO_WINDOW_SEC_MAX),
-  })
-  .default({ ...JUGGLE_SECONDS_DEFAULT });
-const scoreConfigBaseSchema = z.object({
-  thresholds,
-  // 정확히 5단계. 라벨 텍스트는 라이브, tier 인덱스는 고정.
-  grades: z.array(grade).length(TIER_COUNT),
-  juggle,
-});
-
-export const scoreConfigSchema = z.preprocess(normalizeScoreConfigInput, scoreConfigBaseSchema);
-
-export type ScoreConfig = z.infer<typeof scoreConfigBaseSchema>;
-
 // 코드 기본값 = PLAYER_GRADES(발행 v10 확정 라벨과 동일) + 기본 경계(미시드 폴백).
 export const SCORE_CONFIG_DEFAULT: ScoreConfig = {
   thresholds: [...SCORE_THRESHOLDS_DEFAULT],
   grades: PLAYER_GRADES.map((g) => ({ label: g.label, comment: g.comment })),
   juggle: { ...JUGGLE_SECONDS_DEFAULT },
-};
-
-// 클라(GameOverModal·플레이 말풍선)+서버(share/history/OG·어드민 분포) 소비 → 라이브 주입(루트 레이아웃). 공개 API 미노출.
-export const scoreEntry: DomainEntry<ScoreConfig> = {
-  schema: scoreConfigSchema,
-  codeDefault: SCORE_CONFIG_DEFAULT,
 };

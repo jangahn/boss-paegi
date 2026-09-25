@@ -1,11 +1,11 @@
 import type { ZodType } from "zod";
 import type { DomainKey, PublicSurface } from "./keys";
-import { marketingEntry } from "./domains/marketing";
-import { rolesEntry } from "./domains/roles";
-import { scoreEntry } from "./domains/score";
-import { sessionEntry } from "./domains/session";
-import { growthEntry } from "./domains/growth";
-import { badgeEntry } from "./domains/badges";
+import { marketingEntry } from "./domains/marketing-schema";
+import { rolesEntry } from "./domains/roles-schema";
+import { scoreEntry } from "./domains/score-schema";
+import { sessionEntry } from "./domains/session-schema";
+import { growthEntry } from "./domains/growth-schema";
+import { badgeEntry } from "./domains/badges-schema";
 import { siteContentEntry } from "./domains/site-content";
 import { mediaConfigEntry } from "./domains/media-config";
 import { businessInfoEntry } from "./domains/business-info";
