@@ -1,13 +1,13 @@
-// 갤러리 뷰어 상태 + 가입/생성 유도 CTA — 토스트·가입배너·헤더버튼이 공용으로 사용(copy DRY).
+// 갤러리 뷰어 상태 + 가입/생성 유도 CTA — 가입배너·헤더버튼이 공용으로 사용(copy DRY).
 //
 // nonmember   : 비회원(익명 세션 또는 프로필 없음) — 생성하려면 가입 필요.
 // member-empty: 회원이지만 아직 캐릭터 0개 — 바로 생성 가능.
-// member      : 회원 + 캐릭터 보유 — 후킹 불필요(배너·토스트 없음).
+// member      : 회원 + 캐릭터 보유 — 후킹 불필요(배너 없음).
 export type ViewerState = "nonmember" | "member-empty" | "member";
 
 /** 로그인 후 곧장 생성 페이지로(safeNext 가 "/generate" 허용). */
 const LOGIN_THEN_GENERATE = "/login?next=%2Fgenerate";
-/** 로그인 후 갤러리로 — 추가 캐릭터 4종이 열리는 곳(v1.42: 게임 종료 화면 비회원 1차 버튼·잠금 카드 토스트). */
+/** 로그인 후 갤러리로 — 추가 캐릭터 4종이 열리는 곳(v1.42: 게임 종료 화면 비회원 1차 버튼). */
 export const LOGIN_THEN_GALLERY = "/login?next=%2Fgallery";
 
 export type CtaTarget = { label: string; href: string };
