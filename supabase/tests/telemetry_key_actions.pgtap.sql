@@ -1,7 +1,7 @@
 -- telemetry_key_actions.pgtap.sql — PC 키보드 사용 기록 계약(0131, v1.50).
 --
 -- 단언: ① telemetry_sessions.key_actions 컬럼(integer, default 0) ② 적재 RPC 가 totals.keyActions 를 0~1,000,000 으로 저장하고
---       필드가 없는 구 클라 payload 는 0 ③ 봉투 리터럴(4000/초·800만)은 0130 그대로 ④ 롤업 단일 소스
+--       필드가 없는 구 클라 payload 는 0 ③ 봉투 리터럴은 현행 저장 봉투(0133 부터 5500/초·800만 — 0131 은 0130 의 4000 그대로 뒀다) ④ 롤업 단일 소스
 --       telemetry_rollup_rows_for_day 의 'sess_keyboard' 차원 = device_class 별 (타격 세션수·키보드 사용 세션수·키보드 동작 합).
 -- TS 쪽 계약은 __tests__/telemetry/key-actions-contract.test.ts.
 -- Run only on a disposable database after applying every migration in order.
@@ -33,10 +33,10 @@ select is(
 );
 select ok(
   pg_get_functiondef('public.bp_ingest_telemetry_delta_core(uuid,uuid,boolean,jsonb)'::regprocedure)
-    ~ 'c_max_avg_per_sec int := 4000;'
+    ~ 'c_max_avg_per_sec int := 5500;'
   and pg_get_functiondef('public.bp_ingest_telemetry_delta_core(uuid,uuid,boolean,jsonb)'::regprocedure)
     ~ 'c_max_score bigint := 8000000;',
-  'ingest envelope literals are unchanged by 0131 (4000/s, 8,000,000)'
+  'ingest envelope literals are the current storage envelope (5500/s since 0133, 8,000,000)'
 );
 
 -- PC 키보드 세션(키보드 동작 42) · PC 포인터 세션(0) · 구 클라(필드 없음) · 상한 초과 · 타격 없는 세션(분모 제외)
