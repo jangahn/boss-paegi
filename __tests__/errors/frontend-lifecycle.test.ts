@@ -175,9 +175,8 @@ test("account, report, login, and consent actions occupy synchronously and fence
   );
 });
 
-test("menus, toasts, and leaderboard requests cannot strand keyboard or timers", () => {
+test("menus and leaderboard requests cannot strand keyboard or timers", () => {
   const account = source("components/AccountMenu.tsx");
-  const toast = source("components/gallery/HookToast.tsx");
   const leaderboard = source("app/leaderboard/page.tsx");
   const gameOver = source("components/GameOverModal.tsx");
 
@@ -190,10 +189,6 @@ test("menus, toasts, and leaderboard requests cannot strand keyboard or timers",
   assert.match(account, /triggerRef\.current\?\.focus\(\)/);
   assert.match(account, /signingOutRef\.current/);
   assert.match(account, /savingRef\.current/);
-
-  assert.match(toast, /onCloseRef\.current/);
-  assert.match(toast, /\}, \[message\]\);/);
-  assert.match(toast, /aria-live="polite"/);
 
   assert.match(leaderboard, /new AbortController\(\)/);
   assert.match(leaderboard, /signal: controller\.signal/);

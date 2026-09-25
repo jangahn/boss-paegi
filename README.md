@@ -944,6 +944,9 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.67 (2026-09-25, 안 쓰는 갤러리 후킹 토스트 삭제 — 화면 변화 없음; 마이그레이션 없음):
+- `components/gallery/HookToast.tsx` 삭제 — v0.22 기본 부장님 카드 ⋯ 메뉴의 가입 유도 토스트였는데 v1.42 · v1.44 에서 가입 후킹을 바꾸며(잠금 카드 무상호작용, 사용자 결정) 화면에서 쓰이지 않고 파일과 테스트 검사만 남아 있었다. 테스트(`frontend-lifecycle`)의 토스트 검사와 `lib/gallery-cta.ts` 주석의 토스트 언급도 정리. 이미지 페이드 관련 낡은 주석은 v1.65 에서 정리했다.
+
 v1.66 (2026-09-25, 랭킹 목록 물결 연출 제거 — 사용자 결정; 마이그레이션 없음):
 - v1.65 에서 넣은 랭킹 목록의 차례로 올라오는 연출(행마다 45ms 간격으로 아래에서 살짝 올라옴)을 뺐다 — 목록이 물결처럼 꿀렁여 불필요해 보인다는 사용자 판단. 목록은 도착하면 바로 보인다. 기간 탭 선택 알약이 미끄러지는 것은 그대로. `motion-contract` 테스트가 랭킹에 `motion-rise` 가 다시 붙지 않게 막는다.
 
