@@ -23,8 +23,9 @@ const GEN_STATUS_LABEL: Record<string, string> = {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-3 py-1 text-sm">
-      <span className="w-24 shrink-0 text-zinc-500">{label}</span>
+    // 작은 화면은 라벨을 값 위로(v1.58) — 이미지 옆 좁은 칸에서 라벨 96px 이 값 칸을 83px 로 줄여 닉네임이 꺾였다
+    <div className="flex flex-col py-1 text-sm sm:flex-row sm:gap-3">
+      <span className="shrink-0 text-zinc-500 sm:w-24">{label}</span>
       <span className="min-w-0 flex-1 break-words">{children}</span>
     </div>
   );

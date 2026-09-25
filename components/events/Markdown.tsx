@@ -26,7 +26,7 @@ function isEventsImage(src: string): boolean {
 
 export function Markdown({ children }: { children: string }) {
   return (
-    <div className="prose-news flex flex-col gap-3 text-sm leading-relaxed text-zinc-700 dark:text-zinc-200 [&_a]:text-steel [&_a]:underline [&_a]:underline-offset-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mt-2 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_img]:rounded-xl [&_strong]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/20 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-500 [&_code]:rounded [&_code]:bg-foreground/10 [&_code]:px-1">
+    <div className="prose-news flex flex-col gap-3 text-sm leading-relaxed text-zinc-700 dark:text-zinc-200 [&_a]:text-steel [&_a]:underline [&_a]:underline-offset-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mt-2 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_img]:rounded-xl [&_strong]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/20 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-500 [&_code]:rounded [&_code]:bg-foreground/10 [&_code]:px-1 [&_h1]:text-balance [&_h2]:text-balance [&_h3]:text-balance [&_li]:text-balance [&_p]:text-pretty">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         urlTransform={safeUrl}

@@ -451,10 +451,10 @@ export function LegalDocEditor({
       {/* ── 편집 영역(발행 전 문서) ── */}
       {editing && (
         <section className="flex flex-col gap-5 rounded-2xl border border-foreground/10 p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold">발행 전 문서 편집 <span className="font-normal text-zinc-400">· {seedLabel}</span></h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="min-w-0 text-balance text-sm font-bold">발행 전 문서 편집 <span className="font-normal text-zinc-400">· {seedLabel}</span></h3>
             {!draft && (
-              <button type="button" onClick={() => { setEditing(false); setMsg(null); }} className="text-xs text-zinc-500 underline-offset-4 hover:text-foreground hover:underline">편집 취소</button>
+              <button type="button" onClick={() => { setEditing(false); setMsg(null); }} className="shrink-0 whitespace-nowrap text-xs text-zinc-500 underline-offset-4 hover:text-foreground hover:underline">편집 취소</button>
             )}
           </div>
 

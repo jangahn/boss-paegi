@@ -197,8 +197,9 @@ export function ScoreReport({
       {pending && !submitting && (
         <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-center">
           <p className="text-xs font-semibold text-amber-700">⏳ 랭킹 검토 중</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{pending.notice}</p>
-          <p className="mt-1 text-[11px] font-medium leading-relaxed text-red-600">
+          {/* 어절 단위로만 끊고 두 줄을 고르게(v1.58) — 375px 에서 「…반영됩 / 니다」처럼 꺾이던 발행 문구 */}
+          <p className="mt-1 text-balance break-keep text-[11px] leading-relaxed text-amber-800">{pending.notice}</p>
+          <p className="mt-1 text-balance break-keep text-[11px] font-medium leading-relaxed text-red-600">
             {pending.warning}
           </p>
         </div>

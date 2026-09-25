@@ -38,7 +38,7 @@ export function LegalDocView({
           {version ? ` · 버전 ${version}` : ""}
         </p>
         {publicNote && (
-          <p className="mt-2 rounded-lg bg-foreground/5 p-2 text-xs text-zinc-500">
+          <p className="mt-2 text-balance rounded-lg bg-foreground/5 p-2 text-xs text-zinc-500">
             개정 사유: {publicNote}
           </p>
         )}

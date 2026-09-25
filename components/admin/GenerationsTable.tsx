@@ -207,10 +207,10 @@ function GenDetail({ row }: { row: AdminGeneration }) {
 
       {/* 메타 */}
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-zinc-400">
-        <span>gen id: <span className="font-mono">{row.id}</span></span>
-        <span>회원 id: <span className="font-mono">{row.ownerId}</span></span>
+        <span>gen id: <span className="break-all font-mono">{row.id}</span></span>
+        <span>회원 id: <span className="break-all font-mono">{row.ownerId}</span></span>
         {row.pickedDollId && (
-          <span>캐릭터 id: <span className="font-mono">{row.pickedDollId}</span></span>
+          <span>캐릭터 id: <span className="break-all font-mono">{row.pickedDollId}</span></span>
         )}
         <span>생성: {fmtKst(row.createdAt)}</span>
         {row.updatedAt && <span>갱신: {fmtKst(row.updatedAt)}</span>}

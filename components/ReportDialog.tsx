@@ -206,7 +206,7 @@ export function ReportDialog({
   return (
     <ModalShell ariaLabel="콘텐츠 신고" onClose={close}>
       <h2 className="text-lg font-bold">콘텐츠 신고</h2>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-balance text-sm text-zinc-500">
         동의 없이 올라간 얼굴 등 문제가 있으면 신고해 주세요.
       </p>
 
