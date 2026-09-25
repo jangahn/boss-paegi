@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { playJelly } from "@/lib/motion";
 import { FadeImg } from "@/components/FadeImg";
 import type { ViewerState } from "@/lib/gallery-cta";
 import { useRoleConfig } from "@/components/RoleContentProvider";
@@ -25,7 +26,11 @@ export function DefaultBossCard({ state: _state }: { state: ViewerState }) {
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
         {/* 이미지 영역만 Link — 카드 전체를 Link 로 감싸지 않음(⋯ 버튼은 Link 밖) */}
-        <Link href="/play" className="block h-full w-full">
+        <Link
+          href="/play"
+          className="block h-full w-full"
+          onPointerDown={(e) => playJelly(e.currentTarget, { amp: 0.07, origin: "50% 100%" })}
+        >
           <FadeImg
             src={DEFAULT_BOSS_SRC}
             alt="기본 부장님"

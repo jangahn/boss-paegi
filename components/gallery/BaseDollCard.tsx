@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { playJelly } from "@/lib/motion";
 import { FadeImg } from "@/components/FadeImg";
 import type { ViewerState } from "@/lib/gallery-cta";
 import { useRoleConfig } from "@/components/RoleContentProvider";
@@ -41,7 +42,12 @@ export function BaseDollCard({ doll, state }: { doll: BaseDoll; state: ViewerSta
             </span>
           </div>
         ) : (
-          <Link href={playHrefFor(doll.key)} className="block h-full w-full" aria-label={`${alt} 패기`}>
+          <Link
+            href={playHrefFor(doll.key)}
+            className="block h-full w-full"
+            aria-label={`${alt} 패기`}
+            onPointerDown={(e) => playJelly(e.currentTarget, { amp: 0.07, origin: "50% 100%" })}
+          >
             {image}
           </Link>
         )}

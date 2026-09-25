@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { HighlightPlayer } from "@/components/HighlightPlayer";
@@ -119,7 +120,8 @@ export default async function SharePage({
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
+      {/* 결과 연출(v1.65) — 서버 HTML 에 실려 첫 페인트에 도장 · 등급 · 뱃지 연출(카운트업은 종료 화면만). 모션 감소면 정지. */}
+      <div data-ceremony="play" className="w-full max-w-sm">
         {/* ── 하이라이트 영상(클립 있을 때) / 카드-only 배지(클립 없을 때) ── */}
         {clipUrl ? (
           <HighlightPlayer
@@ -135,7 +137,7 @@ export default async function SharePage({
         ) : null}
 
         {/* ── 보고서 (종이) ───────────────────────────────── */}
-        <div className="rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
+        <div className="cer-shake rounded-lg ui-surface p-5 text-zinc-900 shadow-2xl">
           <div className="border-b-2 border-zinc-800 pb-3 text-center">
             <p className="text-[10px] tracking-[0.3em] text-zinc-500">
               {reportNo(score.id, score.created_at)}
@@ -146,7 +148,7 @@ export default async function SharePage({
           </div>
 
           {persona && (
-            <div className="mt-3">
+            <div className="cer-rise mt-3" style={{ "--i": 0 } as CSSProperties}>
               <PersonaCard persona={persona} heading={`${name}님의 패기 유형`} />
             </div>
           )}

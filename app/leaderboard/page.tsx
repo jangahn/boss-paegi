@@ -171,7 +171,7 @@ function LeaderboardFrame({
           <h1 className="text-2xl font-bold">랭킹</h1>
           <Link
             href="/play"
-            className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2"
+            className="press rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-paper-2 transition"
           >
             패러 가기
           </Link>

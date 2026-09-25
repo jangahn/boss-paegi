@@ -44,11 +44,12 @@ export function BadgeChallenge({
                   </span>
                 </div>
                 <div className="mt-0.5 h-0.5 w-full overflow-hidden rounded-full bg-white/15">
+                  {/* 진행은 폭이 아니라 scaleX 로 부드럽게 채운다(v1.65 — 배치 불변, 합성 레이어만). */}
                   <div
-                    className={`h-full rounded-full ${
+                    className={`h-full w-full origin-left rounded-full transition-transform duration-300 ${
                       s.justEarned ? "bg-emerald-400" : "bg-amber-400"
                     }`}
-                    style={{ width: `${s.justEarned ? 100 : pct}%` }}
+                    style={{ transform: `scaleX(${s.justEarned ? 1 : pct / 100})` }}
                   />
                 </div>
               </li>

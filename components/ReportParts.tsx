@@ -4,6 +4,7 @@ import { fitOneLineWeight } from "@/lib/fit-one-line";
 /**
  * 결과 보고서 공용 조각(v1.57) — 게임 종료 화면(ScoreReport) · 공유(/share) · 내 기록 상세(/history) 가 같은 마크업을 쓴다.
  * 소형폰(iPhone SE 375)에서 의도치 않은 두 줄을 막는 규칙을 한곳에 둔다. 서버 컴포넌트에서도 쓴다(훅 없음).
+ * 결과 연출(v1.65) 클래스 cer-* 는 조상에 data-ceremony="play" 가 있을 때만 움직인다(globals.css 「모션」).
  */
 
 /** 보고서 한 줄 — 왼쪽 항목 이름, 오른쪽 값. */
@@ -23,7 +24,10 @@ export function ReportRow({ label, children }: { label: string; children: ReactN
  */
 export function GradeRow({ grade }: { grade: { label: string; comment: string } }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-zinc-200 pb-1.5">
+    <div
+      className="cer-rise flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-zinc-200 pb-1.5"
+      style={{ "--i": 1 } as CSSProperties}
+    >
       <dt className="shrink-0 text-xs font-semibold text-zinc-500">판정 등급</dt>
       <dd className="text-right font-bold">{grade.label}</dd>
       <dd className="basis-full text-balance text-right text-xs text-zinc-500">
@@ -55,8 +59,13 @@ export function ReportApprovalTable({ author }: { author: string }) {
               </span>
             </div>
           </td>
-          <td className="border border-zinc-400 py-2">
-            <span className="inline-block -rotate-12 rounded-full border-2 border-red-500 px-1.5 py-1 text-[9px] font-bold text-red-500">
+          <td className="relative border border-zinc-400 py-2">
+            {/* 결과 연출(v1.65): 도장이 쾅 찍히고(cer-stamp) 그 자리에서 잉크 링이 번진다(cer-ink). 연출 밖에서는 정지. */}
+            <span
+              aria-hidden
+              className="cer-ink pointer-events-none absolute left-1/2 top-1/2 -ml-5 -mt-5 h-10 w-10 rounded-full border-2 border-red-500/50"
+            />
+            <span className="cer-stamp inline-block -rotate-12 rounded-full border-2 border-red-500 px-1.5 py-1 text-[9px] font-bold text-red-500">
               해소완료
             </span>
           </td>

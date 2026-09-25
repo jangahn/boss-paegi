@@ -14,7 +14,7 @@ import { useScoreConfig } from "@/components/ScoreConfigProvider";
 import { roleFrom } from "@/lib/config/domains/roles";
 import { buildGameplayStats } from "@/lib/stats";
 import { matchPersona } from "@/lib/persona";
-import { evaluateBadges } from "@/lib/config/domains/badges";
+import { evaluateBadges, nextCumulativeBadge } from "@/lib/config/domains/badges";
 import { PLAY_TOTALS_ZERO, type PlayTotals } from "@/lib/play-totals";
 import { useBadgeCatalog } from "@/components/BadgeCatalogProvider";
 import { useMarketingCopy } from "@/components/MarketingCopyProvider";
@@ -31,6 +31,8 @@ import { useClientOperationScope } from "@/lib/use-client-operation-scope";
 import { useScoreSubmission } from "./useScoreSubmission";
 import { ScoreReport } from "./ScoreReport";
 import { telemetryBaseDollLabel, type BaseDollKey } from "@/lib/base-dolls";
+import { CEREMONY_MS, burst, prefersReducedMotion } from "@/lib/motion";
+import { playUiCue } from "@/lib/sound";
 
 type Props = {
   open: boolean;
@@ -167,6 +169,15 @@ export function GameOverModal({
   const sharingRef = useRef(false);
   const mountedRef = useRef(false);
   const openCycleEpochRef = useRef(0);
+  // 결과 연출(v1.65) — 열릴 때마다 한 번: 보고서가 올라오고 → 점수 카운트업 → 「해소완료」 도장 쾅 → 등급 · 유형 → 뱃지 팝 → 다시 패기 툭.
+  // 순서는 CSS(globals.css cer-*, 시점 = lib/motion.ts CEREMONY_MS)가 맡고 여기서는 재생 여부 · 효과음 · 건너뛰기만. 탭하면 끝 상태.
+  const [ceremony, setCeremony] = useState<"play" | "done">("done");
+  const ceremonyTimersRef = useRef<number[]>([]);
+  const finishCeremony = () => {
+    for (const id of ceremonyTimersRef.current) window.clearTimeout(id);
+    ceremonyTimersRef.current.length = 0;
+    setCeremony("done");
+  };
 
   useEffect(() => {
     // StrictMode setup→cleanup→setup 뒤에도 현재 lifecycle을 복원한다.
@@ -193,6 +204,32 @@ export function GameOverModal({
     setNickname("");
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    // 열릴 때마다 연출 재생(모션 감소면 끝 상태로 시작) — 의도적 open→state 동기화(위 리셋과 같은 패턴).
+    if (prefersReducedMotion()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCeremony("done");
+      return;
+    }
+    setCeremony("play");
+    const timers = ceremonyTimersRef.current;
+    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
+    playUiCue("sheet");
+    at(CEREMONY_MS.impact, () => playUiCue("stamp"));
+    at(CEREMONY_MS.pop, () => {
+      const root = dialogRef.current;
+      const newBest = root?.querySelector("[data-new-best]") ?? null;
+      if (newBest) burst(newBest, { emojis: ["🎉", "✨", "🥊"] });
+      if (newBest || root?.querySelector(".cer-pop")) playUiCue("reward");
+    });
+    at(CEREMONY_MS.end, () => setCeremony("done"));
+    return () => {
+      for (const id of timers) window.clearTimeout(id);
+      timers.length = 0;
+    };
+  }, [open, dialogRef]);
 
   // 점수 자동 제출(중복/0점 가드·클램프·trace 는 hook 내부)
   const {
@@ -223,6 +260,11 @@ export function GameOverModal({
   const shownBadges = useMemo(
     () => [...new Set([...earnedBadges, ...newBadges])],
     [earnedBadges, newBadges]
+  );
+  // 누적 뱃지 다음 단계(v1.65) — 판 시작 때 읽은 이전 합계 + 이 판. 합계를 모르면 보이지 않는다(추정 금지).
+  const nextBadge = useMemo(
+    () => (playTotals ? nextCumulativeBadge(badgeCatalog, playTotals, { stats: gameplayStats, score }) : null),
+    [badgeCatalog, playTotals, gameplayStats, score]
   );
 
   useEffect(() => {
@@ -468,9 +510,12 @@ export function GameOverModal({
         className="absolute inset-0 overflow-y-auto"
       >
       {/* 내용(가운데 정렬) + 하단 고정 「다시 패기」(v1.54). 내용이 짧으면 둘이 한 화면, 길면 스크롤 중에도 버튼이 아래에 붙어 있다. */}
-      <div className="flex min-h-full flex-col">
-      <div className="flex flex-1 items-center justify-center px-4 pb-4 pt-6">
-        <div className="w-full max-w-sm">
+      <div data-ceremony={ceremony} className="flex min-h-full flex-col">
+      <div
+        className="flex flex-1 items-center justify-center px-4 pb-4 pt-6"
+        onPointerDownCapture={ceremony === "play" ? finishCeremony : undefined}
+      >
+        <div className="cer-sheet w-full max-w-sm">
         {/* ── 보고서 (종이) ───────────────────────────────── */}
         <ScoreReport
           docNo={docNo}
@@ -497,6 +542,8 @@ export function GameOverModal({
           previousBest={isPending ? undefined : previousBest}
           timeBonus={{ ms: timeBonusMs, count: timeBonusCount }}
           nextGrade={nextGrade}
+          nextBadge={isPending ? null : nextBadge}
+          ceremony={ceremony === "play"}
         />
 
         {/* ── 하이라이트 클립 프리뷰 (녹화 성공 시) ───────── */}
@@ -581,11 +628,11 @@ export function GameOverModal({
       </div>
       {/* 하단 고정 「다시 패기」 — 같은 캐릭터·같은 맵으로 새 판. DOM 끝이라 첫 포커스가 아니다(스페이스 연타 재시작 방지). */}
       <div className="sticky bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/85 to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6">
-        <div className="mx-auto w-full max-w-sm">
+        <div className="cer-nudge mx-auto w-full max-w-sm">
           <button
             type="button"
             onClick={onRestart}
-            className="w-full transform-gpu rounded-full bg-white py-3 text-center font-semibold text-black shadow-lg transition hover:opacity-90"
+            className="w-full transform-gpu rounded-full bg-white py-3 text-center font-semibold text-black shadow-lg transition hover:opacity-90 press"
           >
             {mk.share.gameoverRetryBtn}
             {baseSeconds > 0 && (

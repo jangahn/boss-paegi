@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence, m } from "motion/react";
 import { FadeImg } from "@/components/FadeImg";
 import { useRoleConfig } from "@/components/RoleContentProvider";
-import { roleFrom } from "@/lib/config/domains/roles";
+import { roleFrom, roleVoice } from "@/lib/config/domains/roles";
+import { playJelly, prefersReducedMotion, SPRING_SNAP } from "@/lib/motion";
 import { BASE_DOLL_KEYS, BASE_DOLLS, playHrefFor, type BaseDollKey } from "@/lib/base-dolls";
 import { FOR_MEMBER_CLASS, FOR_NONMEMBER_CLASS } from "@/lib/member-hint";
 
@@ -20,6 +23,8 @@ export type HomeState = "nonmember" | "member";
  * 48px × 5 + 간격 6px × 4 = 264px — 375px 화면의 카드 안쪽 폭(271px)에 들어온다.
  * v1.51: 비회원용·회원용 줄을 둘 다 렌더한다 — 홈은 정적 페이지라 서버 HTML 이 로그인 상태를 모르므로, 첫 페인트 전에 붙는
  *   회원 힌트가 맞는 줄만 보이게 한다(새로고침 때 회원에게 비회원 줄이 잠깐 보이던 문제, lib/member-hint.ts).
+ * v1.65: 열린 얼굴은 누르는 순간 게임 인형과 같은 젤리 곡선으로 출렁이고(lib/jelly.ts), 화면에 보이는 동안 가끔 한 얼굴이
+ *   시비 멘트(롤 콘텐츠 시비 멘트 0단계 — 게임 속 도발과 같은 문구, 새 문구 없음)로 도발한다. 잠긴 얼굴은 그대로 무상호작용.
  */
 export function HomeCharacterRow({
   lockedCaption,
@@ -41,6 +46,11 @@ export function HomeCharacterRow({
   );
 }
 
+/** 도발 말풍선 — 첫 도발까지 · 도발 사이 · 보이는 시간(ms). */
+const TAUNT_FIRST_MS = 2500;
+const TAUNT_EVERY_MS = 7000;
+const TAUNT_SHOW_MS = 2800;
+
 function CharacterFaces({
   state,
   onPlay,
@@ -49,7 +59,78 @@ function CharacterFaces({
   onPlay: (key: BaseDollKey, state: HomeState) => void;
 }) {
   const roleCfg = useRoleConfig();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [taunt, setTaunt] = useState<{ id: number; text: string; x: number } | null>(null);
+
+  // 가끔 한 얼굴이 도발 — 이 줄이 화면에 보일 때만(회원 힌트로 숨은 줄 · 탭 숨김 · 스크롤 밖이면 쉼). 모션 감소면 하지 않는다.
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    const openKeys = BASE_DOLL_KEYS.filter((key) => !(state === "nonmember" && BASE_DOLLS[key].extra));
+    let hideTimer = 0;
+    let lastText = "";
+    let id = 0;
+    const tick = () => {
+      const row = rowRef.current;
+      if (!row || document.visibilityState !== "visible" || row.offsetParent === null) return;
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) return;
+      const key = openKeys[Math.floor(Math.random() * openKeys.length)];
+      const doll = BASE_DOLLS[key];
+      const lines = (roleVoice(roleFrom(doll.role, roleCfg), doll.gender).taunts[0] ?? []).filter((l) => l !== lastText);
+      if (!lines.length) return;
+      const text = lines[Math.floor(Math.random() * lines.length)];
+      lastText = text;
+      const face = row.querySelector(`[data-face="${key}"]`);
+      const faceRect = face?.getBoundingClientRect();
+      const x = faceRect ? faceRect.left + faceRect.width / 2 - rect.left : rect.width / 2;
+      id += 1;
+      setTaunt({ id, text, x });
+      playJelly(face?.querySelector("[data-jelly]") ?? null, { amp: 0.09 });
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => setTaunt(null), TAUNT_SHOW_MS);
+    };
+    const first = window.setTimeout(tick, TAUNT_FIRST_MS);
+    const every = window.setInterval(tick, TAUNT_EVERY_MS);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(every);
+      window.clearTimeout(hideTimer);
+    };
+  }, [roleCfg, state]);
+
+  // 말풍선은 얼굴 위 가운데, 줄 폭 안으로 당기고 꼬리는 얼굴을 가리킨다(폭은 글에 따라 달라 그린 뒤 잰다).
+  useLayoutEffect(() => {
+    const bubble = bubbleRef.current;
+    const row = rowRef.current;
+    if (!bubble || !row || !taunt) return;
+    const w = bubble.offsetWidth;
+    const left = Math.min(Math.max(taunt.x - w / 2, -8), row.clientWidth - w + 8);
+    bubble.style.left = `${left}px`;
+    const tail = bubble.querySelector<HTMLElement>("[data-tail]");
+    if (tail) tail.style.left = `${taunt.x - left}px`;
+  }, [taunt]);
+
   return (
+    <div ref={rowRef} className="relative">
+    <AnimatePresence>
+      {taunt && (
+        <m.div
+          key={taunt.id}
+          ref={bubbleRef}
+          aria-hidden
+          initial={{ scale: 0, y: 6 }}
+          animate={{ scale: 1, y: 0 }}
+          exit={{ scale: 0, transition: { duration: 0.12 } }}
+          transition={SPRING_SNAP}
+          style={{ transformOrigin: "50% 100%" }}
+          className="pointer-events-none absolute bottom-full z-10 mb-2 w-max max-w-[15.5rem] rounded-2xl bg-white px-3 py-1.5 text-center text-xs font-semibold text-balance text-zinc-900 shadow-lg"
+        >
+          {taunt.text}
+          <span data-tail className="absolute -bottom-1 -ml-1.5 h-3 w-3 rotate-45 bg-white" />
+        </m.div>
+      )}
+    </AnimatePresence>
     <ul className="flex justify-center gap-1.5">
       {BASE_DOLL_KEYS.map((key) => {
         const doll = BASE_DOLLS[key];
@@ -71,10 +152,15 @@ function CharacterFaces({
               <Link
                 href={playHrefFor(key)}
                 onClick={() => onPlay(key, state)}
+                onPointerDown={(e) => playJelly(e.currentTarget.querySelector("[data-jelly]"))}
+                data-face={key}
                 aria-label={`${label} 패기`}
                 className="group flex flex-col items-center gap-1"
               >
-                <FadeImg src={doll.face} loading="eager" className={`${FACE} transition duration-300 group-hover:scale-105`} />
+                {/* 찌르기 출렁임은 바깥 틀에(호버 확대는 이미지의 scale) — lib/motion.ts playJelly */}
+                <span data-jelly className="block">
+                  <FadeImg src={doll.face} loading="eager" className={`${FACE} transition duration-300 group-hover:scale-105`} />
+                </span>
                 <span className="w-full truncate text-center text-[11px] font-semibold">{label}</span>
               </Link>
             )}
@@ -82,5 +168,6 @@ function CharacterFaces({
         );
       })}
     </ul>
+    </div>
   );
 }

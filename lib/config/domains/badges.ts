@@ -245,6 +245,62 @@ export function familyValue(
   return FAMILY_VALUE[familyKey](stats, score, totals);
 }
 
+/** 누적 카테고리 남은 양의 단위(v1.65) — 뱃지 라벨(「누적 1,200타」 · 「누적 궁극기 20회」 · 「누적 30분」)과 같은 단위. */
+export const CUMULATIVE_UNIT: Partial<Record<BadgeFamilyKey, string>> = { hits: "타", ult: "회", time: "분" };
+
+export type NextBadge = {
+  badge: CatalogBadge;
+  /** 다음 단계까지 남은 양(카테고리 단위, 올림 정수) */
+  remaining: number;
+  /** 직전 단계(없으면 0)부터 다음 단계까지 온 비율 0..1 */
+  progress: number;
+  unit: string;
+};
+
+/**
+ * 누적 카테고리마다 다음 단계(v1.65) — 달성값(이전 합계 + 이 판) 위의 가장 낮은 active 뱃지. 다 받았으면 그 카테고리는 없음.
+ * game 을 빼면 이전 합계만으로(뱃지 화면). 결과 보고서의 「다음 뱃지」 · 뱃지 화면 카테고리 머리의 진행 막대가 쓴다.
+ */
+export function nextCumulativeBadges(
+  catalog: BadgeCatalog,
+  totals: PlayTotals,
+  game?: { stats: GameplayStats; score: number }
+): Map<BadgeFamilyKey, NextBadge> {
+  const out = new Map<BadgeFamilyKey, NextBadge>();
+  for (const key of BADGE_FAMILY_KEYS) {
+    const unit = CUMULATIVE_UNIT[key];
+    if (FAMILY_BASIS[key] !== "cumulative" || !unit) continue;
+    const value = FAMILY_VALUE[key](game?.stats ?? EMPTY_GAME, game?.score ?? 0, totals);
+    const tiers = catalog.badges
+      .filter((b) => b.active && b.familyKey === key)
+      .sort((a, b) => a.threshold - b.threshold);
+    const next = tiers.find((b) => b.threshold > value);
+    if (!next) continue;
+    const reached = tiers.filter((b) => b.threshold <= value);
+    const prev = reached.length ? reached[reached.length - 1].threshold : 0;
+    out.set(key, {
+      badge: next,
+      remaining: Math.max(1, Math.ceil(next.threshold - value)),
+      progress: Math.min(1, Math.max(0, (value - prev) / Math.max(1e-9, next.threshold - prev))),
+      unit,
+    });
+  }
+  return out;
+}
+
+/** 결과 보고서의 「다음 뱃지」 — 누적 카테고리 중 다음 단계에 가장 가까이 온(progress 가 큰) 것 하나. */
+export function nextCumulativeBadge(
+  catalog: BadgeCatalog,
+  totals: PlayTotals,
+  game: { stats: GameplayStats; score: number }
+): NextBadge | null {
+  let best: NextBadge | null = null;
+  for (const next of nextCumulativeBadges(catalog, totals, game).values()) {
+    if (!best || next.progress > best.progress) best = next;
+  }
+  return best;
+}
+
 /** 컬렉션 카운트 분모/known 집합 — 카탈로그의 모든 slug(active+inactive; 획득 보존). 구 고아 제외용. */
 export function knownSlugs(catalog: BadgeCatalog): Set<string> {
   return new Set(catalog.badges.map((b) => b.slug));

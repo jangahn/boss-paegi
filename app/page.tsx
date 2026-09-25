@@ -165,14 +165,14 @@ function EntryButtons({
       <Link
         href={play.href}
         onClick={() => onClick("play", state)}
-        className="rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
+        className="press rounded-full bg-foreground px-6 py-4 text-base font-semibold text-paper-2 transition hover:opacity-90"
       >
         {play.label}
       </Link>
       <Link
         href={create.href}
         onClick={() => onClick("create", state)}
-        className="rounded-full border border-foreground/15 ui-surface px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
+        className="press rounded-full border border-foreground/15 ui-surface px-6 py-4 text-base font-medium transition hover:bg-foreground/5"
       >
         {create.label}
       </Link>

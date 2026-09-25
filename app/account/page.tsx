@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/Spinner";
+import { AnimatePresence } from "motion/react";
 import { AvatarEditor } from "@/components/AvatarEditor";
 import { FadeImg } from "@/components/FadeImg";
 import { signOut } from "@/lib/auth-oauth";
@@ -230,8 +231,10 @@ export default function AccountPage() {
         </div>
       </main>
 
+      <AnimatePresence>
       {editingAvatar && (
         <AvatarEditor
+          key="avatar-editor"
           current={avatar}
           onClose={() => setEditingAvatar(false)}
           onSaved={(url) => {
@@ -245,6 +248,7 @@ export default function AccountPage() {
           }}
         />
       )}
+      </AnimatePresence>
     </>
   );
 }

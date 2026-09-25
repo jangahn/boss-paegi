@@ -85,6 +85,10 @@ function PlayInner() {
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
+  // 결과 화면 동안 게임 그리기를 멈춘다(v1.65) — 흐림 배경 뒤 WebGL 이 결과 연출을 끊지 않게. 다시 패기(over=false)에서 재개.
+  useEffect(() => {
+    gameRef.current?.setRendering(!over);
+  }, [over]);
   // 사운드 음소거 토글 — 저장값(localStorage)으로 초기화, master gain 0/1
   const [soundMuted, setSoundMuted] = useState(false);
   // SSR/hydration 안전: 서버·첫 렌더는 false(🔊), 마운트 후 저장값 반영(불일치 방지 — effect 의도적)

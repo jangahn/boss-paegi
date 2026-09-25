@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/Spinner";
+import { AnimatePresence } from "motion/react";
 import { ModalShell } from "@/components/ModalShell";
 import { LegalDocView } from "@/components/legal/LegalDocView";
 import { useBfcacheReset } from "@/lib/use-bfcache-reset";
@@ -311,8 +312,10 @@ export function ConsentForm({
         </button>
       </div>
 
+      <AnimatePresence>
       {viewing && viewingDoc && (
         <ModalShell
+          key="legal-doc"
           wide
           ariaLabel={`${viewingDoc.title} 전문`}
           onClose={() => setViewing(null)}
@@ -345,6 +348,7 @@ export function ConsentForm({
           </button>
         </ModalShell>
       )}
+      </AnimatePresence>
     </main>
   );
 }

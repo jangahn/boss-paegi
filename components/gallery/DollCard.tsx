@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { playJelly } from "@/lib/motion";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { MenuItem } from "@/components/gallery/MenuItem";
@@ -132,7 +133,11 @@ export function DollCard({
     <div className="group relative">
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-foreground/10 ui-surface">
         {/* 이미지 로드 전 shimmer 스켈레톤(FadeImg) → 로드 시 페이드인. hover 줌은 wrapper 스케일. */}
-        <Link href={`/play?doll=${doll.id}`} className="block h-full w-full">
+        <Link
+          href={`/play?doll=${doll.id}`}
+          className="block h-full w-full"
+          onPointerDown={(e) => playJelly(e.currentTarget, { amp: 0.07, origin: "50% 100%" })}
+        >
           <FadeImg
             src={doll.image_url}
             placeholder="shimmer"

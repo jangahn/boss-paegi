@@ -19,6 +19,7 @@ import { resolveOwnedBadgeRead, resolvePlayTotalsRead } from "@/lib/badge-owned"
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { errInfo, log } from "@/lib/log";
 import { runBoundedClientOperation } from "@/lib/client-operation";
+import { playUiCue } from "@/lib/sound";
 
 /**
  * 인게임 뱃지 도전 — 단일 소스(lib/badges)로 구동되는 라이브 체크리스트 + 획득 토스트.
@@ -108,6 +109,7 @@ export function useBadgeChallenge({
     const pushToast = (text: string) => {
       const id = ++toastSeq;
       setToasts((t) => [...t.slice(-2), { id, text }]);
+      playUiCue("reward"); // 뱃지 획득 순간 반짝 소리(v1.65, 게임 음소거를 따른다)
       timers.push(
         setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2200)
       );

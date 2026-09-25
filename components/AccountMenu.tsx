@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { AnimatePresence, m } from "motion/react";
+import { MOTION_MS } from "@/lib/motion";
 import {
   getMyProfile,
   updateNickname,
@@ -293,13 +295,23 @@ export function AccountMenu() {
         </span>
       </button>
 
+      {/* v1.65: 알약 아래에서 말려 내려오듯 펼쳐지고(clip-path — 글자 opacity 없음) 닫힐 때 빠르게 말려 올라간다. */}
+      <AnimatePresence>
       {open && (
-        <div
+        <m.div
+          key="account-menu"
           id={menuId}
           ref={menuRef}
           role="menu"
           aria-label="내 계정 메뉴"
           onKeyDown={onMenuKeyDown}
+          initial={{ clipPath: "inset(0% 0% 100% 0% round 16px)", y: -4 }}
+          animate={{
+            clipPath: "inset(0% 0% 0% 0% round 16px)",
+            y: 0,
+            transition: { duration: MOTION_MS.base / 1000, ease: [0.2, 0.8, 0.2, 1] },
+          }}
+          exit={{ clipPath: "inset(0% 0% 100% 0% round 16px)", transition: { duration: MOTION_MS.fast / 1000 } }}
           className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 ui-surface py-1 shadow-xl"
         >
           {profileLoadFailed && (
@@ -405,11 +417,14 @@ export function AccountMenu() {
               </MenuItem>
             </>
           )}
-        </div>
+        </m.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {editingNick && (
         <NicknameEditor
+          key="nickname-editor"
           current={profile.display_name}
           onClose={closeNicknameEditor}
           onSaved={(name) => {
@@ -423,6 +438,7 @@ export function AccountMenu() {
           }}
         />
       )}
+      </AnimatePresence>
     </div>
   );
 }

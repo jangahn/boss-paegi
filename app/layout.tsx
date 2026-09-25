@@ -27,6 +27,7 @@ import { SiteContentProvider } from "@/components/SiteContentProvider";
 import { SiteFooter } from "@/components/SiteFooter";
 import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
 import { EventBannersProvider } from "@/components/events/EventBannersProvider";
+import { MotionProvider } from "@/components/motion/MotionProvider";
 import { getEventBannerSnapshot } from "@/lib/events/banner-snapshot-server";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
@@ -133,6 +134,7 @@ export default async function RootLayout({
         <SupabasePreconnect />
         <JsonLd data={jsonLd} />
         <SessionBootstrap>
+          <MotionProvider>
           <AnalyticsVisitTracker />
           {/* 전역 내비 — root layout 에서 1회 렌더(내비 간 remount 제거). 라우트별 self-hide 는 AppNav 내부. */}
           <AppNav />
@@ -157,6 +159,7 @@ export default async function RootLayout({
           </EventBannersProvider>
           </MediaAssetsProvider>
           </SiteContentProvider>
+          </MotionProvider>
         </SessionBootstrap>
       </body>
     </html>

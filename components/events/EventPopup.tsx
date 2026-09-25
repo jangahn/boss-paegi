@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence } from "motion/react";
 import { ModalShell } from "@/components/ModalShell";
 import { EVENT_TYPE_LABEL } from "@/lib/events/types";
 import { useActiveEvents } from "./useActiveEvents";
@@ -51,9 +52,8 @@ export function EventPopup() {
     !!popup &&
     dontShowChoice?.popupId === popup.id &&
     dontShowChoice.checked;
-  if (!popup || !open) return null;
-
   const close = () => {
+    if (!popup) return;
     if (dontShow) {
       try {
         localStorage.setItem(KEY(popup.id), String(Date.now() + popup.popupDismissDays * 86_400_000));
@@ -64,8 +64,11 @@ export function EventPopup() {
     setVisiblePopupId(null);
   };
 
+  // 닫힐 때 시트가 내려가는 퇴장(v1.65, ModalShell)을 위해 AnimatePresence 로 감싼다.
   return (
-    <ModalShell ariaLabel={popup.title} onClose={close}>
+    <AnimatePresence>
+      {popup && open && (
+    <ModalShell key={popup.id} ariaLabel={popup.title} onClose={close}>
       <div className="flex flex-col gap-3">
         <span className="w-fit rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] font-semibold text-zinc-500">
           {EVENT_TYPE_LABEL[popup.type]}
@@ -101,5 +104,7 @@ export function EventPopup() {
         </div>
       </div>
     </ModalShell>
+      )}
+    </AnimatePresence>
   );
 }

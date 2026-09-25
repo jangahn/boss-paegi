@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence } from "motion/react";
 import { useState } from "react";
 import { ReportDialog } from "@/components/ReportDialog";
 
@@ -26,7 +27,9 @@ export function ReportButton({
       >
         🚩 신고
       </button>
-      {open && <ReportDialog dollId={dollId} onClose={() => setOpen(false)} />}
+      <AnimatePresence>
+        {open && <ReportDialog key="report-dialog" dollId={dollId} onClose={() => setOpen(false)} />}
+      </AnimatePresence>
     </>
   );
 }
