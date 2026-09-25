@@ -944,6 +944,9 @@ v1.25 (2026-09-08, 롤 7종 — 사장님·신입·친구 신설, 동료→친�
 - OAuth 카탈로그 무결성(`scripts/qa/oauth-relation-fingerprints.mjs`)의 `public.dolls` 릴레이션 지문을 0120 CHECK 재정의에 맞춰 갱신(디스커버리 `--discover` 실측값, 다른 12 릴레이션 불변).
 - 테스트: `roles_v2.pgtap.sql`(CHECK 7종·coworker 거절·함수 allowlist·리맵 잔존 0), `score-tiers`(5롤·10단계 발행행 → 7롤 정규화·alias 제거·desc 충전), `prompt-golden`(v1 4롤 byte-identity 유지·7롤 조립·alias 정규화), `report-presentation`(7롤 순회).
 
+v1.66 (2026-09-25, 랭킹 목록 물결 연출 제거 — 사용자 결정; 마이그레이션 없음):
+- v1.65 에서 넣은 랭킹 목록의 차례로 올라오는 연출(행마다 45ms 간격으로 아래에서 살짝 올라옴)을 뺐다 — 목록이 물결처럼 꿀렁여 불필요해 보인다는 사용자 판단. 목록은 도착하면 바로 보인다. 기간 탭 선택 알약이 미끄러지는 것은 그대로. `motion-contract` 테스트가 랭킹에 `motion-rise` 가 다시 붙지 않게 막는다.
+
 v1.65 (2026-09-25, 게임 밖 인터랙션 · 모션 — 9/25 설계 `_local/SPEC-interaction-motion-2026-09-25.md`, 사용자 결정: 추천안대로 · iOS · Android 한쪽에서만 되는 기능 제외(진동); 마이그레이션 없음):
 - **원칙**: 게임 안의 손맛(젤리 반동 · 효과음)과 인사기록부 모티프(서류 · 도장)를 게임 밖으로. 문구 · 배치는 그대로 두고 움직임만, transform 계열과 단색 덮개 opacity 만(글자 opacity 금지 — iOS 잔상), 내용 표시를 늦추지 않음, 모션 감소면 최종 상태. **애니메이션 라이브러리 없음** — Motion 을 넣어 재 보니 경로마다 압축 약 +76KB(분석기) · 홈 brotli +44KB 라 CSS keyframes(`app/globals.css` 「모션」) + WAAPI(`lib/motion.ts`, `components/motion/useExitClone.ts`)로 구현했고, 연출 전체가 홈 약 +4KB(v1.64 와 같은 측정법).
 - **결과 보고서 연출**(GameOverModal): 보고서가 올라옴 → 점수 카운트업(최종 값 폭으로 자리 고정, 화면낭독기는 최종 값) → 「해소완료」 도장 쾅 · 잉크 링 · 종이 흔들림 → 등급 · 유형 → 뱃지 칩 팝 · NEW 금박 → 다시 패기 툭(약 1.5초, `CEREMONY_MS`). 탭하면 끝 상태, 버튼은 처음부터 누를 수 있다. 효과음(종이 · 도장 · 보상, `playUiCue`)은 /play 안에서만, 게임 음소거를 따른다. 신기록이면 축하 조각. 결과 화면 동안 게임 그리기를 멈춘다(`GameHandle.setRendering`). 공유 · 기록 상세는 서버 HTML 에 표지(`data-ceremony="play"`)가 실려 첫 페인트에 도장 · 등급 · 뱃지 연출(카운트업은 종료 화면만). 누적 뱃지 「다음 뱃지」 줄(판 시작 때 읽은 합계 + 이 판, `nextCumulativeBadge`).

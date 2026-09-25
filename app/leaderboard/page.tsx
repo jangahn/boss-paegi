@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState, type CSSProperties } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FadeImg } from "@/components/FadeImg";
 import { EventBanner } from "@/components/events/EventBanner";
@@ -121,8 +121,8 @@ function LeaderboardPageInner() {
       ) : (
         <ol className="space-y-2">
           {rows.map((r, i) => (
-            // 목록이 도착하면 위에서부터 차례로 살짝 올라온다(v1.65, globals.css motion-rise — transform 만).
-            <li key={r.id} className="motion-rise" style={{ "--i": i } as CSSProperties}>
+            // 목록은 연출 없이 바로 보인다 — v1.65 의 차례로 올라오는 연출은 물결처럼 꿀렁여 뺐다(v1.66 사용자 결정).
+            <li key={r.id}>
               <Link
                 href={`/history/${r.owner_id}`}
                 className="flex items-center gap-4 rounded-2xl border border-foreground/10 ui-surface p-3 transition hover:bg-foreground/10"
