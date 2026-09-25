@@ -35,3 +35,21 @@ export function defaultAvatarUrl(userId: string | null | undefined): string {
 export function avatarSrc(avatarUrl: string | null | undefined, userId: string | null | undefined): string {
   return avatarUrl || defaultAvatarUrl(userId);
 }
+
+/**
+ * 작은 칸(48px 이하 — 헤더 24 · 랭킹 36 · 히스토리 44)용 기본 프사 썸네일(v1.61, 144px WebP 약 5KB — 원본 256px PNG 21~26KB).
+ * `scripts/gen-static-thumbs.mjs` 가 원본에서 만든다. 계정 화면(96px)과 "캐릭터로 고르기" 업로드 원본은 PNG 그대로.
+ */
+export function avatarPresetThumbUrl(index: number): string {
+  avatarPresetUrl(index); // 범위 검사
+  return `/avatars/thumb/preset-${index}.webp`;
+}
+
+export function defaultAvatarThumbUrl(userId: string | null | undefined): string {
+  return avatarPresetThumbUrl(defaultAvatarPreset(userId));
+}
+
+/** 작은 칸 표시용 src — 커스텀 프사 우선, 없으면 기본 프사 썸네일. */
+export function avatarThumbSrc(avatarUrl: string | null | undefined, userId: string | null | undefined): string {
+  return avatarUrl || defaultAvatarThumbUrl(userId);
+}

@@ -20,7 +20,7 @@ export function BaseDollCard({ doll, state }: { doll: BaseDoll; state: ViewerSta
 
   const image = (
     <FadeImg
-      src={doll.image}
+      src={doll.thumb}
       alt={alt}
       placeholder="shimmer"
       fit="cover"

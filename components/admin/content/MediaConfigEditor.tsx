@@ -161,7 +161,8 @@ export function MediaConfigEditor({
         attempt: async () => {
           const { error } = await sb.storage
             .from(SITE_ASSETS_BUCKET)
-            .uploadToSignedUrl(d1.path, d1.token, file);
+            // 경로가 uuid(바꾸면 새 경로)라 1년 캐시가 안전하다(v1.61, 종전 기본 1시간) — 변환(render) 응답도 이 값을 따른다.
+            .uploadToSignedUrl(d1.path, d1.token, file, { cacheControl: "31536000" });
           return error
             ? { kind: "rejected" as const, error }
             : { kind: "confirmed" as const, value: true };

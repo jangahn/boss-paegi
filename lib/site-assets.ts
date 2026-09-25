@@ -6,12 +6,13 @@ import { SITE_URL } from "@/lib/site";
 
 // 미디어 자산 변환 사양 — **항상 width+height+resize**(width-only 는 height 안 줄어듦/Supabase gotcha).
 // 고용량 원본을 버킷에 넣어도 소비·미리보기는 늘 리사이즈된 render URL 만 로드.
-//   OG: 1200×630 cover(1.91:1) · 로고: 640²  contain(종횡비·투명 보존)
+//   OG: 1200×630 cover(1.91:1) · 로고: 384×288 contain(종횡비·투명 보존)
+// 로고(v1.61): 홈 112×84 · 로그인 128×96 자리(4:3 고정, v1.60)의 3배 DPR 폭 384 — 종전 640² 는 WebP 56KB, 384×288 은 약 18KB.
 export const OG_TRANSFORM = { width: 1200, height: 630, resize: "cover" } as const;
-export const LOGO_TRANSFORM = { width: 640, height: 640, resize: "contain" } as const;
-// 어드민 미리보기(더 작게).
+export const LOGO_TRANSFORM = { width: 384, height: 288, resize: "contain" } as const;
+// 어드민 미리보기(더 작게, 로고는 미리보기 자리와 같은 4:3).
 export const OG_PREVIEW_TRANSFORM = { width: 400, height: 210, resize: "cover" } as const;
-export const LOGO_PREVIEW_TRANSFORM = { width: 160, height: 160, resize: "contain" } as const;
+export const LOGO_PREVIEW_TRANSFORM = { width: 224, height: 168, resize: "contain" } as const;
 
 type Transform = { width: number; height: number; resize: "cover" | "contain" };
 

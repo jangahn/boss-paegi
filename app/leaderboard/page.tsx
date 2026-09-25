@@ -11,7 +11,7 @@ import {
   type LeaderboardRow as RankRow,
 } from "@/lib/leaderboard-response";
 import { runBoundedClientJsonFetch } from "@/lib/client-mutation";
-import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
+import { avatarThumbSrc, defaultAvatarThumbUrl } from "@/lib/avatar-presets";
 import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 type Period = "daily" | "weekly" | "monthly";
@@ -128,9 +128,9 @@ function LeaderboardPageInner() {
                   {i + 1}
                 </span>
                 <FadeImg
-                  src={avatarSrc(r.avatar_url, r.owner_id)}
+                  src={avatarThumbSrc(r.avatar_url, r.owner_id)}
                   className="h-9 w-9 shrink-0 rounded-full border border-foreground/10"
-                  fallbackSrc={defaultAvatarUrl(r.owner_id)}
+                  fallbackSrc={defaultAvatarThumbUrl(r.owner_id)}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-medium">

@@ -36,7 +36,8 @@ test("소식 본문 이미지 크기 조각: 붙이고 떼기, 형식 밖이면 
 test("소식 본문: 크기를 알면 width/height, 모르면 40:21 자리 · 어드민은 넣을 때 크기를 기록", () => {
   const md = source("components/events/Markdown.tsx");
   assert.match(md, /const \{ url, size \} = parseEventImageSrc\(src\);/);
-  assert.match(md, /<img src=\{url\} alt=\{alt \?\? ""\} width=\{size\.width\} height=\{size\.height\} loading=\{loading\} \/>/);
+  assert.match(md, /<img \{\.\.\.sources\} alt=\{alt \?\? ""\} width=\{size\.width\} height=\{size\.height\} loading=\{loading\} \/>/);
+  assert.match(md, /const sources = eventImageVariants\(url, size\) \?\? \{ src: url \};/);
   assert.match(md, /<span className="block aspect-\[40\/21\] w-full">/);
   assert.match(md, /const loading = src === firstImageSrc \? "eager" : "lazy";/);
   const editor = source("components/admin/EventEditor.tsx");

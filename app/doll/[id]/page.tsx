@@ -13,8 +13,10 @@ import { resolveCopy } from "@/lib/config/template";
 import { ReportButton } from "@/components/ReportButton";
 import { log, errInfo } from "@/lib/log";
 import { SupabaseOperationError } from "@/lib/supabase-operation";
+import { BASE_DOLLS, DEFAULT_BASE_DOLL } from "@/lib/base-dolls";
 
-const DEFAULT_BOSS = "/sprites/boss-default.png";
+// 삭제된 캐릭터 자리 = 기본 부장님 카드 썸네일(v1.61, 원본 게임 스프라이트 대신).
+const DEFAULT_BOSS = BASE_DOLLS[DEFAULT_BASE_DOLL].thumb;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

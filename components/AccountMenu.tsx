@@ -19,7 +19,7 @@ import { ModalShell } from "@/components/ModalShell";
 import { Spinner } from "@/components/Spinner";
 import { FadeImg } from "@/components/FadeImg";
 import { runClientMutation } from "@/lib/client-mutation";
-import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
+import { avatarThumbSrc, defaultAvatarThumbUrl } from "@/lib/avatar-presets";
 
 
 /**
@@ -194,7 +194,7 @@ export function AccountMenu() {
   }
 
   const isLoggedIn = profile.isLoggedIn;
-  const avatar = avatarSrc(profile.avatar_url, profile.id);
+  const avatar = avatarThumbSrc(profile.avatar_url, profile.id); // 24px 칸 — 기본 프사는 144px 썸네일(v1.61)
   const handleSignOut = async () => {
     if (signingOutRef.current) return;
     signingOutRef.current = true;
@@ -285,7 +285,7 @@ export function AccountMenu() {
           src={avatar}
           className="h-6 w-6 shrink-0 rounded-full border border-foreground/10"
           loading="eager"
-          fallbackSrc={defaultAvatarUrl(profile.id)}
+          fallbackSrc={defaultAvatarThumbUrl(profile.id)}
         />
         <span className="truncate">{profile.display_name}</span>
         <span aria-hidden className="text-xs text-zinc-500">

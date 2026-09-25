@@ -31,6 +31,30 @@ db_value() {
   db_psql -Atq -c "$1"
 }
 
+# 경합 순서는 시간 간격(sleep)으로 가정하지 않고 서버에서 관찰한다 — 느린 CI 러너에서 docker exec 기동이 늦으면 뒤 연결이 먼저
+# 실행돼 기대 상태가 어긋났다(2026-09-25 PR #314 CI: same-session 1|1:1|1:1). 잠금을 잡은 연결이 application_name 표시를 달면
+# 그 표시가 보일 때까지 기다린 뒤 다음 연결을 시작한다(test-anon-reassign-race.sh wait_for_activity 와 같은 방식, 최대 120초).
+wait_for_activity() {
+  predicate="$1"
+  expected="$2"
+  description="$3"
+  for _ in $(seq 1 2400); do
+    count="$(
+      db_value "
+        select count(*)
+          from pg_catalog.pg_stat_activity
+         where backend_type = 'client backend'
+           and ($predicate);
+      "
+    )"
+    if [[ "$count" == "$expected" ]]; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  fail "timed out waiting for $description"
+}
+
 fail() {
   echo "public write quota race QA failed: $*" >&2
   exit 1
@@ -236,6 +260,13 @@ telemetry_budget_fixture_installed="true"
 # Same absent session, two real connections: A holds the transaction-level
 # advisory/global/actor locks after ingest; B must wait, observe the committed
 # row, and consume request-only quota rather than a second new-session unit.
+# Ordering is observed on the server, never assumed from sleeps: B starts only
+# after pg_stat_activity shows A holding its locks, and A releases them as soon
+# as pg_locks shows B queued on the session advisory lock. B therefore waits
+# ~10ms, far under ingest_telemetry_delta's lock_timeout (250ms). A fixed hold
+# either timed B out into quota_busy, which counts nothing (0.2s hold on a slow
+# runner: 1|1:1|1:1), or ended before a slow poller saw A's marker (0.1s hold),
+# both in PR #314 CI.
 db_psql -Aqt >/dev/null <<SQL
 delete from public.public_write_quota_buckets where endpoint = 'telemetry';
 delete from public.telemetry_sessions
@@ -251,12 +282,31 @@ select public.ingest_telemetry_delta(
   '$actor_a',
   '{"deviceClass":"desktop-pointer","summary":{"seqHigh":1,"durationMs":1000,"totals":{"score":1,"hitCount":1}},"events":[]}'::jsonb
 )->>'ok';
-select pg_catalog.pg_sleep(0.2);
+set application_name = 'qa-quota-same-a-holding';
+-- Release only after B is actually queued on the session advisory lock, so
+-- B's wait is one 10ms poll — never near the function's 250ms lock_timeout.
+do \$\$
+declare
+  v_deadline timestamptz := pg_catalog.clock_timestamp() + interval '30 seconds';
+begin
+  loop
+    exit when exists (
+      select 1
+        from pg_catalog.pg_locks
+       where locktype = 'advisory'
+         and not granted
+    );
+    exit when pg_catalog.clock_timestamp() > v_deadline;
+    perform pg_catalog.pg_sleep(0.01);
+  end loop;
+end
+\$\$;
 commit;
 SQL
 ) &
 same_pid_a=$!
-sleep 0.05
+wait_for_activity "application_name = 'qa-quota-same-a-holding'" 1 \
+  "same-session connection A to hold its ingest locks"
 (
   db_psql -Aqt >"$qa_tmp_dir/same-b.out" <<SQL
 select public.ingest_telemetry_delta(
@@ -513,7 +563,8 @@ SQL
   || fail "track actor race exceeded boundary ($track_actor_state)"
 
 # A deliberately held global row must fail fast instead of queueing another
-# public request behind a one-second lock holder.
+# public request behind a lock holder (held 3s so a slow runner's contender
+# still arrives while it is held; the contender gives up after 250ms).
 db_psql -Aqt >/dev/null <<SQL
 delete from public.public_write_quota_buckets where endpoint = 'track';
 delete from public.analytics_events
@@ -536,12 +587,14 @@ select actor_key
   from public.public_write_quota_buckets
  where endpoint = 'track' and actor_key = 'global'
  for update;
-select pg_catalog.pg_sleep(1);
+set application_name = 'qa-quota-lock-holder';
+select pg_catalog.pg_sleep(3);
 commit;
 SQL
 ) &
 lock_holder_pid=$!
-sleep 0.15
+wait_for_activity "application_name = 'qa-quota-lock-holder'" 1 \
+  "the global quota row lock holder"
 db_psql -Aqt >"$qa_tmp_dir/lock-contender.out" <<SQL
 select case
   when result->>'accepted' = 'true' then 'accepted'

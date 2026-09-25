@@ -8,7 +8,7 @@ import { register } from "node:module";
 
 register("../telemetry/node-loader.mjs", import.meta.url);
 
-const { AVATAR_PRESET_COUNT, AVATAR_PRESET_INDEXES, avatarPresetUrl, defaultAvatarPreset, defaultAvatarUrl, avatarSrc } =
+const { AVATAR_PRESET_COUNT, AVATAR_PRESET_INDEXES, avatarPresetUrl, defaultAvatarPreset, defaultAvatarUrl, avatarSrc, avatarPresetThumbUrl, defaultAvatarThumbUrl, avatarThumbSrc } =
   await import("../../lib/avatar-presets.ts");
 
 test("프리셋 URL: 1..5 만 유효, 범위 밖은 RangeError", () => {
@@ -64,4 +64,20 @@ test("프리셋 자산: public/avatars/preset-1..5.png 존재, 256×256, RGBA/�
     assert.ok(buf.length <= 64 * 1024, `${file}: ${buf.length} bytes`);
   }
   assert.ok(!fs.existsSync(path.join(dir, "default.png")), "고정 default.png 는 프리셋으로 대체됨");
+});
+
+test("작은 칸 썸네일(v1.61): 144px WebP 경로 · 범위 검사 · 커스텀 우선 — 헤더 · 랭킹 · 히스토리는 썸네일, 계정 화면은 원본", () => {
+  assert.equal(avatarPresetThumbUrl(3), "/avatars/thumb/preset-3.webp");
+  for (const bad of [0, 6, 1.5, Number.NaN]) assert.throws(() => avatarPresetThumbUrl(bad), RangeError);
+  const id = "35da9ed8-0432-4a67-95c6-e4e70a2a36a9";
+  assert.equal(defaultAvatarThumbUrl(id), `/avatars/thumb/preset-${defaultAvatarPreset(id)}.webp`);
+  assert.equal(avatarThumbSrc(null, id), defaultAvatarThumbUrl(id));
+  assert.equal(avatarThumbSrc("https://x.supabase.co/storage/v1/object/public/avatars/a.jpg", id), "https://x.supabase.co/storage/v1/object/public/avatars/a.jpg");
+  const src = (p: string) => fs.readFileSync(path.resolve(process.cwd(), p), "utf8");
+  for (const file of ["app/leaderboard/page.tsx", "app/history/[userId]/page.tsx", "components/AccountMenu.tsx"]) {
+    assert.match(src(file), /avatarThumbSrc\(/, file);
+    assert.match(src(file), /fallbackSrc=\{defaultAvatarThumbUrl\(/, file);
+  }
+  assert.match(src("app/account/page.tsx"), /const avatar = avatarSrc\(profile\.avatar_url, profile\.id\);/);
+  for (const i of AVATAR_PRESET_INDEXES) assert.ok(fs.existsSync(path.resolve(process.cwd(), "public", avatarPresetThumbUrl(i).slice(1))), `thumb ${i}`);
 });

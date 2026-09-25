@@ -18,7 +18,7 @@ import {
   parsePublicHistoryProfile,
   type PublicHistoryGame,
 } from "@/lib/history-read";
-import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
+import { avatarThumbSrc, defaultAvatarThumbUrl } from "@/lib/avatar-presets";
 
 const PAGE_SIZE = 10;
 const UUID_RE =
@@ -104,10 +104,10 @@ export default async function HistoryPage({
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <div className="flex items-center gap-3">
             <FadeImg
-              src={avatarSrc(profile.avatar_url, userId)}
+              src={avatarThumbSrc(profile.avatar_url, userId)}
               className="h-11 w-11 shrink-0 rounded-full border border-foreground/10"
               loading="eager"
-              fallbackSrc={defaultAvatarUrl(userId)}
+              fallbackSrc={defaultAvatarThumbUrl(userId)}
             />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold">{name}님의 기록</h1>

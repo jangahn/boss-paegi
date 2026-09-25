@@ -20,20 +20,28 @@ export type BaseDoll = {
   key: BaseDollKey;
   role: RoleId;
   gender: Gender;
-  /** public 정적 스프라이트 경로(서명 불필요) */
+  /** public 정적 스프라이트 경로(서명 불필요) — 게임 화면(원본 768×1024). */
   image: string;
-  /** 머리 크롭(256px 알파 PNG) — 홈 캐릭터 줄용. 프사 프리셋(v1.41, `lib/avatar-presets`)이 이 5종의 머리라 같은 자산을 쓴다. */
+  /**
+   * 작은 칸용 썸네일(v1.61, 384×512 WebP 약 18KB) — 갤러리 카드 · 공유 · 기록 상세 · 캐릭터 공유. 원본(124~167KB)을 약 160px 칸에
+   * 그대로 받던 것. `scripts/gen-static-thumbs.mjs` 가 원본에서 만든다.
+   */
+  thumb: string;
+  /**
+   * 머리 크롭 — 홈 캐릭터 줄용(v1.61 부터 144px WebP 약 5KB, 원본은 프사 프리셋 256px PNG). 프사 프리셋(v1.41, `lib/avatar-presets`)이
+   * 이 5종의 머리라 같은 자산에서 만든다(`scripts/gen-static-thumbs.mjs`).
+   */
   face: string;
   /** 회원 추가 캐릭터(갤러리 '추가' 카드, 비회원은 잠금 티저). 기본 부장님만 false. */
   extra: boolean;
 };
 
 export const BASE_DOLLS: Readonly<Record<BaseDollKey, BaseDoll>> = {
-  "boss-m": { key: "boss-m", role: "boss", gender: "male", image: "/sprites/boss-default.png", face: "/avatars/preset-1.png", extra: false },
-  "ceo-m": { key: "ceo-m", role: "ceo", gender: "male", image: "/sprites/base/ceo-m.png", face: "/avatars/preset-5.png", extra: true },
-  "boss-f": { key: "boss-f", role: "boss", gender: "female", image: "/sprites/base/boss-f.png", face: "/avatars/preset-3.png", extra: true },
-  "teamlead-f": { key: "teamlead-f", role: "teamlead", gender: "female", image: "/sprites/base/teamlead-f.png", face: "/avatars/preset-4.png", extra: true },
-  "junior-m": { key: "junior-m", role: "junior", gender: "male", image: "/sprites/base/junior-m.png", face: "/avatars/preset-2.png", extra: true },
+  "boss-m": { key: "boss-m", role: "boss", gender: "male", image: "/sprites/boss-default.png", thumb: "/sprites/thumb/boss-m.webp", face: "/avatars/thumb/preset-1.webp", extra: false },
+  "ceo-m": { key: "ceo-m", role: "ceo", gender: "male", image: "/sprites/base/ceo-m.png", thumb: "/sprites/thumb/ceo-m.webp", face: "/avatars/thumb/preset-5.webp", extra: true },
+  "boss-f": { key: "boss-f", role: "boss", gender: "female", image: "/sprites/base/boss-f.png", thumb: "/sprites/thumb/boss-f.webp", face: "/avatars/thumb/preset-3.webp", extra: true },
+  "teamlead-f": { key: "teamlead-f", role: "teamlead", gender: "female", image: "/sprites/base/teamlead-f.png", thumb: "/sprites/thumb/teamlead-f.webp", face: "/avatars/thumb/preset-4.webp", extra: true },
+  "junior-m": { key: "junior-m", role: "junior", gender: "male", image: "/sprites/base/junior-m.png", thumb: "/sprites/thumb/junior-m.webp", face: "/avatars/thumb/preset-2.webp", extra: true },
 };
 
 /** 갤러리 '추가' 카드 순서 = 어휘 순서(사장님·부장님(여)·팀장님(여)·신입). */

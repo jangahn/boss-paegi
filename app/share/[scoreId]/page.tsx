@@ -154,7 +154,7 @@ export default async function SharePage({
           <div className="mt-3 flex items-start justify-between gap-3">
             {/* 커스텀 캐릭터 없으면 기본 부장님 이미지 */}
             <FadeImg
-              src={dollImg ?? base.image}
+              src={dollImg ?? base.thumb}
               alt={`맞은 ${rlabel}`}
               className="aspect-square w-20 shrink-0 rounded-xl border border-zinc-300 bg-zinc-100 min-[360px]:w-24"
               fit="contain"
