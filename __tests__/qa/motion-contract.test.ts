@@ -58,31 +58,25 @@ test("젤리 곡선은 한 곳 — 게임 인형(Doll)과 게임 밖 찌르기�
   assert.ok(Math.abs(squashAt(0, 1, JELLY_HIT.freq, JELLY_HIT.damp) - 1) < 1e-12);
 });
 
-test("Motion 은 가볍게 — LazyMotion strict + 기능 묶음 비동기, 전체 motion 컴포넌트 · 레이아웃 기능(domMax) 금지", () => {
-  const provider = source("components/motion/MotionProvider.tsx");
-  assert.match(provider, /<LazyMotion features=\{loadFeatures\} strict>/);
-  assert.match(provider, /const loadFeatures = \(\) => import\("@\/lib\/motion-features"\)/);
-  assert.match(provider, /<MotionConfig reducedMotion="user">/);
-  assert.match(source("lib/motion-features.ts"), /import \{ domAnimation \} from "motion\/react";/);
-  assert.match(source("app/layout.tsx"), /<MotionProvider>/);
-  for (const f of appFiles) {
-    const s = readFileSync(f, "utf8");
-    for (const m of s.matchAll(/import \{([^}]*)\} from "motion\/react"/g)) {
-      const names = m[1].split(",").map((x) => x.trim());
-      assert.ok(!names.includes("motion"), `${relative(ROOT, f)} — m 만`);
-      assert.ok(!names.includes("domMax"), `${relative(ROOT, f)} — domMax 금지`);
-    }
+test("애니메이션 라이브러리 없음 — 등장 · 반복은 CSS, 누름 · 퇴장은 WAAPI(Motion 은 재 보니 경로마다 압축 약 +76KB라 뺐다)", () => {
+  const pkg = JSON.parse(source("package.json")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  for (const name of ["motion", "framer-motion", "gsap", "lenis", "@studio-freight/lenis", "react-spring", "lottie-web"]) {
+    assert.ok(!(name in deps), name);
   }
+  for (const f of appFiles) assert.doesNotMatch(readFileSync(f, "utf8"), /from "(motion|framer-motion)(\/[a-z]+)?"/, relative(ROOT, f));
 });
 
-test("연출 CSS 는 transform 계열만 — 글자 opacity 금지(iOS 잔상), 예외는 View Transition 스냅샷(vt-out · vt-in)", () => {
+test("연출 CSS 는 transform 계열(+ clip-path)만 — 글자 opacity 금지(iOS 잔상), 예외는 View Transition 스냅샷 · 단색 덮개", () => {
   const css = motionCss();
   const keyframes = [...css.matchAll(/@keyframes ([\w-]+) \{([\s\S]*?)\n\}/g)];
   assert.ok(keyframes.length >= 10);
   for (const [, name, body] of keyframes) {
     const props = new Set([...body.matchAll(/^\s*([a-z-]+):/gm)].map((m) => m[1]));
     for (const prop of props) {
-      const allowed = ["translate", "scale", "rotate", "transform"].includes(prop) || (prop === "opacity" && /^vt-/.test(name));
+      const allowed =
+        ["translate", "scale", "rotate", "transform", "clip-path"].includes(prop) ||
+        (prop === "opacity" && (/^vt-/.test(name) || name === "scrim-in")); // VT 스냅샷 · 단색 덮개만
       assert.ok(allowed, `${name}: ${prop}`);
     }
   }
@@ -123,23 +117,22 @@ test("결과 보고서 — 연출 중에도 버튼은 바로(다시 패기 클�
   assert.match(source("app/play/page.tsx"), /gameRef\.current\?\.setRendering\(!over\);/);
 });
 
-test("모달 · 메뉴 — 시트 · 메뉴 글자에 opacity 를 걸지 않고(덮개만), 사용자 화면 모달은 AnimatePresence 로 퇴장", () => {
+test("모달 · 메뉴 · 말풍선 — 등장은 CSS(덮개만 opacity), 사라질 때는 복제본 퇴장(부르는 쪽 수정 없음)", () => {
   const modal = source("components/ModalShell.tsx");
-  const opacityLines = modal.split("\n").filter((l) => /opacity: [01]/.test(l));
-  assert.equal(opacityLines.length, 3, "덮개의 initial · animate · exit 만");
-  assert.match(modal, /aria-hidden\s+className="absolute inset-0 bg-black\/60 backdrop-blur-sm"\s+initial=\{isAdmin \? false : \{ opacity: 0 \}\}/);
-  assert.doesNotMatch(source("components/AccountMenu.tsx"), /opacity: [01]/);
-  assert.doesNotMatch(source("components/home/HomeCharacterRow.tsx"), /opacity: [01]/);
-  for (const [file, child] of [
-    ["app/account/page.tsx", "<AvatarEditor"],
-    ["components/ReportButton.tsx", "<ReportDialog"],
-    ["components/AccountMenu.tsx", "<NicknameEditor"],
-    ["components/events/EventPopup.tsx", "<ModalShell"],
-    ["app/consent/ConsentForm.tsx", "<ModalShell"],
-  ]) {
-    const s = source(file);
-    const i = s.lastIndexOf("<AnimatePresence>", s.indexOf(child));
-    assert.ok(i >= 0, `${file} — AnimatePresence`);
+  assert.match(modal, /data-modal-scrim\s+className=\{`absolute inset-0 bg-black\/60 backdrop-blur-sm \$\{isAdmin \? "" : "motion-scrim"\}`\}/);
+  assert.match(modal, /data-modal-sheet[\s\S]*?\$\{isAdmin \? "" : "motion-sheet"\}/);
+  assert.match(modal, /useExitClone\(\s*rootRef,/);
+  assert.match(source("components/AccountMenu.tsx"), /className="motion-menu absolute right-0/);
+  assert.match(source("components/AccountMenu.tsx"), /useExitClone\(panelRef,/);
+  assert.match(source("components/home/HomeCharacterRow.tsx"), /useExitClone\(bubbleRef,/);
+  const exit = source("components/motion/useExitClone.ts");
+  assert.match(exit, /clone\.inert = true;/);
+  assert.match(exit, /clone\.setAttribute\("aria-hidden", "true"\);/);
+  assert.match(exit, /if \(!el \|\| !parent \|\| !enabledRef\.current \|\| prefersReducedMotion\(\)\) return;/);
+  // 글자가 있는 층에는 opacity 연출이 없다 — 덮개(scrim)만.
+  for (const f of ["components/ModalShell.tsx", "components/AccountMenu.tsx", "components/home/HomeCharacterRow.tsx"]) {
+    const lines = source(f).split("\n").filter((l) => /opacity/.test(l) && /animate\(/.test(l));
+    for (const l of lines) assert.match(l, /data-modal-scrim/, `${f}: ${l.trim()}`);
   }
 });
 
@@ -159,9 +152,15 @@ test("화면 전환 — 상단 메뉴만 본문 교차(nav 타입), 선택 알�
   assert.match(source("components/AppNav.tsx"), /style=\{\{ viewTransitionName: NAV_PILL_NAME \}\}/);
   assert.match(
     source("app/layout.tsx"),
-    /<ViewTransition update=\{\{ \[NAV_TRANSITION\]: "nav-fade", default: "none" \}\} enter="none" exit="none" default="none">/,
+    /<ViewTransition update=\{\{ \[NAV_TRANSITION\]: "nav-fade", \[PLAY_TRANSITION\]: "nav-fade", default: "none" \}\} enter="none" exit="none" default="none">/,
   );
-  assert.match(source("app/play/page.tsx"), /<ViewTransition name=\{PLAY_DOLL_TRANSITION\}/);
+  const preview = source("components/play/PlayDollPreview.tsx");
+  assert.match(preview, /style=\{\{ viewTransitionName: PLAY_DOLL_TRANSITION \}\}/);
+  for (const card of ["components/home/HomeCharacterRow.tsx", "components/gallery/BaseDollCard.tsx", "components/gallery/DefaultBossCard.tsx"]) {
+    assert.match(source(card), /transitionTypes=\{\[PLAY_TRANSITION\]\}/, card);
+  }
+  assert.match(preview, /const key = doll \?\? pendingPlayDollKey\(\);/, "서버 HTML 틀(fallback)은 누른 캐릭터를 읽는다");
+  assert.match(source("app/play/page.tsx"), /useEffect\(\(\) => resetPendingPlayDoll\(\), \[\]\);/);
   const css = motionCss();
   assert.match(css, /::view-transition \{\s*pointer-events: none;/);
 });

@@ -1,3 +1,5 @@
+import type { BaseDollKey } from "./base-dolls";
+
 /**
  * View Transitions(v1.65) — Next 16 App Router 의 React `<ViewTransition>` 과 함께 쓰는 이름 · 타입 단일 소스.
  * - 상단 메뉴 이동(`NAV_TRANSITION`): 헤더는 그대로, 본문만 짧게 교차(루트 레이아웃), 선택 알약은 이전 칸에서 새 칸으로 미끄러진다.
@@ -14,22 +16,41 @@ export const NAV_PILL_NAME = "nav-pill";
 /** 캐릭터 → 게임 로딩 막 이어짐의 이름. */
 export const PLAY_DOLL_TRANSITION = "play-doll";
 
+/** 캐릭터를 눌러 게임으로 들어가는 링크의 전환 타입 — 루트 레이아웃 경계가 이 타입일 때 전환을 시작한다(본문 교차 + 캐릭터 이어짐). */
+export const PLAY_TRANSITION = "play";
+
+// 누른 기본 캐릭터 — 게임 화면은 주소(?doll=)를 읽기 전 서버 HTML 틀(로딩 막)부터 그리므로, 이동하는 그 순간 로딩 막이 어떤 캐릭터를
+// 보여 줄지 여기 잠깐 둔다(브라우저 안 모듈 상태, 게임 화면이 뜨면 비운다).
+let pendingPlayDoll: BaseDollKey | null = null;
+
 /**
  * 누른 캐릭터 이미지에 이어질 이름을 붙인다 — 목록에 캐릭터가 여럿이라 처음부터 이름을 붙이면 겹치므로(이름은 화면에 하나여야
- * 한다) 누르는 순간 그 하나에만 붙이고, 전에 붙인 것은 뗀다. 이동하지 않고 끝나면(스크롤 등) 다음 누름에서 떼어진다.
+ * 한다) 누르는 순간 그 하나에만 붙이고, 전에 붙인 것은 뗀다. 이동하지 않고 끝나면(스크롤 등) 떼어진다.
  */
-export function markPlayDollSource(el: HTMLElement | null): void {
+export function markPlayDollSource(el: HTMLElement | null, key: BaseDollKey): void {
   if (!el) return;
   clearPlayDollSource();
   el.style.viewTransitionName = PLAY_DOLL_TRANSITION;
   el.setAttribute("data-play-doll-source", "");
+  pendingPlayDoll = key;
 }
 
 /** 붙여 둔 이름을 뗀다 — 누른 채 스크롤로 바뀌면(pointercancel) 바로. */
 export function clearPlayDollSource(): void {
+  pendingPlayDoll = null;
   if (typeof document === "undefined") return;
   for (const prev of document.querySelectorAll<HTMLElement>("[data-play-doll-source]")) {
     prev.style.viewTransitionName = "";
     prev.removeAttribute("data-play-doll-source");
   }
+}
+
+/** 이동 중인 기본 캐릭터(로딩 막 틀이 읽는다) — 없으면 null. */
+export function pendingPlayDollKey(): BaseDollKey | null {
+  return pendingPlayDoll;
+}
+
+/** 게임 화면이 떴으면 비운다(다음 이동에 남지 않게). */
+export function resetPendingPlayDoll(): void {
+  pendingPlayDoll = null;
 }

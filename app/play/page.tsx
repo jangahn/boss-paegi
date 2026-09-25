@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, ViewTransition, useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScoreBoard } from "@/components/ScoreBoard";
 import { GameOverModal } from "@/components/GameOverModal";
@@ -35,8 +35,9 @@ import { useTelemetry } from "./useTelemetry";
 import { useKeyboardControls } from "./useKeyboardControls";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
-import { BASE_DOLLS, baseDollKeyFromParam, telemetryBaseDollLabel, type BaseDoll } from "@/lib/base-dolls";
-import { PLAY_DOLL_TRANSITION } from "@/lib/view-transition";
+import { baseDollKeyFromParam, telemetryBaseDollLabel, type BaseDollKey } from "@/lib/base-dolls";
+import { resetPendingPlayDoll } from "@/lib/view-transition";
+import { PlayDollPreview } from "@/components/play/PlayDollPreview";
 import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 /** 시간 종료 배너 노출(ms) — 입력이 닫힌 뒤 「시간 종료!」를 보여 주고 종료 화면을 연다. */
@@ -86,6 +87,8 @@ function PlayInner() {
   // 궁극기 게이지 풀 충전 여부 — 발동 버튼 노출
   const [ultReady, setUltReady] = useState(false);
   const [over, setOver] = useState(false);
+  // 누른 캐릭터(로딩 막 이어짐)는 게임 화면이 뜨면 비운다 — 다음 이동에 남지 않게(v1.65, lib/view-transition.ts).
+  useEffect(() => resetPendingPlayDoll(), []);
   // 결과 화면 동안 게임 그리기를 멈춘다(v1.65) — 흐림 배경 뒤 WebGL 이 결과 연출을 끊지 않게. 다시 패기(over=false)에서 재개.
   useEffect(() => {
     gameRef.current?.setRendering(!over);
@@ -555,7 +558,7 @@ function PlayInner() {
       {/* min-h-0/min-w-0: flex item 이 canvas(고정 CSS 크기) content 이하로 축소되게 허용 →
           ResizeObserver 가 창 축소도 포착(없으면 min-content=캔버스 크기에 묶여 미발화). */}
       <div ref={stageRef} className="min-h-0 min-w-0 flex-1 select-none" />
-      {!gameReady && !gameInitError && <PlayLoadingOverlay doll={baseDollKey ? BASE_DOLLS[baseDollKey] : null} />}
+      {!gameReady && !gameInitError && <PlayLoadingOverlay doll={baseDollKey} />}
       {!gameReady && gameInitError && (
         <div
           role="alert"
@@ -694,18 +697,12 @@ const PLAY_SURFACE_CLASS = "game-surface relative flex h-[100dvh] flex-col overf
 
 /**
  * 로딩 막. v1.65: 기본 캐릭터로 들어오면 그 캐릭터 카드 이미지를 보여 주고, 홈 얼굴 · 갤러리 카드에서 눌러 들어오면 누른 이미지가
- * 이 자리로 커지며 이어진다(같은 이름 `PLAY_DOLL_TRANSITION` 의 View Transition 모핑 — lib/view-transition.ts). 커스텀 캐릭터 ·
- * 서버 HTML fallback 은 이미지를 모르므로 종전처럼 스피너만.
+ * 이 자리로 커지며 이어진다(PlayDollPreview — View Transition 모핑). 커스텀 캐릭터 · 직접 진입은 종전처럼 스피너만.
  */
-function PlayLoadingOverlay({ doll }: { doll?: BaseDoll | null }) {
+function PlayLoadingOverlay({ doll }: { doll?: BaseDollKey | null }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
-      {doll && (
-        <ViewTransition name={PLAY_DOLL_TRANSITION} share="auto" enter="auto" default="none">
-          {/* eslint-disable-next-line @next/next/no-img-element -- 정적 썸네일(384×512), 자리 고정 */}
-          <img src={doll.thumb} alt="" width={120} height={160} className="h-40 w-30 object-contain" />
-        </ViewTransition>
-      )}
+      <PlayDollPreview doll={doll} />
       <Spinner className="h-8 w-8 text-white/80" />
       <p className="text-sm text-white/70">캐릭터 불러오는 중...</p>
     </div>

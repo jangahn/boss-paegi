@@ -1,7 +1,9 @@
 import { JELLY_HIT, jellyDurationMs, jellyFrames } from "./jelly";
 
 /**
- * 모션 토큰(v1.65) — 게임 밖 화면 연출의 시간 · 이징 · 스프링 단일 소스. CSS 쪽 같은 값은 `app/globals.css` 「모션」 절.
+ * 모션(v1.65) — 게임 밖 화면 연출의 시점 · 헬퍼 단일 소스. 등장 · 반복 연출은 CSS(`app/globals.css` 「모션」 절, 이징 토큰
+ * `--ease-paper` · `--ease-stamp`), 누름 반응과 퇴장은 WAAPI(여기 · components/motion/useExitClone.ts). 애니메이션 라이브러리는 쓰지
+ * 않는다 — Motion 을 넣어 재 보니 경로마다 압축 약 +76KB(분석기 기준)라 같은 연출을 CSS · WAAPI 로 옮겼다(9/25).
  *
  * 규칙(9/25 설계, `_local/SPEC-interaction-motion-2026-09-25.md`):
  * - 모티프 = 인사기록부(서류가 올라오고 도장이 찍힌다) + 게임 인형과 같은 젤리 반동(`lib/jelly.ts`).
@@ -10,16 +12,6 @@ import { JELLY_HIT, jellyDurationMs, jellyFrames } from "./jelly";
  * - 내용 표시를 늦추지 않는다 — 연출은 제자리에 있는 내용 위에 덧씌우고, 버튼은 연출 중에도 누를 수 있다.
  * - 모션 감소 설정이면 연출 없이 최종 상태. iOS · Android 한쪽에서만 되는 기능(진동 등)은 쓰지 않는다(9/25 사용자 결정).
  */
-
-/** 시간(ms) — 퇴장은 등장보다 빠르게. */
-export const MOTION_MS = { fast: 120, base: 200, slow: 320 } as const;
-
-/** 이징(Motion 의 cubic-bezier 배열) — CSS `--ease-paper` 와 같다. */
-export const EASE_PAPER = [0.2, 0.8, 0.2, 1] as const;
-
-/** 스프링 — snap: 눌렀다 복귀, paper: 서류가 자리 잡기(과장 없음). */
-export const SPRING_SNAP = { type: "spring", stiffness: 520, damping: 34, mass: 0.8 } as const;
-export const SPRING_PAPER = { type: "spring", stiffness: 380, damping: 36 } as const;
 
 /**
  * 결과 보고서 연출 시점(ms, 보고서가 열린 순간 기준) — CSS 지연(`--cer-*`)과 같은 값. 전체 약 1.5초, 탭하면 끝 상태.

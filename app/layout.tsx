@@ -28,8 +28,7 @@ import { SiteContentProvider } from "@/components/SiteContentProvider";
 import { SiteFooter } from "@/components/SiteFooter";
 import { MediaAssetsProvider } from "@/components/MediaAssetsProvider";
 import { EventBannersProvider } from "@/components/events/EventBannersProvider";
-import { MotionProvider } from "@/components/motion/MotionProvider";
-import { NAV_TRANSITION } from "@/lib/view-transition";
+import { NAV_TRANSITION, PLAY_TRANSITION } from "@/lib/view-transition";
 import { getEventBannerSnapshot } from "@/lib/events/banner-snapshot-server";
 import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
@@ -136,7 +135,6 @@ export default async function RootLayout({
         <SupabasePreconnect />
         <JsonLd data={jsonLd} />
         <SessionBootstrap>
-          <MotionProvider>
           <AnalyticsVisitTracker />
           {/* 전역 내비 — root layout 에서 1회 렌더(내비 간 remount 제거). 라우트별 self-hide 는 AppNav 내부. */}
           <AppNav />
@@ -149,8 +147,8 @@ export default async function RootLayout({
                 <SessionLimitsProvider value={sessionLimits}>
                   <CreditProductsProvider value={creditsConfig(growthLevers)}>
                     <BadgeCatalogProvider value={badgeCatalog}>
-                      {/* 상단 메뉴 이동(nav 타입)일 때만 본문을 짧게 교차(v1.65, lib/view-transition.ts · globals.css). 그 밖의 이동은 그대로. */}
-                      <ViewTransition update={{ [NAV_TRANSITION]: "nav-fade", default: "none" }} enter="none" exit="none" default="none">
+                      {/* 상단 메뉴 이동(nav) · 캐릭터로 게임 진입(play) 타입일 때만 본문을 짧게 교차(v1.65, lib/view-transition.ts · globals.css). 그 밖의 이동은 그대로. */}
+                      <ViewTransition update={{ [NAV_TRANSITION]: "nav-fade", [PLAY_TRANSITION]: "nav-fade", default: "none" }} enter="none" exit="none" default="none">
                         {children}
                       </ViewTransition>
                       {/* 사업자정보 푸터 — PG 심사 요건(메인+결제페이지 상시 노출). 미설정 시 비노출. */}
@@ -164,7 +162,6 @@ export default async function RootLayout({
           </EventBannersProvider>
           </MediaAssetsProvider>
           </SiteContentProvider>
-          </MotionProvider>
         </SessionBootstrap>
       </body>
     </html>

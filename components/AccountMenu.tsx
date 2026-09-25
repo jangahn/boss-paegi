@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AnimatePresence, m } from "motion/react";
-import { MOTION_MS } from "@/lib/motion";
+import { useExitClone } from "@/components/motion/useExitClone";
 import {
   getMyProfile,
   updateNickname,
@@ -295,24 +294,12 @@ export function AccountMenu() {
         </span>
       </button>
 
-      {/* v1.65: 알약 아래에서 말려 내려오듯 펼쳐지고(clip-path — 글자 opacity 없음) 닫힐 때 빠르게 말려 올라간다. */}
-      <AnimatePresence>
+      {/* v1.65: 알약 아래에서 말려 내려오듯 펼쳐지고(motion-menu, clip-path — 글자 opacity 없음) 닫힐 때 빠르게 말려 올라간다(MenuPanel). */}
       {open && (
-        <m.div
-          key="account-menu"
+        <MenuPanel
           id={menuId}
-          ref={menuRef}
-          role="menu"
-          aria-label="내 계정 메뉴"
+          panelRef={menuRef}
           onKeyDown={onMenuKeyDown}
-          initial={{ clipPath: "inset(0% 0% 100% 0% round 16px)", y: -4 }}
-          animate={{
-            clipPath: "inset(0% 0% 0% 0% round 16px)",
-            y: 0,
-            transition: { duration: MOTION_MS.base / 1000, ease: [0.2, 0.8, 0.2, 1] },
-          }}
-          exit={{ clipPath: "inset(0% 0% 100% 0% round 16px)", transition: { duration: MOTION_MS.fast / 1000 } }}
-          className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 ui-surface py-1 shadow-xl"
         >
           {profileLoadFailed && (
             <button
@@ -417,14 +404,11 @@ export function AccountMenu() {
               </MenuItem>
             </>
           )}
-        </m.div>
+        </MenuPanel>
       )}
-      </AnimatePresence>
 
-      <AnimatePresence>
       {editingNick && (
         <NicknameEditor
-          key="nickname-editor"
           current={profile.display_name}
           onClose={closeNicknameEditor}
           onSaved={(name) => {
@@ -438,7 +422,38 @@ export function AccountMenu() {
           }}
         />
       )}
-      </AnimatePresence>
+    </div>
+  );
+}
+
+/** 계정 메뉴 판(v1.65) — 열릴 때 CSS 로 말려 내려오고(motion-menu), 닫혀 지워질 때 복제본이 말려 올라간다(useExitClone). */
+function MenuPanel({
+  id,
+  panelRef,
+  onKeyDown,
+  children,
+}: {
+  id: string;
+  panelRef: React.RefObject<HTMLDivElement | null>;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  children: React.ReactNode;
+}) {
+  useExitClone(panelRef, (clone) =>
+    clone.animate(
+      [{ clipPath: "inset(0% 0% 0% 0% round 16px)" }, { clipPath: "inset(0% 0% 100% 0% round 16px)" }],
+      { duration: 120, easing: "ease-in", fill: "forwards" },
+    ),
+  );
+  return (
+    <div
+      id={id}
+      ref={panelRef}
+      role="menu"
+      aria-label="내 계정 메뉴"
+      onKeyDown={onKeyDown}
+      className="motion-menu absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-2xl border border-foreground/10 ui-surface py-1 shadow-xl"
+    >
+      {children}
     </div>
   );
 }

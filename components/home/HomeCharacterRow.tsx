@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AnimatePresence, m } from "motion/react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { FadeImg } from "@/components/FadeImg";
+import { useExitClone } from "@/components/motion/useExitClone";
 import { useRoleConfig } from "@/components/RoleContentProvider";
 import { roleFrom, roleVoice } from "@/lib/config/domains/roles";
-import { playJelly, prefersReducedMotion, SPRING_SNAP } from "@/lib/motion";
-import { clearPlayDollSource, markPlayDollSource } from "@/lib/view-transition";
+import { playJelly, prefersReducedMotion } from "@/lib/motion";
+import { clearPlayDollSource, markPlayDollSource, PLAY_TRANSITION } from "@/lib/view-transition";
 import { BASE_DOLL_KEYS, BASE_DOLLS, playHrefFor, type BaseDollKey } from "@/lib/base-dolls";
 import { FOR_MEMBER_CLASS, FOR_NONMEMBER_CLASS } from "@/lib/member-hint";
 
@@ -61,7 +61,6 @@ function CharacterFaces({
 }) {
   const roleCfg = useRoleConfig();
   const rowRef = useRef<HTMLDivElement>(null);
-  const bubbleRef = useRef<HTMLDivElement>(null);
   const [taunt, setTaunt] = useState<{ id: number; text: string; x: number } | null>(null);
 
   // 가끔 한 얼굴이 도발 — 이 줄이 화면에 보일 때만(회원 힌트로 숨은 줄 · 탭 숨김 · 스크롤 밖이면 쉼). 모션 감소면 하지 않는다.
@@ -100,38 +99,9 @@ function CharacterFaces({
     };
   }, [roleCfg, state]);
 
-  // 말풍선은 얼굴 위 가운데, 줄 폭 안으로 당기고 꼬리는 얼굴을 가리킨다(폭은 글에 따라 달라 그린 뒤 잰다).
-  useLayoutEffect(() => {
-    const bubble = bubbleRef.current;
-    const row = rowRef.current;
-    if (!bubble || !row || !taunt) return;
-    const w = bubble.offsetWidth;
-    const left = Math.min(Math.max(taunt.x - w / 2, -8), row.clientWidth - w + 8);
-    bubble.style.left = `${left}px`;
-    const tail = bubble.querySelector<HTMLElement>("[data-tail]");
-    if (tail) tail.style.left = `${taunt.x - left}px`;
-  }, [taunt]);
-
   return (
     <div ref={rowRef} className="relative">
-    <AnimatePresence>
-      {taunt && (
-        <m.div
-          key={taunt.id}
-          ref={bubbleRef}
-          aria-hidden
-          initial={{ scale: 0, y: 6 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0, transition: { duration: 0.12 } }}
-          transition={SPRING_SNAP}
-          style={{ transformOrigin: "50% 100%" }}
-          className="pointer-events-none absolute bottom-full z-10 mb-2 w-max max-w-[15.5rem] rounded-2xl bg-white px-3 py-1.5 text-center text-xs font-semibold text-balance text-zinc-900 shadow-lg"
-        >
-          {taunt.text}
-          <span data-tail className="absolute -bottom-1 -ml-1.5 h-3 w-3 rotate-45 bg-white" />
-        </m.div>
-      )}
-    </AnimatePresence>
+    {taunt && <TauntBubble key={taunt.id} text={taunt.text} x={taunt.x} rowRef={rowRef} />}
     <ul className="flex justify-center gap-1.5">
       {BASE_DOLL_KEYS.map((key) => {
         const doll = BASE_DOLLS[key];
@@ -152,11 +122,12 @@ function CharacterFaces({
             ) : (
               <Link
                 href={playHrefFor(key)}
+                transitionTypes={[PLAY_TRANSITION]}
                 onClick={() => onPlay(key, state)}
                 onPointerDown={(e) => {
                   const face = e.currentTarget.querySelector<HTMLElement>("[data-jelly]");
                   playJelly(face);
-                  markPlayDollSource(face); // 이 얼굴이 게임 로딩 막의 캐릭터로 이어진다(lib/view-transition.ts)
+                  markPlayDollSource(face, key); // 이 얼굴이 게임 로딩 막의 캐릭터로 이어진다(lib/view-transition.ts)
                 }}
                 onPointerCancel={clearPlayDollSource}
                 data-face={key}
@@ -174,6 +145,38 @@ function CharacterFaces({
         );
       })}
     </ul>
+    </div>
+  );
+}
+
+/**
+ * 도발 말풍선(v1.65) — 얼굴 위 가운데, 줄 폭 안으로 당기고 꼬리는 얼굴을 가리킨다(폭은 글에 따라 달라 그린 뒤 잰다).
+ * 톡 튀어나오고(motion-bubble, 크기만 — 글자 opacity 없음) 사라질 때는 복제본이 줄어든다(useExitClone). 장식이라 화면낭독기에서 뺀다.
+ */
+function TauntBubble({ text, x, rowRef }: { text: string; x: number; rowRef: RefObject<HTMLDivElement | null> }) {
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const bubble = bubbleRef.current;
+    const row = rowRef.current;
+    if (!bubble || !row) return;
+    const w = bubble.offsetWidth;
+    const left = Math.min(Math.max(x - w / 2, -8), row.clientWidth - w + 8);
+    bubble.style.left = `${left}px`;
+    const tail = bubble.querySelector<HTMLElement>("[data-tail]");
+    if (tail) tail.style.left = `${x - left}px`;
+  }, [x, rowRef]);
+  useExitClone(bubbleRef, (clone) => {
+    clone.style.transformOrigin = "50% 100%";
+    return clone.animate([{ scale: "1" }, { scale: "0" }], { duration: 120, easing: "ease-in", fill: "forwards" });
+  });
+  return (
+    <div
+      ref={bubbleRef}
+      aria-hidden
+      className="motion-bubble pointer-events-none absolute bottom-full z-10 mb-2 w-max max-w-[15.5rem] rounded-2xl bg-white px-3 py-1.5 text-center text-xs font-semibold text-balance text-zinc-900 shadow-lg"
+    >
+      {text}
+      <span data-tail className="absolute -bottom-1 -ml-1.5 h-3 w-3 rotate-45 bg-white" />
     </div>
   );
 }

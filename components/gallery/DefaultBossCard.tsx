@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { playJelly } from "@/lib/motion";
-import { clearPlayDollSource, markPlayDollSource } from "@/lib/view-transition";
+import { clearPlayDollSource, markPlayDollSource, PLAY_TRANSITION } from "@/lib/view-transition";
 import { FadeImg } from "@/components/FadeImg";
 import type { ViewerState } from "@/lib/gallery-cta";
 import { useRoleConfig } from "@/components/RoleContentProvider";
@@ -29,10 +29,11 @@ export function DefaultBossCard({ state: _state }: { state: ViewerState }) {
         {/* 이미지 영역만 Link — 카드 전체를 Link 로 감싸지 않음(⋯ 버튼은 Link 밖) */}
         <Link
           href="/play"
+          transitionTypes={[PLAY_TRANSITION]}
           className="block h-full w-full"
           onPointerDown={(e) => {
               playJelly(e.currentTarget, { amp: 0.07, origin: "50% 100%" });
-              markPlayDollSource(e.currentTarget); // 이 카드가 게임 로딩 막의 캐릭터로 이어진다
+              markPlayDollSource(e.currentTarget, DEFAULT_BASE_DOLL); // 이 카드가 게임 로딩 막의 캐릭터로 이어진다
             }}
             onPointerCancel={clearPlayDollSource}
         >

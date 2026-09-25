@@ -699,6 +699,34 @@ body:has(.game-surface) #sentry-feedback {
 .motion-sheet {
   animation: paper-rise 280ms var(--ease-paper) both;
 }
+/* 모달 덮개(단색) — 옅게 깔린다. 글자가 없는 단색 층이라 opacity 를 쓴다. */
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+.motion-scrim {
+  animation: scrim-in 200ms ease-out both;
+}
+/* 계정 메뉴 — 알약 아래에서 말려 내려오듯 펼쳐진다(clip-path, 글자 opacity 없음). */
+@keyframes menu-unroll {
+  from {
+    clip-path: inset(0% 0% 100% 0% round 16px);
+    translate: 0 -4px;
+  }
+  to {
+    clip-path: inset(0% 0% 0% 0% round 16px);
+    translate: 0 0;
+  }
+}
+.motion-menu {
+  animation: menu-unroll 200ms var(--ease-paper) both;
+}
+/* 말풍선 — 아래 꼬리 쪽을 축으로 톡 튀어나온다. */
+.motion-bubble {
+  animation: pop-in 300ms var(--ease-stamp) both;
+  transform-origin: 50% 100%;
+}
 
 /* 결과 보고서 연출 — 보고서 틀에 data-ceremony="play" 가 있을 때만 재생. 게임 종료 화면은 열릴 때(탭하면 "done" 으로 끝 상태),
  * 공유 · 기록 상세는 서버 HTML 에 처음부터 실려 첫 페인트에 재생된다(카운트업은 종료 화면만 — JS 가 필요). 시점 = lib/motion.ts CEREMONY_MS. */
@@ -798,6 +826,9 @@ body:has(.game-surface) #sentry-feedback {
   .motion-pop,
   .motion-wiggle,
   .motion-sheet,
+  .motion-scrim,
+  .motion-menu,
+  .motion-bubble,
   [data-ceremony] .cer-sheet,
   [data-ceremony] .cer-stamp,
   [data-ceremony] .cer-shake,
