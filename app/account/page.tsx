@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { AvatarEditor } from "@/components/AvatarEditor";
 import { FadeImg } from "@/components/FadeImg";
@@ -21,6 +20,7 @@ import {
   type ClientMutationEvidence,
 } from "@/lib/client-mutation";
 import { avatarSrc, defaultAvatarUrl } from "@/lib/avatar-presets";
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 
 /**
@@ -102,15 +102,7 @@ export default function AccountPage() {
         </main>
       );
     }
-    return (
-      <main
-        aria-busy="true"
-        className="flex flex-1 items-center justify-center"
-      >
-        <h1 className="sr-only">회원정보</h1>
-        <Spinner className="h-6 w-6" />
-      </main>
-    );
+    return <AccountSkeleton />;
   }
 
   // 법적 동의는 서버 proxy 가 /account 진입 전 게이트 → 여기 도달 = 동의완료. 별도 폴백 불필요.
@@ -254,6 +246,35 @@ export default function AccountPage() {
         />
       )}
     </>
+  );
+}
+
+// 로딩 스켈레톤(v1.60) — 완성 화면과 같은 틀(제목, 프로필 카드, 회원탈퇴)에 값 자리만 비워 둔다. 가운데 스피너였을 땐 본문이
+// 오면서 푸터가 177px 밀렸다(2026-09-25 실측). 값 자리 높이 = 프로필 사진 96px, 사진 변경 버튼 34px, 닉네임 입력 42px, 저장 버튼 40px.
+function AccountSkeleton() {
+  return (
+    <main {...PAGE_LOADING_PROPS} className="flex flex-1 flex-col px-5 py-8">
+      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+        <h1 className="text-2xl font-bold text-foreground">회원정보</h1>
+        <section className="rounded-2xl border border-foreground/10 ui-surface p-6">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-24 w-24 shrink-0 animate-pulse rounded-full bg-foreground/10" />
+            <div className="h-8.5 w-32 animate-pulse rounded-full bg-foreground/10" />
+          </div>
+          <hr className="my-5 border-t border-foreground/10" />
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-semibold text-zinc-500">
+              닉네임 <span className="font-normal text-zinc-400">({NICKNAME_MAX}자 이내)</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="h-10.5 min-w-0 flex-1 animate-pulse rounded-lg bg-foreground/10" />
+              <div className="h-10 w-17 shrink-0 animate-pulse rounded-full bg-foreground/10" />
+            </div>
+          </div>
+        </section>
+        <WithdrawSection />
+      </div>
+    </main>
   );
 }
 

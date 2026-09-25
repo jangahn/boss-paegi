@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { BusinessInfo } from "@/lib/config/domains/business-info";
+import { SITE_FOOTER_ATTRIBUTE } from "@/lib/page-loading";
 
 // 전체화면 게임·게이트 화면에선 숨김(AppNav self-hide 패턴과 동일 관용구).
 // 심사 요건 노출 대상(홈·/credits)은 목록에 없으므로 항상 노출된다.
@@ -20,7 +21,11 @@ export function SiteFooter({ info }: { info: BusinessInfo | undefined }) {
     return null;
   }
   return (
-    <footer className="border-t border-foreground/10 px-6 py-5 text-[11px] leading-relaxed text-zinc-600">
+    // 로딩 중 푸터 숨김(v1.60) 표지 — 페이지가 로딩 상태인 동안 <head> 인라인 규칙이 이 푸터를 뺀다(lib/page-loading.ts).
+    <footer
+      {...{ [SITE_FOOTER_ATTRIBUTE]: "" }}
+      className="border-t border-foreground/10 px-6 py-5 text-[11px] leading-relaxed text-zinc-600"
+    >
       <div className="mx-auto grid w-full max-w-3xl gap-x-8 gap-y-1 sm:grid-cols-2">
         {/* 라벨 칼럼: 모바일은 두 목록이 이어져 보이도록 5.5rem 공유 폭, sm+ 2단부터 칼럼별 자동 폭 */}
         <dl className="grid grid-cols-[5.5rem_1fr] gap-x-4 gap-y-1 sm:grid-cols-[max-content_1fr]">

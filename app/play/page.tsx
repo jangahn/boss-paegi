@@ -36,6 +36,7 @@ import { useKeyboardControls } from "./useKeyboardControls";
 import { activeGameElapsedMs } from "@/lib/game-clock";
 import { loadClientAssetWithDeadline } from "@/lib/client-asset-load";
 import { baseDollKeyFromParam, telemetryBaseDollLabel } from "@/lib/base-dolls";
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
 
 /** 시간 종료 배너 노출(ms) — 입력이 닫힌 뒤 「시간 종료!」를 보여 주고 종료 화면을 연다. */
 const TIME_UP_BANNER_MS = 1200;
@@ -542,21 +543,14 @@ function PlayInner() {
 
   return (
     <div
-      // h-[100dvh]: 뷰포트에 고정된 정의 높이 → 창 리사이즈/모바일 주소창에 즉시 추종(flex-1 은 body
-      //   min-h-full 체인이라 canvas content 가 컨테이너를 붙들어 축소 시 안 줄어들던 문제).
-      className="game-surface relative flex h-[100dvh] flex-col overflow-hidden bg-zinc-900"
+      className={PLAY_SURFACE_CLASS}
       onContextMenu={(e) => e.preventDefault()}
     >
       <h1 className="sr-only">부장님 패기 게임</h1>
       {/* min-h-0/min-w-0: flex item 이 canvas(고정 CSS 크기) content 이하로 축소되게 허용 →
           ResizeObserver 가 창 축소도 포착(없으면 min-content=캔버스 크기에 묶여 미발화). */}
       <div ref={stageRef} className="min-h-0 min-w-0 flex-1 select-none" />
-      {!gameReady && !gameInitError && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
-          <Spinner className="h-8 w-8 text-white/80" />
-          <p className="text-sm text-white/70">캐릭터 불러오는 중...</p>
-        </div>
-      )}
+      {!gameReady && !gameInitError && <PlayLoadingOverlay />}
       {!gameReady && gameInitError && (
         <div
           role="alert"
@@ -615,15 +609,17 @@ function PlayInner() {
         >
           {soundMuted ? "🔇" : "🔊"}
         </button>
-        {gameReady && (
-          <button
-            type="button"
-            onClick={() => void handleEnd()}
-            className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:px-4 sm:py-2 sm:text-sm"
-          >
-            그만 패기
-          </button>
-        )}
+        {/* 게임 준비 전엔 자리만 차지한다(v1.60, invisible = 보이지도 눌리지도 않음) — 준비 뒤에 새로 나타나며 🔊 를 왼쪽으로 밀던 것. */}
+        <button
+          type="button"
+          onClick={() => void handleEnd()}
+          disabled={!gameReady}
+          className={`rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:px-4 sm:py-2 sm:text-sm ${
+            gameReady ? "" : "invisible"
+          }`}
+        >
+          그만 패기
+        </button>
       </div>
       {/* 강제 종료 배너 — 한도 도달 시 grace 동안 노출 후 결과 모달로 전환 */}
       {forcedBanner && !over && (
@@ -685,9 +681,31 @@ function PlayKeyed() {
   return <PlayInner key={sp.get("doll") ?? "_default"} />;
 }
 
+// 게임 화면 틀 · 로딩 막 — 본 화면과 서버 HTML fallback 이 같이 쓴다(v1.60). fallback 이 비어 있으면 JS 가 뜰 때까지
+// 크림색 빈 화면이었다가 어두운 게임 화면으로 바뀌었다.
+// h-[100dvh]: 뷰포트에 고정된 정의 높이 → 창 리사이즈/모바일 주소창에 즉시 추종(flex-1 은 body min-h-full 체인이라
+//   canvas content 가 컨테이너를 붙들어 축소 시 안 줄어들던 문제).
+const PLAY_SURFACE_CLASS = "game-surface relative flex h-[100dvh] flex-col overflow-hidden bg-zinc-900";
+
+function PlayLoadingOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-zinc-900/80">
+      <Spinner className="h-8 w-8 text-white/80" />
+      <p className="text-sm text-white/70">캐릭터 불러오는 중...</p>
+    </div>
+  );
+}
+
 export default function PlayPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div {...PAGE_LOADING_PROPS} className={PLAY_SURFACE_CLASS}>
+          <h1 className="sr-only">부장님 패기 게임</h1>
+          <PlayLoadingOverlay />
+        </div>
+      }
+    >
       <PlayKeyed />
     </Suspense>
   );

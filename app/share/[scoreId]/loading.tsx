@@ -1,7 +1,9 @@
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
+
 /** /share 진입 즉시 스켈레톤 (서버 컴포넌트 fetchScore 대기 중 blank 방지). */
 export default function Loading() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-4 py-10">
+    <main {...PAGE_LOADING_PROPS} className="flex flex-1 flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         {/* 하이라이트 영상/배지 자리 */}
         <div className="mb-5 h-40 w-full animate-pulse rounded-2xl bg-foreground/10" />

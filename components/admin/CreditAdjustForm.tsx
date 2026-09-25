@@ -207,12 +207,10 @@ export function CreditAdjustForm({ target }: { target: Target }) {
           className="flex items-center gap-1 rounded-lg bg-foreground px-3 py-1.5 text-sm font-semibold text-paper-2 disabled:opacity-40"
         >
           {busy && <Spinner className="h-3.5 w-3.5" />}
-          {pending ? "동일 요청 재시도" : "적용"}
+          {/* 미확정 조정 결과 확인은 버튼 글자로 알린다(v1.60) — 따로 한 줄을 두면 확인이 끝나 줄이 사라질 때 아래 결제 내역이 24px 올라갔다. */}
+          {recovery === "checking" ? "확인 중…" : pending ? "동일 요청 재시도" : "적용"}
         </button>
       </div>
-      {recovery === "checking" && (
-        <p className="text-xs text-zinc-500">미확정 조정 결과 확인 중…</p>
-      )}
       {recovery === "blocked" && (
         <button
           type="button"

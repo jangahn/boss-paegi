@@ -36,6 +36,11 @@ import {
   type Stage,
   type GeneratedImage,
 } from "./useGenerationPolling";
+import { PAGE_LOADING_PROPS } from "@/lib/page-loading";
+
+// 본 화면과 서버 HTML fallback 이 같이 쓰는 틀 · 첫 단계 문구(v1.60).
+const GENERATE_MAIN_CLASS = "flex flex-1 flex-col px-6 py-8";
+const CHECKING_LABEL = "생성권 확인 중…";
 
 function GeneratePageInner() {
   const router = useRouter();
@@ -539,7 +544,11 @@ function GeneratePageInner() {
 
   return (
     <>
-      <main className="flex flex-1 flex-col px-6 py-8">
+      <main
+        // 생성권 확인 중엔 로딩 표지 — 그동안 푸터를 빼 다음 화면(업로드 칸)이 와도 푸터가 밀리지 않는다(v1.60, lib/page-loading.ts).
+        {...(stage === "checking" && !profileLoadError ? PAGE_LOADING_PROPS : {})}
+        className={GENERATE_MAIN_CLASS}
+      >
       <h1 className="sr-only">캐릭터 만들기</h1>
       {stage === "checking" &&
         (profileLoadError ? (
@@ -554,7 +563,7 @@ function GeneratePageInner() {
             </button>
           </div>
         ) : (
-          <LoadingStage label="생성권 확인 중…" />
+          <LoadingStage label={CHECKING_LABEL} />
         ))}
       {stage === "consent" && <ConsentDialog onAgree={() => setStage("upload")} />}
       {stage === "upload" && (
@@ -639,9 +648,18 @@ function GeneratePageInner() {
   );
 }
 
+// useSearchParams(resume) 때문에 서버 HTML 에는 fallback 이 실린다 — 빈 값이면 JS 가 뜰 때까지 빈 화면이었다가 본문이 나타나며
+// 푸터를 밀었다(2026-09-25 실측 CLS 0.27). 하이드레이션 뒤 첫 단계(생성권 확인 중)와 같은 화면을 싣는다(v1.60).
 export default function GeneratePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <main {...PAGE_LOADING_PROPS} className={GENERATE_MAIN_CLASS}>
+          <h1 className="sr-only">캐릭터 만들기</h1>
+          <LoadingStage label={CHECKING_LABEL} />
+        </main>
+      }
+    >
       <GeneratePageInner />
     </Suspense>
   );

@@ -29,6 +29,7 @@ import { getMediaAssetUrls, resolveOgImages } from "@/lib/site-assets";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
 import { MEMBER_HINT_STYLE, memberHintCookieName, memberHintInlineScript } from "@/lib/member-hint";
+import { PAGE_LOADING_STYLE } from "@/lib/page-loading";
 
 export async function generateMetadata(): Promise<Metadata> {
   const sc = await getSiteContent();
@@ -113,6 +114,8 @@ export default async function RootLayout({
     // suppressHydrationWarning: 아래 인라인 스크립트가 hydrate 전에 <html data-member-hint> 를 달 수 있다(이 요소의 속성만 해당).
     <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
       <head>
+        {/* 로딩 중 푸터 숨김(v1.60) — 로딩 상태(스켈레톤, 스피너)인 동안 사업자 정보 푸터를 빼 본문이 올 때 푸터가 밀리지 않게 한다(lib/page-loading.ts). */}
+        <style dangerouslySetInnerHTML={{ __html: PAGE_LOADING_STYLE }} />
         {/* 회원 힌트(v1.51) — 첫 페인트 전에 세션 쿠키로 회원 여부를 판별해 정적 HTML 의 두 상태 중 맞는 쪽을 보이게 한다(lib/member-hint.ts). */}
         {/* 표시 규칙은 스타일시트가 아니라 HTML 에 싣는다 — CSS 빌드·캐시와 무관해야 한다(v1.52, lib/member-hint.ts MEMBER_HINT_STYLE). */}
         <style dangerouslySetInnerHTML={{ __html: MEMBER_HINT_STYLE }} />
