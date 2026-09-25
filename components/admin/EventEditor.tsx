@@ -864,7 +864,7 @@ export function EventEditor({ event }: { event: EventView | null }) {
               <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value) || 0)} className={`${inputCls} w-24`} />
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500">팝업 안보기(일)</span>
+              <span className="shrink-0 whitespace-nowrap text-zinc-500">팝업 안보기(일)</span>
               <input
                 type="number"
                 min={1}

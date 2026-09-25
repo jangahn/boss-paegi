@@ -102,11 +102,15 @@ export const AUDIT_FN = `(() => {
         if (tops.size >= 2) push("label-wrapped", "warn", el, { heading: nearestHeading(el), lines: tops.size });
       }
     }
-    // 의도치 않은 두 줄(v1.57) — 자기 텍스트를 가진 요소 중 ① 짧은 글(공백 빼고 12자 이하: 닉네임 · 값 · 칸)이 꺾이거나
-    // ② 60자 이하 글의 마지막 줄이 한두 글자뿐인 꼬리 줄바꿈(결재란 「광견병걸린너구 / 리」, 판정 등급 「…시작됐습 / 니다」).
-    // 글자마다 줄(top)을 모아 센다(표 셀 · 값 칸 · 문단 포함 — label-wrapped 는 공백 없는 8자 이하 버튼 · 라벨만 본다).
-    const ownText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
-    if (ownText && cs.whiteSpace !== "nowrap" && !formControl && tag !== "OPTION") {
+    // 의도치 않은 두 줄(v1.57, v1.58 다듬음) — 더 쪼개지지 않는 블록(칸 · 버튼 · 문단 · 목록 항목 · 플렉스 항목, 자식이 전부 인라인)마다
+    // ① 짧은 글(공백 빼고 12자 이하: 닉네임 · 값 · 버튼)이 꺾이거나 ② 60자 이하 글의 마지막 줄이 한두 글자뿐인 꼬리 줄바꿈
+    // (결재란 「광견병걸린너구 / 리」, 판정 등급 「…시작됐습 / 니다」). 문단 속 굵은 글씨처럼 흐르다 줄이 바뀌는 인라인 요소는
+    // 그 문단 전체로 보고, 절대 · 고정 위치 자식(숫자 배지 등)의 글자는 줄 계산에서 뺀다.
+    const leafBlock = !["inline", "contents"].includes(cs.display) && ![...el.children].some((c) => {
+      const d = getComputedStyle(c).display;
+      return d !== "inline" && d !== "none";
+    });
+    if (leafBlock && cs.whiteSpace !== "nowrap" && !formControl && tag !== "OPTION") {
       const full = (el.innerText || "").replace(/\\s+/g, " ").trim();
       const visibleLen = full.replace(/\\s/g, "").length;
       if (visibleLen > 0 && full.length <= 60) {
@@ -114,6 +118,12 @@ export const AUDIT_FN = `(() => {
         const rg = document.createRange();
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
         for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          let skip = false;
+          for (let a = n.parentElement; a && a !== el; a = a.parentElement) {
+            const ps = getComputedStyle(a).position;
+            if (ps === "absolute" || ps === "fixed") { skip = true; break; }
+          }
+          if (skip) continue;
           const t = n.textContent;
           for (let i = 0; i < t.length; ) {
             const cp = t.codePointAt(i);
@@ -123,9 +133,10 @@ export const AUDIT_FN = `(() => {
               rg.setEnd(n, i + len);
               const b = rg.getBoundingClientRect();
               if (b.width > 0 || b.height > 0) {
-                const row = rows.find((x) => Math.abs(x.top - b.top) < 6);
-                if (row) row.count += 1;
-                else rows.push({ top: b.top, count: 1 });
+                // 같은 줄 = 세로로 절반 이상 겹침(글자 크기가 섞인 줄 — 24px 숫자 옆 12px 「점」 — 은 윗변이 10px 넘게 달라도 한 줄)
+                const row = rows.find((x) => Math.min(x.bottom, b.bottom) - Math.max(x.top, b.top) > 0.5 * Math.min(x.bottom - x.top, b.height));
+                if (row) { row.count += 1; row.top = Math.min(row.top, b.top); row.bottom = Math.max(row.bottom, b.bottom); }
+                else rows.push({ top: b.top, bottom: b.bottom, count: 1 });
               }
             }
             i += len;

@@ -34,6 +34,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
                 label="유형"
                 value={s.is_anon ? "익명" : s.owner_name ? `회원 (${s.owner_name})` : "회원"}
                 href={!s.is_anon && s.owner_id ? `/admin/users/${s.owner_id}` : undefined}
+                wide // 「회원 (닉네임)」 — 3칸 격자 한 칸(375px 약 100px)이면 닉네임이 세 줄로 꺾인다(v1.58)
               />
               <Field label="종료" value={endReasonLabel(s.end_reason)} />
               <Field label="기기" value={DEVICE_KO[s.device_class] ?? s.device_class} />
@@ -91,9 +92,9 @@ function metric(value: number | null): string {
   return value === null ? "—" : value.toLocaleString();
 }
 
-function Field({ label, value, href }: { label: string; value: string; href?: string }) {
+function Field({ label, value, href, wide }: { label: string; value: string; href?: string; wide?: boolean }) {
   return (
-    <div className="rounded-lg border border-foreground/10 ui-surface p-2">
+    <div className={`rounded-lg border border-foreground/10 ui-surface p-2 ${wide ? "col-span-2" : ""}`}>
       <p className="text-[10px] text-zinc-500">{label}</p>
       {href ? (
         <p className="font-medium">

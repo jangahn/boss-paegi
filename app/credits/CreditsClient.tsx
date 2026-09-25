@@ -385,7 +385,7 @@ export function CreditsClient({
               청약철회 제한' 표시는 법정 필수(전상법 §13·§17⑥)라 여기 유지. 환불 산정·수치의
               정본은 이용약관 제10조 단일 소스 — 여기엔 한 줄 요지+약관 참조만(수치 중복 금지,
               v0.75). 결제수단/부가세 안내 줄은 법정 의무 아님이라 삭제(v2, 2026-08-19 결정). */}
-          <div className="flex flex-col gap-1.5 rounded-xl border border-foreground/10 bg-foreground/[0.03] p-3.5 text-[11px] leading-relaxed text-zinc-500">
+          <div className="flex flex-col gap-1.5 text-balance rounded-xl border border-foreground/10 bg-foreground/[0.03] p-3.5 text-[11px] leading-relaxed text-zinc-500">
             <p>
               · <b>제공 기간</b>: {CREDITS_OFFER_COPY.supply}
             </p>
